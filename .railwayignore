@@ -1,0 +1,8 @@
+# Backend-only Railway deploy — skip UI, desktop, and local Supabase CLI config.
+frontend/
+landing/
+desktop/
+supabase/.temp/
+supabase/config.toml
+.git/
+.vscode/
