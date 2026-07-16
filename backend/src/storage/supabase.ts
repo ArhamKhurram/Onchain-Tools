@@ -1,0 +1,947 @@
+import { createClient, type SupabaseClient } from '@supabase/supabase-js';
+import { v4 as uuidv4 } from 'uuid';
+import { encryptToken, decryptToken, maskToken } from '../auth/encryption.js';
+import type { StorageProvider } from './interface.js';
+import type { AppConfig, Room, ChannelRef, KeywordPattern } from '../discord/types.js';
+import type { ContractEntry, ContractEnrichmentPatch } from '../utils/contractLog.js';
+
+const DEFAULT_SETTINGS: Omit<AppConfig, 'discordTokens' | 'rooms'> = {
+  globalHighlightedUsers: [],
+  contractDetection: true,
+  guildColors: {},
+  dmColors: {},
+  enabledGuilds: [],
+  evmAddressColor: '#fee75c',
+  solAddressColor: '#14f195',
+  openInDiscordApp: false,
+  openInTelegramApp: false,
+  hiddenUsers: {},
+  messageSounds: false,
+  soundSettings: {
+    highlight: { enabled: true, volume: 80, useCustom: false },
+    contractAlert: { enabled: true, volume: 80, useCustom: false },
+    keywordAlert: { enabled: true, volume: 80, useCustom: false },
+  },
+  channelSounds: {},
+  pushover: {
+    enabled: false, appToken: '', userKey: '',
+    priority: 1 as const, sound: 'siren' as const,
+    triggers: { highlightedUser: false, highlightedUserContract: true, contract: false, keyword: false },
+    filters: { userIds: [], channelIds: [], guildIds: [] },
+  },
+  contractLinkTemplates: {
+    evm: 'https://gmgn.ai/base/token/{address}',
+    sol: 'https://axiom.trade/t/{address}?chain=sol',
+    solPlatform: 'axiom',
+    evmPlatform: 'gmgn',
+  },
+  contractClickAction: 'copy_open',
+  showFullContractAddress: false,
+  autoOpenHighlightedContracts: false,
+  globalKeywordPatterns: [],
+  keywordAlertsEnabled: true,
+  desktopNotifications: false,
+  mentionsUserEnabled: true,
+  mentionsRoleEnabled: true,
+  mentionsHereEnabled: false,
+  mentionsEveryoneEnabled: false,
+  badgeClickAction: 'discord',
+  userNameCache: {},
+  chattingEnabled: false,
+  messageDisplay: 'default',
+  compactModeAvatars: true,
+  roleColors: true,
+  mobileZoomScale: 1,
+  splitLayout: 'row',
+  paneRoomIds: [],
+  paneLocks: [],
+  gridMirror: false,
+  seenAnnouncements: [],
+  telegramColors: {},
+};
+
+function createServiceClient(): SupabaseClient {
+  const url = process.env.SUPABASE_URL;
+  const key = process.env.SUPABASE_SERVICE_KEY;
+  if (!url || !key) {
+    throw new Error('SUPABASE_URL and SUPABASE_SERVICE_KEY are required in hosted mode.');
+  }
+  return createClient(url, key, { auth: { persistSession: false } });
+}
+
+function throwIfError(result: { error: any }, context: string): void {
+  if (result.error) {
+    console.error(`[Supabase] ${context}:`, result.error);
+    throw new Error(`${context}: ${result.error.message ?? 'Unknown error'}`);
+  }
+}
+
+interface HighlightRow {
+  room_id: string | null;
+  match_type: string;
+  value: string;
+  color: string | null;
+}
+
+interface KeywordRow {
+  room_id: string | null;
+  pattern: string;
+  match_mode: string;
+  label: string | null;
+  enabled: boolean;
+}
+
+function highlightRowsToApp(rows: HighlightRow[]): Pick<Room, 'highlightedUsers' | 'highlightedUserColors'> {
+  const highlightedUsers: string[] = [];
+  const highlightedUserColors: Record<string, string> = {};
+  for (const row of rows) {
+    const key = row.match_type === 'username' ? `@${row.value}` : row.value;
+    highlightedUsers.push(key);
+    if (row.color) highlightedUserColors[key] = row.color;
+  }
+  return { highlightedUsers, highlightedUserColors };
+}
+
+function keywordRowsToApp(rows: KeywordRow[]): KeywordPattern[] {
+  return rows
+    .filter((row) => row.enabled)
+    .map((row) => ({
+      pattern: row.pattern,
+      matchMode: row.match_mode as KeywordPattern['matchMode'],
+      label: row.label ?? undefined,
+      isRegex: row.match_mode === 'regex',
+    }));
+}
+
+function appHighlightsToRows(
+  userId: string,
+  roomId: string | null,
+  users: string[],
+  colors: Record<string, string> = {},
+) {
+  return users.map((entry) => {
+    const isUsername = entry.startsWith('@');
+    return {
+      user_id: userId,
+      room_id: roomId,
+      match_type: isUsername ? 'username' : 'user_id',
+      value: isUsername ? entry.slice(1) : entry,
+      color: colors[entry] ?? null,
+    };
+  });
+}
+
+function appKeywordsToRows(userId: string, roomId: string | null, patterns: KeywordPattern[]) {
+  return patterns.map((pattern) => ({
+    user_id: userId,
+    room_id: roomId,
+    pattern: pattern.pattern,
+    match_mode: pattern.matchMode ?? (pattern.isRegex ? 'regex' : 'includes'),
+    label: pattern.label ?? null,
+    enabled: true,
+  }));
+}
+
+function dbRoomToAppRoom(
+  row: any,
+  channels: ChannelRef[],
+  highlights: HighlightRow[],
+  keywords: KeywordRow[],
+): Room {
+  const { highlightedUsers, highlightedUserColors } = highlightRowsToApp(highlights);
+  return {
+    id: row.id,
+    name: row.name,
+    channels,
+    highlightedUsers,
+    filteredUsers: row.filtered_users ?? [],
+    filterEnabled: row.filter_enabled ?? false,
+    color: row.color ?? null,
+    keywordPatterns: keywordRowsToApp(keywords),
+    highlightMode: row.highlight_mode ?? 'background',
+    highlightedUserColors,
+  };
+}
+
+interface CacheEntry<T> {
+  data: T;
+  expiresAt: number;
+}
+
+const CACHE_TTL_MS = 10_000; // 10 seconds
+
+export class SupabaseStorageProvider implements StorageProvider {
+  private supabase: SupabaseClient;
+  private cache = new Map<string, CacheEntry<any>>();
+
+  constructor() {
+    this.supabase = createServiceClient();
+  }
+
+  private getCached<T>(key: string): T | undefined {
+    const entry = this.cache.get(key);
+    if (!entry || Date.now() > entry.expiresAt) {
+      this.cache.delete(key);
+      return undefined;
+    }
+    return entry.data as T;
+  }
+
+  private setCache<T>(key: string, data: T): void {
+    this.cache.set(key, { data, expiresAt: Date.now() + CACHE_TTL_MS });
+  }
+
+  private invalidateUser(userId: string): void {
+    for (const key of this.cache.keys()) {
+      if (key.startsWith(userId)) this.cache.delete(key);
+    }
+  }
+
+  private async loadHighlightRows(userId: string, roomIds?: string[]): Promise<HighlightRow[]> {
+    let query = this.supabase
+      .from('highlighted_users')
+      .select('room_id, match_type, value, color')
+      .eq('user_id', userId);
+
+    if (roomIds && roomIds.length > 0) {
+      query = query.or(`room_id.is.null,room_id.in.(${roomIds.join(',')})`);
+    }
+
+    const { data, error } = await query;
+    throwIfError({ error }, 'Failed to fetch highlighted users');
+    return data ?? [];
+  }
+
+  private async loadKeywordRows(userId: string, roomIds?: string[]): Promise<KeywordRow[]> {
+    let query = this.supabase
+      .from('keywords')
+      .select('room_id, pattern, match_mode, label, enabled')
+      .eq('user_id', userId);
+
+    if (roomIds && roomIds.length > 0) {
+      query = query.or(`room_id.is.null,room_id.in.(${roomIds.join(',')})`);
+    }
+
+    const { data, error } = await query;
+    throwIfError({ error }, 'Failed to fetch keywords');
+    return data ?? [];
+  }
+
+  private async syncHighlights(
+    userId: string,
+    roomId: string | null,
+    users: string[],
+    colors: Record<string, string> = {},
+  ): Promise<void> {
+    let deleteQuery = this.supabase.from('highlighted_users').delete().eq('user_id', userId);
+    deleteQuery = roomId === null
+      ? deleteQuery.is('room_id', null)
+      : deleteQuery.eq('room_id', roomId);
+
+    const delResult = await deleteQuery;
+    throwIfError(delResult, 'Failed to delete highlighted users');
+
+    const rows = appHighlightsToRows(userId, roomId, users, colors);
+    if (rows.length === 0) return;
+
+    const insResult = await this.supabase.from('highlighted_users').insert(rows);
+    throwIfError(insResult, 'Failed to store highlighted users');
+  }
+
+  private async syncKeywords(
+    userId: string,
+    roomId: string | null,
+    patterns: KeywordPattern[],
+  ): Promise<void> {
+    let deleteQuery = this.supabase.from('keywords').delete().eq('user_id', userId);
+    deleteQuery = roomId === null
+      ? deleteQuery.is('room_id', null)
+      : deleteQuery.eq('room_id', roomId);
+
+    const delResult = await deleteQuery;
+    throwIfError(delResult, 'Failed to delete keywords');
+
+    const rows = appKeywordsToRows(userId, roomId, patterns);
+    if (rows.length === 0) return;
+
+    const insResult = await this.supabase.from('keywords').insert(rows);
+    throwIfError(insResult, 'Failed to store keywords');
+  }
+
+  // ---- Config ----
+
+  async getConfig(userId: string): Promise<AppConfig> {
+    const cacheKey = `${userId}:config`;
+    const cached = this.getCached<AppConfig>(cacheKey);
+    if (cached) return cached;
+
+    const { data } = await this.supabase
+      .from('user_configs')
+      .select('settings')
+      .eq('user_id', userId)
+      .single();
+
+    const settings = data?.settings ?? {};
+    delete settings.telegramApiId;
+    delete settings.telegramApiHash;
+    delete settings.telegramSessions;
+    delete settings.globalHighlightedUsers;
+    delete settings.globalKeywordPatterns;
+    const merged = { ...DEFAULT_SETTINGS, ...settings };
+
+    const tokens = await this.getTokens(userId);
+    const rooms = await this.getRooms(userId);
+    const [globalHighlights, globalKeywords] = await Promise.all([
+      this.loadHighlightRows(userId).then((rows) => rows.filter((row) => row.room_id === null)),
+      this.loadKeywordRows(userId).then((rows) => rows.filter((row) => row.room_id === null)),
+    ]);
+    const telegramCreds = await this.getTelegramApiCredentials(userId);
+    const telegramSessions = await this.getTelegramSessions(userId);
+
+    const config = {
+      ...merged,
+      globalHighlightedUsers: highlightRowsToApp(globalHighlights).highlightedUsers,
+      globalKeywordPatterns: keywordRowsToApp(globalKeywords),
+      discordTokens: tokens,
+      rooms,
+      telegramApiId: telegramCreds?.apiId,
+      telegramApiHash: telegramCreds?.apiHash,
+      telegramSessions,
+    } as AppConfig;
+    this.setCache(cacheKey, config);
+    return config;
+  }
+
+  async updateConfig(userId: string, partial: Partial<AppConfig>): Promise<AppConfig> {
+    const {
+      discordTokens: _t,
+      rooms: _r,
+      telegramApiId,
+      telegramApiHash,
+      telegramSessions,
+      globalHighlightedUsers,
+      globalKeywordPatterns,
+      ...settingsUpdate
+    } = partial as any;
+
+    if (globalHighlightedUsers !== undefined) {
+      await this.syncHighlights(userId, null, globalHighlightedUsers);
+    }
+
+    if (globalKeywordPatterns !== undefined) {
+      await this.syncKeywords(userId, null, globalKeywordPatterns);
+    }
+
+    if (telegramApiId !== undefined || telegramApiHash !== undefined) {
+      await this.setTelegramApiCredentials(userId, telegramApiId, telegramApiHash);
+    }
+
+    if (telegramSessions !== undefined) {
+      await this.setTelegramSessions(userId, telegramSessions);
+    }
+
+    const { data: existing } = await this.supabase
+      .from('user_configs')
+      .select('settings')
+      .eq('user_id', userId)
+      .single();
+
+    const currentSettings = existing?.settings ?? {};
+    const newSettings = { ...currentSettings, ...settingsUpdate };
+
+    // Scrub any leftover plaintext telegram fields from the JSON blob
+    delete newSettings.telegramApiId;
+    delete newSettings.telegramApiHash;
+    delete newSettings.telegramSessions;
+    delete newSettings.globalHighlightedUsers;
+    delete newSettings.globalKeywordPatterns;
+
+    const result = await this.supabase
+      .from('user_configs')
+      .upsert({ user_id: userId, settings: newSettings }, { onConflict: 'user_id' });
+    throwIfError(result, 'Failed to update config');
+
+    this.invalidateUser(userId);
+    return this.getConfig(userId);
+  }
+
+  // ---- Tokens ----
+
+  async getTokens(userId: string): Promise<string[]> {
+    const cacheKey = `${userId}:tokens`;
+    const cached = this.getCached<string[]>(cacheKey);
+    if (cached) return cached;
+
+    const result = await this.supabase
+      .from('discord_tokens')
+      .select('encrypted_token, token_iv, token_tag, position')
+      .eq('user_id', userId)
+      .order('position');
+
+    throwIfError(result, 'Failed to fetch tokens');
+    if (!result.data || result.data.length === 0) return [];
+
+    const tokens = result.data.map((row) => decryptToken(row.encrypted_token, row.token_iv, row.token_tag));
+    this.setCache(cacheKey, tokens);
+    return tokens;
+  }
+
+  async setTokens(userId: string, tokens: string[]): Promise<void> {
+    const delResult = await this.supabase.from('discord_tokens').delete().eq('user_id', userId);
+    throwIfError(delResult, 'Failed to delete existing tokens');
+
+    if (tokens.length === 0) return;
+
+    const rows = tokens.map((token, i) => {
+      const { encrypted, iv, tag } = encryptToken(token);
+      return {
+        user_id: userId,
+        encrypted_token: encrypted,
+        token_iv: iv,
+        token_tag: tag,
+        token_mask: maskToken(token),
+        position: i,
+      };
+    });
+
+    const insResult = await this.supabase.from('discord_tokens').insert(rows);
+    throwIfError(insResult, 'Failed to store tokens');
+    this.invalidateUser(userId);
+  }
+
+  // ---- Rooms ----
+
+  async getRooms(userId: string): Promise<Room[]> {
+    const cacheKey = `${userId}:rooms`;
+    const cached = this.getCached<Room[]>(cacheKey);
+    if (cached) return cached;
+
+    const { data: roomRows } = await this.supabase
+      .from('rooms')
+      .select('*')
+      .eq('user_id', userId)
+      .order('created_at');
+
+    if (!roomRows || roomRows.length === 0) return [];
+
+    const roomIds = roomRows.map((r) => r.id);
+    const [channelResult, highlightRows, keywordRows] = await Promise.all([
+      this.supabase.from('room_channels').select('*').in('room_id', roomIds),
+      this.loadHighlightRows(userId, roomIds),
+      this.loadKeywordRows(userId, roomIds),
+    ]);
+    const channelRows = channelResult.data;
+
+    const channelsByRoom = new Map<string, ChannelRef[]>();
+    for (const ch of channelRows ?? []) {
+      const list = channelsByRoom.get(ch.room_id) ?? [];
+      list.push({
+        source: ch.source ?? 'discord',
+        guildId: ch.guild_id,
+        channelId: ch.channel_id,
+        guildName: ch.guild_name,
+        channelName: ch.channel_name,
+        disableEmbeds: ch.disable_embeds,
+      });
+      channelsByRoom.set(ch.room_id, list);
+    }
+
+    const highlightsByRoom = new Map<string, HighlightRow[]>();
+    for (const row of highlightRows) {
+      if (!row.room_id) continue;
+      const list = highlightsByRoom.get(row.room_id) ?? [];
+      list.push(row);
+      highlightsByRoom.set(row.room_id, list);
+    }
+
+    const keywordsByRoom = new Map<string, KeywordRow[]>();
+    for (const row of keywordRows) {
+      if (!row.room_id) continue;
+      const list = keywordsByRoom.get(row.room_id) ?? [];
+      list.push(row);
+      keywordsByRoom.set(row.room_id, list);
+    }
+
+    const rooms = roomRows.map((r) =>
+      dbRoomToAppRoom(
+        r,
+        channelsByRoom.get(r.id) ?? [],
+        highlightsByRoom.get(r.id) ?? [],
+        keywordsByRoom.get(r.id) ?? [],
+      ),
+    );
+    this.setCache(cacheKey, rooms);
+    return rooms;
+  }
+
+  async getRoom(userId: string, roomId: string): Promise<Room | null> {
+    const { data: row } = await this.supabase
+      .from('rooms')
+      .select('*')
+      .eq('id', roomId)
+      .eq('user_id', userId)
+      .single();
+
+    if (!row) return null;
+
+    const { data: channelRows } = await this.supabase
+      .from('room_channels')
+      .select('*')
+      .eq('room_id', roomId);
+
+    const channels: ChannelRef[] = (channelRows ?? []).map((ch) => ({
+      source: ch.source ?? 'discord',
+      guildId: ch.guild_id,
+      channelId: ch.channel_id,
+      guildName: ch.guild_name,
+      channelName: ch.channel_name,
+      disableEmbeds: ch.disable_embeds,
+    }));
+
+    const [highlightRows, keywordRows] = await Promise.all([
+      this.loadHighlightRows(userId, [roomId]).then((rows) => rows.filter((r) => r.room_id === roomId)),
+      this.loadKeywordRows(userId, [roomId]).then((rows) => rows.filter((r) => r.room_id === roomId)),
+    ]);
+
+    return dbRoomToAppRoom(row, channels, highlightRows, keywordRows);
+  }
+
+  async createRoom(userId: string, data: Omit<Room, 'id'>): Promise<Room> {
+    const roomId = uuidv4();
+
+    const roomResult = await this.supabase.from('rooms').insert({
+      id: roomId,
+      user_id: userId,
+      name: data.name,
+      color: data.color ?? null,
+      filtered_users: data.filteredUsers ?? [],
+      filter_enabled: data.filterEnabled ?? false,
+      highlight_mode: data.highlightMode ?? 'background',
+    });
+    throwIfError(roomResult, 'Failed to create room');
+
+    await this.syncHighlights(
+      userId,
+      roomId,
+      data.highlightedUsers ?? [],
+      data.highlightedUserColors ?? {},
+    );
+    await this.syncKeywords(userId, roomId, data.keywordPatterns ?? []);
+
+    if (data.channels && data.channels.length > 0) {
+      const channelRows = data.channels.map((ch) => ({
+        room_id: roomId,
+        user_id: userId,
+        source: ch.source ?? 'discord',
+        guild_id: ch.guildId,
+        channel_id: ch.channelId,
+        guild_name: ch.guildName,
+        channel_name: ch.channelName,
+        disable_embeds: ch.disableEmbeds ?? false,
+      }));
+      const chResult = await this.supabase.from('room_channels').insert(channelRows);
+      throwIfError(chResult, 'Failed to create room channels');
+    }
+
+    this.invalidateUser(userId);
+    return { id: roomId, ...data };
+  }
+
+  async updateRoom(userId: string, roomId: string, data: Partial<Room>): Promise<Room | null> {
+    const existing = await this.getRoom(userId, roomId);
+    if (!existing) return null;
+
+    const updateFields: any = {};
+    if (data.name !== undefined) updateFields.name = data.name;
+    if (data.color !== undefined) updateFields.color = data.color;
+    if (data.filteredUsers !== undefined) updateFields.filtered_users = data.filteredUsers;
+    if (data.filterEnabled !== undefined) updateFields.filter_enabled = data.filterEnabled;
+    if (data.highlightMode !== undefined) updateFields.highlight_mode = data.highlightMode;
+
+    if (Object.keys(updateFields).length > 0) {
+      await this.supabase.from('rooms').update(updateFields).eq('id', roomId).eq('user_id', userId);
+    }
+
+    if (data.highlightedUsers !== undefined || data.highlightedUserColors !== undefined) {
+      await this.syncHighlights(
+        userId,
+        roomId,
+        data.highlightedUsers ?? existing.highlightedUsers,
+        data.highlightedUserColors ?? existing.highlightedUserColors ?? {},
+      );
+    }
+
+    if (data.keywordPatterns !== undefined) {
+      await this.syncKeywords(userId, roomId, data.keywordPatterns);
+    }
+
+    if (data.channels !== undefined) {
+      await this.supabase.from('room_channels').delete().eq('room_id', roomId);
+      if (data.channels.length > 0) {
+        const channelRows = data.channels.map((ch) => ({
+          room_id: roomId,
+          user_id: userId,
+          source: ch.source ?? 'discord',
+          guild_id: ch.guildId,
+          channel_id: ch.channelId,
+          guild_name: ch.guildName,
+          channel_name: ch.channelName,
+          disable_embeds: ch.disableEmbeds ?? false,
+        }));
+        await this.supabase.from('room_channels').insert(channelRows);
+      }
+    }
+
+    this.invalidateUser(userId);
+    return this.getRoom(userId, roomId);
+  }
+
+  async deleteRoom(userId: string, roomId: string): Promise<boolean> {
+    const { count } = await this.supabase
+      .from('rooms')
+      .delete({ count: 'exact' })
+      .eq('id', roomId)
+      .eq('user_id', userId);
+
+    this.invalidateUser(userId);
+    return (count ?? 0) > 0;
+  }
+
+  // ---- Room queries ----
+
+  async getRoomsForChannel(userId: string, channelId: string): Promise<Room[]> {
+    const rooms = await this.getRooms(userId);
+    return rooms.filter((r) => r.channels.some((ch) => ch.channelId === channelId));
+  }
+
+  async isChannelSubscribed(userId: string, channelId: string): Promise<boolean> {
+    const rooms = await this.getRooms(userId);
+    return rooms.some((r) => r.channels.some((ch) => ch.channelId === channelId));
+  }
+
+  async isUserHighlighted(userId: string, discordUserId: string, roomId?: string, username?: string | null): Promise<boolean> {
+    const matchesList = (list: string[]) =>
+      list.includes(discordUserId) ||
+      (username ? list.some((e) => e.startsWith('@') && e.slice(1).toLowerCase() === username.toLowerCase()) : false);
+
+    const config = await this.getConfig(userId);
+    if (matchesList(config.globalHighlightedUsers)) return true;
+
+    if (roomId) {
+      const room = await this.getRoom(userId, roomId);
+      return room ? matchesList(room.highlightedUsers) : false;
+    }
+
+    const rooms = await this.getRooms(userId);
+    return rooms.some((r) => matchesList(r.highlightedUsers));
+  }
+
+  // ---- Contracts ----
+
+  async getContracts(userId: string, limit = 100, since?: string): Promise<ContractEntry[]> {
+    let query = this.supabase
+      .from('contracts')
+      .select('*')
+      .eq('user_id', userId)
+      .order('timestamp', { ascending: false })
+      .limit(limit);
+
+    if (since) {
+      query = query.gt('timestamp', since);
+    }
+
+    const { data, error } = await query;
+    if (error) {
+      console.error('[Supabase] Failed to fetch contracts:', error);
+      throw new Error(`Failed to fetch contracts: ${error.message}`);
+    }
+    if (!data) return [];
+
+    return data.map((row) => this.mapContractRow(row));
+  }
+
+  async logContract(userId: string, entry: ContractEntry): Promise<void> {
+    const isFirstSeen = !(await this.hasAddress(userId, entry.address));
+
+    const result = await this.supabase.from('contracts').insert({
+      user_id: userId,
+      address: entry.address,
+      chain: entry.chain,
+      evm_chain: entry.evmChain ?? null,
+      author_id: entry.authorId,
+      author_name: entry.authorName,
+      channel_id: entry.channelId,
+      channel_name: entry.channelName,
+      guild_id: entry.guildId,
+      guild_name: entry.guildName,
+      room_ids: entry.roomIds,
+      message_id: entry.messageId,
+      timestamp: entry.timestamp,
+      first_seen: isFirstSeen,
+      token_name: entry.tokenName ?? null,
+      token_symbol: entry.tokenSymbol ?? null,
+      token_pair: entry.tokenPair ?? null,
+      description: entry.description ?? null,
+      fdv_at_call: entry.fdvAtCall ?? null,
+      fdv_at_call_display: entry.fdvAtCallDisplay ?? null,
+      liquidity_usd: entry.liquidityUsd ?? null,
+      liquidity_display: entry.liquidityDisplay ?? null,
+      volume_usd: entry.volumeUsd ?? null,
+      volume_display: entry.volumeDisplay ?? null,
+      price_usd: entry.priceUsd ?? null,
+      token_age: entry.tokenAge ?? null,
+      enrichment_source: entry.enrichmentSource ?? null,
+      enriched_at: entry.enrichedAt ?? null,
+    });
+    throwIfError(result, 'Failed to log contract');
+  }
+
+  async deleteContract(userId: string, messageId: string, address: string): Promise<boolean> {
+    const { count } = await this.supabase
+      .from('contracts')
+      .delete({ count: 'exact' })
+      .eq('user_id', userId)
+      .eq('message_id', messageId)
+      .eq('address', address);
+
+    return (count ?? 0) > 0;
+  }
+
+  async deleteAllContracts(userId: string): Promise<void> {
+    await this.supabase.from('contracts').delete().eq('user_id', userId);
+  }
+
+  async updateEvmChain(userId: string, address: string, evmChain: string): Promise<boolean> {
+    const { data } = await this.supabase
+      .from('contracts')
+      .update({ evm_chain: evmChain })
+      .eq('user_id', userId)
+      .eq('address', address)
+      .eq('chain', 'evm')
+      .is('evm_chain', null)
+      .select('id');
+
+    return (data?.length ?? 0) > 0;
+  }
+
+  async enrichContract(
+    userId: string,
+    address: string,
+    patch: ContractEnrichmentPatch,
+    channelId?: string,
+  ): Promise<ContractEntry | null> {
+    let query = this.supabase
+      .from('contracts')
+      .select('*')
+      .eq('user_id', userId)
+      .ilike('address', address)
+      .order('timestamp', { ascending: false })
+      .limit(5);
+
+    if (channelId) {
+      query = query.eq('channel_id', channelId);
+    }
+
+    let { data: rows } = await query;
+    if ((!rows || rows.length === 0) && channelId) {
+      const fallback = await this.supabase
+        .from('contracts')
+        .select('*')
+        .eq('user_id', userId)
+        .ilike('address', address)
+        .order('timestamp', { ascending: false })
+        .limit(1);
+      rows = fallback.data;
+    }
+
+    const row = rows?.[0];
+    if (!row) return null;
+
+    if (row.enrichment_source === 'rick' && patch.enrichmentSource === 'dexscreener') {
+      return this.mapContractRow(row);
+    }
+
+    const update: Record<string, unknown> = {
+      enriched_at: patch.enrichedAt ?? new Date().toISOString(),
+    };
+    if (patch.tokenName !== undefined) update.token_name = patch.tokenName;
+    if (patch.tokenSymbol !== undefined) update.token_symbol = patch.tokenSymbol;
+    if (patch.tokenPair !== undefined) update.token_pair = patch.tokenPair;
+    if (patch.description !== undefined) update.description = patch.description;
+    if (patch.fdvAtCall !== undefined) update.fdv_at_call = patch.fdvAtCall;
+    if (patch.fdvAtCallDisplay !== undefined) update.fdv_at_call_display = patch.fdvAtCallDisplay;
+    if (patch.liquidityUsd !== undefined) update.liquidity_usd = patch.liquidityUsd;
+    if (patch.liquidityDisplay !== undefined) update.liquidity_display = patch.liquidityDisplay;
+    if (patch.volumeUsd !== undefined) update.volume_usd = patch.volumeUsd;
+    if (patch.volumeDisplay !== undefined) update.volume_display = patch.volumeDisplay;
+    if (patch.priceUsd !== undefined) update.price_usd = patch.priceUsd;
+    if (patch.tokenAge !== undefined) update.token_age = patch.tokenAge;
+    if (patch.enrichmentSource !== undefined) update.enrichment_source = patch.enrichmentSource;
+    if (patch.evmChain !== undefined && !row.evm_chain) update.evm_chain = patch.evmChain;
+
+    const { data: updated, error } = await this.supabase
+      .from('contracts')
+      .update(update)
+      .eq('id', row.id)
+      .select('*')
+      .single();
+
+    throwIfError({ error }, 'Failed to enrich contract');
+    return updated ? this.mapContractRow(updated) : null;
+  }
+
+  private mapContractRow(row: any): ContractEntry {
+    return {
+      address: row.address,
+      chain: row.chain as 'evm' | 'sol',
+      evmChain: row.evm_chain ?? undefined,
+      authorId: row.author_id,
+      authorName: row.author_name,
+      channelId: row.channel_id,
+      channelName: row.channel_name,
+      guildId: row.guild_id,
+      guildName: row.guild_name,
+      roomIds: row.room_ids ?? [],
+      messageId: row.message_id,
+      timestamp: row.timestamp,
+      firstSeen: row.first_seen ?? undefined,
+      tokenName: row.token_name ?? undefined,
+      tokenSymbol: row.token_symbol ?? undefined,
+      tokenPair: row.token_pair ?? undefined,
+      description: row.description ?? undefined,
+      fdvAtCall: row.fdv_at_call != null ? Number(row.fdv_at_call) : undefined,
+      fdvAtCallDisplay: row.fdv_at_call_display ?? undefined,
+      liquidityUsd: row.liquidity_usd != null ? Number(row.liquidity_usd) : undefined,
+      liquidityDisplay: row.liquidity_display ?? undefined,
+      volumeUsd: row.volume_usd != null ? Number(row.volume_usd) : undefined,
+      volumeDisplay: row.volume_display ?? undefined,
+      priceUsd: row.price_usd != null ? Number(row.price_usd) : undefined,
+      tokenAge: row.token_age ?? undefined,
+      enrichmentSource: row.enrichment_source ?? undefined,
+      enrichedAt: row.enriched_at ?? undefined,
+    };
+  }
+
+  async hasAddress(userId: string, address: string): Promise<boolean> {
+    const { count } = await this.supabase
+      .from('contracts')
+      .select('id', { count: 'exact', head: true })
+      .eq('user_id', userId)
+      .eq('address', address);
+
+    return (count ?? 0) > 0;
+  }
+
+  // ---- Telegram credentials (encrypted) ----
+
+  private async getTelegramApiCredentials(userId: string): Promise<{ apiId: string; apiHash: string } | null> {
+    const cacheKey = `${userId}:tg_creds`;
+    const cached = this.getCached<{ apiId: string; apiHash: string }>(cacheKey);
+    if (cached) return cached;
+
+    const { data } = await this.supabase
+      .from('telegram_credentials')
+      .select('encrypted_api_id, api_id_iv, api_id_tag, encrypted_api_hash, api_hash_iv, api_hash_tag')
+      .eq('user_id', userId)
+      .single();
+
+    if (!data) return null;
+
+    const apiId = decryptToken(data.encrypted_api_id, data.api_id_iv, data.api_id_tag);
+    const apiHash = decryptToken(data.encrypted_api_hash, data.api_hash_iv, data.api_hash_tag);
+    const result = { apiId, apiHash };
+    this.setCache(cacheKey, result);
+    return result;
+  }
+
+  private async setTelegramApiCredentials(userId: string, apiId?: string, apiHash?: string): Promise<void> {
+    if (!apiId && !apiHash) return;
+
+    const existing = await this.getTelegramApiCredentials(userId);
+    const finalApiId = apiId ?? existing?.apiId;
+    const finalApiHash = apiHash ?? existing?.apiHash;
+
+    if (!finalApiId || !finalApiHash) return;
+
+    const encId = encryptToken(finalApiId);
+    const encHash = encryptToken(finalApiHash);
+
+    const result = await this.supabase.from('telegram_credentials').upsert({
+      user_id: userId,
+      encrypted_api_id: encId.encrypted,
+      api_id_iv: encId.iv,
+      api_id_tag: encId.tag,
+      encrypted_api_hash: encHash.encrypted,
+      api_hash_iv: encHash.iv,
+      api_hash_tag: encHash.tag,
+    }, { onConflict: 'user_id' });
+    throwIfError(result, 'Failed to store Telegram API credentials');
+    this.invalidateUser(userId);
+  }
+
+  private async getTelegramSessions(userId: string): Promise<string[]> {
+    const cacheKey = `${userId}:tg_sessions`;
+    const cached = this.getCached<string[]>(cacheKey);
+    if (cached) return cached;
+
+    const { data } = await this.supabase
+      .from('telegram_sessions')
+      .select('encrypted_session, session_iv, session_tag, position')
+      .eq('user_id', userId)
+      .order('position');
+
+    if (!data || data.length === 0) return [];
+
+    const sessions = data.map((row) => decryptToken(row.encrypted_session, row.session_iv, row.session_tag));
+    this.setCache(cacheKey, sessions);
+    return sessions;
+  }
+
+  private async setTelegramSessions(userId: string, sessions: string[]): Promise<void> {
+    const delResult = await this.supabase.from('telegram_sessions').delete().eq('user_id', userId);
+    throwIfError(delResult, 'Failed to delete existing Telegram sessions');
+
+    if (sessions.length === 0) {
+      this.invalidateUser(userId);
+      return;
+    }
+
+    const rows = sessions.map((session, i) => {
+      const enc = encryptToken(session);
+      return {
+        user_id: userId,
+        encrypted_session: enc.encrypted,
+        session_iv: enc.iv,
+        session_tag: enc.tag,
+        position: i,
+      };
+    });
+
+    const insResult = await this.supabase.from('telegram_sessions').insert(rows);
+    throwIfError(insResult, 'Failed to store Telegram sessions');
+    this.invalidateUser(userId);
+  }
+
+  // ---- User name cache ----
+
+  async cacheUserName(userId: string, discordUserId: string, displayName: string): Promise<void> {
+    const { data } = await this.supabase
+      .from('user_configs')
+      .select('settings')
+      .eq('user_id', userId)
+      .single();
+
+    const settings = data?.settings ?? {};
+    const cache = settings.userNameCache ?? {};
+    if (cache[discordUserId] === displayName) return;
+
+    cache[discordUserId] = displayName;
+    settings.userNameCache = cache;
+
+    const result = await this.supabase
+      .from('user_configs')
+      .upsert({ user_id: userId, settings }, { onConflict: 'user_id' });
+    throwIfError(result, 'Failed to cache user name');
+    this.invalidateUser(userId);
+  }
+}

@@ -1,0 +1,54 @@
+{
+  "rooms": [],
+  "globalHighlightedUsers": [],
+  "contractDetection": true,
+  "guildColors": {},
+  "dmColors": {},
+  "telegramColors": {},
+  "enabledGuilds": [],
+  "evmAddressColor": "#fee75c",
+  "solAddressColor": "#14f195",
+  "openInDiscordApp": true,
+  "openInTelegramApp": false,
+  "hiddenUsers": {},
+  "messageSounds": true,
+  "soundSettings": {
+    "highlight": { "enabled": true, "volume": 80, "useCustom": false },
+    "contractAlert": { "enabled": true, "volume": 80, "useCustom": false },
+    "keywordAlert": { "enabled": true, "volume": 80, "useCustom": false }
+  },
+  "channelSounds": {},
+  "pushover": {
+    "enabled": false,
+    "appToken": "",
+    "userKey": "",
+    "priority": 1,
+    "sound": "siren",
+    "triggers": {
+      "highlightedUser": false,
+      "highlightedUserContract": true,
+      "contract": false,
+      "keyword": false
+    },
+    "filters": {
+      "userIds": [],
+      "channelIds": [],
+      "guildIds": []
+    }
+  },
+  "contractLinkTemplates": {
+    "evm": "https://gmgn.ai/base/token/{address}",
+    "sol": "https://axiom.trade/t/{address}?chain=sol",
+    "solPlatform": "axiom",
+    "evmPlatform": "gmgn"
+  },
+  "contractClickAction": "copy_open",
+  "autoOpenHighlightedContracts": true,
+  "badgeClickAction": "discord",
+  "messageDisplay": "default",
+  "compactModeAvatars": true,
+  "mobileZoomScale": 1,
+  "telegramApiId": "",
+  "telegramApiHash": "",
+  "telegramSessions": []
+}

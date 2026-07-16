@@ -1,0 +1,14 @@
+# Railway/Nixpacks: backend-only build for the OCT monorepo.
+# Installs devDependencies so `tsc` is available, then compiles backend only.
+
+[phases.setup]
+nixPkgs = ["nodejs_20"]
+
+[phases.install]
+cmds = ["npm ci --include=dev"]
+
+[phases.build]
+cmds = ["npm run build -w backend"]
+
+[start]
+cmd = "npm run start -w backend"

@@ -1,14 +1,23 @@
 {
-  "name": "onchain-tools-mern",
-  "version": "1.0.0",
+  "name": "onchain-tools",
+  "version": "1.1.1",
   "private": true,
-  "type": "module",
+  "license": "AGPL-3.0-only",
+  "workspaces": ["backend", "frontend", "landing"],
   "scripts": {
-    "build": "cd client && npm install && npm run build",
-    "dev": "cd client && npm run dev"
-  },
-  "dependencies": {
-    "express": "^4.21.2",
-    "mongoose": "^8.9.5"
+    "dev": "npm run dev:backend & npm run dev:frontend",
+    "dev:backend": "npm run dev -w backend",
+    "dev:frontend": "npm run dev -w frontend",
+    "dev:landing": "npm run dev -w landing",
+    "build": "npm run build -w backend && npm run build -w frontend",
+    "build:railway": "npm run build -w backend",
+    "build:backend": "npm run build -w backend",
+    "build:frontend": "npm run build -w frontend",
+    "build:landing": "npm run build -w landing",
+    "start": "npm run build && npm run start -w backend",
+    "typecheck": "npm run typecheck -w backend && npm run typecheck -w frontend",
+    "dev:desktop": "npm --prefix desktop run start",
+    "pack:desktop": "npm run build:backend && npm run build:frontend && npm --prefix desktop run pack",
+    "build:desktop": "npm run build:backend && npm run build:frontend && npm --prefix desktop run dist"
   }
 }

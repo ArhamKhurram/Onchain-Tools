@@ -1,0 +1,1534 @@
+import { type ReactNode, Fragment, useState, useEffect, useRef, memo } from 'react';
+import { Eye, MessageSquareReply } from 'lucide-react';
+import type { FrontendMessage, FrontendReaction, ContractLinkTemplates, ContractClickAction, BadgeClickAction, HighlightMode, MessageDisplay, ReactionUser } from '../types';
+import { useAppStore } from '../stores/appStore';
+import ImageLightbox from './ImageLightbox';
+import UserContextMenu from './UserContextMenu';
+import { buildContractUrl, DEFAULT_LINK_TEMPLATES } from '../utils/contractUrl';
+import { colorWithExtraAlpha } from './ColorPickerWithAlpha';
+
+interface AddressColors {
+  evm: string;
+  sol: string;
+}
+
+interface MessageProps {
+  message: FrontendMessage;
+  isCompact: boolean;
+  messageDisplay?: MessageDisplay;
+  compactModeAvatars?: boolean;
+  guildColor?: string;
+  highlightMode?: HighlightMode;
+  highlightColor?: string;
+  disableEmbeds?: boolean;
+  evmAddressColor?: string;
+  solAddressColor?: string;
+  contractLinkTemplates?: ContractLinkTemplates;
+  contractClickAction?: ContractClickAction;
+  showFullContractAddress?: boolean;
+  openInDiscordApp?: boolean;
+  openInTelegramApp?: boolean;
+  badgeClickAction?: BadgeClickAction;
+  onHideUser?: (guildId: string | null, channelId: string, userId: string, displayName: string) => void;
+  onToggleHighlight?: (userId: string, displayName: string) => void;
+  isUserHighlighted?: boolean;
+  onFocus?: (guildId: string | null, channelId: string, guildName: string | null, channelName: string) => void;
+  isFocused?: boolean;
+  onQuickReply?: (channelId: string) => void;
+  chattingEnabled?: boolean;
+  roleColors?: boolean;
+}
+
+export function getAvatarUrl(userId: string, avatar: string | null, discriminator?: string): string {
+  if (avatar && (avatar.startsWith('/') || avatar.startsWith('http'))) {
+    return avatar;
+  }
+  if (avatar) {
+    return `https://cdn.discordapp.com/avatars/${userId}/${avatar}.webp?size=80`;
+  }
+  const index = discriminator === '0' || !discriminator
+    ? (BigInt(userId) >> 22n) % 6n
+    : parseInt(discriminator) % 5;
+  return `https://cdn.discordapp.com/embed/avatars/${index}.png`;
+}
+
+function formatTimestamp(iso: string, short = false): string {
+  const d = new Date(iso);
+  const now = new Date();
+  const isToday = d.toDateString() === now.toDateString();
+  const time = d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+  if (isToday) return short ? time : `Today at ${time}`;
+  const yesterday = new Date(now);
+  yesterday.setDate(yesterday.getDate() - 1);
+  if (d.toDateString() === yesterday.toDateString()) return short ? `Yest ${time}` : `Yesterday at ${time}`;
+  return short ? `${d.toLocaleDateString([], { month: 'numeric', day: 'numeric' })} ${time}` : `${d.toLocaleDateString()} ${time}`;
+}
+
+const URL_REGEX = /(https?:\/\/[^\s<>()[\]]+(?:\([^\s<>()]*\))*[^\s<>()[\],.'\"!?;:]?)/g;
+const DISCORD_MENTION_REGEX = /<@!?(\d+)>|<#(\d+)>|<@&(\d+)>/g;
+const EMOJI_REGEX = /<a?:(\w+):(\d+)>/g;
+const BOLD_REGEX = /\*\*(.+?)\*\*/g;
+const MARKDOWN_LINK_REGEX = /\[([^\]]+)\]\(<?(https?:\/\/[^>)\s]+)>?\)/g;
+const ANGLE_URL_REGEX = /<(https?:\/\/[^>]+)>/g;
+const TIMESTAMP_REGEX = /<t:(\d+)(?::([tTdDfFR]))?>/g;
+const CODE_BLOCK_REGEX = /```(?:\w+\n)?([\s\S]*?)```/g;
+const INLINE_CODE_REGEX = /`([^`]+)`/g;
+
+function formatDiscordTimestamp(unix: number, style: string): string {
+  const d = new Date(unix * 1000);
+  switch (style) {
+    case 't': return d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+    case 'T': return d.toLocaleTimeString();
+    case 'd': return d.toLocaleDateString();
+    case 'D': return d.toLocaleDateString(undefined, { day: 'numeric', month: 'long', year: 'numeric' });
+    case 'f': return d.toLocaleString(undefined, { day: 'numeric', month: 'long', year: 'numeric', hour: '2-digit', minute: '2-digit' });
+    case 'F': return d.toLocaleString(undefined, { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric', hour: '2-digit', minute: '2-digit' });
+    case 'R': {
+      const now = Date.now();
+      const diff = now - d.getTime();
+      const sec = Math.round(Math.abs(diff) / 1000);
+      const past = diff > 0;
+      if (sec < 60) return past ? `${sec} seconds ago` : `in ${sec} seconds`;
+      const min = Math.round(sec / 60);
+      if (min < 60) return past ? `${min} minutes ago` : `in ${min} minutes`;
+      const hr = Math.round(min / 60);
+      if (hr < 24) return past ? `${hr} hours ago` : `in ${hr} hours`;
+      const days = Math.round(hr / 24);
+      return past ? `${days} days ago` : `in ${days} days`;
+    }
+    default: return d.toLocaleString();
+  }
+}
+
+function linkifyText(text: string, keyPrefix: string): ReactNode[] {
+  const parts: ReactNode[] = [];
+  let lastIndex = 0;
+  let match: RegExpExecArray | null;
+
+  URL_REGEX.lastIndex = 0;
+  while ((match = URL_REGEX.exec(text)) !== null) {
+    if (match.index > lastIndex) {
+      parts.push(text.slice(lastIndex, match.index));
+    }
+    const url = match[1];
+    parts.push(
+      <a
+        key={`${keyPrefix}-url-${match.index}`}
+        href={url}
+        target="_blank"
+        rel="noopener noreferrer"
+        className="text-discord-text-link hover:underline break-all"
+      >
+        {url.length > 70 ? url.slice(0, 65) + '...' : url}
+      </a>
+    );
+    lastIndex = match.index + match[0].length;
+  }
+
+  if (lastIndex < text.length) {
+    parts.push(text.slice(lastIndex));
+  }
+
+  return parts.length > 0 ? parts : [text];
+}
+
+function contractClickTitle(action: ContractClickAction, addr: string): string {
+  switch (action) {
+    case 'copy': return `Click to copy: ${addr}`;
+    case 'open': return `Click to open: ${addr}`;
+    default: return `Click to copy & open: ${addr}`;
+  }
+}
+
+function handleContractClick(addr: string, action: ContractClickAction, linkTemplates: ContractLinkTemplates) {
+  if (action === 'copy' || action === 'copy_open') {
+    navigator.clipboard.writeText(addr);
+  }
+  if (action === 'open' || action === 'copy_open') {
+    // Resolve the chain at click time so a link corrected after the message
+    // was rendered (e.g. via a Rick follow-up) opens on the right chain.
+    const evmChain = useAppStore.getState().addressChains[addr.toLowerCase()];
+    window.open(buildContractUrl(addr, linkTemplates, evmChain), '_blank');
+  }
+}
+
+function applyInlineFormatting(
+  parts: (string | ReactNode)[],
+  contractAddresses: string[],
+  mentions: Record<string, string>,
+  addressColors?: AddressColors,
+  linkTemplates: ContractLinkTemplates = DEFAULT_LINK_TEMPLATES,
+  clickAction: ContractClickAction = 'copy_open',
+  showFull: boolean = false,
+): (string | ReactNode)[] {
+  // Markdown links [text](url)
+  parts = splitByRegex(parts, MARKDOWN_LINK_REGEX, (m, i) => (
+    <a
+      key={`mdlink-${i}`}
+      href={m[2]}
+      target="_blank"
+      rel="noopener noreferrer"
+      className="text-discord-text-link hover:underline"
+    >
+      {m[1]}
+    </a>
+  ));
+
+  // Angle-bracket URLs <https://...>
+  parts = splitByRegex(parts, ANGLE_URL_REGEX, (m, i) => (
+    <a
+      key={`angurl-${i}`}
+      href={m[1]}
+      target="_blank"
+      rel="noopener noreferrer"
+      className="text-discord-text-link hover:underline break-all"
+    >
+      {m[1].length > 70 ? m[1].slice(0, 65) + '...' : m[1]}
+    </a>
+  ));
+
+  // Discord timestamps <t:123456:R>
+  parts = splitByRegex(parts, TIMESTAMP_REGEX, (m, i) => {
+    const unix = parseInt(m[1]);
+    const style = m[2] || 'f';
+    const formatted = formatDiscordTimestamp(unix, style);
+    const fullDate = new Date(unix * 1000).toLocaleString();
+    return (
+      <span
+        key={`ts-${i}`}
+        className="bg-discord-embed-bg px-1 py-0.5 rounded text-discord-text cursor-default"
+        title={fullDate}
+      >
+        {formatted}
+      </span>
+    );
+  });
+
+  // Discord custom emojis
+  parts = splitByRegex(parts, EMOJI_REGEX, (m, i) => (
+    <img
+      key={`emoji-${i}`}
+      src={`https://cdn.discordapp.com/emojis/${m[2]}.${m[0].startsWith('<a:') ? 'gif' : 'webp'}?size=20`}
+      alt={`:${m[1]}:`}
+      title={`:${m[1]}:`}
+      loading="lazy"
+      decoding="async"
+      className="inline-block w-5 h-5 align-text-bottom mx-0.5"
+    />
+  ));
+
+  // Discord mentions
+  parts = splitByRegex(parts, DISCORD_MENTION_REGEX, (m, i) => {
+    let label: string;
+    if (m[1]) {
+      label = `@${mentions[m[1]] ?? 'user'}`;
+    } else if (m[2]) {
+      label = `#${mentions[`ch:${m[2]}`] ?? 'channel'}`;
+    } else if (m[3]) {
+      label = `@${mentions[`role:${m[3]}`] ?? 'role'}`;
+    } else {
+      label = `@unknown`;
+    }
+    return (
+      <span key={`mention-${i}`} className="bg-discord-blurple/20 text-discord-blurple px-0.5 rounded font-medium">
+        {label}
+      </span>
+    );
+  });
+
+  // Plain-text URLs
+  {
+    const urlified: (string | ReactNode)[] = [];
+    for (let i = 0; i < parts.length; i++) {
+      const part = parts[i];
+      if (typeof part !== 'string') { urlified.push(part); continue; }
+      urlified.push(...linkifyText(part, `p${i}`));
+    }
+    parts = urlified;
+  }
+
+  // Contract addresses -- AFTER all URL processing
+  for (const addr of contractAddresses) {
+    const isEvm = addr.startsWith('0x');
+    const color = isEvm ? (addressColors?.evm ?? '#fee75c') : (addressColors?.sol ?? '#14f195');
+    const newParts: (string | ReactNode)[] = [];
+    for (const part of parts) {
+      if (typeof part !== 'string') { newParts.push(part); continue; }
+      const splits = part.split(addr);
+      for (let i = 0; i < splits.length; i++) {
+        if (splits[i]) newParts.push(splits[i]);
+        if (i < splits.length - 1) {
+          newParts.push(
+            <span
+              key={`contract-${addr}-${i}`}
+              className="px-1 rounded text-[13px] font-mono cursor-pointer inline-flex items-center gap-1 transition-opacity hover:opacity-80"
+              style={{ backgroundColor: colorWithExtraAlpha(color, 0.125), color }}
+              title={contractClickTitle(clickAction, addr)}
+              onClick={() => handleContractClick(addr, clickAction, linkTemplates)}
+            >
+              {showFull ? addr : `${addr.slice(0, 6)}...${addr.slice(-4)}`}
+            </span>
+          );
+        }
+      }
+    }
+    parts = newParts;
+  }
+
+  return parts;
+}
+
+function renderInlineMarkdown(content: string, contractAddresses: string[], mentions: Record<string, string> = {}, addressColors?: AddressColors, linkTemplates: ContractLinkTemplates = DEFAULT_LINK_TEMPLATES, clickAction: ContractClickAction = 'copy_open', showFull: boolean = false): ReactNode[] {
+  let parts: (string | ReactNode)[] = [content];
+
+  // 1. Inline code (protect from other formatting)
+  //    If the code content is a known contract address, render it as a clickable pill instead.
+  parts = splitByRegex(parts, INLINE_CODE_REGEX, (m, i) => {
+    const codeText = m[1];
+    const matchedAddr = contractAddresses.find(a => codeText.trim() === a);
+    if (matchedAddr) {
+      const isEvm = matchedAddr.startsWith('0x');
+      const color = isEvm ? (addressColors?.evm ?? '#fee75c') : (addressColors?.sol ?? '#14f195');
+      return (
+        <span
+          key={`code-contract-${i}`}
+          className="px-1 rounded text-[13px] font-mono cursor-pointer inline-flex items-center gap-1 transition-opacity hover:opacity-80"
+          style={{ backgroundColor: colorWithExtraAlpha(color, 0.125), color }}
+          title={contractClickTitle(clickAction, matchedAddr)}
+          onClick={() => handleContractClick(matchedAddr, clickAction, linkTemplates)}
+        >
+          {showFull ? matchedAddr : `${matchedAddr.slice(0, 6)}...${matchedAddr.slice(-4)}`}
+        </span>
+      );
+    }
+    return (
+      <code key={`code-${i}`} className="bg-discord-embed-bg px-1 py-0.5 rounded text-[0.85em] font-mono">
+        {codeText}
+      </code>
+    );
+  });
+
+  // 2. Bold — processed before links so **[text](url) stuff** works.
+  //    Inner content is recursively formatted for links, emojis, etc.
+  parts = splitByRegex(parts, BOLD_REGEX, (m, i) => (
+    <strong key={`bold-${i}`} className="font-semibold text-white">
+      {applyInlineFormatting([m[1]], contractAddresses, mentions, addressColors, linkTemplates, clickAction, showFull)}
+    </strong>
+  ));
+
+  // 3. Everything else on non-bold text
+  parts = applyInlineFormatting(parts, contractAddresses, mentions, addressColors, linkTemplates, clickAction, showFull);
+
+  return parts as ReactNode[];
+}
+
+function renderContent(content: string, contractAddresses: string[], mentions: Record<string, string> = {}, addressColors?: AddressColors, linkTemplates: ContractLinkTemplates = DEFAULT_LINK_TEMPLATES, clickAction: ContractClickAction = 'copy_open', showFull: boolean = false) {
+  if (!content) return null;
+
+  // Extract code blocks first, replace with placeholders
+  const codeBlocks: ReactNode[] = [];
+  const withoutCodeBlocks = content.replace(CODE_BLOCK_REGEX, (_match, code) => {
+    const idx = codeBlocks.length;
+    codeBlocks.push(
+      <pre key={`codeblock-${idx}`} className="bg-discord-embed-bg border border-discord-dark/50 rounded p-2 my-1 text-sm font-mono overflow-x-auto whitespace-pre-wrap">
+        <code>{code}</code>
+      </pre>
+    );
+    return `\x00CODEBLOCK_${idx}\x00`;
+  });
+
+  // Split into lines and group into quote blocks vs normal
+  const lines = withoutCodeBlocks.split('\n');
+  const result: ReactNode[] = [];
+  let quoteBuffer: string[] = [];
+  let lineKey = 0;
+
+  function flushQuotes() {
+    if (quoteBuffer.length === 0) return;
+    const quoteContent = quoteBuffer.join('\n');
+    result.push(
+      <div key={`quote-${lineKey++}`} className="border-l-[3px] border-discord-text-muted/40 pl-3 my-1">
+        {renderLineGroup(quoteContent, contractAddresses)}
+      </div>
+    );
+    quoteBuffer = [];
+  }
+
+  function renderLineGroup(text: string, contracts: string[]): ReactNode {
+    const groupLines = text.split('\n');
+    const parts: ReactNode[] = [];
+    for (let i = 0; i < groupLines.length; i++) {
+      if (i > 0) parts.push(<br key={`lbr-${lineKey}-${i}`} />);
+      const placeholderMatch = groupLines[i].match(/\x00CODEBLOCK_(\d+)\x00/);
+      if (placeholderMatch) {
+        parts.push(codeBlocks[parseInt(placeholderMatch[1])]);
+      } else {
+        parts.push(...renderInlineMarkdown(groupLines[i], contracts, mentions, addressColors, linkTemplates, clickAction, showFull));
+      }
+    }
+    return <>{parts}</>;
+  }
+
+  for (const line of lines) {
+    if (line.startsWith('> ') || line === '>') {
+      quoteBuffer.push(line.slice(2));
+    } else {
+      flushQuotes();
+      // Check for code block placeholder
+      const placeholderMatch = line.match(/\x00CODEBLOCK_(\d+)\x00/);
+      if (placeholderMatch) {
+        result.push(codeBlocks[parseInt(placeholderMatch[1])]);
+      } else {
+        if (result.length > 0) result.push(<br key={`br-${lineKey++}`} />);
+        result.push(
+          <Fragment key={`line-${lineKey++}`}>
+            {renderInlineMarkdown(line, contractAddresses, mentions, addressColors, linkTemplates, clickAction, showFull)}
+          </Fragment>
+        );
+      }
+    }
+  }
+  flushQuotes();
+
+  return <span>{result}</span>;
+}
+
+function splitByRegex(
+  parts: (string | ReactNode)[],
+  regex: RegExp,
+  render: (match: RegExpExecArray, idx: number) => ReactNode,
+): (string | ReactNode)[] {
+  let counter = 0;
+  const result: (string | ReactNode)[] = [];
+  for (const part of parts) {
+    if (typeof part !== 'string') { result.push(part); continue; }
+    let lastIndex = 0;
+    const re = new RegExp(regex.source, regex.flags);
+    let m: RegExpExecArray | null;
+    while ((m = re.exec(part)) !== null) {
+      if (m.index > lastIndex) result.push(part.slice(lastIndex, m.index));
+      result.push(render(m, counter++));
+      lastIndex = m.index + m[0].length;
+    }
+    if (lastIndex < part.length) result.push(part.slice(lastIndex));
+  }
+  return result;
+}
+
+const EVM_ADDR_RE = /\b0x[a-fA-F0-9]{40}\b/g;
+const SOL_ADDR_RE = /(?<![1-9A-HJ-NP-Za-km-z])[1-9A-HJ-NP-Za-km-z]{40,48}(?![1-9A-HJ-NP-Za-km-z])/g;
+
+function detectAddresses(text: string): string[] {
+  // Strip URLs so we don't detect addresses embedded in links
+  const stripped = text
+    .replace(/https?:\/\/[^\s<>)]+/g, ' ')
+    .replace(/\[([^\]]+)\]\([^)]+\)/g, '$1');
+
+  const addrs: string[] = [];
+  const evm = stripped.match(EVM_ADDR_RE);
+  if (evm) addrs.push(...evm);
+  const sol = stripped.match(SOL_ADDR_RE);
+  if (sol) {
+    for (const m of sol) {
+      if (!addrs.includes(m) && /\d/.test(m) && /[a-z]/.test(m) && /[A-Z]/.test(m)) {
+        addrs.push(m);
+      }
+    }
+  }
+  return addrs;
+}
+
+function renderEmbedDescription(text: string, showFull: boolean = false): ReactNode {
+  return renderContent(text, detectAddresses(text), {}, undefined, undefined, undefined, showFull);
+}
+
+function ReactionUserList({ users, loading, error }: { users: ReactionUser[]; loading: boolean; error: boolean }) {
+  if (loading) return <div className="px-2 py-1.5 text-discord-text-muted">Loading…</div>;
+  if (error) return <div className="px-2 py-1.5 text-red-400">Failed to load</div>;
+  if (users.length === 0) return <div className="px-2 py-1.5 text-discord-text-muted">No users</div>;
+  return (
+    <div className="max-h-48 overflow-y-auto">
+      {users.map((u) => (
+        <div key={u.id} className="flex items-center gap-2 px-2 py-1">
+          <img
+            src={getAvatarUrl(u.id, u.avatar, u.discriminator)}
+            alt=""
+            loading="lazy"
+            decoding="async"
+            className="w-5 h-5 rounded-full flex-shrink-0"
+          />
+          <span className="truncate text-discord-text">{u.displayName}</span>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function ReactionPills({ message }: { message: FrontendMessage }) {
+  const reactions = message.reactions;
+  // Only Discord exposes a per-user reaction list via the REST API.
+  const clickable = message.source !== 'telegram';
+  const [openIndex, setOpenIndex] = useState<number | null>(null);
+  const [users, setUsers] = useState<ReactionUser[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState(false);
+  const containerRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (openIndex === null) return;
+    const onDown = (e: MouseEvent) => {
+      if (containerRef.current && !containerRef.current.contains(e.target as Node)) {
+        setOpenIndex(null);
+      }
+    };
+    document.addEventListener('mousedown', onDown);
+    return () => document.removeEventListener('mousedown', onDown);
+  }, [openIndex]);
+
+  if (!reactions || reactions.length === 0) return null;
+
+  const handleClick = async (index: number, emoji: FrontendReaction['emoji']) => {
+    if (openIndex === index) {
+      setOpenIndex(null);
+      return;
+    }
+    setOpenIndex(index);
+    setLoading(true);
+    setError(false);
+    setUsers([]);
+    try {
+      const result = await useAppStore.getState().fetchReactionUsers(message.channelId, message.id, emoji);
+      setUsers(result);
+    } catch {
+      setError(true);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <div ref={containerRef} className="flex flex-wrap gap-1 mt-0.5">
+      {reactions.map((r, i) => {
+        const emojiContent = r.emoji.id ? (
+          <img
+            src={`https://cdn.discordapp.com/emojis/${r.emoji.id}.${r.emoji.animated ? 'gif' : 'webp'}?size=16`}
+            alt={r.emoji.name}
+            loading="lazy"
+            decoding="async"
+            className="w-4 h-4"
+          />
+        ) : (
+          <span className="text-sm leading-none">{r.emoji.name}</span>
+        );
+        const pillInner = (
+          <>
+            {emojiContent}
+            <span>{r.count}</span>
+          </>
+        );
+        const pillClass = 'inline-flex items-center gap-1 px-1.5 py-0.5 rounded bg-discord-embed-bg text-discord-text-muted text-xs border border-transparent transition-colors';
+        if (!clickable) {
+          return (
+            <span key={`${r.emoji.id ?? r.emoji.name}-${i}`} className={pillClass} title={r.emoji.name}>
+              {pillInner}
+            </span>
+          );
+        }
+        return (
+          <span key={`${r.emoji.id ?? r.emoji.name}-${i}`} className="relative">
+            <button
+              type="button"
+              onClick={() => handleClick(i, r.emoji)}
+              className={`${pillClass} cursor-pointer hover:border-discord-text-muted/30 ${openIndex === i ? 'border-discord-text-muted/50' : ''}`}
+              title={`See who reacted with ${r.emoji.name}`}
+            >
+              {pillInner}
+            </button>
+            {openIndex === i && (
+              <div className="absolute z-50 bottom-full mb-1 left-0 min-w-[10rem] max-w-[16rem] rounded-md border border-discord-border bg-discord-dark shadow-lg py-1 text-xs">
+                <div className="px-2 pb-1 mb-1 border-b border-discord-border text-discord-text-muted flex items-center gap-1">
+                  <span>Reacted with</span>
+                  {emojiContent}
+                </div>
+                <ReactionUserList users={users} loading={loading} error={error} />
+              </div>
+            )}
+          </span>
+        );
+      })}
+    </div>
+  );
+}
+
+function TelegramExtras({ message }: { message: FrontendMessage }) {
+  if (message.source !== 'telegram') return null;
+
+  return (
+    <>
+      {message.forwardFrom && (
+        <div className="text-xs text-[#2AABEE] italic mt-0.5 mb-1">
+          Forwarded from {message.forwardFrom.name}
+          {message.forwardFrom.chatTitle && message.forwardFrom.chatTitle !== message.forwardFrom.name
+            ? ` in ${message.forwardFrom.chatTitle}`
+            : ''}
+        </div>
+      )}
+
+      {message.sticker && (
+        <div className="mt-1">
+          {message.sticker.url ? (
+            <img
+              src={message.sticker.url}
+              alt={message.sticker.emoji ?? 'sticker'}
+              loading="lazy"
+              decoding="async"
+              className="w-32 h-32 object-contain"
+            />
+          ) : (
+            <span className="text-4xl">{message.sticker.emoji ?? '🏷️'}</span>
+          )}
+        </div>
+      )}
+
+      {message.poll && (
+        <div className="mt-1 border border-discord-divider rounded p-3 max-w-sm">
+          <div className="text-sm font-semibold text-white mb-2">📊 {message.poll.question}</div>
+          <div className="space-y-1.5">
+            {message.poll.options.map((opt, i) => {
+              const total = message.poll!.options.reduce((s, o) => s + o.voters, 0);
+              const pct = total > 0 ? Math.round((opt.voters / total) * 100) : 0;
+              return (
+                <div key={i} className="relative">
+                  <div
+                    className="absolute inset-0 bg-[#2AABEE]/15 rounded"
+                    style={{ width: `${pct}%` }}
+                  />
+                  <div className="relative flex items-center justify-between px-2 py-1.5 text-sm">
+                    <span className="text-discord-text">{opt.text}</span>
+                    <span className="text-discord-text-muted text-xs">{pct}%</span>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
+
+      {message.buttons && message.buttons.length > 0 && (
+        <div className="flex flex-wrap gap-1.5 mt-1">
+          {message.buttons.map((btn, i) => (
+            <a
+              key={i}
+              href={btn.url}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="inline-flex items-center px-2.5 py-1 rounded bg-[#2AABEE]/10 text-[#2AABEE] text-xs font-medium hover:bg-[#2AABEE]/20 transition-colors"
+              title={btn.url}
+            >
+              {btn.text}
+            </a>
+          ))}
+        </div>
+      )}
+    </>
+  );
+}
+
+function DeletedBadge() {
+  return (
+    <span
+      className="text-[10px] px-1.5 py-0.5 rounded bg-red-500/20 text-red-400 font-semibold uppercase tracking-wide"
+      title="This message was deleted on the platform"
+    >
+      deleted
+    </span>
+  );
+}
+
+function EditedIndicator({ message, addrColors, templates, clickAct, showFull }: {
+  message: FrontendMessage;
+  addrColors: AddressColors;
+  templates: ContractLinkTemplates;
+  clickAct: ContractClickAction;
+  showFull: boolean;
+}) {
+  const [showOriginal, setShowOriginal] = useState(false);
+  if (!message.isEdited) return null;
+  const hasOriginal = message.originalContent !== undefined && message.originalContent !== '';
+
+  return (
+    <>
+      <span
+        onClick={hasOriginal ? () => setShowOriginal((v) => !v) : undefined}
+        className={`text-[10px] text-discord-text-muted ml-1 align-baseline select-none${hasOriginal ? ' cursor-pointer hover:underline' : ''}`}
+        title={hasOriginal ? (showOriginal ? 'Hide original message' : 'Show original message') : 'Original message unavailable'}
+      >
+        (edited)
+      </span>
+      {showOriginal && hasOriginal && (
+        <div className="mt-1 border-l-2 border-discord-text-muted/40 pl-2 text-[13px] text-discord-text-muted">
+          <div className="text-[10px] uppercase tracking-wide text-discord-text-muted/70 mb-0.5">Original</div>
+          {renderContent(message.originalContent!, detectAddresses(message.originalContent!), message.mentions, addrColors, templates, clickAct, showFull)}
+        </div>
+      )}
+    </>
+  );
+}
+
+function Message({ message, isCompact, messageDisplay = 'default', compactModeAvatars = true, guildColor, highlightMode = 'background', highlightColor, disableEmbeds, evmAddressColor, solAddressColor, contractLinkTemplates, contractClickAction, showFullContractAddress = false, openInDiscordApp, openInTelegramApp, badgeClickAction, onHideUser, onToggleHighlight, isUserHighlighted, onFocus, isFocused, onQuickReply, chattingEnabled, roleColors = true }: MessageProps) {
+  const [lightboxSrc, setLightboxSrc] = useState<string | null>(null);
+  const addrColors: AddressColors = { evm: evmAddressColor ?? '#fee75c', sol: solAddressColor ?? '#14f195' };
+  const templates: ContractLinkTemplates = contractLinkTemplates ?? DEFAULT_LINK_TEMPLATES;
+  const clickAct: ContractClickAction = contractClickAction ?? 'copy_open';
+  const showFull = showFullContractAddress;
+  const [copied, setCopied] = useState(false);
+  const [contextMenu, setContextMenu] = useState<{ x: number; y: number } | null>(null);
+
+  const copyUserId = () => {
+    navigator.clipboard.writeText(message.author.id);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 1500);
+  };
+
+  const handleNameClick = (e: React.MouseEvent) => {
+    e.preventDefault();
+    const rect = (e.target as HTMLElement).getBoundingClientRect();
+    setContextMenu({ x: rect.left, y: rect.bottom + 4 });
+  };
+
+  const useUsernameHighlight = highlightMode === 'username';
+  const hasKeywordMatch = (message.matchedKeywords?.length ?? 0) > 0;
+  const resolvedHighlightColor = highlightColor || '#5865f2';
+  const hasCustomColor = !!highlightColor;
+  const effectiveHighlighted = message.isHighlighted || isUserHighlighted;
+
+  const highlightClass = effectiveHighlighted
+    ? useUsernameHighlight
+      ? hasCustomColor ? 'border-l-2' : 'border-l-2 border-discord-blurple'
+      : hasCustomColor ? 'border-l-2' : 'border-l-2 border-discord-blurple bg-discord-highlight'
+    : hasKeywordMatch
+      ? 'border-l-2 border-orange-400 bg-orange-400/5'
+      : '';
+
+  const highlightInlineStyle: React.CSSProperties = {};
+  if (effectiveHighlighted && hasCustomColor) {
+    highlightInlineStyle.borderColor = resolvedHighlightColor;
+    if (!useUsernameHighlight) {
+      highlightInlineStyle.backgroundColor = colorWithExtraAlpha(resolvedHighlightColor, 0.082);
+    }
+  }
+
+  const bgStyle = guildColor ? { backgroundColor: guildColor, ...highlightInlineStyle } : highlightInlineStyle;
+
+  const isTelegram = message.source === 'telegram';
+
+  const discordPath = `discord.com/channels/${message.guildId ?? '@me'}/${message.channelId}/${message.id}`;
+  const discordUrl = openInDiscordApp ? `discord://${discordPath}` : `https://${discordPath}`;
+  const webTelegramUrl = message.platformUrl ?? null;
+  const telegramUrl = (() => {
+    if (!webTelegramUrl) return null;
+    if (!openInTelegramApp) return webTelegramUrl;
+    const inviteMatch = webTelegramUrl.match(/^https:\/\/t\.me\/(?:joinchat\/|\+)(.+)$/);
+    if (inviteMatch) return `tg://join?invite=${inviteMatch[1]}`;
+    const privateMatch = webTelegramUrl.match(/^https:\/\/t\.me\/c\/(\d+)\/(\d+)$/);
+    if (privateMatch) return `tg://privatepost?channel=${privateMatch[1]}&post=${privateMatch[2]}`;
+    const publicMatch = webTelegramUrl.match(/^https:\/\/t\.me\/([^/]+)\/(\d+)$/);
+    if (publicMatch) return `tg://resolve?domain=${publicMatch[1]}&post=${publicMatch[2]}`;
+    return webTelegramUrl;
+  })();
+  const badgeAct: BadgeClickAction = badgeClickAction ?? 'discord';
+
+  const openSourcePlatform = () => {
+    if (isTelegram && telegramUrl) {
+      if (openInTelegramApp) {
+        window.location.href = telegramUrl;
+      } else {
+        window.open(telegramUrl, '_blank', 'noopener,noreferrer');
+      }
+    } else if (!isTelegram) {
+      if (openInDiscordApp) {
+        window.location.href = discordUrl;
+      } else {
+        window.open(discordUrl, '_blank', 'noopener,noreferrer');
+      }
+    }
+  };
+
+  const handleBadgeClick = () => {
+    const hasContract = message.hasContractAddress && message.contractAddresses.length > 0;
+    const openPlatform = () => {
+      if (hasContract) {
+        const addr = message.contractAddresses[0];
+        const evmChain = useAppStore.getState().addressChains[addr.toLowerCase()];
+        const url = buildContractUrl(addr, templates, evmChain);
+        window.open(url, '_blank', 'noopener,noreferrer');
+      }
+    };
+
+    switch (badgeAct) {
+      case 'platform':
+        if (hasContract) openPlatform();
+        else openSourcePlatform();
+        break;
+      case 'both':
+        openSourcePlatform();
+        if (hasContract) openPlatform();
+        break;
+      case 'discord':
+      default:
+        openSourcePlatform();
+        break;
+    }
+  };
+
+  const channelLabel = isTelegram
+    ? message.channelName
+    : `${message.guildName ? `${message.guildName} / ` : ''}#${message.channelName}`;
+
+  const channelBadge = isTelegram ? (
+    <span
+      onClick={telegramUrl ? openSourcePlatform : undefined}
+      className={`text-[0.6875rem] px-1.5 py-0.5 rounded bg-[#2AABEE]/10 text-[#2AABEE] font-medium shrink-0${telegramUrl ? ' cursor-pointer hover:bg-[#2AABEE]/20 transition-colors' : ''}`}
+      title={telegramUrl ? 'Open in Telegram' : 'Telegram'}
+    >
+      TG &middot; {channelLabel}
+    </span>
+  ) : openInDiscordApp ? (
+    <span
+      onClick={() => { window.location.href = discordUrl; }}
+      className="text-[0.6875rem] px-1.5 py-0.5 rounded bg-discord-embed-bg text-discord-text-muted font-medium shrink-0 hover:text-discord-text hover:bg-discord-dark transition-colors cursor-pointer"
+      title="Open in Discord app"
+    >
+      {channelLabel}
+    </span>
+  ) : (
+    <a
+      href={discordUrl}
+      target="_blank"
+      rel="noopener noreferrer"
+      className="text-[0.6875rem] px-1.5 py-0.5 rounded bg-discord-embed-bg text-discord-text-muted font-medium shrink-0 hover:text-discord-text hover:bg-discord-dark transition-colors cursor-pointer"
+      title="Open in Discord"
+    >
+      {channelLabel}
+    </a>
+  );
+
+  if (messageDisplay === 'compact') {
+    return (
+      <div className={`group/compact relative hover:bg-discord-hover py-[1px] pr-2 sm:pr-[48px] pl-[52px] sm:pl-[72px] ${highlightClass} ${message.isDeleted ? 'opacity-60' : ''} min-h-[1.375rem]`} style={bgStyle}>
+        <span className={`absolute left-0 w-[52px] sm:w-[72px] text-[0.6875rem] text-discord-text-muted text-right pr-2 sm:pr-4 pt-[1px] select-none leading-[1.375rem] ${isCompact ? 'opacity-0 group-hover/compact:opacity-100' : ''}`}>
+          {new Date(message.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+        </span>
+        <div className="min-w-0">
+          {message.referencedMessage && (
+            <div
+              className="flex items-center gap-1 text-xs text-discord-text-muted mb-0.5 cursor-pointer hover:text-discord-text-normal max-w-full overflow-hidden"
+              onClick={() => {
+                const el = document.getElementById(`msg-${message.referencedMessage!.id}`);
+                if (el) { el.scrollIntoView({ behavior: 'smooth', block: 'center' }); el.classList.add('bg-discord-hover'); setTimeout(() => el.classList.remove('bg-discord-hover'), 2000); }
+              }}
+            >
+              <div className="w-8 h-3 border-l-2 border-t-2 border-discord-text-muted/30 rounded-tl ml-1 shrink-0" />
+              <span className="font-medium text-discord-text-muted shrink-0">{message.referencedMessage.author}</span>
+              <span className="truncate opacity-70">
+                {renderInlineMarkdown(message.referencedMessage.content, [], message.referencedMessage.mentions ?? {}, addrColors)}
+              </span>
+            </div>
+          )}
+
+          <div className="text-[0.9375rem] text-discord-text-normal leading-[1.375rem] break-words">
+            {!isCompact && compactModeAvatars && (
+              <img
+                src={getAvatarUrl(message.author.id, message.author.avatar)}
+                alt=""
+                loading="lazy"
+                decoding="async"
+                className="inline-block w-5 h-5 rounded-full mr-1 align-text-bottom"
+              />
+            )}
+            <span
+              className="font-medium text-[0.9375rem] hover:underline cursor-pointer mr-1"
+              style={{ color: effectiveHighlighted ? resolvedHighlightColor : (roleColors && message.author.roleColor ? message.author.roleColor : '#f2f3f5') }}
+              onClick={handleNameClick}
+              title={`${message.author.username} (${message.author.id})`}
+            >
+              {message.author.displayName}
+              {copied && (
+                <span className="absolute -top-6 left-0 text-[10px] bg-discord-dark text-discord-green px-1.5 py-0.5 rounded shadow-lg whitespace-nowrap pointer-events-none">
+                  ID copied!
+                </span>
+              )}
+            </span>
+            {channelBadge}
+            <span className={`hidden sm:inline-flex items-center gap-0.5 align-middle transition-opacity ${isFocused ? 'opacity-100' : 'opacity-0 group-hover/compact:opacity-100'}`}>
+              <button
+                onClick={() => onFocus?.(message.guildId, message.channelId, message.guildName, message.channelName)}
+                className={`p-0.5 rounded transition-colors ${
+                  isFocused
+                    ? 'text-discord-blurple'
+                    : 'text-discord-text-muted hover:text-white hover:bg-discord-hover/50'
+                }`}
+                title={isFocused ? 'Focused on this channel' : 'Focus on this channel'}
+              >
+                <Eye size={13} />
+              </button>
+              {chattingEnabled && (
+                <button
+                  onClick={() => onQuickReply?.(message.channelId)}
+                  className="p-0.5 rounded text-discord-text-muted hover:text-discord-green hover:bg-discord-hover/50 transition-colors"
+                  title="Quick reply to this channel"
+                >
+                  <MessageSquareReply size={13} />
+                </button>
+              )}
+            </span>
+            {' '}
+            {message.hasContractAddress && (
+              <>
+                <span
+                  onClick={handleBadgeClick}
+                  className="text-[10px] px-1.5 py-0.5 rounded bg-discord-yellow/20 text-discord-yellow font-semibold cursor-pointer hover:bg-discord-yellow/30 transition-colors"
+                  title={badgeAct === 'platform' ? 'Open in trading platform' : badgeAct === 'both' ? 'Open in Discord + platform' : 'Open in Discord'}
+                >
+                  CONTRACT
+                </span>
+                {' '}
+              </>
+            )}
+            {hasKeywordMatch && (
+              <>
+                <span
+                  onClick={handleBadgeClick}
+                  className="text-[10px] px-1.5 py-0.5 rounded bg-orange-400/20 text-orange-400 font-semibold cursor-pointer hover:bg-orange-400/30 transition-colors"
+                  title={badgeAct === 'platform' && message.hasContractAddress ? 'Open in trading platform' : badgeAct === 'both' && message.hasContractAddress ? 'Open in Discord + platform' : 'Open in Discord'}
+                >
+                  {message.matchedKeywords!.join(', ')}
+                </span>
+                {' '}
+              </>
+            )}
+            {message.isDeleted && (
+              <>
+                <DeletedBadge />
+                {' '}
+              </>
+            )}
+            {renderContent(message.content, message.contractAddresses, message.mentions, addrColors, templates, clickAct, showFull)}
+            <EditedIndicator message={message} addrColors={addrColors} templates={templates} clickAct={clickAct} showFull={showFull} />
+          </div>
+
+          {message.attachments.length > 0 && (
+            <div className="flex flex-wrap gap-2 mt-1">
+              {message.attachments.map((att) =>
+                att.content_type?.startsWith('image/') ? (
+                  <img
+                    key={att.id}
+                    src={att.proxy_url}
+                    alt={att.filename}
+                    loading="lazy"
+                    decoding="async"
+                    className="max-w-full sm:max-w-[400px] max-h-[300px] rounded-lg cursor-pointer hover:opacity-90 transition-opacity"
+                    onClick={() => setLightboxSrc(att.proxy_url)}
+                  />
+                ) : att.content_type?.startsWith('audio/') ? (
+                  <div key={att.id} className="flex flex-col gap-1 max-w-full sm:max-w-[400px]">
+                    <audio controls preload="none" className="h-8 max-w-full">
+                      <source src={att.proxy_url} type={att.content_type} />
+                    </audio>
+                    <span className="text-[11px] text-discord-text-muted truncate">{att.filename}</span>
+                  </div>
+                ) : att.content_type?.startsWith('video/') ? (
+                  <video
+                    key={att.id}
+                    src={att.proxy_url}
+                    controls
+                    preload="none"
+                    className="max-w-full sm:max-w-[400px] max-h-[300px] rounded-lg"
+                  />
+                ) : (
+                  <a
+                    key={att.id}
+                    href={att.url}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="text-discord-text-link hover:underline text-sm"
+                  >
+                    {att.filename}
+                  </a>
+                )
+              )}
+            </div>
+          )}
+
+          {message.embeds.length > 0 && !disableEmbeds && (
+            <div className="flex flex-col gap-2 mt-1">
+              {message.embeds.map((embed, i) => (
+                <div
+                  key={i}
+                  className="border-l-4 rounded bg-discord-embed-bg p-2 sm:p-3 max-w-full sm:max-w-[520px]"
+                  style={{ borderColor: embed.color ? `#${embed.color.toString(16).padStart(6, '0')}` : '#1e1f22' }}
+                >
+                  {embed.author?.name && (
+                    <div className="flex items-center gap-2 mb-1">
+                      {embed.author.icon_url && (
+                        <img src={embed.author.icon_url} alt="" loading="lazy" decoding="async" className="w-6 h-6 rounded-full" />
+                      )}
+                      {embed.author.url ? (
+                        <a href={embed.author.url} target="_blank" rel="noopener noreferrer" className="text-sm font-medium text-white hover:underline">
+                          {renderInlineMarkdown(embed.author.name, [], {})}
+                        </a>
+                      ) : (
+                        <span className="text-sm font-medium text-white">
+                          {renderInlineMarkdown(embed.author.name, [], {})}
+                        </span>
+                      )}
+                    </div>
+                  )}
+                  {embed.title && (
+                    <div className="font-semibold text-sm">
+                      {embed.url ? (
+                        <a href={embed.url} target="_blank" rel="noopener noreferrer" className="hover:underline text-discord-text-link">
+                          {renderInlineMarkdown(embed.title, [], {})}
+                        </a>
+                      ) : <span className="text-white">{renderInlineMarkdown(embed.title, [], {})}</span>}
+                    </div>
+                  )}
+                  {embed.description && (
+                    <div className="text-[13px] text-discord-text mt-1 leading-[1.125rem]">
+                      {renderEmbedDescription(embed.description, showFull)}
+                    </div>
+                  )}
+                  {embed.fields && embed.fields.length > 0 && (
+                    <div className="grid gap-y-1 gap-x-2 mt-2" style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(140px, 1fr))' }}>
+                      {embed.fields.map((field, fi) => (
+                        <div key={fi} className={field.inline ? '' : 'col-span-full'}>
+                          <div className="text-xs font-semibold text-white mb-0.5">
+                            {renderInlineMarkdown(field.name, [], {})}
+                          </div>
+                          <div className="text-[13px] text-discord-text leading-[1.125rem]">
+                            {renderEmbedDescription(field.value, showFull)}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                  {embed.thumbnail && !embed.image && (
+                    <img
+                      src={embed.thumbnail.url}
+                      alt=""
+                      loading="lazy"
+                      decoding="async"
+                      className="max-w-[80px] max-h-[80px] rounded mt-2 cursor-pointer hover:opacity-90 transition-opacity"
+                      onClick={() => setLightboxSrc(embed.thumbnail!.url)}
+                    />
+                  )}
+                  {embed.image && (
+                    <img
+                      src={embed.image.url}
+                      alt=""
+                      loading="lazy"
+                      decoding="async"
+                      className="max-w-full sm:max-w-[400px] max-h-[300px] rounded mt-2 cursor-pointer hover:opacity-90 transition-opacity"
+                      onClick={() => setLightboxSrc(embed.image!.url)}
+                    />
+                  )}
+                  {embed.footer?.text && (
+                    <div className="flex items-center gap-2 mt-2 text-xs text-discord-text-muted">
+                      {embed.footer.icon_url && (
+                        <img src={embed.footer.icon_url} alt="" loading="lazy" decoding="async" className="w-5 h-5 rounded-full" />
+                      )}
+                      <span>{embed.footer.text}</span>
+                    </div>
+                  )}
+                </div>
+              ))}
+            </div>
+          )}
+
+          <TelegramExtras message={message} />
+          <ReactionPills message={message} />
+        </div>
+
+        {lightboxSrc && (
+          <ImageLightbox src={lightboxSrc} onClose={() => setLightboxSrc(null)} />
+        )}
+
+        {contextMenu && (
+          <UserContextMenu
+            userId={message.author.id}
+            displayName={message.author.displayName}
+            guildId={message.guildId}
+            channelId={message.channelId}
+            channelName={message.channelName}
+            guildName={message.guildName}
+            openInDiscordApp={openInDiscordApp ?? false}
+            position={contextMenu}
+            isHighlighted={isUserHighlighted}
+            onToggleHighlight={onToggleHighlight ? () => {
+              const highlightKey = isTelegram && message.author.username ? `@${message.author.username}` : message.author.id;
+              onToggleHighlight(highlightKey, message.author.displayName);
+            } : undefined}
+            onHide={() => onHideUser?.(message.guildId, message.channelId, message.author.id, message.author.displayName)}
+            onCopyId={copyUserId}
+            onClose={() => setContextMenu(null)}
+          />
+        )}
+      </div>
+    );
+  }
+
+  if (isCompact) {
+    return (
+      <div className={`group/compact relative hover:bg-discord-hover py-[2px] pr-2 sm:pr-[48px] pl-[52px] sm:pl-[72px] ${highlightClass} ${message.isDeleted ? 'opacity-60' : ''} min-h-[1.375rem]`} style={bgStyle}>
+        <span className="absolute left-0 w-[52px] sm:w-[72px] text-[0.6875rem] text-discord-text-muted text-right pr-2 sm:pr-4 pt-[2px] opacity-0 group-hover/compact:opacity-100 select-none leading-[1.375rem]">
+          {new Date(message.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+        </span>
+        <div className="min-w-0">
+          {message.referencedMessage && (
+            <div
+              className="flex items-center gap-1 text-xs text-discord-text-muted mb-0.5 cursor-pointer hover:text-discord-text-normal max-w-full overflow-hidden"
+              onClick={() => {
+                const el = document.getElementById(`msg-${message.referencedMessage!.id}`);
+                if (el) { el.scrollIntoView({ behavior: 'smooth', block: 'center' }); el.classList.add('bg-discord-hover'); setTimeout(() => el.classList.remove('bg-discord-hover'), 2000); }
+              }}
+            >
+              <div className="w-8 h-3 border-l-2 border-t-2 border-discord-text-muted/30 rounded-tl ml-1 shrink-0" />
+              <span className="font-medium text-discord-text-muted shrink-0">{message.referencedMessage.author}</span>
+              <span className="truncate opacity-70">
+                {renderInlineMarkdown(message.referencedMessage.content, [], message.referencedMessage.mentions ?? {}, addrColors)}
+              </span>
+            </div>
+          )}
+
+          <div className="text-base text-discord-text-normal leading-[1.375rem] break-words">
+            {message.isDeleted && (
+              <>
+                <DeletedBadge />
+                {' '}
+              </>
+            )}
+            {renderContent(message.content, message.contractAddresses, message.mentions, addrColors, templates, clickAct, showFull)}
+            <EditedIndicator message={message} addrColors={addrColors} templates={templates} clickAct={clickAct} showFull={showFull} />
+          </div>
+
+          {message.attachments.length > 0 && (
+            <div className="flex flex-wrap gap-2 mt-1">
+              {message.attachments.map((att) =>
+                att.content_type?.startsWith('image/') ? (
+                  <img
+                    key={att.id}
+                    src={att.proxy_url}
+                    alt={att.filename}
+                    loading="lazy"
+                    decoding="async"
+                    className="max-w-full sm:max-w-[400px] max-h-[300px] rounded-lg cursor-pointer hover:opacity-90 transition-opacity"
+                    onClick={() => setLightboxSrc(att.proxy_url)}
+                  />
+                ) : att.content_type?.startsWith('audio/') ? (
+                  <div key={att.id} className="flex flex-col gap-1 max-w-full sm:max-w-[400px]">
+                    <audio controls preload="none" className="h-8 max-w-full">
+                      <source src={att.proxy_url} type={att.content_type} />
+                    </audio>
+                    <span className="text-[11px] text-discord-text-muted truncate">{att.filename}</span>
+                  </div>
+                ) : att.content_type?.startsWith('video/') ? (
+                  <video
+                    key={att.id}
+                    src={att.proxy_url}
+                    controls
+                    preload="none"
+                    className="max-w-full sm:max-w-[400px] max-h-[300px] rounded-lg"
+                  />
+                ) : (
+                  <a
+                    key={att.id}
+                    href={att.url}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="text-discord-text-link hover:underline text-sm"
+                  >
+                    {att.filename}
+                  </a>
+                )
+              )}
+            </div>
+          )}
+
+          {message.embeds.length > 0 && !disableEmbeds && (
+            <div className="flex flex-col gap-2 mt-1">
+              {message.embeds.map((embed, i) => (
+                <div
+                  key={i}
+                  className="border-l-4 rounded bg-discord-embed-bg p-2 sm:p-3 max-w-full sm:max-w-[520px]"
+                  style={{ borderColor: embed.color ? `#${embed.color.toString(16).padStart(6, '0')}` : '#1e1f22' }}
+                >
+                  {embed.author?.name && (
+                    <div className="flex items-center gap-2 mb-1">
+                      {embed.author.icon_url && (
+                        <img src={embed.author.icon_url} alt="" loading="lazy" decoding="async" className="w-6 h-6 rounded-full" />
+                      )}
+                      {embed.author.url ? (
+                        <a href={embed.author.url} target="_blank" rel="noopener noreferrer" className="text-sm font-medium text-white hover:underline">
+                          {renderInlineMarkdown(embed.author.name, [], {})}
+                        </a>
+                      ) : (
+                        <span className="text-sm font-medium text-white">
+                          {renderInlineMarkdown(embed.author.name, [], {})}
+                        </span>
+                      )}
+                    </div>
+                  )}
+                  {embed.title && (
+                    <div className="font-semibold text-sm">
+                      {embed.url ? (
+                        <a href={embed.url} target="_blank" rel="noopener noreferrer" className="hover:underline text-discord-text-link">
+                          {renderInlineMarkdown(embed.title, [], {})}
+                        </a>
+                      ) : <span className="text-white">{renderInlineMarkdown(embed.title, [], {})}</span>}
+                    </div>
+                  )}
+                  {embed.description && (
+                    <div className="text-[13px] text-discord-text mt-1 leading-[1.125rem]">
+                      {renderEmbedDescription(embed.description, showFull)}
+                    </div>
+                  )}
+                  {embed.fields && embed.fields.length > 0 && (
+                    <div className="grid gap-y-1 gap-x-2 mt-2" style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(140px, 1fr))' }}>
+                      {embed.fields.map((field, fi) => (
+                        <div key={fi} className={field.inline ? '' : 'col-span-full'}>
+                          <div className="text-xs font-semibold text-white mb-0.5">
+                            {renderInlineMarkdown(field.name, [], {})}
+                          </div>
+                          <div className="text-[13px] text-discord-text leading-[1.125rem]">
+                            {renderEmbedDescription(field.value, showFull)}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                  {embed.thumbnail && !embed.image && (
+                    <img
+                      src={embed.thumbnail.url}
+                      alt=""
+                      loading="lazy"
+                      decoding="async"
+                      className="max-w-[80px] max-h-[80px] rounded mt-2 cursor-pointer hover:opacity-90 transition-opacity"
+                      onClick={() => setLightboxSrc(embed.thumbnail!.url)}
+                    />
+                  )}
+                  {embed.image && (
+                    <img
+                      src={embed.image.url}
+                      alt=""
+                      loading="lazy"
+                      decoding="async"
+                      className="max-w-full sm:max-w-[400px] max-h-[300px] rounded mt-2 cursor-pointer hover:opacity-90 transition-opacity"
+                      onClick={() => setLightboxSrc(embed.image!.url)}
+                    />
+                  )}
+                  {embed.footer?.text && (
+                    <div className="flex items-center gap-2 mt-2 text-xs text-discord-text-muted">
+                      {embed.footer.icon_url && (
+                        <img src={embed.footer.icon_url} alt="" loading="lazy" decoding="async" className="w-5 h-5 rounded-full" />
+                      )}
+                      <span>{embed.footer.text}</span>
+                    </div>
+                  )}
+                </div>
+              ))}
+            </div>
+          )}
+
+          <TelegramExtras message={message} />
+          <ReactionPills message={message} />
+        </div>
+
+        {lightboxSrc && (
+          <ImageLightbox src={lightboxSrc} onClose={() => setLightboxSrc(null)} />
+        )}
+      </div>
+    );
+  }
+
+  return (
+    <div className={`relative hover:bg-discord-hover pt-[1.0625rem] pb-[2px] pr-2 sm:pr-[48px] pl-[52px] sm:pl-[72px] ${highlightClass} ${message.isDeleted ? 'opacity-60' : ''} group`} style={bgStyle}>
+      <div className={`absolute right-0 top-0.5 flex items-center gap-0.5 rounded px-0.5 py-0.5 z-10 sm:hidden ${isFocused ? 'opacity-100' : ''}`}>
+        <button
+          onClick={() => onFocus?.(message.guildId, message.channelId, message.guildName, message.channelName)}
+          className={`p-0.5 rounded transition-colors ${
+            isFocused
+              ? 'text-discord-blurple'
+              : 'text-discord-text-muted/60 hover:text-white'
+          }`}
+          title={isFocused ? 'Focused on this channel' : 'Focus on this channel'}
+        >
+          <Eye size={13} />
+        </button>
+        {chattingEnabled && (
+          <button
+            onClick={() => onQuickReply?.(message.channelId)}
+            className="p-0.5 rounded text-discord-text-muted/60 hover:text-discord-green transition-colors"
+            title="Quick reply to this channel"
+          >
+            <MessageSquareReply size={13} />
+          </button>
+        )}
+      </div>
+      <img
+        src={getAvatarUrl(message.author.id, message.author.avatar)}
+        alt=""
+        loading="lazy"
+        decoding="async"
+        className="absolute left-2 sm:left-4 top-[1.1875rem] w-8 h-8 sm:w-10 sm:h-10 rounded-full"
+      />
+      <div className="min-w-0">
+        <div className="flex items-baseline gap-1 flex-wrap leading-[1.375rem]">
+          <span
+            className="font-medium text-base hover:underline cursor-pointer relative mr-1"
+            style={{ color: effectiveHighlighted ? resolvedHighlightColor : (roleColors && message.author.roleColor ? message.author.roleColor : '#f2f3f5') }}
+            onClick={handleNameClick}
+            title={`${message.author.username} (${message.author.id})`}
+          >
+            {message.author.displayName}
+            {copied && (
+              <span className="absolute -top-6 left-0 text-[10px] bg-discord-dark text-discord-green px-1.5 py-0.5 rounded shadow-lg whitespace-nowrap pointer-events-none">
+                ID copied!
+              </span>
+            )}
+          </span>
+          <span className="text-xs text-discord-text-muted leading-[1.375rem] ml-1 sm:hidden">
+            {formatTimestamp(message.timestamp, true)}
+          </span>
+          <span className="text-xs text-discord-text-muted leading-[1.375rem] ml-1 hidden sm:inline">
+            {formatTimestamp(message.timestamp)}
+          </span>
+          {channelBadge}
+          <span className={`hidden sm:inline-flex items-center gap-0.5 align-middle transition-opacity ${isFocused ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'}`}>
+            <button
+              onClick={() => onFocus?.(message.guildId, message.channelId, message.guildName, message.channelName)}
+              className={`p-0.5 rounded transition-colors ${
+                isFocused
+                  ? 'text-discord-blurple'
+                  : 'text-discord-text-muted hover:text-white hover:bg-discord-hover/50'
+              }`}
+              title={isFocused ? 'Focused on this channel' : 'Focus on this channel'}
+            >
+              <Eye size={14} />
+            </button>
+            {chattingEnabled && (
+              <button
+                onClick={() => onQuickReply?.(message.channelId)}
+                className="p-0.5 rounded text-discord-text-muted hover:text-discord-green hover:bg-discord-hover/50 transition-colors"
+                title="Quick reply to this channel"
+              >
+                <MessageSquareReply size={14} />
+              </button>
+            )}
+          </span>
+          {message.hasContractAddress && (
+            <span
+              onClick={handleBadgeClick}
+              className="text-[10px] px-1.5 py-0.5 rounded bg-discord-yellow/20 text-discord-yellow font-semibold cursor-pointer hover:bg-discord-yellow/30 transition-colors"
+              title={badgeAct === 'platform' ? 'Open in trading platform' : badgeAct === 'both' ? 'Open in Discord + platform' : 'Open in Discord'}
+            >
+              CONTRACT
+            </span>
+          )}
+          {hasKeywordMatch && (
+            <span
+              onClick={handleBadgeClick}
+              className="text-[10px] px-1.5 py-0.5 rounded bg-orange-400/20 text-orange-400 font-semibold cursor-pointer hover:bg-orange-400/30 transition-colors"
+              title={badgeAct === 'platform' && message.hasContractAddress ? 'Open in trading platform' : badgeAct === 'both' && message.hasContractAddress ? 'Open in Discord + platform' : 'Open in Discord'}
+            >
+              {message.matchedKeywords!.join(', ')}
+            </span>
+          )}
+          {message.isDeleted && <DeletedBadge />}
+        </div>
+
+        {message.referencedMessage && (
+          <div
+            className="flex items-center gap-1.5 text-sm text-discord-text-muted mt-0.5 mb-0.5 cursor-pointer hover:text-discord-text transition-colors"
+            onClick={() => {
+              const el = document.getElementById(`msg-${message.referencedMessage!.id}`);
+              if (el) {
+                el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                el.classList.add('bg-discord-blurple/10');
+                setTimeout(() => el.classList.remove('bg-discord-blurple/10'), 2000);
+              }
+            }}
+          >
+            <div className="w-8 h-3 border-l-2 border-t-2 border-discord-text-muted/30 rounded-tl ml-1 shrink-0" />
+            <span className="font-medium text-discord-text-muted shrink-0">{message.referencedMessage.author}</span>
+            <span className="truncate opacity-70">
+              {renderInlineMarkdown(message.referencedMessage.content, [], message.referencedMessage.mentions ?? {}, addrColors)}
+            </span>
+          </div>
+        )}
+
+        <div className="text-base text-discord-text-normal leading-[1.375rem] break-words whitespace-pre-wrap">
+          {renderContent(message.content, message.contractAddresses, message.mentions, addrColors, templates, clickAct, showFull)}
+          <EditedIndicator message={message} addrColors={addrColors} templates={templates} clickAct={clickAct} showFull={showFull} />
+        </div>
+
+        {message.attachments.length > 0 && (
+          <div className="flex flex-wrap gap-2 mt-1">
+            {message.attachments.map((att) =>
+              att.content_type?.startsWith('image/') ? (
+                <img
+                  key={att.id}
+                  src={att.proxy_url}
+                  alt={att.filename}
+                  loading="lazy"
+                  decoding="async"
+                  className="max-w-full sm:max-w-[400px] max-h-[300px] rounded-lg cursor-pointer hover:opacity-90 transition-opacity"
+                  onClick={() => setLightboxSrc(att.proxy_url)}
+                />
+              ) : att.content_type?.startsWith('audio/') ? (
+                <div key={att.id} className="flex flex-col gap-1 max-w-full sm:max-w-[400px]">
+                  <audio controls preload="none" className="h-8 max-w-full">
+                    <source src={att.proxy_url} type={att.content_type} />
+                  </audio>
+                  <span className="text-[11px] text-discord-text-muted truncate">{att.filename}</span>
+                </div>
+              ) : att.content_type?.startsWith('video/') ? (
+                <video
+                  key={att.id}
+                  src={att.proxy_url}
+                  controls
+                  preload="none"
+                  className="max-w-full sm:max-w-[400px] max-h-[300px] rounded-lg"
+                />
+              ) : (
+                <a
+                  key={att.id}
+                  href={att.url}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="text-discord-text-link hover:underline text-sm"
+                >
+                  {att.filename}
+                </a>
+              )
+            )}
+          </div>
+        )}
+
+        {message.embeds.length > 0 && !disableEmbeds && (
+          <div className="flex flex-col gap-2 mt-1">
+            {message.embeds.map((embed, i) => (
+              <div
+                key={i}
+                className="border-l-4 rounded bg-discord-embed-bg p-2 sm:p-3 max-w-full sm:max-w-[520px]"
+                style={{ borderColor: embed.color ? `#${embed.color.toString(16).padStart(6, '0')}` : '#1e1f22' }}
+              >
+                {embed.author?.name && (
+                  <div className="flex items-center gap-2 mb-1">
+                    {embed.author.icon_url && (
+                      <img src={embed.author.icon_url} alt="" loading="lazy" decoding="async" className="w-6 h-6 rounded-full" />
+                    )}
+                    {embed.author.url ? (
+                      <a href={embed.author.url} target="_blank" rel="noopener noreferrer" className="text-sm font-medium text-white hover:underline">
+                        {renderInlineMarkdown(embed.author.name, [], {})}
+                      </a>
+                    ) : (
+                      <span className="text-sm font-medium text-white">
+                        {renderInlineMarkdown(embed.author.name, [], {})}
+                      </span>
+                    )}
+                  </div>
+                )}
+                {embed.title && (
+                  <div className="font-semibold text-sm">
+                    {embed.url ? (
+                      <a href={embed.url} target="_blank" rel="noopener noreferrer" className="hover:underline text-discord-text-link">
+                        {renderInlineMarkdown(embed.title, [], {})}
+                      </a>
+                    ) : <span className="text-white">{renderInlineMarkdown(embed.title, [], {})}</span>}
+                  </div>
+                )}
+                {embed.description && (
+                  <div className="text-[13px] text-discord-text mt-1 leading-[1.125rem]">
+                    {renderEmbedDescription(embed.description, showFull)}
+                  </div>
+                )}
+                {embed.fields && embed.fields.length > 0 && (
+                  <div className="grid gap-y-1 gap-x-2 mt-2" style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(140px, 1fr))' }}>
+                    {embed.fields.map((field, fi) => (
+                      <div key={fi} className={field.inline ? '' : 'col-span-full'}>
+                        <div className="text-xs font-semibold text-white mb-0.5">
+                          {renderInlineMarkdown(field.name, [], {})}
+                        </div>
+                        <div className="text-[13px] text-discord-text leading-[1.125rem]">
+                          {renderEmbedDescription(field.value, showFull)}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+                {embed.thumbnail && !embed.image && (
+                  <img
+                    src={embed.thumbnail.url}
+                    alt=""
+                    loading="lazy"
+                    decoding="async"
+                    className="max-w-[80px] max-h-[80px] rounded mt-2 cursor-pointer hover:opacity-90 transition-opacity"
+                    onClick={() => setLightboxSrc(embed.thumbnail!.url)}
+                  />
+                )}
+                {embed.image && (
+                  <img
+                    src={embed.image.url}
+                    alt=""
+                    loading="lazy"
+                    decoding="async"
+                    className="max-w-full sm:max-w-[400px] max-h-[300px] rounded mt-2 cursor-pointer hover:opacity-90 transition-opacity"
+                    onClick={() => setLightboxSrc(embed.image!.url)}
+                  />
+                )}
+                {embed.footer?.text && (
+                  <div className="flex items-center gap-2 mt-2 text-xs text-discord-text-muted">
+                    {embed.footer.icon_url && (
+                      <img src={embed.footer.icon_url} alt="" loading="lazy" decoding="async" className="w-5 h-5 rounded-full" />
+                    )}
+                    <span>{embed.footer.text}</span>
+                  </div>
+                )}
+              </div>
+            ))}
+          </div>
+        )}
+
+        <TelegramExtras message={message} />
+        <ReactionPills message={message} />
+      </div>
+
+      {lightboxSrc && (
+        <ImageLightbox src={lightboxSrc} onClose={() => setLightboxSrc(null)} />
+      )}
+
+      {contextMenu && (
+        <UserContextMenu
+          userId={message.author.id}
+          displayName={message.author.displayName}
+          guildId={message.guildId}
+          channelId={message.channelId}
+          channelName={message.channelName}
+          guildName={message.guildName}
+          openInDiscordApp={openInDiscordApp ?? false}
+          position={contextMenu}
+          isHighlighted={isUserHighlighted}
+          onToggleHighlight={onToggleHighlight ? () => {
+            const highlightKey = isTelegram && message.author.username ? `@${message.author.username}` : message.author.id;
+            onToggleHighlight(highlightKey, message.author.displayName);
+          } : undefined}
+          onHide={() => onHideUser?.(message.guildId, message.channelId, message.author.id, message.author.displayName)}
+          onCopyId={copyUserId}
+          onClose={() => setContextMenu(null)}
+        />
+      )}
+    </div>
+  );
+}
+
+export default memo(Message);
