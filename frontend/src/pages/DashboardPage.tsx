@@ -14,10 +14,10 @@ export default function DashboardPage() {
     <div className="h-full overflow-y-auto bg-oct-bg">
       <div className="p-6 sm:p-8 max-w-4xl mx-auto">
         <header className="mb-8">
-          <p className="font-mono text-[10px] uppercase tracking-[0.2em] text-oct-muted mb-2">
+          <p className="inline-block font-mono text-[10px] font-bold uppercase tracking-[0.2em] text-white bg-oct-accent border-2 border-black px-2 py-0.5 mb-3 shadow-oct-hard-sm">
             SYS / OVERVIEW
           </p>
-          <h1 className="text-2xl font-semibold text-oct-text tracking-tight">Dashboard</h1>
+          <h1 className="text-3xl font-extrabold uppercase text-oct-text tracking-tight">Dashboard</h1>
           <p className="text-sm text-oct-muted mt-1 max-w-lg">
             Cockpit overview — select a module below or use the nav.
           </p>

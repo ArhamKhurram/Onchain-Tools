@@ -1,5 +1,6 @@
 import { create } from 'zustand';
 import type { Room, FrontendMessage, Alert, AppConfig, GuildInfo, DMChannel, ContractEntry, FrontendReaction, ReactionUser, AuthStatus, MaskedToken, TelegramChatInfo } from '../types';
+import type { FomoTrade, FomoTradeEvent } from '../types/fomo';
 import { isDemoMode, createDemoOverrides } from '../demo/demoStore';
 import { isHostedMode, getAccessToken } from '../lib/supabase';
 import { markTokenEverConfigured } from '../utils/tokenState';
@@ -11,6 +12,11 @@ const MAX_MESSAGES_PER_ROOM = 1000;
 const MAX_ALERTS = 50;
 const MAX_CONTRACTS = 2000;
 const MAX_PANES = 4;
+// Session-live FOMO trade feed; there is no historical fetch endpoint yet, so
+// we only keep the most recent trades that arrive while connected.
+const MAX_FOMO_TRADES = 100;
+
+let fomoTradeSeq = 0;
 
 function deriveAddressChains(contracts: ContractEntry[]): Record<string, string> {
   const map: Record<string, string> = {};
@@ -119,7 +125,10 @@ interface AppState {
   gatewayAuthError: string | null;
   gatewayBlocked: boolean;
   previewMode: boolean;
+  fomoTrades: FomoTrade[];
 
+  addFomoTrade: (trade: FomoTradeEvent) => void;
+  clearFomoTrades: () => void;
   setPreviewMode: (value: boolean) => void;
   importSettings: (raw: unknown) => Promise<{ success: boolean; error?: string }>;
   setGatewayAuthError: (error: string | null, blocked?: boolean) => void;
@@ -222,6 +231,22 @@ export const useAppStore = create<AppState>((set, get) => {
   gatewayAuthError: null,
   gatewayBlocked: false,
   previewMode: false,
+  fomoTrades: [],
+
+  addFomoTrade: (trade) => {
+    set((state) => {
+      const entry: FomoTrade = {
+        ...trade,
+        receivedAt: Date.now(),
+        key: `fomo-${++fomoTradeSeq}`,
+      };
+      const updated = [entry, ...state.fomoTrades];
+      if (updated.length > MAX_FOMO_TRADES) updated.length = MAX_FOMO_TRADES;
+      return { fomoTrades: updated };
+    });
+  },
+
+  clearFomoTrades: () => set({ fomoTrades: [] }),
 
   setPreviewMode: (value) => set({ previewMode: value }),
 

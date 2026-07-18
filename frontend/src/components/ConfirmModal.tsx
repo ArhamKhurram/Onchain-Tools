@@ -40,34 +40,30 @@ export default function ConfirmModal({
   if (!open) return null;
 
   return (
-    <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/70" onClick={onCancel}>
+    <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/80" onClick={onCancel}>
       <div
-        className="bg-discord-sidebar rounded-lg shadow-2xl w-full max-w-md mx-4 overflow-hidden animate-in fade-in zoom-in-95 duration-150"
+        className="bg-oct-surface border-2 border-black rounded-cockpit shadow-oct-hard-lg w-full max-w-md mx-4 overflow-hidden animate-in fade-in zoom-in-95 duration-150"
         onClick={(e) => e.stopPropagation()}
       >
         <div className="px-6 pt-6 pb-4 flex flex-col items-center text-center gap-3">
-          <div className={`p-3 rounded-full ${danger ? 'bg-discord-red/10' : 'bg-discord-blurple/10'}`}>
-            <AlertTriangle size={28} className={danger ? 'text-discord-red' : 'text-discord-blurple'} />
+          <div className={`p-3 rounded-cockpit border-2 border-black ${danger ? 'bg-oct-accent' : 'bg-oct-surface-raised'}`}>
+            <AlertTriangle size={28} className={danger ? 'text-white' : 'text-oct-accent'} />
           </div>
-          <h3 className="text-lg font-semibold text-white">{title}</h3>
+          <h3 className="text-lg font-extrabold uppercase text-white">{title}</h3>
           <p className="text-sm text-discord-text-muted leading-relaxed">{message}</p>
         </div>
 
-        <div className="flex items-center justify-end gap-3 px-6 py-4 bg-discord-dark/40">
+        <div className="flex items-center justify-end gap-3 px-6 py-4 border-t-2 border-black bg-oct-bg">
           <button
             onClick={onCancel}
-            className="px-4 py-2 text-sm text-discord-text-muted hover:text-white hover:underline transition-colors"
+            className="brutal-btn-ghost px-4 py-2 text-sm"
           >
             {cancelLabel}
           </button>
           <button
             ref={confirmRef}
             onClick={onConfirm}
-            className={`px-4 py-2 text-sm font-medium rounded transition-colors focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-offset-discord-sidebar ${
-              danger
-                ? 'bg-discord-red hover:bg-discord-red/80 text-white focus:ring-discord-red'
-                : 'bg-discord-blurple hover:bg-discord-blurple/80 text-white focus:ring-discord-blurple'
-            }`}
+            className={`brutal-btn px-4 py-2 text-sm ${danger ? '' : 'bg-oct-surface-raised text-oct-text border-oct-border-bright'}`}
           >
             {confirmLabel}
           </button>

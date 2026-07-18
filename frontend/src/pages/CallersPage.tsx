@@ -31,16 +31,16 @@ export default function CallersPage() {
     return (
       <div className="flex items-center justify-center h-full p-6 bg-oct-bg">
         <div className="max-w-md text-center">
-          <div className="w-14 h-14 rounded-cockpit border border-oct-border flex items-center justify-center mx-auto mb-5">
-            <TrendingUp size={28} strokeWidth={1.5} className="text-oct-live" />
+          <div className="w-14 h-14 rounded-cockpit border-2 border-black bg-oct-surface shadow-oct-hard flex items-center justify-center mx-auto mb-5">
+            <TrendingUp size={28} strokeWidth={2} className="text-oct-accent" />
           </div>
-          <h2 className="text-xl font-semibold text-oct-text mb-2">Sign in for Callers</h2>
+          <h2 className="text-xl font-extrabold uppercase text-oct-text mb-2">Sign in for Callers</h2>
           <p className="text-sm text-oct-muted mb-6 leading-relaxed">
             Radar and Contract Feed use your personal detections from Discord/Telegram.
           </p>
           <Link
             to="/dashboard/login"
-            className="inline-flex px-5 py-2.5 border border-oct-border rounded-cockpit text-sm font-medium text-oct-text hover:border-oct-muted transition-colors"
+            className="brutal-btn-ghost px-5 py-2.5 text-sm"
           >
             Sign in
           </Link>
@@ -51,12 +51,12 @@ export default function CallersPage() {
 
   return (
     <div className="h-full min-h-0 flex flex-col bg-oct-bg">
-      <div className="shrink-0 flex items-center gap-1 px-4 py-2 border-b border-oct-border bg-oct-surface">
+      <div className="shrink-0 flex items-center gap-1 px-4 py-2 border-b-2 border-black bg-oct-surface">
         <button
           type="button"
           onClick={() => setView('feed')}
-          className={`px-3 py-1.5 text-sm font-medium rounded-cockpit transition-colors ${
-            view === 'feed' ? 'text-oct-live bg-oct-live-dim' : 'text-oct-muted hover:text-oct-text'
+          className={`px-3 py-1.5 text-sm font-bold uppercase tracking-wide rounded-cockpit border-2 transition-all duration-100 ${
+            view === 'feed' ? 'text-white bg-oct-accent border-black shadow-oct-hard-sm' : 'text-oct-muted border-transparent hover:text-oct-text hover:border-oct-border-bright'
           }`}
         >
           Contract Feed
@@ -64,8 +64,8 @@ export default function CallersPage() {
         <button
           type="button"
           onClick={() => setView('radar')}
-          className={`px-3 py-1.5 text-sm font-medium rounded-cockpit transition-colors ${
-            view === 'radar' ? 'text-oct-live bg-oct-live-dim' : 'text-oct-muted hover:text-oct-text'
+          className={`px-3 py-1.5 text-sm font-bold uppercase tracking-wide rounded-cockpit border-2 transition-all duration-100 ${
+            view === 'radar' ? 'text-white bg-oct-accent border-black shadow-oct-hard-sm' : 'text-oct-muted border-transparent hover:text-oct-text hover:border-oct-border-bright'
           }`}
         >
           Radar

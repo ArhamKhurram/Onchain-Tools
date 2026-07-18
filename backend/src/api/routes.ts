@@ -13,6 +13,7 @@ import type { FrontendMessage, SoundType, ChannelRef } from '../discord/types.js
 import { TelegramClient } from 'teleproto';
 import { StringSession } from 'teleproto/sessions/index.js';
 import type { TelegramClientManager } from '../telegram/clientManager.js';
+import { createFomoRouter } from '../fomo/routes.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const SOUNDS_DIR = join(__dirname, '../../data/sounds');
@@ -1110,6 +1111,10 @@ export function createRouter(wsServer: WsServer): Router {
     if (!deleted) return res.status(404).json({ error: 'Contract not found' });
     res.json({ success: true });
   });
+
+  // --- FOMO user tracking ---
+
+  router.use('/fomo', createFomoRouter());
 
   return router;
 }

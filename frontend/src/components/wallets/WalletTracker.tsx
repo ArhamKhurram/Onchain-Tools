@@ -100,11 +100,11 @@ export default function WalletTracker({ userId }: WalletTrackerProps) {
   return (
     <div className="flex flex-col h-full min-h-0 bg-oct-bg">
       {/* Toolbar */}
-      <div className="shrink-0 border-b border-oct-border bg-oct-surface px-4 sm:px-6 py-3">
+      <div className="shrink-0 border-b-2 border-black bg-oct-surface px-4 sm:px-6 py-3">
         <div className="flex flex-wrap items-center gap-3 mb-3">
           <div className="flex items-center gap-2">
             <Wallet size={18} className="text-oct-accent" />
-            <h1 className="text-lg font-bold text-oct-text">Wallets</h1>
+            <h1 className="text-lg font-extrabold uppercase text-oct-text">Wallets</h1>
             <span className="text-xs font-mono text-oct-muted tabular-nums">{filtered.length}</span>
           </div>
           <div className="flex-1" />
@@ -112,7 +112,7 @@ export default function WalletTracker({ userId }: WalletTrackerProps) {
             type="button"
             onClick={() => refresh()}
             disabled={loading}
-            className="p-2 rounded-lg text-oct-muted hover:text-oct-text hover:bg-oct-surface-raised transition-colors disabled:opacity-50"
+            className="p-2 rounded-cockpit border-2 border-oct-border-bright text-oct-muted hover:text-oct-text hover:border-oct-text transition-colors disabled:opacity-50"
             title="Refresh"
           >
             <RefreshCw size={16} className={loading ? 'animate-spin' : ''} />
@@ -120,7 +120,7 @@ export default function WalletTracker({ userId }: WalletTrackerProps) {
           <button
             type="button"
             onClick={openAdd}
-            className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm font-medium bg-oct-accent hover:bg-oct-accent-hover text-white transition-colors shadow-oct-glow"
+            className="brutal-btn px-3 py-1.5 text-sm"
           >
             <Plus size={16} />
             Add wallet
@@ -135,18 +135,18 @@ export default function WalletTracker({ userId }: WalletTrackerProps) {
               value={search}
               onChange={(e) => setSearch(e.target.value)}
               placeholder="Search address, label, profile…"
-              className="w-full pl-9 pr-3 py-2 rounded-lg bg-oct-bg border border-oct-border text-sm text-oct-text placeholder:text-oct-muted/60 focus:outline-none focus:border-oct-accent"
+              className="w-full pl-9 pr-3 py-2 rounded-cockpit bg-oct-bg border-2 border-oct-border text-sm text-oct-text placeholder:text-oct-muted/60 focus:outline-none focus:border-oct-accent"
             />
           </div>
-          <div className="flex gap-1 p-0.5 rounded-lg bg-oct-bg border border-oct-border">
+          <div className="flex gap-1 p-0.5 rounded-cockpit bg-oct-bg border-2 border-oct-border">
             {WALLET_CHAINS.map(({ value, label }) => (
               <button
                 key={value}
                 type="button"
                 onClick={() => setChainFilter(value)}
-                className={`px-2.5 py-1.5 rounded-md text-xs font-medium transition-colors whitespace-nowrap ${
+                className={`px-2.5 py-1.5 rounded-cockpit text-xs font-bold uppercase transition-colors whitespace-nowrap ${
                   chainFilter === value
-                    ? 'bg-oct-accent-dim text-oct-accent'
+                    ? 'bg-oct-accent text-white'
                     : 'text-oct-muted hover:text-oct-text'
                 }`}
               >
@@ -160,7 +160,7 @@ export default function WalletTracker({ userId }: WalletTrackerProps) {
       {/* Body */}
       <div className="flex-1 min-h-0 overflow-auto px-4 sm:px-6 py-4">
         {(error || actionError) && (
-          <div className="mb-4 px-4 py-3 rounded-lg border border-oct-accent/40 bg-oct-accent-dim text-sm text-oct-accent">
+          <div className="mb-4 px-4 py-3 rounded-cockpit border-2 border-oct-accent bg-oct-accent-dim text-sm text-oct-accent">
             {error ?? actionError}
           </div>
         )}
@@ -171,10 +171,10 @@ export default function WalletTracker({ userId }: WalletTrackerProps) {
           </div>
         ) : filtered.length === 0 ? (
           <div className="flex flex-col items-center justify-center py-24 text-center">
-            <div className="w-12 h-12 rounded-xl bg-oct-accent-dim flex items-center justify-center mb-4">
-              <Wallet size={24} className="text-oct-accent" />
+            <div className="w-12 h-12 rounded-cockpit border-2 border-black bg-oct-accent shadow-oct-hard flex items-center justify-center mb-4">
+              <Wallet size={24} className="text-white" />
             </div>
-            <p className="text-oct-text font-medium mb-1">
+            <p className="text-oct-text font-bold uppercase mb-1">
               {wallets.length === 0 ? 'No wallets tracked yet' : 'No matches'}
             </p>
             <p className="text-sm text-oct-muted mb-5 max-w-sm">
@@ -186,7 +186,7 @@ export default function WalletTracker({ userId }: WalletTrackerProps) {
               <button
                 type="button"
                 onClick={openAdd}
-                className="inline-flex items-center gap-1.5 px-4 py-2 rounded-lg text-sm font-medium bg-oct-accent hover:bg-oct-accent-hover text-white transition-colors"
+                className="brutal-btn px-4 py-2 text-sm"
               >
                 <Plus size={16} />
                 Add your first wallet
@@ -194,10 +194,10 @@ export default function WalletTracker({ userId }: WalletTrackerProps) {
             )}
           </div>
         ) : (
-          <div className="rounded-xl border border-oct-border overflow-hidden">
+          <div className="rounded-cockpit border-2 border-black shadow-oct-hard overflow-hidden">
             <table className="w-full text-sm">
               <thead>
-                <tr className="bg-oct-surface border-b border-oct-border text-left">
+                <tr className="bg-oct-surface border-b-2 border-black text-left">
                   <th className="px-3 py-2.5 text-xs font-medium text-oct-muted uppercase tracking-wide">Wallet</th>
                   <th className="px-3 py-2.5 text-xs font-medium text-oct-muted uppercase tracking-wide hidden md:table-cell">Address</th>
                   <th className="px-3 py-2.5 text-xs font-medium text-oct-muted uppercase tracking-wide w-20">Chain</th>

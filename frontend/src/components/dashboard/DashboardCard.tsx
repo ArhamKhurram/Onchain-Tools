@@ -55,10 +55,12 @@ function CardInner({
   return (
     <div
       className={[
-        'relative h-full p-5 rounded-cockpit border border-oct-border bg-oct-panel backdrop-blur-sm',
-        'transition-colors duration-150',
-        liveEdge ? 'border-l-[2px] border-l-oct-live pl-[calc(1.25rem-1px)]' : '',
-        interactive ? 'hover:bg-[#161828cc] hover:border-oct-border' : '',
+        'relative h-full p-5 rounded-cockpit border-2 border-black bg-oct-surface shadow-oct-hard',
+        'transition-all duration-100',
+        liveEdge ? 'border-l-[6px] border-l-oct-accent pl-[calc(1.25rem-4px)]' : '',
+        interactive
+          ? 'hover:-translate-x-[2px] hover:-translate-y-[2px] hover:shadow-oct-hard-lg hover:bg-oct-surface-raised'
+          : '',
       ].join(' ')}
     >
       <div className="flex items-start gap-3 mb-3">
@@ -68,7 +70,7 @@ function CardInner({
           className="text-oct-muted shrink-0 mt-0.5"
           aria-hidden
         />
-        <h2 className="font-semibold text-oct-text tracking-tight">{title}</h2>
+        <h2 className="font-bold uppercase tracking-tight text-oct-text">{title}</h2>
       </div>
 
       <p className="text-sm text-oct-muted leading-relaxed mb-4 pl-8">{description}</p>
@@ -97,7 +99,7 @@ function CardInner({
 export default function DashboardCard(props: DashboardCardProps) {
   if (props.to) {
     return (
-      <Link to={props.to} className="block h-full outline-none focus-visible:ring-1 focus-visible:ring-oct-live rounded-cockpit">
+      <Link to={props.to} className="block h-full outline-none focus-visible:ring-2 focus-visible:ring-oct-accent focus-visible:ring-offset-2 focus-visible:ring-offset-oct-bg rounded-cockpit">
         <CardInner {...props} interactive />
       </Link>
     );

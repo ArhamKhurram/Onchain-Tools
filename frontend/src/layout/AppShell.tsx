@@ -12,10 +12,10 @@ const NAV: { to: string; label: string; end?: boolean }[] = [
 
 function navClass({ isActive }: { isActive: boolean }) {
   return [
-    'px-3 py-1.5 text-sm font-medium rounded-cockpit transition-colors',
+    'px-3 py-1.5 text-sm font-bold uppercase tracking-wide rounded-cockpit border-2 transition-all duration-100',
     isActive
-      ? 'text-oct-live bg-oct-live-dim'
-      : 'text-oct-muted hover:text-oct-text hover:bg-oct-surface-raised/80',
+      ? 'text-white bg-oct-accent border-black shadow-oct-hard-sm'
+      : 'text-oct-muted border-transparent hover:text-oct-text hover:border-oct-border-bright',
   ].join(' ');
 }
 
@@ -32,9 +32,9 @@ export default function AppShell() {
 
   return (
     <div className="flex flex-col h-full w-full bg-oct-bg font-sans">
-      <header className="relative shrink-0 h-12 px-4 flex items-center gap-6 border-b border-oct-border bg-oct-surface">
+      <header className="relative shrink-0 h-12 px-4 flex items-center gap-6 border-b-2 border-black bg-oct-surface">
         <NavLink to="/dashboard" className="flex items-center gap-2 shrink-0">
-          <span className="text-lg font-bold tracking-tight text-oct-text font-sans">
+          <span className="text-lg font-extrabold tracking-tight text-white font-sans bg-oct-accent border-2 border-black px-2 leading-tight shadow-oct-hard-sm">
             OCT
           </span>
           <span className="hidden sm:inline font-mono text-[10px] uppercase tracking-widest text-oct-muted">
@@ -54,7 +54,7 @@ export default function AppShell() {
           <NavLink
             to="/dashboard/settings"
             className={({ isActive }) =>
-              `p-2 rounded-md transition-colors ${isActive ? 'text-oct-accent' : 'text-oct-muted hover:text-oct-text'}`
+              `p-2 rounded-cockpit border-2 transition-all duration-100 ${isActive ? 'text-white bg-oct-accent border-black shadow-oct-hard-sm' : 'text-oct-muted border-transparent hover:text-oct-text hover:border-oct-border-bright'}`
             }
             title="Settings"
           >
@@ -65,7 +65,7 @@ export default function AppShell() {
             <button
               type="button"
               onClick={() => navigate('/dashboard/login')}
-              className="px-3 py-1.5 text-sm font-medium rounded-cockpit border border-oct-border text-oct-text hover:border-oct-muted transition-colors"
+              className="brutal-btn-ghost px-3 py-1.5 text-sm"
             >
               Sign in
             </button>

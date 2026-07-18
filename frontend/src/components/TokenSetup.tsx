@@ -60,10 +60,10 @@ export default function TokenSetup({ embedded = false }: TokenSetupProps) {
     <>
       {!embedded && (
         <div className="flex flex-col items-center mb-8">
-          <div className="w-16 h-16 rounded-2xl bg-oct-accent-dim flex items-center justify-center mb-5">
-            <KeyRound size={32} className="text-oct-accent" />
+          <div className="w-16 h-16 rounded-cockpit border-2 border-black bg-oct-accent shadow-oct-hard flex items-center justify-center mb-5">
+            <KeyRound size={32} className="text-white" />
           </div>
-          <h1 className="text-2xl font-bold text-oct-text mb-2">Welcome to OCT</h1>
+          <h1 className="text-2xl font-extrabold uppercase text-oct-text mb-2">Welcome to OCT</h1>
           <p className="text-oct-muted text-sm text-center leading-relaxed">
             Enter your Discord token to get started. Your token is stored securely for your account.
           </p>
@@ -110,11 +110,7 @@ export default function TokenSetup({ embedded = false }: TokenSetupProps) {
         <button
           type="submit"
           disabled={loading || !token.trim()}
-          className={`w-full py-2.5 disabled:opacity-50 disabled:cursor-not-allowed rounded text-sm font-medium text-white transition-colors flex items-center justify-center gap-2 ${
-            embedded
-              ? 'bg-oct-accent hover:bg-oct-accent-hover'
-              : 'bg-discord-blurple hover:bg-discord-blurple-hover'
-          }`}
+          className="brutal-btn w-full py-2.5 text-sm"
         >
           {loading ? (
             <>
@@ -150,11 +146,7 @@ export default function TokenSetup({ embedded = false }: TokenSetupProps) {
           type="button"
           onClick={() => importInputRef.current?.click()}
           disabled={loading || importing}
-          className={`w-full py-2.5 border disabled:opacity-50 disabled:cursor-not-allowed rounded text-sm font-medium transition-colors flex items-center justify-center gap-2 ${
-            embedded
-              ? 'bg-oct-surface-raised hover:bg-oct-surface border-oct-border text-oct-text'
-              : 'bg-discord-darker hover:bg-discord-dark border-discord-dark text-discord-text'
-          }`}
+          className="brutal-btn-ghost w-full py-2.5 text-sm"
         >
           {importing ? (
             <>

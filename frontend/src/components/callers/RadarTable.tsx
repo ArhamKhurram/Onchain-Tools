@@ -240,17 +240,17 @@ export default function RadarTable() {
 
   return (
     <div className="flex-1 flex flex-col min-h-0 bg-oct-bg">
-      <div className="shrink-0 flex items-center gap-2 px-4 py-2.5 border-b border-oct-border">
-        <span className="font-mono text-[10px] uppercase tracking-widest text-oct-muted">view: tokens</span>
+      <div className="shrink-0 flex items-center gap-2 px-4 py-2.5 border-b-2 border-black bg-oct-surface">
+        <span className="font-mono text-[10px] font-bold uppercase tracking-widest text-oct-muted">view: tokens</span>
         {(['1h', '4h', '24h', 'all'] as const).map((w) => (
           <button
             key={w}
             type="button"
             onClick={() => setWindowFilter(w)}
-            className={`px-2 py-1 rounded-cockpit text-xs font-mono transition-colors ${
+            className={`px-2 py-1 rounded-cockpit text-xs font-mono font-bold border-2 transition-all duration-100 ${
               windowFilter === w
-                ? 'bg-oct-live-dim text-oct-live'
-                : 'text-oct-muted hover:text-oct-text'
+                ? 'bg-oct-accent text-white border-black shadow-oct-hard-sm'
+                : 'text-oct-muted border-transparent hover:text-oct-text hover:border-oct-border-bright'
             }`}
           >
             {w}
@@ -264,7 +264,7 @@ export default function RadarTable() {
           type="button"
           onClick={refreshLiveMc}
           disabled={refreshing}
-          className="flex items-center gap-1.5 px-2 py-1 rounded-cockpit text-xs text-oct-muted hover:text-oct-text border border-oct-border transition-colors"
+          className="flex items-center gap-1.5 px-2 py-1 rounded-cockpit text-xs font-bold uppercase text-oct-muted hover:text-oct-text border-2 border-oct-border-bright hover:border-oct-text transition-colors"
         >
           <RefreshCw size={12} className={refreshing ? 'animate-spin' : ''} />
           refresh
@@ -273,8 +273,8 @@ export default function RadarTable() {
 
       <div className="flex-1 overflow-auto">
         <table className="w-full text-left border-collapse min-w-[1040px]">
-          <thead className="sticky top-0 bg-oct-surface border-b border-oct-border z-10">
-            <tr className="font-mono text-[10px] uppercase tracking-wider text-oct-muted">
+          <thead className="sticky top-0 bg-oct-surface border-b-2 border-black z-10">
+            <tr className="font-mono text-[10px] font-bold uppercase tracking-wider text-oct-muted">
               <th className="px-3 py-2 font-medium w-8" />
               <th className="px-3 py-2 font-medium">Token</th>
               <th className="px-3 py-2 font-medium text-right">Mentions</th>

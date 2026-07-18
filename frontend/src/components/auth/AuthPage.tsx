@@ -84,13 +84,13 @@ export default function AuthPage({ onAuth }: { onAuth: () => void }) {
     <div className="flex items-center justify-center h-full w-full bg-discord-dark">
       <div className="w-full max-w-md px-5 sm:px-8">
         <div className="flex flex-col items-center mb-8">
-          <div className="w-16 h-16 rounded-2xl bg-discord-blurple/10 flex items-center justify-center mb-5">
-            <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="#5865f2" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+          <div className="w-16 h-16 rounded-cockpit border-2 border-black bg-oct-accent shadow-oct-hard flex items-center justify-center mb-5">
+            <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="#ffffff" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
               <rect x="3" y="11" width="18" height="11" rx="2" ry="2" />
               <path d="M7 11V7a5 5 0 0 1 10 0v4" />
             </svg>
           </div>
-          <h1 className="text-2xl font-bold text-white mb-2">
+          <h1 className="text-2xl font-extrabold uppercase text-white mb-2">
             {view === 'login' ? 'Welcome back' : view === 'signup' ? 'Create account' : 'Reset password'}
           </h1>
           <p className="text-discord-text-muted text-sm text-center leading-relaxed">
@@ -107,7 +107,7 @@ export default function AuthPage({ onAuth }: { onAuth: () => void }) {
             <button
               onClick={handleDiscordOAuth}
               disabled={loading}
-              className="w-full py-2.5 bg-[#5865F2] hover:bg-[#4752c4] disabled:opacity-50 disabled:cursor-not-allowed rounded text-sm font-medium text-white transition-colors flex items-center justify-center gap-2 mb-4"
+              className="w-full py-2.5 bg-[#5865F2] hover:bg-[#4752c4] disabled:opacity-50 disabled:cursor-not-allowed rounded-cockpit border-2 border-black shadow-oct-hard-sm press-hard hover:shadow-oct-hard text-sm font-bold uppercase tracking-wide text-white flex items-center justify-center gap-2 mb-4"
             >
               <svg width="20" height="20" viewBox="0 0 71 55" fill="white">
                 <path d="M60.1 4.9A58.5 58.5 0 0045.4.2a.2.2 0 00-.2.1 40.7 40.7 0 00-1.8 3.7 54 54 0 00-16.2 0A26.4 26.4 0 0025.4.3a.2.2 0 00-.2-.1 58.4 58.4 0 00-14.7 4.6.2.2 0 00-.1 0A59.7 59.7 0 00.2 43.6a.2.2 0 000 .2 58.8 58.8 0 0017.7 9 .2.2 0 00.3-.1 42 42 0 003.6-5.9.2.2 0 00-.1-.3 38.8 38.8 0 01-5.5-2.6.2.2 0 010-.4l1.1-.9a.2.2 0 01.2 0 42 42 0 0035.6 0 .2.2 0 01.2 0l1.1.9a.2.2 0 010 .3 36.4 36.4 0 01-5.5 2.7.2.2 0 00-.1.3 47.2 47.2 0 003.6 5.9.2.2 0 00.3 0A58.6 58.6 0 0070.6 43.8a.2.2 0 000-.2A59.2 59.2 0 0060.2 5a.2.2 0 00-.1 0zM23.7 35.8c-3.4 0-6.2-3.1-6.2-7s2.7-7 6.2-7 6.3 3.2 6.2 7-2.8 7-6.2 7zm22.9 0c-3.4 0-6.2-3.1-6.2-7s2.7-7 6.2-7 6.3 3.2 6.2 7-2.7 7-6.2 7z" />
@@ -142,7 +142,7 @@ export default function AuthPage({ onAuth }: { onAuth: () => void }) {
                 autoComplete="email"
                 autoFocus
                 disabled={loading}
-                className="w-full pl-9 pr-3 py-2.5 bg-discord-darker border border-discord-dark rounded text-sm text-discord-text placeholder:text-discord-channel-icon focus:outline-none focus:ring-2 focus:ring-discord-blurple/40 disabled:opacity-50 transition-shadow"
+                className="w-full pl-9 pr-3 py-2.5 bg-oct-bg border-2 border-oct-border rounded-cockpit text-sm text-discord-text placeholder:text-discord-channel-icon focus:outline-none focus:border-oct-accent disabled:opacity-50 transition-colors"
               />
             </div>
           </div>
@@ -162,21 +162,21 @@ export default function AuthPage({ onAuth }: { onAuth: () => void }) {
                   placeholder={view === 'signup' ? 'Create a password (min 6 chars)' : 'Enter your password'}
                   autoComplete={view === 'signup' ? 'new-password' : 'current-password'}
                   disabled={loading}
-                  className="w-full pl-9 pr-3 py-2.5 bg-discord-darker border border-discord-dark rounded text-sm text-discord-text placeholder:text-discord-channel-icon focus:outline-none focus:ring-2 focus:ring-discord-blurple/40 disabled:opacity-50 transition-shadow"
+                  className="w-full pl-9 pr-3 py-2.5 bg-oct-bg border-2 border-oct-border rounded-cockpit text-sm text-discord-text placeholder:text-discord-channel-icon focus:outline-none focus:border-oct-accent disabled:opacity-50 transition-colors"
                 />
               </div>
             </div>
           )}
 
           {error && (
-            <div className="flex items-start gap-2 px-3 py-2.5 bg-discord-red/10 border border-discord-red/20 rounded text-sm text-discord-red">
+            <div className="flex items-start gap-2 px-3 py-2.5 bg-oct-accent-dim border-2 border-oct-accent rounded-cockpit text-sm text-oct-accent">
               <AlertCircle size={16} className="shrink-0 mt-0.5" />
               <span>{error}</span>
             </div>
           )}
 
           {message && (
-            <div className="flex items-start gap-2 px-3 py-2.5 bg-green-500/10 border border-green-500/20 rounded text-sm text-green-400">
+            <div className="flex items-start gap-2 px-3 py-2.5 bg-oct-green/10 border-2 border-oct-green rounded-cockpit text-sm text-oct-green">
               <span>{message}</span>
             </div>
           )}
@@ -184,7 +184,7 @@ export default function AuthPage({ onAuth }: { onAuth: () => void }) {
           <button
             type="submit"
             disabled={loading || !email.trim() || (view !== 'forgot' && !password.trim())}
-            className="w-full py-2.5 bg-discord-blurple hover:bg-discord-blurple-hover disabled:opacity-50 disabled:cursor-not-allowed rounded text-sm font-medium text-white transition-colors flex items-center justify-center gap-2"
+            className="brutal-btn w-full py-2.5 text-sm"
           >
             {loading ? (
               <>

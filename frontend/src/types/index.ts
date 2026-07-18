@@ -317,7 +317,7 @@ export interface Alert {
 }
 
 export interface WsIncoming {
-  type: 'message' | 'message_update' | 'message_delete' | 'alert' | 'reaction_update' | 'contract' | 'contract_enrichment' | 'chain_update' | 'gateway_ready' | 'telegram_ready' | 'gateway_auth_failed';
+  type: 'message' | 'message_update' | 'message_delete' | 'alert' | 'reaction_update' | 'contract' | 'contract_enrichment' | 'chain_update' | 'gateway_ready' | 'telegram_ready' | 'gateway_auth_failed' | 'fomo_trade';
   data: any;
   error?: string;
   tokenIndex?: number;

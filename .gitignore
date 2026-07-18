@@ -150,3 +150,5 @@ posts/
 .leaderboard-port/
 supabase/.temp/
 supabase/.branches/
+.vercel
+.env*.local

@@ -1,4 +1,4 @@
-@import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500&family=Space+Grotesk:wght@400;500;600;700&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600;700&family=Space+Grotesk:wght@400;500;600;700&display=swap');
 
 @tailwind base;
 @tailwind components;
@@ -27,28 +27,75 @@ body {
   font-family: 'Space Grotesk', system-ui, sans-serif;
   font-size: 14px;
   line-height: 1.5;
-  color: #e8eaf0;
-  background-color: #0b0e1a;
+  color: #f5f5f5;
+  background-color: #0a0a0a;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
 }
 
+/* Neobrutalist headings: tight, heavy, slightly condensed feel. */
+h1,
+h2,
+h3 {
+  letter-spacing: -0.01em;
+}
+
 ::-webkit-scrollbar {
-  width: 6px;
-  height: 6px;
+  width: 8px;
+  height: 8px;
 }
 
 ::-webkit-scrollbar-track {
-  background: #121422;
+  background: #0a0a0a;
 }
 
 ::-webkit-scrollbar-thumb {
-  background: #1f2333;
-  border-radius: 2px;
+  background: #2e2e2e;
+  border-radius: 0;
 }
 
 ::-webkit-scrollbar-thumb:hover {
-  background: #2b4eff;
+  background: #ff2a2a;
+}
+
+::selection {
+  background: #ff2a2a;
+  color: #ffffff;
+}
+
+@layer components {
+  /* Chunky, flat panel with a thick black border. */
+  .brutal-card {
+    @apply bg-oct-surface border-2 border-black rounded-cockpit shadow-oct-hard;
+  }
+
+  /* Solid red action button that "presses" into its hard shadow on click. */
+  .brutal-btn {
+    @apply inline-flex items-center justify-center gap-1.5 rounded-cockpit border-2 border-black
+      bg-oct-accent text-white font-bold uppercase tracking-wide
+      shadow-oct-hard-sm transition-all duration-100
+      hover:-translate-x-[1px] hover:-translate-y-[1px] hover:shadow-oct-hard
+      active:translate-x-0 active:translate-y-0 active:shadow-none
+      disabled:opacity-50 disabled:cursor-not-allowed
+      disabled:hover:translate-x-0 disabled:hover:translate-y-0 disabled:hover:shadow-oct-hard-sm;
+  }
+
+  /* Neutral/secondary chunky button. */
+  .brutal-btn-ghost {
+    @apply inline-flex items-center justify-center gap-1.5 rounded-cockpit border-2 border-oct-border-bright
+      bg-oct-surface-raised text-oct-text font-bold uppercase tracking-wide
+      transition-all duration-100
+      hover:border-oct-text hover:bg-oct-surface
+      disabled:opacity-50 disabled:cursor-not-allowed;
+  }
+}
+
+@layer utilities {
+  .press-hard {
+    @apply transition-all duration-100
+      hover:-translate-x-[1px] hover:-translate-y-[1px]
+      active:translate-x-0 active:translate-y-0 active:shadow-none;
+  }
 }
 
 /* Signature livery stripe — structural, used once on nav */
@@ -56,20 +103,9 @@ body {
   position: absolute;
   left: 0;
   right: 0;
-  bottom: 0;
-  height: 2px;
+  bottom: -3px;
+  height: 3px;
   overflow: hidden;
   pointer-events: none;
-}
-
-.cockpit-nav-stripe::after {
-  content: '';
-  position: absolute;
-  right: 12%;
-  bottom: 0;
-  width: 140px;
-  height: 2px;
-  background: #e11d2e;
-  transform: skewX(-32deg);
-  transform-origin: bottom right;
+  background: #ff2a2a;
 }

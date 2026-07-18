@@ -24,12 +24,12 @@ export default function AlertToast() {
       {visible.map((alert) => (
         <div
           key={alert.id}
-          className={`flex items-start gap-3 p-3 rounded-lg shadow-xl border animate-slide-in ${
+          className={`flex items-start gap-3 p-3 rounded-cockpit shadow-oct-hard border-2 border-black animate-slide-in bg-oct-surface border-l-[6px] ${
             alert.type === 'highlighted_user'
-              ? 'bg-discord-blurple/10 border-discord-blurple/30'
+              ? 'border-l-oct-accent'
               : alert.type === 'keyword_match'
-                ? 'bg-orange-400/10 border-orange-400/30'
-                : 'bg-discord-yellow/10 border-discord-yellow/30'
+                ? 'border-l-orange-400'
+                : 'border-l-oct-yellow'
           }`}
           style={{
             animation: 'slideIn 0.3s ease-out',

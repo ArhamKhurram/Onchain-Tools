@@ -8,7 +8,10 @@ nixPkgs = ["nodejs_20"]
 cmds = ["npm ci --include=dev"]
 
 [phases.build]
-cmds = ["npm run build -w backend"]
+cmds = [
+  "npm run build -w backend",
+  "npx playwright install chromium"
+]
 
 [start]
 cmd = "npm run start -w backend"

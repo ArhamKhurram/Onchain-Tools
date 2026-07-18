@@ -47,6 +47,7 @@ export function useWebSocket() {
   const checkAuth = useAppStore((s) => s.checkAuth);
   const setGatewayAuthError = useAppStore((s) => s.setGatewayAuthError);
   const fetchMaskedTokens = useAppStore((s) => s.fetchMaskedTokens);
+  const addFomoTrade = useAppStore((s) => s.addFomoTrade);
 
   useDemoStream();
 
@@ -178,6 +179,8 @@ export function useWebSocket() {
             fetchTelegramChats();
             fetchHistory();
             checkAuth();
+          } else if (incoming.type === 'fomo_trade') {
+            addFomoTrade(incoming.data);
           } else if (incoming.type === 'gateway_auth_failed') {
             setGatewayAuthError(
               incoming.error ?? 'Discord token authentication failed. Please check your token in settings.',
@@ -209,5 +212,5 @@ export function useWebSocket() {
       clearTimeout(reconnectTimer);
       wsRef.current?.close();
     };
-  }, [addMessage, updateMessage, markMessageDeleted, addAlert, setConnected, updateReaction, addContract, enrichContract, updateContractChain, fetchGuilds, fetchDMChannels, fetchHistory, fetchTelegramChats, checkAuth, setGatewayAuthError, fetchMaskedTokens]);
+  }, [addMessage, updateMessage, markMessageDeleted, addAlert, setConnected, updateReaction, addContract, enrichContract, updateContractChain, fetchGuilds, fetchDMChannels, fetchHistory, fetchTelegramChats, checkAuth, setGatewayAuthError, fetchMaskedTokens, addFomoTrade]);
 }

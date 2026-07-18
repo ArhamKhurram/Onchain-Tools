@@ -100,11 +100,11 @@ export default function WalletFormModal({ open, mode, wallet, onClose, onSubmit 
   return (
     <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/75 p-4" onClick={() => !submitting && onClose()}>
       <div
-        className="w-full max-w-lg rounded-xl border border-oct-border bg-oct-surface shadow-oct-glow overflow-hidden"
+        className="w-full max-w-lg rounded-cockpit border-2 border-black bg-oct-surface shadow-oct-hard-lg overflow-hidden"
         onClick={(e) => e.stopPropagation()}
       >
-        <div className="flex items-center justify-between px-5 py-4 border-b border-oct-border">
-          <h3 className="text-base font-semibold text-oct-text">
+        <div className="flex items-center justify-between px-5 py-4 border-b-2 border-black">
+          <h3 className="text-base font-extrabold uppercase text-oct-text">
             {mode === 'add' ? 'Add wallet' : 'Edit wallet'}
           </h3>
           <button
@@ -126,9 +126,9 @@ export default function WalletFormModal({ open, mode, wallet, onClose, onSubmit 
                   key={value}
                   type="button"
                   onClick={() => set('chain', value)}
-                  className={`flex-1 px-3 py-2 rounded-lg text-xs font-medium border transition-colors ${
+                  className={`flex-1 px-3 py-2 rounded-cockpit text-xs font-bold uppercase border-2 transition-colors ${
                     values.chain === value
-                      ? 'border-oct-accent bg-oct-accent-dim text-oct-accent'
+                      ? 'border-black bg-oct-accent text-white'
                       : 'border-oct-border text-oct-muted hover:border-oct-border-bright hover:text-oct-text'
                   }`}
                 >
@@ -150,7 +150,7 @@ export default function WalletFormModal({ open, mode, wallet, onClose, onSubmit 
               onChange={(e) => set('address', e.target.value)}
               placeholder={values.chain === 'solana' ? 'Base58 address…' : '0x…'}
               disabled={mode === 'edit'}
-              className="w-full px-3 py-2 rounded-lg bg-oct-bg border border-oct-border text-sm font-mono text-oct-text placeholder:text-oct-muted/60 focus:outline-none focus:border-oct-accent disabled:opacity-60 disabled:cursor-not-allowed"
+              className="w-full px-3 py-2 rounded-cockpit bg-oct-bg border-2 border-oct-border text-sm font-mono text-oct-text placeholder:text-oct-muted/60 focus:outline-none focus:border-oct-accent disabled:opacity-60 disabled:cursor-not-allowed"
             />
           </div>
 
@@ -166,7 +166,7 @@ export default function WalletFormModal({ open, mode, wallet, onClose, onSubmit 
                 value={values.emoji}
                 onChange={(e) => set('emoji', e.target.value)}
                 placeholder="🐋"
-                className="w-full px-3 py-2 rounded-lg bg-oct-bg border border-oct-border text-sm text-center text-oct-text placeholder:text-oct-muted/60 focus:outline-none focus:border-oct-accent"
+                className="w-full px-3 py-2 rounded-cockpit bg-oct-bg border-2 border-oct-border text-sm text-center text-oct-text placeholder:text-oct-muted/60 focus:outline-none focus:border-oct-accent"
               />
             </div>
             <div>
@@ -179,7 +179,7 @@ export default function WalletFormModal({ open, mode, wallet, onClose, onSubmit 
                 value={values.name}
                 onChange={(e) => set('name', e.target.value)}
                 placeholder="Whale wallet"
-                className="w-full px-3 py-2 rounded-lg bg-oct-bg border border-oct-border text-sm text-oct-text placeholder:text-oct-muted/60 focus:outline-none focus:border-oct-accent"
+                className="w-full px-3 py-2 rounded-cockpit bg-oct-bg border-2 border-oct-border text-sm text-oct-text placeholder:text-oct-muted/60 focus:outline-none focus:border-oct-accent"
               />
             </div>
           </div>
@@ -194,7 +194,7 @@ export default function WalletFormModal({ open, mode, wallet, onClose, onSubmit 
               value={values.profile}
               onChange={(e) => set('profile', e.target.value)}
               placeholder="unclassified"
-              className="w-full px-3 py-2 rounded-lg bg-oct-bg border border-oct-border text-sm text-oct-text placeholder:text-oct-muted/60 focus:outline-none focus:border-oct-accent"
+              className="w-full px-3 py-2 rounded-cockpit bg-oct-bg border-2 border-oct-border text-sm text-oct-text placeholder:text-oct-muted/60 focus:outline-none focus:border-oct-accent"
             />
           </div>
 
@@ -229,7 +229,7 @@ export default function WalletFormModal({ open, mode, wallet, onClose, onSubmit 
               id="wallet-sound"
               value={values.sound}
               onChange={(e) => set('sound', e.target.value)}
-              className="w-full px-3 py-2 rounded-lg bg-oct-bg border border-oct-border text-sm text-oct-text focus:outline-none focus:border-oct-accent"
+              className="w-full px-3 py-2 rounded-cockpit bg-oct-bg border-2 border-oct-border text-sm text-oct-text focus:outline-none focus:border-oct-accent"
             >
               <option value="default">Default</option>
               {PRESET_SOUNDS.map((s) => (
@@ -241,7 +241,7 @@ export default function WalletFormModal({ open, mode, wallet, onClose, onSubmit 
           </div>
 
           {fieldError && (
-            <p className="text-sm text-oct-accent bg-oct-accent-dim border border-oct-accent/30 rounded-lg px-3 py-2">
+            <p className="text-sm text-oct-accent bg-oct-accent-dim border-2 border-oct-accent rounded-cockpit px-3 py-2">
               {fieldError}
             </p>
           )}
@@ -251,14 +251,14 @@ export default function WalletFormModal({ open, mode, wallet, onClose, onSubmit 
               type="button"
               onClick={onClose}
               disabled={submitting}
-              className="px-4 py-2 text-sm text-oct-muted hover:text-oct-text transition-colors disabled:opacity-50"
+              className="brutal-btn-ghost px-4 py-2 text-sm"
             >
               Cancel
             </button>
             <button
               type="submit"
               disabled={submitting}
-              className="px-4 py-2 text-sm font-medium rounded-lg bg-oct-accent hover:bg-oct-accent-hover text-white transition-colors disabled:opacity-60"
+              className="brutal-btn px-4 py-2 text-sm"
             >
               {submitting ? 'Saving…' : mode === 'add' ? 'Add wallet' : 'Save changes'}
             </button>

@@ -10,7 +10,7 @@ import GatewayAuthBanner from '../components/GatewayAuthBanner';
 import FeedToolbar from '../components/feed/FeedToolbar';
 
 export default function FeedPage() {
-  const { isAuthenticated } = useAuthSession();
+  const { isAuthenticated, ready } = useAuthSession();
   const authStatus = useAppStore((s) => s.authStatus);
   const authLoading = useAppStore((s) => s.authLoading);
   const previewMode = useAppStore((s) => s.previewMode);
@@ -28,7 +28,7 @@ export default function FeedPage() {
     }
   }, [discordConnected, rooms, paneRoomIds.length, setActiveRoom]);
 
-  if (authLoading) {
+  if (!ready || (isAuthenticated && authLoading)) {
     return (
       <div className="flex items-center justify-center h-full">
         <div className="w-6 h-6 border-2 border-oct-accent border-t-transparent rounded-full animate-spin" />
@@ -40,16 +40,16 @@ export default function FeedPage() {
     return (
       <div className="flex items-center justify-center h-full p-6">
         <div className="max-w-md text-center">
-          <div className="w-14 h-14 rounded-2xl bg-oct-accent-dim flex items-center justify-center mx-auto mb-5">
-            <MessageSquare size={28} className="text-oct-accent" />
+          <div className="w-14 h-14 rounded-cockpit border-2 border-black bg-oct-accent shadow-oct-hard flex items-center justify-center mx-auto mb-5">
+            <MessageSquare size={28} className="text-white" />
           </div>
-          <h2 className="text-xl font-bold text-oct-text mb-2">Sign in to use Feed</h2>
+          <h2 className="text-xl font-extrabold uppercase text-oct-text mb-2">Sign in to use Feed</h2>
           <p className="text-sm text-oct-muted mb-6 leading-relaxed">
             Live chat requires an OCT account so your rooms and Discord token are stored securely.
           </p>
           <Link
             to="/dashboard/login"
-            className="inline-flex px-5 py-2.5 bg-oct-accent hover:bg-oct-accent-hover rounded-lg text-sm font-medium text-white transition-colors"
+            className="brutal-btn inline-flex px-5 py-2.5 text-sm"
           >
             Sign in
           </Link>
@@ -65,10 +65,10 @@ export default function FeedPage() {
     return (
       <div className="h-full overflow-y-auto">
         <div className="max-w-lg mx-auto pt-12 px-6 pb-8 text-center">
-          <div className="w-14 h-14 rounded-2xl bg-oct-accent-dim flex items-center justify-center mx-auto mb-5">
-            <KeyRound size={28} className="text-oct-accent" />
+          <div className="w-14 h-14 rounded-cockpit border-2 border-black bg-oct-accent shadow-oct-hard flex items-center justify-center mx-auto mb-5">
+            <KeyRound size={28} className="text-white" />
           </div>
-          <h2 className="text-xl font-bold text-oct-text mb-2">Connect Discord</h2>
+          <h2 className="text-xl font-extrabold uppercase text-oct-text mb-2">Connect Discord</h2>
           <p className="text-sm text-oct-muted mb-8 leading-relaxed">
             Add your Discord token to start streaming channels. Connection happens here — not at login.
           </p>

@@ -199,6 +199,21 @@ export class WsServer {
     }
   }
 
+  /**
+   * Targeted per-user send. In hosted mode a message is delivered only to the
+   * sockets authenticated as `userId`; in local mode (single tenant, sockets
+   * never authenticate) it falls back to all connected clients. Used by the
+   * FOMO fan-out poller to route a trade to exactly the OCT user(s) tracking it.
+   */
+  sendToUser(userId: string, msg: Record<string, any>): void {
+    const payload = JSON.stringify(msg);
+    for (const [ws, state] of this.clients) {
+      if (ws.readyState !== WebSocket.OPEN) continue;
+      if (isHostedMode() && state.userId !== userId) continue;
+      ws.send(payload);
+    }
+  }
+
   hasActiveClients(userId: string): boolean {
     for (const [ws, state] of this.clients) {
       if (ws.readyState === WebSocket.OPEN && state.userId === userId) return true;

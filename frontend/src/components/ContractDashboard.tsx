@@ -101,24 +101,24 @@ export default function ContractDashboard() {
   return (
     <div className="flex-1 flex flex-col min-h-0 bg-oct-bg overflow-hidden">
       {/* Header */}
-      <div className="border-b border-oct-border shrink-0">
+      <div className="border-b-2 border-black bg-oct-surface shrink-0">
         <div className="flex items-center gap-2 sm:gap-3 px-3 sm:px-4 py-3">
           {sidebarCollapsed && (
             <button
               onClick={toggleSidebar}
-              className="p-1.5 rounded text-oct-muted hover:text-oct-text hover:bg-oct-surface-raised transition-colors shrink-0"
+              className="p-1.5 rounded-cockpit text-oct-muted hover:text-oct-text hover:bg-oct-surface-raised transition-colors shrink-0"
               title="Show sidebar"
             >
               <PanelLeftOpen size={18} />
             </button>
           )}
-          <h2 className="text-oct-text font-semibold text-base sm:text-lg">Contract Feed</h2>
+          <h2 className="text-oct-text font-extrabold uppercase text-base sm:text-lg">Contract Feed</h2>
           <span className="text-oct-muted text-xs sm:text-sm font-mono">{filtered.length}</span>
           <div className="flex-1" />
           {contracts.length > 0 && (
             <button
               onClick={handleDeleteAll}
-              className="flex items-center gap-1 px-2 py-1 rounded-cockpit text-xs text-oct-accent hover:bg-oct-accent/10 transition-colors border border-oct-accent/30 hover:border-oct-accent/60 shrink-0"
+              className="flex items-center gap-1 px-2 py-1 rounded-cockpit text-xs font-bold uppercase text-oct-accent hover:bg-oct-accent hover:text-white transition-colors border-2 border-oct-accent shrink-0"
               title="Delete all contracts"
             >
               <Trash2 size={12} />
@@ -127,12 +127,12 @@ export default function ContractDashboard() {
           )}
         </div>
         <div className="flex items-center gap-2 px-3 sm:px-4 pb-3 overflow-x-auto scrollbar-none">
-          <div className="flex rounded-cockpit overflow-hidden border border-oct-border text-xs shrink-0">
+          <div className="flex rounded-cockpit overflow-hidden border-2 border-black text-xs shrink-0">
             <button
               onClick={() => setViewMode('table')}
               className={`px-2 py-1 transition-colors ${
                 viewMode === 'table'
-                  ? 'bg-oct-live-dim text-oct-live'
+                  ? 'bg-oct-accent text-white'
                   : 'bg-oct-surface text-oct-muted hover:text-oct-text'
               }`}
               title="Table view"
@@ -143,7 +143,7 @@ export default function ContractDashboard() {
               onClick={() => setViewMode('cards')}
               className={`px-2 py-1 transition-colors ${
                 viewMode === 'cards'
-                  ? 'bg-oct-live-dim text-oct-live'
+                  ? 'bg-oct-accent text-white'
                   : 'bg-oct-surface text-oct-muted hover:text-oct-text'
               }`}
               title="Card view"
@@ -152,14 +152,14 @@ export default function ContractDashboard() {
             </button>
           </div>
 
-          <div className="flex rounded-cockpit overflow-hidden border border-oct-border text-xs shrink-0">
+          <div className="flex rounded-cockpit overflow-hidden border-2 border-black text-xs shrink-0">
             {(['all', 'evm', 'sol'] as const).map((f) => (
               <button
                 key={f}
                 onClick={() => setChainFilter(f)}
-                className={`px-2.5 py-1 transition-colors ${
+                className={`px-2.5 py-1 font-bold uppercase transition-colors ${
                   chainFilter === f
-                    ? 'bg-oct-live-dim text-oct-live'
+                    ? 'bg-oct-accent text-white'
                     : 'bg-oct-surface text-oct-muted hover:text-oct-text'
                 }`}
               >
@@ -175,7 +175,7 @@ export default function ContractDashboard() {
               placeholder="Search..."
               value={search}
               onChange={(e) => setSearch(e.target.value)}
-              className="bg-oct-surface border border-oct-border rounded-cockpit pl-7 pr-3 py-1 text-sm text-oct-text placeholder-oct-muted w-full focus:outline-none focus:border-oct-live"
+              className="bg-oct-surface border-2 border-oct-border rounded-cockpit pl-7 pr-3 py-1 text-sm text-oct-text placeholder-oct-muted w-full focus:outline-none focus:border-oct-accent"
             />
           </div>
         </div>

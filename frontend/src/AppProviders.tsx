@@ -50,9 +50,11 @@ export default function AppProviders({ children }: { children: React.ReactNode }
 
   useEffect(() => {
     if (!ready) return;
-    if (!isHostedMode || isAuthenticated) {
-      checkAuth();
+    if (isHostedMode && !isAuthenticated) {
+      useAppStore.setState({ authLoading: false });
+      return;
     }
+    checkAuth();
   }, [ready, isAuthenticated, checkAuth]);
 
   useEffect(() => {
