@@ -63,7 +63,7 @@ export default function AuthPage({ onAuth }: { onAuth: () => void }) {
     try {
       const { error } = await supabase.auth.signInWithOAuth({
         provider: 'discord',
-        options: { redirectTo: `${window.location.origin}/` },
+        options: { redirectTo: `${window.location.origin}/dashboard` },
       });
       if (error) throw error;
     } catch (err: any) {
