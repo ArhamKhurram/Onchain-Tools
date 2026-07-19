@@ -15,6 +15,7 @@ import type { ContractEntry, FrontendMessage, FrontendReaction, Room } from '../
 import { playHighlightSound, playContractAlertSound, playKeywordAlertSound } from '../utils/notificationSound';
 import { showDesktopNotification } from '../utils/desktopNotification';
 import { buildContractUrl } from '../utils/contractUrl';
+import { queueContractDetection, tryRickEnrich } from '../discord/contractPendingQueue';
 
 function isUserHighlighted(
   discordUserId: string,
@@ -138,6 +139,9 @@ function handleLiveMessage(gw: GatewayManager, rawMsg: DiscordMessage & { _chann
 
   if (frontend.hasContractAddress) {
     for (const address of frontend.contractAddresses) {
+      const seenBefore = state.contracts.some(
+        (c) => c.address.toLowerCase() === address.toLowerCase(),
+      );
       const entry: ContractEntry = {
         address,
         chain: inferChain(address),
@@ -150,9 +154,9 @@ function handleLiveMessage(gw: GatewayManager, rawMsg: DiscordMessage & { _chann
         roomIds,
         messageId: frontend.id,
         timestamp: frontend.timestamp,
-        firstSeen: true,
+        firstSeen: !seenBefore,
       };
-      state.addContract(entry);
+      queueContractDetection(entry);
     }
   }
 }
@@ -201,6 +205,7 @@ export function useClientGateway() {
 
     const onMessage = (rawMsg: DiscordMessage & { _channelName?: string; _guildName?: string | null }) => {
       handleLiveMessage(gw, rawMsg);
+      void tryRickEnrich(rawMsg);
     };
 
     const onMessageUpdate = (msg: Partial<DiscordMessage> & { id: string; channel_id: string }) => {
@@ -212,6 +217,7 @@ export function useClientGateway() {
         attachments: msg.attachments as FrontendMessage['attachments'],
         editedTimestamp: msg.edited_timestamp ?? null,
       });
+      void tryRickEnrich(msg);
     };
 
     const onMessageDelete = (data: { id: string; channel_id: string }) => {

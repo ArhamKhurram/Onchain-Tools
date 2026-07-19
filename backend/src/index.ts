@@ -154,8 +154,10 @@ function scheduleDexFallback(wsServer: WsServer, userId: string, address: string
     try {
       const storage = getStorageProvider();
       const recent = await storage.getContracts(userId, 20);
-      const hit = recent.find((c) => c.address.toLowerCase() === address.toLowerCase());
-      if (!hit || hit.tokenName || hit.enrichmentSource === 'rick') return;
+      const hit = recent.find(
+        (c) => c.address.toLowerCase() === address.toLowerCase() && !c.tokenName && c.enrichmentSource !== 'rick',
+      );
+      if (!hit) return;
       const enrichment = await enrichFromDexScreener(address);
       if (!enrichment) return;
       await applyTokenEnrichment(wsServer, userId, enrichment, channelId);

@@ -176,11 +176,9 @@ export function useWebSocket() {
             const entry = incoming.data as ContractEntry;
             addContract(entry);
           } else if (incoming.type === 'contract_enrichment') {
-            if (skipDiscordWs) return;
             const entry = incoming.data as ContractEntry;
             enrichContract(entry);
           } else if (incoming.type === 'chain_update') {
-            if (skipDiscordWs) return;
             const { address, evmChain } = incoming.data as { address: string; evmChain: string };
             updateContractChain(address, evmChain);
           } else if (incoming.type === 'gateway_ready') {

@@ -662,36 +662,70 @@ export class SupabaseStorageProvider implements StorageProvider {
 
   async logContract(userId: string, entry: ContractEntry): Promise<void> {
     const isFirstSeen = !(await this.hasAddress(userId, entry.address));
+    let toInsert = entry;
+
+    if (!isFirstSeen) {
+      const { data: priorRows } = await this.supabase
+        .from('contracts')
+        .select('*')
+        .eq('user_id', userId)
+        .ilike('address', entry.address)
+        .or('token_symbol.not.is.null,token_name.not.is.null,fdv_at_call_display.not.is.null')
+        .order('timestamp', { ascending: false })
+        .limit(1);
+
+      const prior = priorRows?.[0] ? this.mapContractRow(priorRows[0]) : null;
+      if (prior) {
+        toInsert = {
+          ...entry,
+          tokenName: entry.tokenName ?? prior.tokenName,
+          tokenSymbol: entry.tokenSymbol ?? prior.tokenSymbol,
+          tokenPair: entry.tokenPair ?? prior.tokenPair,
+          description: entry.description ?? prior.description,
+          fdvAtCall: entry.fdvAtCall ?? prior.fdvAtCall,
+          fdvAtCallDisplay: entry.fdvAtCallDisplay ?? prior.fdvAtCallDisplay,
+          liquidityUsd: entry.liquidityUsd ?? prior.liquidityUsd,
+          liquidityDisplay: entry.liquidityDisplay ?? prior.liquidityDisplay,
+          volumeUsd: entry.volumeUsd ?? prior.volumeUsd,
+          volumeDisplay: entry.volumeDisplay ?? prior.volumeDisplay,
+          priceUsd: entry.priceUsd ?? prior.priceUsd,
+          tokenAge: entry.tokenAge ?? prior.tokenAge,
+          enrichmentSource: entry.enrichmentSource ?? prior.enrichmentSource,
+          enrichedAt: entry.enrichedAt ?? prior.enrichedAt,
+          evmChain: entry.evmChain ?? prior.evmChain,
+        };
+      }
+    }
 
     const result = await this.supabase.from('contracts').insert({
       user_id: userId,
-      address: entry.address,
-      chain: entry.chain,
-      evm_chain: entry.evmChain ?? null,
-      author_id: entry.authorId,
-      author_name: entry.authorName,
-      channel_id: entry.channelId,
-      channel_name: entry.channelName,
-      guild_id: entry.guildId,
-      guild_name: entry.guildName,
-      room_ids: entry.roomIds,
-      message_id: entry.messageId,
-      timestamp: entry.timestamp,
+      address: toInsert.address,
+      chain: toInsert.chain,
+      evm_chain: toInsert.evmChain ?? null,
+      author_id: toInsert.authorId,
+      author_name: toInsert.authorName,
+      channel_id: toInsert.channelId,
+      channel_name: toInsert.channelName,
+      guild_id: toInsert.guildId,
+      guild_name: toInsert.guildName,
+      room_ids: toInsert.roomIds,
+      message_id: toInsert.messageId,
+      timestamp: toInsert.timestamp,
       first_seen: isFirstSeen,
-      token_name: entry.tokenName ?? null,
-      token_symbol: entry.tokenSymbol ?? null,
-      token_pair: entry.tokenPair ?? null,
-      description: entry.description ?? null,
-      fdv_at_call: entry.fdvAtCall ?? null,
-      fdv_at_call_display: entry.fdvAtCallDisplay ?? null,
-      liquidity_usd: entry.liquidityUsd ?? null,
-      liquidity_display: entry.liquidityDisplay ?? null,
-      volume_usd: entry.volumeUsd ?? null,
-      volume_display: entry.volumeDisplay ?? null,
-      price_usd: entry.priceUsd ?? null,
-      token_age: entry.tokenAge ?? null,
-      enrichment_source: entry.enrichmentSource ?? null,
-      enriched_at: entry.enrichedAt ?? null,
+      token_name: toInsert.tokenName ?? null,
+      token_symbol: toInsert.tokenSymbol ?? null,
+      token_pair: toInsert.tokenPair ?? null,
+      description: toInsert.description ?? null,
+      fdv_at_call: toInsert.fdvAtCall ?? null,
+      fdv_at_call_display: toInsert.fdvAtCallDisplay ?? null,
+      liquidity_usd: toInsert.liquidityUsd ?? null,
+      liquidity_display: toInsert.liquidityDisplay ?? null,
+      volume_usd: toInsert.volumeUsd ?? null,
+      volume_display: toInsert.volumeDisplay ?? null,
+      price_usd: toInsert.priceUsd ?? null,
+      token_age: toInsert.tokenAge ?? null,
+      enrichment_source: toInsert.enrichmentSource ?? null,
+      enriched_at: toInsert.enrichedAt ?? null,
     });
     throwIfError(result, 'Failed to log contract');
   }
@@ -782,12 +816,14 @@ export class SupabaseStorageProvider implements StorageProvider {
     const { data: updated, error } = await this.supabase
       .from('contracts')
       .update(update)
-      .eq('id', row.id)
+      .eq('user_id', userId)
+      .ilike('address', address)
       .select('*')
-      .single();
+      .order('timestamp', { ascending: false });
 
     throwIfError({ error }, 'Failed to enrich contract');
-    return updated ? this.mapContractRow(updated) : null;
+    const latest = updated?.[0];
+    return latest ? this.mapContractRow(latest) : null;
   }
 
   private mapContractRow(row: any): ContractEntry {

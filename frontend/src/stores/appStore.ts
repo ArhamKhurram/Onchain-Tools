@@ -17,6 +17,8 @@ import {
   maskDiscordToken,
   setLocalDiscordTokens,
 } from '../discord/tokenStore';
+import { hydrateContractFromCatalog, mergeContractEntries } from '../utils/contractMetadata';
+import { resolvePendingEnrichment } from '../discord/contractPendingQueue';
 
 const API_BASE = import.meta.env.VITE_API_URL
   ? `${import.meta.env.VITE_API_URL}/api`
@@ -25,6 +27,24 @@ const MAX_MESSAGES_PER_ROOM = 1000;
 const MAX_ALERTS = 50;
 const MAX_CONTRACTS = 2000;
 const MAX_PANES = 4;
+
+function contractKey(c: ContractEntry): string {
+  return `${c.messageId}:${c.address.toLowerCase()}`;
+}
+
+/** Keep in-memory detections when a refetch returns fewer rows (client gateway mode). */
+function mergeContractLists(local: ContractEntry[], server: ContractEntry[]): ContractEntry[] {
+  const map = new Map<string, ContractEntry>();
+  for (const c of local) map.set(contractKey(c), c);
+  for (const c of server) {
+    const key = contractKey(c);
+    const existing = map.get(key);
+    map.set(key, existing ? mergeContractEntries(existing, c) : c);
+  }
+  return [...map.values()]
+    .sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime())
+    .slice(0, MAX_CONTRACTS);
+}
 // Session-live FOMO trade feed; there is no historical fetch endpoint yet, so
 // we only keep the most recent trades that arrive while connected.
 const MAX_FOMO_TRADES = 100;
@@ -170,7 +190,8 @@ interface AppState {
   addAlert: (alert: Alert) => void;
   dismissAlert: (alertId: string) => void;
   updateReaction: (channelId: string, messageId: string, emoji: FrontendReaction['emoji'], delta: number) => void;
-  addContract: (entry: ContractEntry) => void;
+  addContract: (entry: ContractEntry, opts?: { skipCatalogHydrate?: boolean }) => void;
+  persistContract: (entry: ContractEntry) => Promise<void>;
   updateContractChain: (address: string, evmChain: string) => void;
   enrichContract: (entry: ContractEntry) => void;
   deleteContract: (messageId: string, address: string) => Promise<void>;
@@ -810,18 +831,34 @@ export const useAppStore = create<AppState>((set, get) => {
     });
   },
 
-  addContract: (entry) => {
+  addContract: (entry, opts) => {
     set((state) => {
-      const updated = [entry, ...state.contracts];
+      const hydrated = opts?.skipCatalogHydrate
+        ? entry
+        : hydrateContractFromCatalog(entry, state.contracts);
+      const updated = [hydrated, ...state.contracts];
       if (updated.length > MAX_CONTRACTS) updated.length = MAX_CONTRACTS;
-      if (entry.chain === 'evm' && entry.evmChain) {
-        const key = entry.address.toLowerCase();
-        if (state.addressChains[key] !== entry.evmChain) {
-          return { contracts: updated, addressChains: { ...state.addressChains, [key]: entry.evmChain } };
+      if (hydrated.chain === 'evm' && hydrated.evmChain) {
+        const key = hydrated.address.toLowerCase();
+        if (state.addressChains[key] !== hydrated.evmChain) {
+          return { contracts: updated, addressChains: { ...state.addressChains, [key]: hydrated.evmChain } };
         }
       }
       return { contracts: updated };
     });
+  },
+
+  persistContract: async (entry) => {
+    if (demo) return;
+    try {
+      await apiFetch(`${API_BASE}/contracts`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(entry),
+      });
+    } catch (err) {
+      console.warn('[Store] Failed to persist contract:', err);
+    }
   },
 
   updateContractChain: (address, evmChain) => {
@@ -835,6 +872,7 @@ export const useAppStore = create<AppState>((set, get) => {
   },
 
   enrichContract: (entry) => {
+    resolvePendingEnrichment(entry);
     const key = entry.address.toLowerCase();
     set((state) => ({
       contracts: state.contracts.map((c) => {
@@ -999,7 +1037,10 @@ export const useAppStore = create<AppState>((set, get) => {
         console.error('[Store] Unexpected contracts payload:', contracts);
         return;
       }
-      set({ contracts, addressChains: deriveAddressChains(contracts) });
+      set((state) => {
+        const merged = mergeContractLists(state.contracts, contracts);
+        return { contracts: merged, addressChains: deriveAddressChains(merged) };
+      });
     } catch (err) {
       console.error('[Store] Failed to fetch contracts:', err);
     }

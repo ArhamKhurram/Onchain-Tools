@@ -14,6 +14,7 @@ import { TelegramClient } from 'teleproto';
 import { StringSession } from 'teleproto/sessions/index.js';
 import type { TelegramClientManager } from '../telegram/clientManager.js';
 import { createFomoRouter } from '../fomo/routes.js';
+import { tryParseTokenEnrichment } from '../utils/rickEmbedParser.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const SOUNDS_DIR = join(__dirname, '../../data/sounds');
@@ -1137,6 +1138,196 @@ export function createRouter(wsServer: WsServer): Router {
       res.json(await storage.getContracts(userId, limit, since));
     } catch (err) {
       res.status(500).json({ error: safeError(err, 'Failed to fetch contracts') });
+    }
+  });
+
+  router.post('/contracts', async (req, res) => {
+    try {
+      const userId = getUserId(req);
+      const entry = req.body;
+      if (!entry?.address || !entry?.messageId || !entry?.channelId || !entry?.timestamp) {
+        return res.status(400).json({ error: 'Invalid contract entry.' });
+      }
+      await storage.logContract(userId, entry);
+      wsServer.broadcastContract(entry, userId);
+
+      const { enrichFromDexScreener } = await import('../utils/tokenEnrichment.js');
+      const address: string = entry.address;
+      const channelId: string = entry.channelId;
+      setTimeout(async () => {
+        try {
+          const recent = await storage.getContracts(userId, 20);
+          const hit = recent.find(
+            (c) => c.address.toLowerCase() === address.toLowerCase() && !c.tokenName && c.enrichmentSource !== 'rick',
+          );
+          if (!hit) return;
+          const enrichment = await enrichFromDexScreener(address);
+          if (!enrichment) return;
+          const updated = await storage.enrichContract(userId, enrichment.address, {
+            tokenName: enrichment.tokenName,
+            tokenSymbol: enrichment.tokenSymbol,
+            tokenPair: enrichment.tokenPair,
+            description: enrichment.description,
+            fdvAtCall: enrichment.fdvAtCall,
+            fdvAtCallDisplay: enrichment.fdvAtCallDisplay,
+            liquidityUsd: enrichment.liquidityUsd,
+            liquidityDisplay: enrichment.liquidityDisplay,
+            volumeUsd: enrichment.volumeUsd,
+            volumeDisplay: enrichment.volumeDisplay,
+            priceUsd: enrichment.priceUsd,
+            tokenAge: enrichment.tokenAge,
+            evmChain: enrichment.evmChain,
+            enrichmentSource: enrichment.enrichmentSource,
+            enrichedAt: new Date().toISOString(),
+          }, channelId);
+          if (updated) {
+            wsServer.broadcastContractEnrichment(updated, userId);
+            if (enrichment.evmChain) {
+              const chained = await storage.updateEvmChain(userId, enrichment.address, enrichment.evmChain);
+              if (chained) wsServer.broadcastChainUpdate(enrichment.address, enrichment.evmChain, userId);
+            }
+          }
+        } catch (err) {
+          console.error('[API] Dex fallback failed:', (err as Error).message);
+        }
+      }, 8_000);
+
+      res.json({ success: true });
+    } catch (err) {
+      res.status(500).json({ error: safeError(err, 'Failed to log contract') });
+    }
+  });
+
+  router.post('/contracts/rick-enrich', async (req, res) => {
+    try {
+      const userId = getUserId(req);
+      const { channelId, embeds, content, authorUsername } = req.body ?? {};
+      if (!channelId) {
+        return res.status(400).json({ error: 'channelId is required.' });
+      }
+
+      const enrichment = tryParseTokenEnrichment({ embeds, content, authorUsername });
+      if (!enrichment?.address) {
+        return res.json({ applied: false });
+      }
+
+      const updated = await storage.enrichContract(userId, enrichment.address, {
+        tokenName: enrichment.tokenName,
+        tokenSymbol: enrichment.tokenSymbol,
+        tokenPair: enrichment.tokenPair,
+        description: enrichment.description,
+        fdvAtCall: enrichment.fdvAtCall,
+        fdvAtCallDisplay: enrichment.fdvAtCallDisplay,
+        liquidityUsd: enrichment.liquidityUsd,
+        liquidityDisplay: enrichment.liquidityDisplay,
+        volumeUsd: enrichment.volumeUsd,
+        volumeDisplay: enrichment.volumeDisplay,
+        priceUsd: enrichment.priceUsd,
+        tokenAge: enrichment.tokenAge,
+        evmChain: enrichment.evmChain,
+        enrichmentSource: enrichment.enrichmentSource,
+        enrichedAt: new Date().toISOString(),
+      }, channelId);
+
+      if (updated) {
+        wsServer.broadcastContractEnrichment(updated, userId);
+        if (enrichment.evmChain) {
+          const chained = await storage.updateEvmChain(userId, enrichment.address, enrichment.evmChain);
+          if (chained) wsServer.broadcastChainUpdate(enrichment.address, enrichment.evmChain, userId);
+        }
+        return res.json({ applied: true, entry: updated });
+      }
+
+      res.json({
+        applied: true,
+        enrichment: {
+          address: enrichment.address,
+          tokenName: enrichment.tokenName,
+          tokenSymbol: enrichment.tokenSymbol,
+          tokenPair: enrichment.tokenPair,
+          description: enrichment.description,
+          fdvAtCall: enrichment.fdvAtCall,
+          fdvAtCallDisplay: enrichment.fdvAtCallDisplay,
+          liquidityUsd: enrichment.liquidityUsd,
+          liquidityDisplay: enrichment.liquidityDisplay,
+          volumeUsd: enrichment.volumeUsd,
+          volumeDisplay: enrichment.volumeDisplay,
+          priceUsd: enrichment.priceUsd,
+          tokenAge: enrichment.tokenAge,
+          evmChain: enrichment.evmChain,
+          enrichmentSource: enrichment.enrichmentSource,
+          enrichedAt: new Date().toISOString(),
+        },
+      });
+    } catch (err) {
+      res.status(500).json({ error: safeError(err, 'Failed to apply Rick enrichment') });
+    }
+  });
+
+  router.post('/contracts/dex-enrich', async (req, res) => {
+    try {
+      const userId = getUserId(req);
+      const { address, channelId } = req.body ?? {};
+      if (!address || !channelId) {
+        return res.status(400).json({ error: 'address and channelId are required.' });
+      }
+
+      const { enrichFromDexScreener } = await import('../utils/tokenEnrichment.js');
+      const enrichment = await enrichFromDexScreener(address);
+      if (!enrichment) {
+        return res.json({ applied: false });
+      }
+
+      const updated = await storage.enrichContract(userId, enrichment.address, {
+        tokenName: enrichment.tokenName,
+        tokenSymbol: enrichment.tokenSymbol,
+        tokenPair: enrichment.tokenPair,
+        description: enrichment.description,
+        fdvAtCall: enrichment.fdvAtCall,
+        fdvAtCallDisplay: enrichment.fdvAtCallDisplay,
+        liquidityUsd: enrichment.liquidityUsd,
+        liquidityDisplay: enrichment.liquidityDisplay,
+        volumeUsd: enrichment.volumeUsd,
+        volumeDisplay: enrichment.volumeDisplay,
+        priceUsd: enrichment.priceUsd,
+        tokenAge: enrichment.tokenAge,
+        evmChain: enrichment.evmChain,
+        enrichmentSource: enrichment.enrichmentSource,
+        enrichedAt: new Date().toISOString(),
+      }, channelId);
+
+      if (updated) {
+        wsServer.broadcastContractEnrichment(updated, userId);
+        if (enrichment.evmChain) {
+          const chained = await storage.updateEvmChain(userId, enrichment.address, enrichment.evmChain);
+          if (chained) wsServer.broadcastChainUpdate(enrichment.address, enrichment.evmChain, userId);
+        }
+        return res.json({ applied: true, entry: updated });
+      }
+
+      res.json({
+        applied: true,
+        enrichment: {
+          address: enrichment.address,
+          tokenName: enrichment.tokenName,
+          tokenSymbol: enrichment.tokenSymbol,
+          tokenPair: enrichment.tokenPair,
+          description: enrichment.description,
+          fdvAtCall: enrichment.fdvAtCall,
+          fdvAtCallDisplay: enrichment.fdvAtCallDisplay,
+          liquidityUsd: enrichment.liquidityUsd,
+          liquidityDisplay: enrichment.liquidityDisplay,
+          volumeUsd: enrichment.volumeUsd,
+          volumeDisplay: enrichment.volumeDisplay,
+          priceUsd: enrichment.priceUsd,
+          tokenAge: enrichment.tokenAge,
+          evmChain: enrichment.evmChain,
+          enrichmentSource: enrichment.enrichmentSource,
+          enrichedAt: new Date().toISOString(),
+        },
+      });
+    } catch (err) {
+      res.status(500).json({ error: safeError(err, 'Failed to enrich contract from DexScreener') });
     }
   });
 
