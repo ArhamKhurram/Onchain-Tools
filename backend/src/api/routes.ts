@@ -113,11 +113,22 @@ export function createRouter(wsServer: WsServer): Router {
 
   router.get('/auth/status', async (req, res) => {
     const userId = getUserId(req);
-    const tokens = await storage.getTokens(userId);
     const { getUserGateway, getUserTelegram } = await import('../index.js');
-    const gw = getUserGateway(userId);
     const config = await storage.getConfig(userId);
     const tg = getUserTelegram(userId);
+
+    if (isHostedMode()) {
+      return res.json({
+        configured: false,
+        connected: false,
+        clientGateway: true,
+        telegramConfigured: (config.telegramSessions?.length ?? 0) > 0,
+        telegramConnected: tg !== null && tg.isConnected(),
+      });
+    }
+
+    const tokens = await storage.getTokens(userId);
+    const gw = getUserGateway(userId);
     res.json({
       configured: tokens.length > 0,
       connected: gw !== null,
@@ -160,6 +171,14 @@ export function createRouter(wsServer: WsServer): Router {
   });
 
   router.post('/auth/token', async (req, res) => {
+    if (isHostedMode()) {
+      return res.json({
+        success: true,
+        clientGateway: true,
+        message: 'Discord tokens are stored locally in your browser and never sent to the server.',
+      });
+    }
+
     const userId = getUserId(req);
     const { token } = req.body;
     if (!token || typeof token !== 'string' || token.trim().length === 0) {
@@ -182,6 +201,12 @@ export function createRouter(wsServer: WsServer): Router {
 
   router.post('/auth/disconnect', async (req, res) => {
     const userId = getUserId(req);
+    if (isHostedMode()) {
+      await storage.setTokens(userId, []);
+      const { disconnectGateway } = await import('../index.js');
+      disconnectGateway(userId);
+      return res.json({ success: true, clientGateway: true });
+    }
     await storage.setTokens(userId, []);
     const { disconnectGateway } = await import('../index.js');
     disconnectGateway(userId);
@@ -189,6 +214,10 @@ export function createRouter(wsServer: WsServer): Router {
   });
 
   router.get('/auth/tokens', async (req, res) => {
+    if (isHostedMode()) {
+      return res.json({ tokens: [], count: 0, clientGateway: true });
+    }
+
     const userId = getUserId(req);
     const tokens = await storage.getTokens(userId);
     const { getUserGateway } = await import('../index.js');
@@ -205,6 +234,14 @@ export function createRouter(wsServer: WsServer): Router {
   });
 
   router.post('/auth/tokens/add', async (req, res) => {
+    if (isHostedMode()) {
+      return res.json({
+        success: true,
+        clientGateway: true,
+        message: 'Add Discord tokens in Settings — they stay in your browser only.',
+      });
+    }
+
     const userId = getUserId(req);
     const { token } = req.body;
     if (!token || typeof token !== 'string' || token.trim().length === 0) {
@@ -228,6 +265,10 @@ export function createRouter(wsServer: WsServer): Router {
   });
 
   router.delete('/auth/tokens/:index', async (req, res) => {
+    if (isHostedMode()) {
+      return res.json({ success: true, clientGateway: true, tokenCount: 0 });
+    }
+
     const userId = getUserId(req);
     const index = parseInt(req.params.index, 10);
     const existing = await storage.getTokens(userId);

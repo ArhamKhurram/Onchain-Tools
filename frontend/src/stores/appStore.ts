@@ -4,6 +4,19 @@ import type { FomoTrade, FomoTradeEvent } from '../types/fomo';
 import { isDemoMode, createDemoOverrides } from '../demo/demoStore';
 import { isHostedMode, getAccessToken } from '../lib/supabase';
 import { markTokenEverConfigured } from '../utils/tokenState';
+import {
+  connectClientGateway,
+  disconnectClientGateway,
+  getClientGatewayManager,
+  isClientGatewayMode,
+} from '../discord/clientGateway';
+import {
+  clearLocalDiscordTokens,
+  getLocalDiscordTokens,
+  hasLocalDiscordTokens,
+  maskDiscordToken,
+  setLocalDiscordTokens,
+} from '../discord/tokenStore';
 
 const API_BASE = import.meta.env.VITE_API_URL
   ? `${import.meta.env.VITE_API_URL}/api`
@@ -333,6 +346,11 @@ export const useAppStore = create<AppState>((set, get) => {
         return;
       }
       const status: AuthStatus = await res.json();
+      if (isClientGatewayMode()) {
+        status.clientGateway = true;
+        status.configured = hasLocalDiscordTokens();
+        status.connected = status.configured && getClientGatewayManager() !== null;
+      }
       if (status?.configured) {
         markTokenEverConfigured();
       }
@@ -344,6 +362,24 @@ export const useAppStore = create<AppState>((set, get) => {
 
   submitToken: async (token: string) => {
     if (demo) return demo.submitToken();
+    if (isClientGatewayMode()) {
+      try {
+        const tokens = token.includes(',')
+          ? token.split(',').map((t) => t.trim()).filter(Boolean)
+          : [token.trim()];
+        if (tokens.length === 0) {
+          return { success: false, error: 'A valid Discord token is required.' };
+        }
+        setLocalDiscordTokens(tokens);
+        connectClientGateway(tokens);
+        markTokenEverConfigured();
+        await get().fetchMaskedTokens();
+        set({ authStatus: { configured: true, connected: false, clientGateway: true } });
+        return { success: true };
+      } catch (err: any) {
+        return { success: false, error: err.message };
+      }
+    }
     try {
       const res = await apiFetch(`${API_BASE}/auth/token`, {
         method: 'POST',
@@ -362,6 +398,19 @@ export const useAppStore = create<AppState>((set, get) => {
 
   fetchMaskedTokens: async () => {
     if (demo) return demo.fetchMaskedTokens();
+    if (isClientGatewayMode()) {
+      const tokens = getLocalDiscordTokens();
+      const gw = getClientGatewayManager();
+      const invalidIndices = new Set(gw?.getInvalidTokenIndices() ?? []);
+      set({
+        maskedTokens: tokens.map((t, index) => ({
+          index,
+          masked: maskDiscordToken(t),
+          invalid: invalidIndices.has(index),
+        })),
+      });
+      return;
+    }
     try {
       const res = await apiFetch(`${API_BASE}/auth/tokens`);
       if (!res.ok) return;
@@ -372,6 +421,25 @@ export const useAppStore = create<AppState>((set, get) => {
 
   addToken: async (token: string) => {
     if (demo) return demo.addToken();
+    if (isClientGatewayMode()) {
+      try {
+        const trimmed = token.trim();
+        if (!trimmed) return { success: false, error: 'A valid Discord token is required.' };
+        const existing = getLocalDiscordTokens();
+        if (existing.includes(trimmed)) {
+          return { success: false, error: 'This token is already configured.' };
+        }
+        const updated = [...existing, trimmed];
+        setLocalDiscordTokens(updated);
+        connectClientGateway(updated);
+        markTokenEverConfigured();
+        await get().fetchMaskedTokens();
+        set({ authStatus: { configured: true, connected: false, clientGateway: true } });
+        return { success: true };
+      } catch (err: any) {
+        return { success: false, error: err.message };
+      }
+    }
     try {
       const res = await apiFetch(`${API_BASE}/auth/tokens/add`, {
         method: 'POST',
@@ -391,6 +459,27 @@ export const useAppStore = create<AppState>((set, get) => {
 
   removeToken: async (index: number) => {
     if (demo) return demo.removeToken();
+    if (isClientGatewayMode()) {
+      try {
+        const existing = getLocalDiscordTokens();
+        if (index < 0 || index >= existing.length) {
+          return { success: false, error: 'Invalid token index.' };
+        }
+        const updated = existing.filter((_, i) => i !== index);
+        if (updated.length === 0) {
+          clearLocalDiscordTokens();
+          disconnectClientGateway();
+        } else {
+          setLocalDiscordTokens(updated);
+          connectClientGateway(updated);
+        }
+        await get().fetchMaskedTokens();
+        await get().checkAuth();
+        return { success: true };
+      } catch (err: any) {
+        return { success: false, error: err.message };
+      }
+    }
     try {
       const res = await apiFetch(`${API_BASE}/auth/tokens/${index}`, { method: 'DELETE' });
       const data = await res.json();
@@ -844,6 +933,11 @@ export const useAppStore = create<AppState>((set, get) => {
 
   fetchGuilds: async () => {
     if (demo) return demo.fetchGuilds();
+    if (isClientGatewayMode()) {
+      const gw = getClientGatewayManager();
+      if (gw) set({ guilds: gw.getGuilds() });
+      return;
+    }
     try {
       const res = await apiFetch(`${API_BASE}/guilds`);
       if (!res.ok) return;
@@ -854,6 +948,11 @@ export const useAppStore = create<AppState>((set, get) => {
 
   fetchDMChannels: async () => {
     if (demo) return demo.fetchDMChannels();
+    if (isClientGatewayMode()) {
+      const gw = getClientGatewayManager();
+      if (gw) set({ dmChannels: gw.getDMChannels() });
+      return;
+    }
     try {
       const res = await apiFetch(`${API_BASE}/dm-channels`);
       if (!res.ok) return;
@@ -908,6 +1007,19 @@ export const useAppStore = create<AppState>((set, get) => {
 
   fetchReactionUsers: async (channelId, messageId, emoji) => {
     if (demo) return [];
+    if (isClientGatewayMode()) {
+      const gw = getClientGatewayManager();
+      if (!gw) throw new Error('Discord is not connected.');
+      const emojiKey = emoji.id ? `${emoji.name}:${emoji.id}` : emoji.name;
+      const users = await gw.fetchReactionUsers(channelId, messageId, emojiKey);
+      return users.map((u) => ({
+        id: u.id,
+        username: u.username,
+        displayName: u.global_name ?? u.username,
+        avatar: u.avatar,
+        discriminator: u.discriminator,
+      }));
+    }
     const params = new URLSearchParams({ name: emoji.name });
     if (emoji.id) params.set('id', emoji.id);
     const res = await apiFetch(`${API_BASE}/reactions/${channelId}/${messageId}?${params.toString()}`);
@@ -964,6 +1076,21 @@ export const useAppStore = create<AppState>((set, get) => {
   },
 
   sendMessage: async (channelId, content, files, source) => {
+    if (isClientGatewayMode() && source !== 'telegram') {
+      try {
+        const gw = getClientGatewayManager();
+        if (!gw) return { success: false, error: 'Discord is not connected.' };
+        const attachments = files?.map((file) => ({
+          filename: file.name,
+          data: file,
+          contentType: file.type || 'application/octet-stream',
+        }));
+        await gw.sendChannelMessage(channelId, content, attachments);
+        return { success: true };
+      } catch (err: any) {
+        return { success: false, error: err.message };
+      }
+    }
     try {
       const formData = new FormData();
       formData.append('channelId', channelId);

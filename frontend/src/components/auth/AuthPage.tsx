@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { Loader2, AlertCircle, Mail, Lock, ArrowLeft } from 'lucide-react';
 import { getSupabase } from '../../lib/supabase';
+import OctLogo from '../OctLogo';
 
 type AuthView = 'login' | 'signup' | 'forgot';
 
@@ -84,13 +85,8 @@ export default function AuthPage({ onAuth }: { onAuth: () => void }) {
     <div className="flex items-center justify-center h-full w-full bg-discord-dark">
       <div className="w-full max-w-md px-5 sm:px-8">
         <div className="flex flex-col items-center mb-8">
-          <div className="w-16 h-16 rounded-cockpit border-2 border-black bg-oct-accent shadow-oct-hard flex items-center justify-center mb-5">
-            <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="#ffffff" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-              <rect x="3" y="11" width="18" height="11" rx="2" ry="2" />
-              <path d="M7 11V7a5 5 0 0 1 10 0v4" />
-            </svg>
-          </div>
-          <h1 className="text-2xl font-extrabold uppercase text-white mb-2">
+          <OctLogo size="lg" showSubtitle className="mb-2" />
+          <h1 className="text-2xl font-extrabold uppercase text-white mb-2 mt-3">
             {view === 'login' ? 'Welcome back' : view === 'signup' ? 'Create account' : 'Reset password'}
           </h1>
           <p className="text-discord-text-muted text-sm text-center leading-relaxed">

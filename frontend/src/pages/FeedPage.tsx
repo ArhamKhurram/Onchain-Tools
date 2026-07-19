@@ -45,7 +45,7 @@ export default function FeedPage() {
           </div>
           <h2 className="text-xl font-extrabold uppercase text-oct-text mb-2">Sign in to use Feed</h2>
           <p className="text-sm text-oct-muted mb-6 leading-relaxed">
-            Live chat requires an OCT account so your rooms and Discord token are stored securely.
+            Live chat requires an OCT account. Your Discord token stays in this browser — rooms and settings sync to your account.
           </p>
           <Link
             to="/dashboard/login"

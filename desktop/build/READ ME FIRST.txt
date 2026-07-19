@@ -1,26 +1,18 @@
-Trenchcord for macOS — First Launch
-====================================
+OCT for macOS — First Launch
+============================
 
-Trenchcord is not signed with an Apple Developer certificate, so macOS will
-block it the first time ("Trenchcord is damaged" or "from an unidentified
-developer"). This is expected. Clear it once with the steps below and you're
-set.
+OCT is not signed with an Apple Developer certificate, so macOS will
+block it the first time ("OCT is damaged" or "from an unidentified
+developer"). This is normal for unsigned apps.
 
-1. Drag Trenchcord.app into your Applications folder (or wherever you'd like).
+Steps:
+1. Drag OCT.app into your Applications folder (or wherever you'd like).
+2. Open Terminal (Applications → Utilities → Terminal). Do not double-click
+   Terminal, not the OCT app.
+3. Paste this command and press Enter:
 
-2. Open Spotlight (press Command + Space) and open "Terminal" — the system
-   Terminal, not the Trenchcord app.
+       xattr -cr /Applications/OCT.app
 
-3. Type the following, including a space at the end:
+   (Or drag and drop OCT.app onto the Terminal window — it will fill in the path.)
 
-       xattr -cr
-
-   (Then just drag and drop Trenchcord.app onto the Terminal window — it will
-   fill in the path for you. So the full command looks like:
-
-       xattr -cr /Applications/Trenchcord.app  )
-
-4. Press Enter, then open Trenchcord — enjoy!
-
-------------------------------------
-Need help? Join our Discord: https://discord.gg/cDhrRVZ9xg
+4. Press Enter, then open OCT — enjoy!

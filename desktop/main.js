@@ -90,7 +90,7 @@ function frontendDist() {
 
 function startBackend(port) {
   backendProcess = utilityProcess.fork(backendEntry(), [], {
-    serviceName: 'trenchcord-backend',
+    serviceName: 'oct-backend',
     stdio: 'pipe',
     env: {
       ...process.env,
@@ -181,7 +181,7 @@ function createPopoutWindow(roomId, title) {
     width: 520,
     height: 720,
     backgroundColor: '#0b0b0f',
-    title: title || 'Trenchcord',
+    title: title || 'OCT',
     show: false,
     webPreferences: {
       contextIsolation: true,
@@ -250,7 +250,7 @@ function setupAutoUpdate() {
       defaultId: 0,
       cancelId: 1,
       title: 'Update ready',
-      message: `Trenchcord ${info.version} has been downloaded.`,
+      message: `OCT ${info.version} has been downloaded.`,
       detail: 'Restart the app to finish updating.',
     });
     if (response === 0) autoUpdater.quitAndInstall();
@@ -277,7 +277,7 @@ async function bootstrap() {
   try {
     await waitForHealth(backendPort);
   } catch (err) {
-    dialog.showErrorBox('Trenchcord failed to start', err && err.message ? err.message : String(err));
+    dialog.showErrorBox('OCT failed to start', err && err.message ? err.message : String(err));
     app.quit();
     return;
   }

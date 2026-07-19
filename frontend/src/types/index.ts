@@ -144,6 +144,7 @@ export interface AppConfig {
 export interface AuthStatus {
   configured: boolean;
   connected: boolean;
+  clientGateway?: boolean;
   telegramConfigured?: boolean;
   telegramConnected?: boolean;
 }

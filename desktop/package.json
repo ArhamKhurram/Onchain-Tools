@@ -1,10 +1,10 @@
 {
-  "name": "trenchcord-desktop",
-  "productName": "Trenchcord",
+  "name": "oct-desktop",
+  "productName": "OCT",
   "version": "1.1.1",
   "private": true,
-  "description": "Trenchcord desktop app",
-  "author": "Trenchcord",
+  "description": "OCT desktop app — Onchain Tools",
+  "author": "Onchain Tools",
   "main": "main.js",
   "scripts": {
     "start": "electron .",

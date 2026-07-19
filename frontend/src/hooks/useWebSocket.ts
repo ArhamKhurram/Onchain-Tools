@@ -5,6 +5,8 @@ import { buildContractUrl } from '../utils/contractUrl';
 import { showDesktopNotification } from '../utils/desktopNotification';
 import { isDemoMode } from '../demo/demoStore';
 import { isHostedMode, getSupabase } from '../lib/supabase';
+import { isClientGatewayMode } from '../discord/clientGateway';
+import { hasLocalDiscordTokens } from '../discord/tokenStore';
 import { buildStreamMessage, STREAM_POOL } from '../demo/demoData';
 import type { WsIncoming, Alert, FrontendMessage, ContractEntry } from '../types';
 
@@ -76,7 +78,9 @@ export function useWebSocket() {
       ws.onopen = async () => {
         if (disposed) { ws.close(); return; }
         console.log('[WS] Connected');
-        setConnected(true);
+        if (!(isClientGatewayMode() && hasLocalDiscordTokens())) {
+          setConnected(true);
+        }
 
         if (isHostedMode) {
           try {
@@ -93,9 +97,11 @@ export function useWebSocket() {
       ws.onmessage = (event) => {
         try {
           const incoming: WsIncoming = JSON.parse(event.data);
+          const skipDiscordWs = isClientGatewayMode() && hasLocalDiscordTokens();
 
           if (incoming.type === 'message') {
             const msg = incoming.data as FrontendMessage;
+            if (skipDiscordWs && msg.source !== 'telegram') return;
             const roomIds = incoming.roomIds ?? [];
             const config = useAppStore.getState().config;
 
@@ -156,25 +162,33 @@ export function useWebSocket() {
             };
             addAlert(alert);
           } else if (incoming.type === 'message_update') {
+            if (skipDiscordWs) return;
             updateMessage(incoming.data);
           } else if (incoming.type === 'message_delete') {
+            if (skipDiscordWs) return;
             markMessageDeleted(incoming.data);
           } else if (incoming.type === 'reaction_update') {
+            if (skipDiscordWs) return;
             const { channelId, messageId, emoji, delta } = incoming.data;
             updateReaction(channelId, messageId, emoji, delta);
           } else if (incoming.type === 'contract') {
+            if (skipDiscordWs) return;
             const entry = incoming.data as ContractEntry;
             addContract(entry);
           } else if (incoming.type === 'contract_enrichment') {
+            if (skipDiscordWs) return;
             const entry = incoming.data as ContractEntry;
             enrichContract(entry);
           } else if (incoming.type === 'chain_update') {
+            if (skipDiscordWs) return;
             const { address, evmChain } = incoming.data as { address: string; evmChain: string };
             updateContractChain(address, evmChain);
           } else if (incoming.type === 'gateway_ready') {
-            fetchGuilds();
-            fetchDMChannels();
-            fetchHistory();
+            if (!skipDiscordWs) {
+              fetchGuilds();
+              fetchDMChannels();
+              fetchHistory();
+            }
           } else if (incoming.type === 'telegram_ready') {
             fetchTelegramChats();
             fetchHistory();
@@ -182,11 +196,13 @@ export function useWebSocket() {
           } else if (incoming.type === 'fomo_trade') {
             addFomoTrade(incoming.data);
           } else if (incoming.type === 'gateway_auth_failed') {
-            setGatewayAuthError(
-              incoming.error ?? 'Discord token authentication failed. Please check your token in settings.',
-              incoming.tokenBlocked,
-            );
-            fetchMaskedTokens();
+            if (!skipDiscordWs) {
+              setGatewayAuthError(
+                incoming.error ?? 'Discord token authentication failed. Please check your token in settings.',
+                incoming.tokenBlocked,
+              );
+              fetchMaskedTokens();
+            }
           }
         } catch {
           // ignore malformed
@@ -194,7 +210,9 @@ export function useWebSocket() {
       };
 
       ws.onclose = () => {
-        setConnected(false);
+        if (!(isClientGatewayMode() && hasLocalDiscordTokens())) {
+          setConnected(false);
+        }
         if (disposed) return;
         console.log('[WS] Disconnected, reconnecting in 3s...');
         reconnectTimer = setTimeout(connect, 3000);

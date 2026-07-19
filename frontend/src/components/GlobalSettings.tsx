@@ -9,6 +9,7 @@ import { previewSound, previewPreset, PRESET_SOUNDS } from '../utils/notificatio
 import ColorPickerWithAlpha from './ColorPickerWithAlpha';
 import TelegramSetup from './TelegramSetup';
 import { isHostedMode, getAccessToken } from '../lib/supabase';
+import { isClientGatewayMode } from '../discord/clientGateway';
 
 type Section = 'tokens' | 'general' | 'contracts' | 'sounds' | 'pushover' | 'keywords' | 'mentions' | 'users' | 'guilds' | 'help';
 
@@ -510,6 +511,11 @@ export default function GlobalSettings() {
                   <h3 className="text-base sm:text-base sm:text-lg font-semibold text-white mb-1">Discord Tokens</h3>
                   <p className="text-xs sm:text-sm text-discord-text-muted mb-3 sm:mb-4">
                     Manage your Discord authentication tokens. Multiple tokens allow monitoring across different accounts.
+                    {isClientGatewayMode() && (
+                      <span className="block mt-2 text-discord-yellow/90">
+                        Hosted mode: tokens are stored only in this browser and connect directly to Discord — they never touch our servers.
+                      </span>
+                    )}
                   </p>
 
                   {maskedTokens.length > 0 && (

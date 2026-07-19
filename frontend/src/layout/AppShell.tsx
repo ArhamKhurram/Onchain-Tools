@@ -2,6 +2,7 @@ import { NavLink, Outlet, useNavigate } from 'react-router-dom';
 import { Settings } from 'lucide-react';
 import { useAuthSession } from '../hooks/useAuthSession';
 import { isHostedMode, getSupabase } from '../lib/supabase';
+import OctLogo from '../components/OctLogo';
 
 const NAV: { to: string; label: string; end?: boolean }[] = [
   { to: '/dashboard', label: 'Dashboard', end: true },
@@ -34,12 +35,8 @@ export default function AppShell() {
     <div className="flex flex-col h-full w-full bg-oct-bg font-sans">
       <header className="relative shrink-0 h-12 px-4 flex items-center gap-6 border-b-2 border-black bg-oct-surface">
         <NavLink to="/dashboard" className="flex items-center gap-2 shrink-0">
-          <span className="text-lg font-extrabold tracking-tight text-white font-sans bg-oct-accent border-2 border-black px-2 leading-tight shadow-oct-hard-sm">
-            OCT
-          </span>
-          <span className="hidden sm:inline font-mono text-[10px] uppercase tracking-widest text-oct-muted">
-            Onchain Tools
-          </span>
+          <OctLogo size="sm" showSubtitle className="hidden sm:flex" />
+          <OctLogo size="sm" className="sm:hidden" />
         </NavLink>
 
         <nav className="flex items-center gap-1 flex-1 min-w-0 overflow-x-auto scrollbar-none">
