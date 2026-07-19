@@ -19,6 +19,16 @@ export interface FomoTrackedUserRow {
 
 let _client: SupabaseClient | null = null;
 
+function resolveSupabaseServiceConfig(): { url: string; key: string } | null {
+  const url = process.env.SUPABASE_URL?.trim();
+  const key = (
+    process.env.SUPABASE_SERVICE_KEY ??
+    process.env.SUPABASE_SERVICE_ROLE_KEY
+  )?.trim();
+  if (!url || !key) return null;
+  return { url, key };
+}
+
 /**
  * Lazily construct the process-wide Supabase service client used for all
  * fomo_* table access. Returns null when Supabase is not configured (e.g. local
@@ -26,10 +36,9 @@ let _client: SupabaseClient | null = null;
  */
 export function getFomoServiceClient(): SupabaseClient | null {
   if (_client) return _client;
-  const url = process.env.SUPABASE_URL;
-  const key = process.env.SUPABASE_SERVICE_KEY;
-  if (!url || !key) return null;
-  _client = createClient(url, key, { auth: { persistSession: false } });
+  const cfg = resolveSupabaseServiceConfig();
+  if (!cfg) return null;
+  _client = createClient(cfg.url, cfg.key, { auth: { persistSession: false } });
   return _client;
 }
 

@@ -10,6 +10,19 @@ export default defineConfig({
   define: {
     __APP_VERSION__: JSON.stringify(pkg.version),
   },
+  build: {
+    rollupOptions: {
+      output: {
+        manualChunks(id) {
+          if (!id.includes('node_modules')) return;
+          if (id.includes('react-dom') || id.includes('/react/')) return 'vendor-react';
+          if (id.includes('react-router')) return 'vendor-router';
+          if (id.includes('@supabase')) return 'vendor-supabase';
+          if (id.includes('lucide-react')) return 'vendor-icons';
+        },
+      },
+    },
+  },
   server: {
     port: 5173,
     strictPort: true,

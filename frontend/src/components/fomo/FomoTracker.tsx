@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { AlertTriangle, CheckCircle2, Plus, RefreshCw, Trash2, UserPlus, Users } from 'lucide-react';
+import { AlertTriangle, Bell, BellOff, CheckCircle2, Plus, RefreshCw, Trash2, UserPlus, Users } from 'lucide-react';
 import { useFomoTracking } from '../../hooks/useFomoTracking';
 import type { FomoTrackedUser } from '../../types/fomo';
 import FomoTradeFeed from './FomoTradeFeed';
@@ -16,12 +16,13 @@ function formatDate(iso: string): string {
   return d.toLocaleDateString([], { year: 'numeric', month: 'short', day: 'numeric' });
 }
 
-export default function FomoTracker() {
-  const { tracked, loading, error, refresh, track, untrack } = useFomoTracking();
+export default function FomoTracker({ userId }: { userId: string }) {
+  const { tracked, loading, error, refresh, track, untrack, updateNotifyPushover } = useFomoTracking(userId);
   const [query, setQuery] = useState('');
   const [submitting, setSubmitting] = useState(false);
   const [feedback, setFeedback] = useState<Feedback | null>(null);
   const [removingId, setRemovingId] = useState<string | null>(null);
+  const [togglingPushoverId, setTogglingPushoverId] = useState<string | null>(null);
 
   const handleTrack = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -54,6 +55,15 @@ export default function FomoTracker() {
       setFeedback({ tone: 'error', text: res.error || 'Failed to untrack user.' });
     }
     setRemovingId(null);
+  };
+
+  const handleTogglePushover = async (user: FomoTrackedUser) => {
+    setTogglingPushoverId(user.id);
+    const res = await updateNotifyPushover(user.id, !user.notify_pushover);
+    if (!res.ok) {
+      setFeedback({ tone: 'error', text: res.error || 'Failed to update Pushover setting.' });
+    }
+    setTogglingPushoverId(null);
   };
 
   const feedbackClass =
@@ -161,6 +171,25 @@ export default function FomoTracker() {
                           Tracked {formatDate(user.created_at)}
                         </div>
                       </div>
+                      <button
+                        type="button"
+                        onClick={() => handleTogglePushover(user)}
+                        disabled={togglingPushoverId === user.id}
+                        className={`p-1.5 rounded-md transition-colors disabled:opacity-50 ${
+                          user.notify_pushover
+                            ? 'text-oct-accent hover:bg-oct-accent-dim'
+                            : 'text-oct-muted hover:text-oct-text hover:bg-oct-bg'
+                        }`}
+                        title={user.notify_pushover ? 'Pushover on — click to disable' : 'Pushover off — click to enable'}
+                      >
+                        {togglingPushoverId === user.id ? (
+                          <span className="block w-3.5 h-3.5 border-2 border-oct-accent border-t-transparent rounded-full animate-spin" />
+                        ) : user.notify_pushover ? (
+                          <Bell size={14} />
+                        ) : (
+                          <BellOff size={14} />
+                        )}
+                      </button>
                       <button
                         type="button"
                         onClick={() => handleRemove(user)}

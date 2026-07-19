@@ -1,6 +1,7 @@
 import { useEffect } from 'react';
 import { useWebSocket } from './hooks/useWebSocket';
 import { useClientGateway } from './hooks/useClientGateway';
+import { useSignalConvergence } from './hooks/useSignalConvergence';
 import { useAppStore } from './stores/appStore';
 import { isHostedMode } from './lib/supabase';
 import { useAuthSession } from './hooks/useAuthSession';
@@ -27,6 +28,7 @@ function useZoomScale() {
 export default function AppProviders({ children }: { children: React.ReactNode }) {
   useWebSocket();
   useClientGateway();
+  useSignalConvergence();
   useZoomScale();
 
   const { ready, userId, isAuthenticated } = useAuthSession();

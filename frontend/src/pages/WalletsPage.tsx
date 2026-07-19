@@ -61,7 +61,7 @@ export default function WalletsPage() {
     <div className="h-full min-h-0 flex flex-col bg-oct-bg">
       <ConsoleSubnav tabs={WALLETS_TABS} active={view} onChange={setView} />
       <div className="flex-1 min-h-0">
-        {view === 'fomo' ? <FomoTracker /> : <WalletTracker userId={userId} />}
+        {view === 'fomo' ? <FomoTracker userId={userId} /> : <WalletTracker userId={userId} />}
       </div>
     </div>
   );

@@ -78,6 +78,31 @@ async function resolveFomoUser(client: FomoClient, query: string): Promise<Resol
 export function createFomoRouter(): Router {
   const router = Router();
 
+  // POST /api/fomo/resolve — body { query } → resolve a FOMO user (no DB write).
+  // The console persists tracked users via Supabase RLS; this route only needs the
+  // shared FOMO service account to look up handles.
+  router.post('/resolve', async (req, res) => {
+    const query = typeof req.body?.query === 'string' ? req.body.query.trim() : '';
+    if (!query) return res.status(400).json({ error: 'A search query is required.' });
+
+    const client = await ensureSharedFomoClient();
+    if (!client) {
+      return res.status(503).json({
+        error: 'FOMO service account is not configured. Seed fomo_poll_state.refresh_token or set FOMO_REFRESH_TOKEN.',
+      });
+    }
+
+    try {
+      const resolved = await resolveFomoUser(client, query);
+      if (!resolved) {
+        return res.status(404).json({ error: `No FOMO user found for "${query}".` });
+      }
+      res.json(resolved);
+    } catch (err: any) {
+      res.status(500).json({ error: safeError(err, 'Failed to resolve FOMO user') });
+    }
+  });
+
   // GET /api/fomo/tracked — list the authenticated user's tracked FOMO users.
   router.get('/tracked', async (req, res) => {
     const userId = getUserId(req);
@@ -149,6 +174,33 @@ export function createFomoRouter(): Router {
       res.status(201).json(data as FomoTrackedUserRow);
     } catch (err: any) {
       res.status(500).json({ error: safeError(err, 'Failed to track FOMO user') });
+    }
+  });
+
+  // PATCH /api/fomo/tracked/:id — update per-user notification prefs.
+  router.patch('/tracked/:id', async (req, res) => {
+    const userId = getUserId(req);
+    const db = getFomoServiceClient();
+    if (!db) return res.status(503).json({ error: 'FOMO tracking is not available (storage not configured).' });
+
+    const notifyPushover = req.body?.notify_pushover;
+    if (typeof notifyPushover !== 'boolean') {
+      return res.status(400).json({ error: 'notify_pushover (boolean) is required.' });
+    }
+
+    try {
+      const { data, error } = await db
+        .from('fomo_tracked_users')
+        .update({ notify_pushover: notifyPushover })
+        .eq('id', req.params.id)
+        .eq('user_id', userId)
+        .select('id, user_id, fomo_user_id, fomo_handle, display_name, notify_pushover, created_at')
+        .maybeSingle();
+      if (error) throw error;
+      if (!data) return res.status(404).json({ error: 'Tracked FOMO user not found.' });
+      res.json(data as FomoTrackedUserRow);
+    } catch (err: any) {
+      res.status(500).json({ error: safeError(err, 'Failed to update tracked FOMO user') });
     }
   });
 

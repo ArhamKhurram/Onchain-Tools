@@ -1,6 +1,6 @@
 import { useEffect } from 'react';
 import { useAppStore } from '../stores/appStore';
-import { X, AlertTriangle, User, Search } from 'lucide-react';
+import { X, AlertTriangle, User, Search, Zap } from 'lucide-react';
 
 const AUTO_DISMISS_MS = 8000;
 
@@ -25,18 +25,22 @@ export default function AlertToast() {
         <div
           key={alert.id}
           className={`flex items-start gap-3 p-3 rounded-cockpit shadow-oct-hard border-2 border-black animate-slide-in bg-oct-surface border-l-[6px] ${
-            alert.type === 'highlighted_user'
-              ? 'border-l-oct-accent'
-              : alert.type === 'keyword_match'
-                ? 'border-l-orange-400'
-                : 'border-l-oct-yellow'
+            alert.type === 'signal_convergence'
+              ? 'border-l-oct-green'
+              : alert.type === 'highlighted_user'
+                ? 'border-l-oct-accent'
+                : alert.type === 'keyword_match'
+                  ? 'border-l-orange-400'
+                  : 'border-l-oct-yellow'
           }`}
           style={{
             animation: 'slideIn 0.3s ease-out',
           }}
         >
           <div className="mt-0.5">
-            {alert.type === 'highlighted_user' ? (
+            {alert.type === 'signal_convergence' ? (
+              <Zap size={18} className="text-oct-green" />
+            ) : alert.type === 'highlighted_user' ? (
               <User size={18} className="text-discord-blurple" />
             ) : alert.type === 'keyword_match' ? (
               <Search size={18} className="text-orange-400" />

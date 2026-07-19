@@ -311,7 +311,7 @@ export interface ContractEntry {
 
 export interface Alert {
   id: string;
-  type: 'highlighted_user' | 'contract_address' | 'keyword_match';
+  type: 'highlighted_user' | 'contract_address' | 'keyword_match' | 'signal_convergence';
   message: FrontendMessage;
   reason: string;
   timestamp: number;

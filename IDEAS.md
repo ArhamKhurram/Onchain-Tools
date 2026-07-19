@@ -20,7 +20,10 @@ who tracks them.
 - **UI:** tab on the Wallets page — `Wallets` (on-chain) | `FOMO Tracking` (FOMO users).
 - **Delivery:** in-app live feed + Pushover.
 - **Merged so far:** `backend/src/fomo/client.ts` (`FomoClient`) + `types.ts`;
-  Playwright deps added; `FOMO_*` documented in `backend/.env.example`.
+  Playwright deps added; `FOMO_*` documented in `backend/.env.example`;
+  tracked-user CRUD via Supabase RLS (console reads/writes `fomo_tracked_users`
+  directly; backend `/api/fomo/resolve` for handle lookup only); per-user
+  Pushover toggle on the FOMO tab.
 - **Blocked on:** shared `FOMO_REFRESH_TOKEN` to verify whether
   `/feed/tradingActivity` is a global firehose or following-only (changes whether
   adding a tracked user requires the shared account to follow them first).
@@ -29,11 +32,19 @@ who tracks them.
 
 ## Planned next
 
-### Signal convergence alerts ⭐
-When a contract appears in the Discord/Telegram feed **and** a tracked FOMO user
-buys the same token within X minutes → high-priority alert. Cross-source
-confirmation (caller chatter + verified social buy) is the key differentiator.
-Build after core FOMO tracking works.
+_(Nothing committed yet — pick from backlog below.)_
+
+---
+
+## Recently shipped (Jul 2026)
+
+- **FOMO storage fix** — console persists tracked users via Supabase RLS; backend
+  accepts `SUPABASE_SERVICE_ROLE_KEY` alias; resolve-only REST route for lookups.
+- **Per-tracked-user Pushover toggle** — bell control on each FOMO row.
+- **Signal convergence v1** — in-app alert when a contract call and a tracked
+  FOMO buy hit the same token within 30 minutes.
+- **Console code-splitting** — lazy-loaded routes, lazy `GlobalSettings`, vendor
+  manualChunks in Vite.
 
 ---
 
@@ -65,9 +76,13 @@ One place for every trigger — Discord highlight, contract detected, FOMO
 tracked-user buy, (future) wallet movement — with per-source rules. Pushover is
 already wired; this unifies routing/config.
 
-### Per-tracked-user notification rules
+### Per-tracked-user notification rules (beyond Pushover on/off)
 Filters per tracked FOMO user: buys only, min $ size threshold, specific chains,
 custom sound. Routes through existing Pushover triggers.
+
+### Signal convergence v2
+Pushover + configurable time window; surface convergence badge on contract rows;
+dedupe across tabs.
 
 ### FOMO auth — Options B / C (revisit later)
 We chose Option A (shared account). Alternatives if it hits rate limits / ToS
@@ -85,7 +100,6 @@ reusable backend service; the Discord layer is future work.
 ---
 
 ## Known gaps / tech debt
-- Frontend bundle > 500 kB (single chunk); consider code-splitting.
 - Prod Supabase (`vmlxyqzjdaegkfylxfka`) migrations status vs dev — verify before
   relying on prod schema.
 - FOMO integration needs Chromium at runtime → `nixpacks.toml` on Railway must
