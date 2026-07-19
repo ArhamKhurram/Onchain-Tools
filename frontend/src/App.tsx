@@ -8,13 +8,14 @@ import CallersPage from './pages/CallersPage';
 import SettingsPage from './pages/SettingsPage';
 import LoginPage from './pages/LoginPage';
 
+const basename = import.meta.env.BASE_URL.replace(/\/$/, '');
+
 export default function App() {
   return (
-    <BrowserRouter>
+    <BrowserRouter basename={basename}>
       <AppProviders>
         <Routes>
-          <Route path="/" element={<Navigate to="/dashboard" replace />} />
-          <Route path="/dashboard" element={<AppShell />}>
+          <Route path="/" element={<AppShell />}>
             <Route index element={<DashboardPage />} />
             <Route path="feed" element={<FeedPage />} />
             <Route path="wallets" element={<WalletsPage />} />
@@ -22,7 +23,7 @@ export default function App() {
             <Route path="settings" element={<SettingsPage />} />
             <Route path="login" element={<LoginPage />} />
           </Route>
-          <Route path="*" element={<Navigate to="/dashboard" replace />} />
+          <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>
       </AppProviders>
     </BrowserRouter>

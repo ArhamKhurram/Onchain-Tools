@@ -2,21 +2,19 @@ import { NavLink, Outlet, useNavigate } from 'react-router-dom';
 import { Settings } from 'lucide-react';
 import { useAuthSession } from '../hooks/useAuthSession';
 import { isHostedMode, getSupabase } from '../lib/supabase';
-import OctLogo from '../components/OctLogo';
+import { LANDING_URL, routes } from '../lib/routes';
 
 const NAV: { to: string; label: string; end?: boolean }[] = [
-  { to: '/dashboard', label: 'Dashboard', end: true },
-  { to: '/dashboard/feed', label: 'Feed' },
-  { to: '/dashboard/wallets', label: 'Wallets' },
-  { to: '/dashboard/callers', label: 'Callers' },
+  { to: routes.home, label: 'Home', end: true },
+  { to: routes.feed, label: 'Feed' },
+  { to: routes.wallets, label: 'Wallets' },
+  { to: routes.callers, label: 'Callers' },
 ];
 
 function navClass({ isActive }: { isActive: boolean }) {
   return [
-    'px-3 py-1.5 text-sm font-bold uppercase tracking-wide rounded-cockpit border-2 transition-all duration-100',
-    isActive
-      ? 'text-white bg-oct-accent border-black shadow-oct-hard-sm'
-      : 'text-oct-muted border-transparent hover:text-oct-text hover:border-oct-border-bright',
+    'px-2.5 py-1 text-[11px] sm:text-xs font-mono uppercase tracking-[0.14em] transition-opacity',
+    isActive ? 'text-oct-accent opacity-100' : 'text-oct-muted opacity-70 hover:opacity-100',
   ].join(' ');
 }
 
@@ -28,18 +26,25 @@ export default function AppShell() {
     if (isHostedMode) {
       await getSupabase().auth.signOut();
     }
-    navigate('/dashboard');
+    navigate(routes.home);
   };
 
   return (
     <div className="flex flex-col h-full w-full bg-oct-bg font-sans">
-      <header className="relative shrink-0 h-12 px-4 flex items-center gap-6 border-b-2 border-black bg-oct-surface">
-        <NavLink to="/dashboard" className="flex items-center gap-2 shrink-0">
-          <OctLogo size="sm" showSubtitle className="hidden sm:flex" />
-          <OctLogo size="sm" className="sm:hidden" />
-        </NavLink>
+      <header className="relative shrink-0 h-12 px-4 sm:px-6 flex items-center gap-4 border-b-2 border-black bg-black">
+        <a
+          href={LANDING_URL}
+          className="font-display text-lg sm:text-xl tracking-tight text-white hover:opacity-90 transition-opacity shrink-0"
+          title="Back to landing page"
+        >
+          OCT
+        </a>
 
-        <nav className="flex items-center gap-1 flex-1 min-w-0 overflow-x-auto scrollbar-none">
+        <span className="hidden md:inline font-mono text-[10px] uppercase tracking-[0.2em] text-oct-muted/80">
+          ONCHAIN.TOOLS
+        </span>
+
+        <nav className="flex items-center gap-1 sm:gap-2 flex-1 min-w-0 overflow-x-auto scrollbar-none ml-2 sm:ml-6">
           {NAV.map(({ to, label, end }) => (
             <NavLink key={to} to={to} end={end} className={navClass}>
               {label}
@@ -49,27 +54,29 @@ export default function AppShell() {
 
         <div className="flex items-center gap-2 shrink-0">
           <NavLink
-            to="/dashboard/settings"
+            to={routes.settings}
             className={({ isActive }) =>
-              `p-2 rounded-cockpit border-2 transition-all duration-100 ${isActive ? 'text-white bg-oct-accent border-black shadow-oct-hard-sm' : 'text-oct-muted border-transparent hover:text-oct-text hover:border-oct-border-bright'}`
+              `p-1.5 font-mono text-[10px] uppercase tracking-wide transition-opacity ${
+                isActive ? 'text-oct-accent opacity-100' : 'text-oct-muted opacity-70 hover:opacity-100'
+              }`
             }
             title="Settings"
           >
-            <Settings size={18} />
+            <Settings size={16} />
           </NavLink>
 
           {isHostedMode && !isAuthenticated ? (
             <button
               type="button"
-              onClick={() => navigate('/dashboard/login')}
-              className="brutal-btn-ghost px-3 py-1.5 text-sm"
+              onClick={() => navigate(routes.login)}
+              className="font-mono text-[10px] sm:text-xs uppercase tracking-wide text-white border border-white/30 px-2.5 py-1 hover:bg-white hover:text-black transition-colors"
             >
-              Sign in
+              [ Sign in ]
             </button>
           ) : isAuthenticated && user ? (
             <div className="group flex items-center gap-2">
               <span
-                className="hidden sm:inline text-xs text-oct-muted max-w-[160px] truncate"
+                className="hidden sm:inline font-mono text-[10px] text-oct-muted max-w-[140px] truncate"
                 title={user.email ?? undefined}
               >
                 <span className="group-hover:hidden">Signed in</span>
@@ -78,14 +85,13 @@ export default function AppShell() {
               <button
                 type="button"
                 onClick={handleSignOut}
-                className="px-2 py-1 text-xs text-oct-muted hover:text-oct-text transition-colors"
+                className="font-mono text-[10px] text-oct-muted hover:text-white transition-colors uppercase"
               >
-                Sign out
+                Out
               </button>
             </div>
           ) : null}
         </div>
-        <div className="cockpit-nav-stripe" aria-hidden />
       </header>
 
       <main className="flex-1 min-h-0 overflow-hidden">

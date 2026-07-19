@@ -1,4 +1,4 @@
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,900&family=IBM+Plex+Mono:wght@400;500&display=swap');
 
 @tailwind base;
 @tailwind components;
@@ -10,52 +10,81 @@
   }
 
   body {
-    overflow-x: hidden;
-    background-color: #08080a;
-    font-family: Inter, system-ui, -apple-system, sans-serif;
+    overflow: hidden;
+    background-color: #000;
+    font-family: 'IBM Plex Mono', ui-monospace, monospace;
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
   }
 
   ::selection {
-    background-color: rgba(255, 23, 68, 0.35);
+    background-color: rgba(255, 23, 68, 0.45);
     color: #fff;
   }
 
   ::-webkit-scrollbar {
-    width: 6px;
+    width: 4px;
   }
 
   ::-webkit-scrollbar-track {
-    background: #111114;
+    background: transparent;
   }
 
   ::-webkit-scrollbar-thumb {
-    background: #2a2a32;
-    border-radius: 3px;
-  }
-
-  ::-webkit-scrollbar-thumb:hover {
-    background: #ff1744;
+    background: rgba(0, 0, 0, 0.35);
+    border-radius: 2px;
   }
 }
 
 @layer components {
-  .code-block {
-    background: #18181c;
-    border: 1px solid #1f1f24;
-    border-radius: 8px;
-    padding: 0.75rem 1rem;
-    font-family: 'JetBrains Mono', 'Fira Code', 'Consolas', monospace;
-    font-size: 0.875rem;
-    overflow-x: auto;
-    color: #e8e8ec;
+  .font-display {
+    font-family: 'Fraunces', Georgia, 'Times New Roman', serif;
+    font-weight: 900;
+    font-variation-settings: 'SOFT' 0, 'WONK' 1;
   }
 
-  .oct-gradient-text {
-    background: linear-gradient(135deg, #ffffff 0%, #ff1744 100%);
-    -webkit-background-clip: text;
-    -webkit-text-fill-color: transparent;
-    background-clip: text;
+  /* 3D crystal */
+  .crystal-scene {
+    width: min(36vw, 220px);
+    height: min(36vw, 220px);
+    perspective: 900px;
   }
+
+  .crystal-body {
+    width: 100%;
+    height: 100%;
+    position: relative;
+    transform-style: preserve-3d;
+    animation: crystal-spin 14s linear infinite;
+  }
+
+  @keyframes crystal-spin {
+    from {
+      transform: rotateX(18deg) rotateY(0deg);
+    }
+    to {
+      transform: rotateX(18deg) rotateY(360deg);
+    }
+  }
+
+  .crystal-face {
+    position: absolute;
+    inset: 0;
+    margin: auto;
+    width: 120px;
+    height: 120px;
+    background: linear-gradient(135deg, rgba(255, 255, 255, 0.55) 0%, rgba(255, 80, 80, 0.35) 45%, rgba(0, 0, 0, 0.15) 100%);
+    border: 1px solid rgba(255, 255, 255, 0.35);
+    backdrop-filter: blur(2px);
+    clip-path: polygon(50% 0%, 100% 38%, 82% 100%, 18% 100%, 0% 38%);
+  }
+
+  .crystal-face-1 { transform: rotateY(0deg) translateZ(70px); }
+  .crystal-face-2 { transform: rotateY(45deg) translateZ(70px); }
+  .crystal-face-3 { transform: rotateY(90deg) translateZ(70px); }
+  .crystal-face-4 { transform: rotateY(135deg) translateZ(70px); }
+  .crystal-face-5 { transform: rotateY(180deg) translateZ(70px); }
+  .crystal-face-6 { transform: rotateY(225deg) translateZ(70px); }
+  .crystal-face-7 { transform: rotateY(270deg) translateZ(70px); }
+  .crystal-face-8 { transform: rotateY(315deg) translateZ(70px); }
 }

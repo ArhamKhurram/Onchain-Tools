@@ -1,4 +1,5 @@
 import { Link } from 'react-router-dom';
+import { routes } from '../../lib/routes';
 import { Hash, Plus, Settings, AtSign, FileText, LayoutGrid } from 'lucide-react';
 import { useAppStore } from '../../stores/appStore';
 
@@ -128,7 +129,7 @@ export default function FeedToolbar() {
         </button>
 
         <Link
-          to="/dashboard/callers?view=feed"
+          to={`${routes.callers}?view=feed`}
           className="flex items-center gap-1 px-2 py-1 rounded-md text-xs font-medium text-oct-muted hover:text-oct-text hover:bg-oct-surface-raised transition-colors"
           title="Contract feed"
         >

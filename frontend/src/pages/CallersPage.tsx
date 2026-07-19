@@ -4,6 +4,7 @@ import { TrendingUp } from 'lucide-react';
 import { useAuthSession } from '../hooks/useAuthSession';
 import ContractDashboard from '../components/ContractDashboard';
 import RadarTable from '../components/callers/RadarTable';
+import { routes } from '../lib/routes';
 
 type CallersView = 'feed' | 'radar';
 
@@ -39,7 +40,7 @@ export default function CallersPage() {
             Radar and Contract Feed use your personal detections from Discord/Telegram.
           </p>
           <Link
-            to="/dashboard/login"
+            to={routes.login}
             className="brutal-btn-ghost px-5 py-2.5 text-sm"
           >
             Sign in

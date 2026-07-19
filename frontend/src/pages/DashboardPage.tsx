@@ -1,93 +1,142 @@
-import { Radio, Wallet, TrendingUp, MessageSquare } from 'lucide-react';
+import { MessageSquare, Wallet, TrendingUp, Radio, ArrowRight } from 'lucide-react';
+import { Link } from 'react-router-dom';
 import { useAuthSession } from '../hooks/useAuthSession';
 import { useAppStore } from '../stores/appStore';
-import DashboardCard from '../components/dashboard/DashboardCard';
+import { routes } from '../lib/routes';
+
+const modules = [
+  {
+    num: '01',
+    title: 'FEED',
+    desc: 'Live Discord & Telegram streams aggregated into rooms. Multi-pane layout, highlights, keyword alerts.',
+    to: routes.feed,
+    icon: MessageSquare,
+    liveKey: 'discord' as const,
+  },
+  {
+    num: '02',
+    title: 'TRACK',
+    desc: 'Private wallet watchlist scoped to your account. Alerts when addresses you care about move.',
+    to: routes.wallets,
+    icon: Wallet,
+    liveKey: 'auth' as const,
+  },
+  {
+    num: '03',
+    title: 'CALL',
+    desc: 'Contract radar — Solana & EVM addresses the moment they drop. One-click trade links.',
+    to: routes.callers,
+    icon: TrendingUp,
+    liveKey: null,
+  },
+];
 
 export default function DashboardPage() {
   const { isAuthenticated } = useAuthSession();
   const authStatus = useAppStore((s) => s.authStatus);
+  const connected = useAppStore((s) => s.connected);
   const rooms = useAppStore((s) => s.rooms);
 
-  const discordConnected = authStatus?.configured ?? false;
+  const discordConfigured = authStatus?.configured ?? false;
 
   return (
     <div className="h-full overflow-y-auto bg-oct-bg">
-      <div className="p-6 sm:p-8 max-w-4xl mx-auto">
-        <header className="mb-8">
-          <p className="inline-block font-mono text-[10px] font-bold uppercase tracking-[0.2em] text-white bg-oct-accent border-2 border-black px-2 py-0.5 mb-3 shadow-oct-hard-sm">
-            SYS / OVERVIEW
+      <section className="bg-oct-flame text-black px-6 sm:px-10 py-10 sm:py-14 border-b-2 border-black">
+        <div className="max-w-6xl mx-auto">
+          <p className="font-mono text-xs tracking-[0.2em] mb-4">[ CONSOLE ]</p>
+          <h1 className="font-display text-[clamp(2.25rem,8vw,5rem)] leading-[0.92] tracking-tight">
+            YOUR ONCHAIN
+            <span className="block">TERMINAL.</span>
+          </h1>
+          <p className="font-mono text-xs sm:text-sm mt-5 max-w-xl opacity-80 leading-relaxed">
+            Feed, track, and call — pick a module below or use the nav. Discord token stays in your browser only.
           </p>
-          <h1 className="text-3xl font-extrabold uppercase text-oct-text tracking-tight">Dashboard</h1>
-          <p className="text-sm text-oct-muted mt-1 max-w-lg">
-            Cockpit overview — select a module below or use the nav.
-          </p>
-        </header>
-
-        <div className="grid gap-3 sm:grid-cols-2">
-          <DashboardCard
-            to="/dashboard/feed"
-            title="Feed"
-            description="Live Discord and Telegram streams in multi-pane layout."
-            icon={MessageSquare}
-            liveEdge={discordConnected}
-            status={{
-              label: discordConnected
-                ? `LINK_OK · ${rooms.length} RM`
-                : 'AWAIT_DISCORD → Feed',
-              variant: discordConnected ? 'live' : 'pending',
-              mono: true,
-            }}
-          />
-
-          <DashboardCard
-            to="/dashboard/wallets"
-            title="Wallets"
-            description="Private watchlist — scoped to your account only."
-            icon={Wallet}
-            status={{
-              label: isAuthenticated ? 'AUTH_OK' : 'SIGN_IN_REQ →',
-              variant: isAuthenticated ? 'neutral' : 'pending',
-              mono: true,
-            }}
-          />
-
-          <DashboardCard
-            to="/dashboard/callers"
-            title="Callers"
-            description="Contract radar and caller velocity from your feeds."
-            icon={TrendingUp}
-            status={{
-              label: 'PHASE_6 · OFFLINE',
-              variant: 'pending',
-              mono: true,
-            }}
-          />
-
-          <DashboardCard
-            title="Status"
-            description="Runtime telemetry for this session."
-            icon={Radio}
-            liveEdge
-          >
-            <ul className="pl-8 font-mono text-[11px] text-oct-muted space-y-1.5 border-t border-oct-border pt-3 mt-1">
-              <li className="flex justify-between gap-4">
-                <span>ACCOUNT</span>
-                <span className="text-oct-text">{isAuthenticated ? 'SIGNED_IN' : 'GUEST'}</span>
-              </li>
-              <li className="flex justify-between gap-4">
-                <span>DISCORD_GW</span>
-                <span className={discordConnected ? 'text-oct-live' : 'text-oct-muted'}>
-                  {discordConnected ? 'CONNECTED' : 'STANDBY'}
-                </span>
-              </li>
-              <li className="flex justify-between gap-4">
-                <span>ROOMS</span>
-                <span className="text-oct-text tabular-nums">{rooms.length}</span>
-              </li>
-            </ul>
-          </DashboardCard>
         </div>
-      </div>
+      </section>
+
+      <section className="px-6 sm:px-10 py-10 sm:py-12">
+        <div className="max-w-6xl mx-auto">
+          <p className="font-mono text-xs tracking-[0.2em] text-oct-muted mb-6">[ MODULES ]</p>
+
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-8 md:gap-6">
+            {modules.map((m) => {
+              const Icon = m.icon;
+              const isLive =
+                m.liveKey === 'discord' ? discordConfigured && connected :
+                m.liveKey === 'auth' ? isAuthenticated :
+                false;
+
+              return (
+                <Link
+                  key={m.title}
+                  to={m.to}
+                  className="group flex flex-col border-t-2 border-oct-accent pt-6 hover:opacity-90 transition-opacity"
+                >
+                  <div className="flex items-center justify-between mb-4">
+                    <span className="font-mono text-xs tracking-[0.15em] text-oct-muted">[ {m.num} ]</span>
+                    <Icon size={18} className="text-oct-muted group-hover:text-oct-accent transition-colors" />
+                  </div>
+                  <h2 className="font-display text-3xl sm:text-4xl text-oct-text tracking-tight mb-3">{m.title}</h2>
+                  <p className="font-mono text-xs sm:text-sm text-oct-muted leading-relaxed flex-1">{m.desc}</p>
+                  <div className="flex items-center justify-between mt-6">
+                    <span className="font-mono text-xs tracking-wide text-oct-accent group-hover:translate-x-1 transition-transform inline-flex items-center gap-1">
+                      ENTER <ArrowRight size={14} />
+                    </span>
+                    {isLive && (
+                      <span className="font-mono text-[10px] text-oct-accent uppercase tracking-wide flex items-center gap-1.5">
+                        <span className="w-1.5 h-1.5 rounded-full bg-oct-accent animate-pulse-live" />
+                        Live
+                      </span>
+                    )}
+                  </div>
+                </Link>
+              );
+            })}
+          </div>
+
+          <div className="mt-12 grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <div className="border-2 border-black bg-oct-surface p-5 shadow-oct-hard-sm">
+              <div className="flex items-center gap-2 mb-3">
+                <Radio size={16} className="text-oct-accent" />
+                <h3 className="font-mono text-xs uppercase tracking-[0.15em] text-oct-text">Session</h3>
+              </div>
+              <ul className="font-mono text-[11px] text-oct-muted space-y-2">
+                <li className="flex justify-between gap-4">
+                  <span>ACCOUNT</span>
+                  <span className="text-oct-text">{isAuthenticated ? 'SIGNED_IN' : 'GUEST'}</span>
+                </li>
+                <li className="flex justify-between gap-4">
+                  <span>DISCORD</span>
+                  <span className={discordConfigured ? 'text-oct-accent' : 'text-oct-muted'}>
+                    {discordConfigured ? (connected ? 'CONNECTED' : 'CONNECTING') : 'NOT_LINKED'}
+                  </span>
+                </li>
+                <li className="flex justify-between gap-4">
+                  <span>ROOMS</span>
+                  <span className="text-oct-text tabular-nums">{rooms.length}</span>
+                </li>
+              </ul>
+            </div>
+
+            <div className="border-2 border-black bg-oct-surface p-5 shadow-oct-hard-sm flex flex-col justify-between">
+              <div>
+                <p className="font-mono text-xs uppercase tracking-[0.15em] text-oct-muted mb-2">Quick start</p>
+                <p className="text-sm text-oct-muted leading-relaxed">
+                  {discordConfigured
+                    ? 'Open Feed to stream channels, or configure rooms in Settings.'
+                    : 'Connect Discord in Feed or Settings → Tokens to start streaming.'}
+                </p>
+              </div>
+              <Link
+                to={discordConfigured ? routes.feed : routes.settings}
+                className="mt-4 inline-flex font-mono text-xs uppercase tracking-wide text-oct-accent hover:underline"
+              >
+                {discordConfigured ? 'Open Feed →' : 'Connect Discord →'}
+              </Link>
+            </div>
+          </div>
+        </div>
+      </section>
     </div>
   );
 }

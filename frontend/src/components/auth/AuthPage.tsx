@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { Loader2, AlertCircle, Mail, Lock, ArrowLeft } from 'lucide-react';
 import { getSupabase } from '../../lib/supabase';
+import { consoleOriginPath } from '../../lib/routes';
 import OctLogo from '../OctLogo';
 
 type AuthView = 'login' | 'signup' | 'forgot';
@@ -64,7 +65,7 @@ export default function AuthPage({ onAuth }: { onAuth: () => void }) {
     try {
       const { error } = await supabase.auth.signInWithOAuth({
         provider: 'discord',
-        options: { redirectTo: `${window.location.origin}/dashboard` },
+        options: { redirectTo: `${window.location.origin}${consoleOriginPath('/')}` },
       });
       if (error) throw error;
     } catch (err: any) {

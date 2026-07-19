@@ -1,4 +1,4 @@
-@import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600;700&family=Space+Grotesk:wght@400;500;600;700&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,900&family=IBM+Plex+Mono:wght@400;500&family=JetBrains+Mono:wght@400;500;600;700&family=Space+Grotesk:wght@400;500;600;700&display=swap');
 
 @tailwind base;
 @tailwind components;
@@ -64,6 +64,12 @@ h3 {
 }
 
 @layer components {
+  .font-display {
+    font-family: 'Fraunces', Georgia, 'Times New Roman', serif;
+    font-weight: 900;
+    font-variation-settings: 'SOFT' 0, 'WONK' 1;
+  }
+
   /* Chunky, flat panel with a thick black border. */
   .brutal-card {
     @apply bg-oct-surface border-2 border-black rounded-cockpit shadow-oct-hard;

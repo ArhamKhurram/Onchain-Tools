@@ -17,6 +17,7 @@ export default {
           muted: '#9A9A9A',
           accent: '#FF2A2A',
           'accent-hover': '#E10600',
+          flame: '#ff1744',
           'accent-dim': 'rgba(255, 42, 42, 0.14)',
           // "live" now reads as the primary red so the app stays cohesively
           // red + black. Distinct pulse animation still signals real-time.
@@ -58,6 +59,7 @@ export default {
         },
       },
       fontFamily: {
+        display: ['Fraunces', 'Georgia', 'serif'],
         sans: ['"Space Grotesk"', 'system-ui', 'sans-serif'],
         mono: ['"JetBrains Mono"', 'ui-monospace', 'monospace'],
         discord: ['"Space Grotesk"', 'system-ui', 'sans-serif'],

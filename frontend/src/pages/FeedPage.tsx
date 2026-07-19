@@ -8,6 +8,7 @@ import RoomConfig from '../components/RoomConfig';
 import TokenSetup from '../components/TokenSetup';
 import GatewayAuthBanner from '../components/GatewayAuthBanner';
 import FeedToolbar from '../components/feed/FeedToolbar';
+import { routes } from '../lib/routes';
 
 export default function FeedPage() {
   const { isAuthenticated, ready } = useAuthSession();
@@ -48,13 +49,13 @@ export default function FeedPage() {
             Live chat requires an OCT account. Your Discord token stays in this browser — rooms and settings sync to your account.
           </p>
           <Link
-            to="/dashboard/login"
+            to={routes.login}
             className="brutal-btn inline-flex px-5 py-2.5 text-sm"
           >
             Sign in
           </Link>
           <p className="mt-4 text-xs text-oct-muted">
-            <Link to="/dashboard" className="text-oct-accent hover:underline">Back to dashboard</Link>
+            <Link to={routes.home} className="text-oct-accent hover:underline">Back to dashboard</Link>
           </p>
         </div>
       </div>

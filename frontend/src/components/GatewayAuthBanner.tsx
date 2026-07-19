@@ -1,5 +1,6 @@
 import { useNavigate } from 'react-router-dom';
 import { useAppStore } from '../stores/appStore';
+import { routes } from '../lib/routes';
 import { AlertTriangle, X } from 'lucide-react';
 
 export default function GatewayAuthBanner() {
@@ -18,7 +19,7 @@ export default function GatewayAuthBanner() {
         <button
           onClick={() => {
             setError(null);
-            navigate('/dashboard/settings');
+            navigate(routes.settings);
           }}
           className="underline font-semibold hover:text-white/80"
         >

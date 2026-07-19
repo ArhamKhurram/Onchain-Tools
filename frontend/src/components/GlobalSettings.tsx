@@ -1,5 +1,6 @@
 import { useState, useEffect, useMemo, useRef, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { routes } from '../lib/routes';
 import { useAppStore } from '../stores/appStore';
 import type { SolPlatform, EvmPlatform, ContractClickAction, BadgeClickAction, KeywordPattern, KeywordMatchMode, SoundSettings, SoundType, SoundConfig, PushoverPriority, PushoverSound, PushoverTriggers, PushoverFilters, MessageDisplay, SplitLayout } from '../types';
 import { PUSHOVER_SOUNDS } from '../types';
@@ -435,7 +436,7 @@ export default function GlobalSettings() {
             </button>
           )}
           <button
-            onClick={() => guardNavigation(() => navigate('/dashboard/feed'))}
+            onClick={() => guardNavigation(() => navigate(routes.feed))}
             className="p-1 rounded hover:bg-discord-hover/50 text-discord-text-muted hover:text-white transition-colors"
             title="Back to feed"
           >
@@ -474,7 +475,7 @@ export default function GlobalSettings() {
             </button>
           )}
           <button
-            onClick={() => guardNavigation(() => navigate('/dashboard/feed'))}
+            onClick={() => guardNavigation(() => navigate(routes.feed))}
             className="p-1 rounded hover:bg-discord-hover/50 text-discord-text-muted hover:text-white transition-colors"
             title="Back to feed"
           >

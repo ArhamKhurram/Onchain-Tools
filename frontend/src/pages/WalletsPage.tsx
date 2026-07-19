@@ -4,6 +4,7 @@ import { Wallet } from 'lucide-react';
 import { useAuthSession } from '../hooks/useAuthSession';
 import WalletTracker from '../components/wallets/WalletTracker';
 import FomoTracker from '../components/fomo/FomoTracker';
+import { routes } from '../lib/routes';
 
 type WalletsView = 'wallets' | 'fomo';
 
@@ -37,7 +38,7 @@ export default function WalletsPage() {
           <p className="text-sm text-oct-muted mb-6 leading-relaxed">
             Your tracked wallets and FOMO traders are private — scoped to your account only.
           </p>
-          <Link to="/dashboard/login" className="brutal-btn-ghost px-5 py-2.5 text-sm">
+          <Link to={routes.login} className="brutal-btn-ghost px-5 py-2.5 text-sm">
             Sign in
           </Link>
         </div>
