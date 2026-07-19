@@ -422,14 +422,14 @@ export default function GlobalSettings() {
   );
 
   return (
-    <div className="flex-1 flex flex-col md:flex-row h-full w-full min-w-0 bg-discord-dark">
+    <div className="flex-1 flex flex-col md:flex-row h-full w-full min-w-0 bg-oct-bg">
       {/* Mobile header + horizontal nav */}
-      <div className="md:hidden shrink-0 border-b border-discord-divider bg-discord-sidebar/50">
+      <div className="md:hidden shrink-0 border-b-2 border-black bg-black">
         <div className="px-3 pt-3 pb-2 flex items-center gap-2">
           {sidebarCollapsed && (
             <button
               onClick={toggleSidebar}
-              className="p-1 rounded hover:bg-discord-hover/50 text-discord-text-muted hover:text-white transition-colors"
+              className="p-1 text-oct-muted hover:text-oct-text transition-colors"
               title="Show sidebar"
             >
               <PanelLeftOpen size={16} />
@@ -437,22 +437,22 @@ export default function GlobalSettings() {
           )}
           <button
             onClick={() => guardNavigation(() => navigate(routes.feed))}
-            className="p-1 rounded hover:bg-discord-hover/50 text-discord-text-muted hover:text-white transition-colors"
+            className="p-1 text-oct-muted hover:text-oct-text transition-colors"
             title="Back to feed"
           >
             <ArrowLeft size={16} />
           </button>
-          <h2 className="text-sm font-semibold text-white uppercase tracking-wide">Settings</h2>
+          <h2 className="font-mono text-xs uppercase tracking-[0.15em] text-oct-text">Settings</h2>
         </div>
         <nav className="flex overflow-x-auto px-2 pb-2 gap-1 scrollbar-none">
           {SECTIONS.map(({ id, label, icon: Icon }) => (
             <button
               key={id}
               onClick={() => { if (id !== section) setSection(id); }}
-              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium whitespace-nowrap shrink-0 transition-colors ${
+              className={`flex items-center gap-1.5 px-3 py-1.5 font-mono text-[10px] uppercase tracking-[0.1em] whitespace-nowrap shrink-0 transition-colors border-2 ${
                 section === id
-                  ? 'bg-discord-blurple text-white'
-                  : 'bg-discord-dark/50 text-discord-text-muted hover:text-discord-text'
+                  ? 'border-oct-accent text-oct-accent bg-oct-accent/10'
+                  : 'border-transparent text-oct-muted hover:text-oct-text'
               }`}
             >
               <Icon size={13} className="shrink-0" />
@@ -463,12 +463,12 @@ export default function GlobalSettings() {
       </div>
 
       {/* Desktop sidebar nav */}
-      <div className="hidden md:flex w-60 bg-discord-sidebar/50 border-r border-discord-divider flex-col shrink-0">
-        <div className="px-4 pt-5 pb-3 flex items-center gap-2">
+      <div className="hidden md:flex w-60 bg-black border-r-2 border-black flex-col shrink-0">
+        <div className="px-4 pt-5 pb-3 flex items-center gap-2 border-b border-oct-border">
           {sidebarCollapsed && (
             <button
               onClick={toggleSidebar}
-              className="p-1 rounded hover:bg-discord-hover/50 text-discord-text-muted hover:text-white transition-colors"
+              className="p-1 text-oct-muted hover:text-oct-text transition-colors"
               title="Show sidebar"
             >
               <PanelLeftOpen size={16} />
@@ -476,22 +476,22 @@ export default function GlobalSettings() {
           )}
           <button
             onClick={() => guardNavigation(() => navigate(routes.feed))}
-            className="p-1 rounded hover:bg-discord-hover/50 text-discord-text-muted hover:text-white transition-colors"
+            className="p-1 text-oct-muted hover:text-oct-text transition-colors"
             title="Back to feed"
           >
             <ArrowLeft size={16} />
           </button>
-          <h2 className="text-sm font-semibold text-white uppercase tracking-wide">Settings</h2>
+          <h2 className="font-mono text-xs uppercase tracking-[0.15em] text-oct-text">Settings</h2>
         </div>
-        <nav className="flex-1 px-2 pb-4 space-y-0.5">
+        <nav className="flex-1 px-2 py-3 space-y-0.5">
           {SECTIONS.map(({ id, label, icon: Icon }) => (
             <button
               key={id}
               onClick={() => { if (id !== section) setSection(id); }}
-              className={`w-full flex items-center gap-2.5 px-3 py-2 rounded text-sm text-left transition-colors ${
+              className={`w-full flex items-center gap-2.5 px-3 py-2 font-mono text-xs text-left uppercase tracking-[0.08em] transition-colors border-l-2 ${
                 section === id
-                  ? 'bg-discord-hover text-white'
-                  : 'text-discord-text-muted hover:bg-discord-hover/50 hover:text-discord-text'
+                  ? 'border-oct-accent text-oct-accent bg-oct-accent/5'
+                  : 'border-transparent text-oct-muted hover:text-oct-text hover:bg-oct-surface'
               }`}
             >
               <Icon size={16} className="shrink-0" />

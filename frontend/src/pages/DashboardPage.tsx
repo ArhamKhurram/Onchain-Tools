@@ -45,11 +45,11 @@ export default function DashboardPage() {
         <div className="max-w-6xl mx-auto">
           <p className="font-mono text-xs tracking-[0.2em] mb-4">[ CONSOLE ]</p>
           <h1 className="font-display text-[clamp(2.25rem,8vw,5rem)] leading-[0.92] tracking-tight">
-            YOUR ONCHAIN
-            <span className="block">TERMINAL.</span>
+            PICK A MODULE.
+            <span className="block">GET TO WORK.</span>
           </h1>
           <p className="font-mono text-xs sm:text-sm mt-5 max-w-xl opacity-80 leading-relaxed">
-            Feed, track, and call — pick a module below or use the nav. Discord token stays in your browser only.
+            Session status and quick actions below. Feed needs a Discord token in Settings — it never leaves your browser.
           </p>
         </div>
       </section>

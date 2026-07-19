@@ -1,5 +1,4 @@
 import { useEffect } from 'react';
-import { Link } from 'react-router-dom';
 import { MessageSquare, KeyRound } from 'lucide-react';
 import { useAuthSession } from '../hooks/useAuthSession';
 import { useAppStore } from '../stores/appStore';
@@ -8,6 +7,7 @@ import RoomConfig from '../components/RoomConfig';
 import TokenSetup from '../components/TokenSetup';
 import GatewayAuthBanner from '../components/GatewayAuthBanner';
 import FeedToolbar from '../components/feed/FeedToolbar';
+import ConsoleEmptyState from '../components/console/ConsoleEmptyState';
 import { routes } from '../lib/routes';
 
 export default function FeedPage() {
@@ -21,7 +21,6 @@ export default function FeedPage() {
 
   const discordConnected = authStatus?.configured || previewMode;
 
-  // Auto-select first room when none is active (skip full-screen onboarding).
   useEffect(() => {
     if (!discordConnected || rooms.length === 0) return;
     if (paneRoomIds.length === 0) {
@@ -31,7 +30,7 @@ export default function FeedPage() {
 
   if (!ready || (isAuthenticated && authLoading)) {
     return (
-      <div className="flex items-center justify-center h-full">
+      <div className="flex items-center justify-center h-full bg-oct-bg">
         <div className="w-6 h-6 border-2 border-oct-accent border-t-transparent rounded-full animate-spin" />
       </div>
     );
@@ -39,42 +38,34 @@ export default function FeedPage() {
 
   if (!isAuthenticated) {
     return (
-      <div className="flex items-center justify-center h-full p-6">
-        <div className="max-w-md text-center">
-          <div className="w-14 h-14 rounded-cockpit border-2 border-black bg-oct-accent shadow-oct-hard flex items-center justify-center mx-auto mb-5">
-            <MessageSquare size={28} className="text-white" />
-          </div>
-          <h2 className="text-xl font-extrabold uppercase text-oct-text mb-2">Sign in to use Feed</h2>
-          <p className="text-sm text-oct-muted mb-6 leading-relaxed">
-            Live chat requires an OCT account. Your Discord token stays in this browser — rooms and settings sync to your account.
-          </p>
-          <Link
-            to={routes.login}
-            className="brutal-btn inline-flex px-5 py-2.5 text-sm"
-          >
-            Sign in
-          </Link>
-          <p className="mt-4 text-xs text-oct-muted">
-            <Link to={routes.home} className="text-oct-accent hover:underline">Back to dashboard</Link>
-          </p>
-        </div>
-      </div>
+      <ConsoleEmptyState
+        icon={MessageSquare}
+        eyebrow="[ FEED ]"
+        title="Sign in to stream"
+        description="Live chat requires an OCT account. Your Discord token stays in this browser — rooms and settings sync to your account."
+        actionLabel="SIGN IN"
+        actionTo={routes.login}
+        secondaryLabel="← Back to console home"
+        secondaryTo={routes.home}
+      />
     );
   }
 
   if (!discordConnected) {
     return (
-      <div className="h-full overflow-y-auto">
-        <div className="max-w-lg mx-auto pt-12 px-6 pb-8 text-center">
-          <div className="w-14 h-14 rounded-cockpit border-2 border-black bg-oct-accent shadow-oct-hard flex items-center justify-center mx-auto mb-5">
-            <KeyRound size={28} className="text-white" />
-          </div>
-          <h2 className="text-xl font-extrabold uppercase text-oct-text mb-2">Connect Discord</h2>
-          <p className="text-sm text-oct-muted mb-8 leading-relaxed">
-            Add your Discord token to start streaming channels. Connection happens here — not at login.
+      <div className="h-full overflow-y-auto bg-oct-bg">
+        <div className="bg-oct-flame text-black px-6 sm:px-10 py-8 border-b-2 border-black">
+          <p className="font-mono text-xs tracking-[0.2em] mb-3">[ FEED ]</p>
+          <h2 className="font-display text-3xl sm:text-4xl tracking-tight">Connect Discord</h2>
+          <p className="font-mono text-xs sm:text-sm mt-3 max-w-lg text-black/90 leading-relaxed">
+            Paste your token below to start streaming. Connection happens here in your browser — not at login.
           </p>
         </div>
-        <div className="max-w-md mx-auto px-6 pb-12">
+        <div className="max-w-md mx-auto px-6 py-10">
+          <div className="flex items-center gap-2 mb-6">
+            <KeyRound size={18} className="text-oct-accent" />
+            <span className="font-mono text-xs uppercase tracking-[0.15em] text-oct-muted">Token setup</span>
+          </div>
           <TokenSetup embedded />
         </div>
       </div>
@@ -82,7 +73,7 @@ export default function FeedPage() {
   }
 
   return (
-    <div className="flex flex-col h-full w-full min-h-0">
+    <div className="flex flex-col h-full w-full min-h-0 bg-oct-bg">
       <FeedToolbar />
       <div className="flex flex-1 min-h-0 w-full">
         <ChatView standalone />

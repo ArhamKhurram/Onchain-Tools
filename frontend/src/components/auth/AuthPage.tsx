@@ -83,18 +83,19 @@ export default function AuthPage({ onAuth }: { onAuth: () => void }) {
   };
 
   return (
-    <div className="flex items-center justify-center h-full w-full bg-discord-dark">
+    <div className="flex items-center justify-center min-h-full w-full bg-oct-bg py-10">
       <div className="w-full max-w-md px-5 sm:px-8">
         <div className="flex flex-col items-center mb-8">
+          <p className="font-mono text-xs tracking-[0.2em] text-oct-muted mb-4">[ OCT ]</p>
           <OctLogo size="lg" showSubtitle className="mb-2" />
-          <h1 className="text-2xl font-extrabold uppercase text-white mb-2 mt-3">
+          <h1 className="font-display text-2xl sm:text-3xl text-oct-text tracking-tight mb-2 mt-3">
             {view === 'login' ? 'Welcome back' : view === 'signup' ? 'Create account' : 'Reset password'}
           </h1>
-          <p className="text-discord-text-muted text-sm text-center leading-relaxed">
+          <p className="font-mono text-xs sm:text-sm text-oct-muted text-center leading-relaxed">
             {view === 'login'
-              ? 'Sign in to access your OCT dashboard.'
+              ? 'Sign in to sync rooms and settings across devices.'
               : view === 'signup'
-                ? 'Create a new account to get started.'
+                ? 'Create an account to get started.'
                 : 'Enter your email and we\'ll send a reset link.'}
           </p>
         </div>
@@ -189,7 +190,7 @@ export default function AuthPage({ onAuth }: { onAuth: () => void }) {
                 {view === 'forgot' ? 'Sending...' : view === 'signup' ? 'Creating account...' : 'Signing in...'}
               </>
             ) : (
-              view === 'forgot' ? 'Send reset link' : view === 'signup' ? 'Create account' : 'Sign in'
+              view === 'forgot' ? '[ SEND RESET LINK ]' : view === 'signup' ? '[ CREATE ACCOUNT ]' : '[ SIGN IN ]'
             )}
           </button>
         </form>

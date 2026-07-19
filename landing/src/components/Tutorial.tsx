@@ -122,12 +122,16 @@ function TokenContent() {
       </div>
 
       <div className="space-y-2">
-        <p className="text-xs text-dc-text-faint">Once you have your token, paste it into the setup screen on first launch:</p>
-        <img
-          src="/discord_token.png"
-          alt="OCT token setup screen"
-          className="rounded-lg border border-dc-divider shadow-lg shadow-black/30"
-        />
+        <p className="text-xs text-dc-text-faint">
+          Once you have your token, paste it in the console under Settings → Tokens, or on the Feed page when prompted.
+        </p>
+        <div className="rounded-lg border-2 border-dc-divider bg-dc-main p-4 font-mono text-xs text-dc-text-muted leading-relaxed">
+          <p className="text-dc-text text-sm mb-2">[ TOKEN SETUP ]</p>
+          <p>Open the console → Settings → Tokens → paste your Discord authorization header value.</p>
+          <p className="mt-2 text-oct-accent">
+            <a href={APP_CONSOLE_PATH} className="hover:underline">Launch console →</a>
+          </p>
+        </div>
       </div>
     </div>
   );

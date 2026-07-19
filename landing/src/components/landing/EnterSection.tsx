@@ -11,7 +11,7 @@ export function EnterSection() {
   return (
     <section
       id="enter"
-      className="relative snap-start snap-always min-h-screen flex flex-col justify-center bg-black text-white px-6 sm:px-10 py-24"
+      className="relative snap-start snap-always min-h-[100dvh] flex flex-col justify-center bg-black text-white px-6 sm:px-10 pr-12 sm:pr-14 py-24"
     >
       <div className="max-w-6xl mx-auto w-full grid grid-cols-1 lg:grid-cols-2 gap-12 lg:gap-16 items-center">
         <div>

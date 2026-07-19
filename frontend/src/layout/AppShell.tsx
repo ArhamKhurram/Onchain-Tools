@@ -1,5 +1,4 @@
 import { NavLink, Outlet, useNavigate } from 'react-router-dom';
-import { Settings } from 'lucide-react';
 import { useAuthSession } from '../hooks/useAuthSession';
 import { isHostedMode, getSupabase } from '../lib/supabase';
 import { LANDING_URL, routes } from '../lib/routes';
@@ -9,6 +8,7 @@ const NAV: { to: string; label: string; end?: boolean }[] = [
   { to: routes.feed, label: 'Feed' },
   { to: routes.wallets, label: 'Wallets' },
   { to: routes.callers, label: 'Callers' },
+  { to: routes.settings, label: 'Settings' },
 ];
 
 function navClass({ isActive }: { isActive: boolean }) {
@@ -53,25 +53,13 @@ export default function AppShell() {
         </nav>
 
         <div className="flex items-center gap-2 shrink-0">
-          <NavLink
-            to={routes.settings}
-            className={({ isActive }) =>
-              `p-1.5 font-mono text-[10px] uppercase tracking-wide transition-opacity ${
-                isActive ? 'text-oct-accent opacity-100' : 'text-oct-muted opacity-70 hover:opacity-100'
-              }`
-            }
-            title="Settings"
-          >
-            <Settings size={16} />
-          </NavLink>
-
           {isHostedMode && !isAuthenticated ? (
             <button
               type="button"
               onClick={() => navigate(routes.login)}
-              className="font-mono text-[10px] sm:text-xs uppercase tracking-wide text-white border border-white/30 px-2.5 py-1 hover:bg-white hover:text-black transition-colors"
+              className="font-mono text-[10px] sm:text-xs uppercase tracking-[0.12em] text-white border-2 border-white/40 px-2.5 py-1 hover:bg-white hover:text-black transition-colors"
             >
-              [ Sign in ]
+              [ SIGN IN ]
             </button>
           ) : isAuthenticated && user ? (
             <div className="group flex items-center gap-2">

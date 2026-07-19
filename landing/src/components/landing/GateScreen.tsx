@@ -7,17 +7,11 @@ interface GateScreenProps {
 
 export function GateScreen({ onEnter }: GateScreenProps) {
   const [visible, setVisible] = useState(true);
-  const [tick, setTick] = useState(0);
 
   const dismiss = useCallback(() => {
     setVisible(false);
     setTimeout(onEnter, 480);
   }, [onEnter]);
-
-  useEffect(() => {
-    const id = setInterval(() => setTick((t) => t + 1), 1200);
-    return () => clearInterval(id);
-  }, []);
 
   useEffect(() => {
     if (!visible) return;
@@ -45,10 +39,18 @@ export function GateScreen({ onEnter }: GateScreenProps) {
           onKeyDown={(e) => e.key === 'Enter' && dismiss()}
           aria-label="Enter site"
         >
+          <a
+            href="#landing-scroll"
+            onClick={(e) => {
+              e.stopPropagation();
+              dismiss();
+            }}
+            className="absolute top-5 left-1/2 -translate-x-1/2 sm:left-auto sm:translate-x-0 sm:right-8 font-mono text-[10px] sm:text-xs uppercase tracking-[0.14em] text-white/50 hover:text-white underline-offset-4 hover:underline pointer-events-auto z-10"
+          >
+            Skip intro
+          </a>
+
           <span className="absolute top-5 left-5 w-2 h-2 rounded-full bg-oct-flame animate-pulse" />
-          <span className="absolute top-5 right-5 font-mono text-sm text-white/70 tabular-nums">
-            {String(tick % 100).padStart(2, '0')}
-          </span>
 
           <h1 className="font-display text-[clamp(4rem,18vw,11rem)] leading-none tracking-tight text-white">
             OCT

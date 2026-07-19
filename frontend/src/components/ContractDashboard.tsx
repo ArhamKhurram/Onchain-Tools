@@ -27,6 +27,15 @@ function timeAgo(iso: string): string {
   return `${days}d ago`;
 }
 
+function contractDisplay(entry: ContractEntry, showFull: boolean) {
+  const shortAddr = showFull
+    ? entry.address
+    : `${entry.address.slice(0, 6)}...${entry.address.slice(-4)}`;
+  const ticker = entry.tokenSymbol ? `$${entry.tokenSymbol}` : shortAddr;
+  const subtitle = entry.tokenName ?? (entry.tokenSymbol ? shortAddr : null);
+  return { shortAddr, ticker, subtitle };
+}
+
 type ViewMode = 'table' | 'cards';
 
 export default function ContractDashboard() {
@@ -267,6 +276,7 @@ function ContractRow({
     : entry.chain.toUpperCase();
 
   const isNew = entry.firstSeen !== false;
+  const { ticker, subtitle } = contractDisplay(entry, showFull);
 
   return (
     <div className="flex flex-col gap-1 px-3 sm:px-4 py-2.5 hover:bg-oct-surface-raised/40 transition-colors group border-b border-oct-border/60">
@@ -288,40 +298,41 @@ function ContractRow({
           {isNew ? 'NEW' : 'RESCAN'}
         </span>
 
-        <span
-          className={`font-mono text-sm cursor-pointer hover:underline ${showFull ? 'min-w-0 break-all' : 'shrink-0'}`}
-          style={{ color }}
-          title={entry.address}
-          onClick={() => onCopy(entry.address)}
-        >
-          {showFull ? entry.address : `${entry.address.slice(0, 6)}...${entry.address.slice(-4)}`}
-        </span>
+        <div className="flex items-center gap-1.5 min-w-0 flex-1 sm:flex-none">
+          <span
+            className={`font-mono text-sm font-semibold truncate ${entry.tokenSymbol ? 'text-oct-text' : ''}`}
+            style={entry.tokenSymbol ? undefined : { color }}
+            title={entry.address}
+          >
+            {ticker}
+          </span>
 
-        <div className="flex items-center gap-0.5 shrink-0">
-          <button
-            onClick={() => onCopy(entry.address)}
-            className="p-1 rounded hover:bg-oct-surface text-oct-muted hover:text-oct-text transition-colors"
-            title="Copy CA"
-          >
-            {isCopied ? <Check size={13} className="text-green-400" /> : <Copy size={13} />}
-          </button>
-          <button
-            onClick={() => onOpen(entry.address, entry.evmChain)}
-            className="p-1 rounded hover:bg-oct-surface text-oct-muted hover:text-oct-text transition-colors"
-            title="Open chart"
-          >
-            <ExternalLink size={13} />
-          </button>
-          <button
-            onClick={() => onOpenDiscord(entry)}
-            className="p-1 rounded hover:bg-oct-surface text-oct-muted hover:text-oct-text transition-colors hidden sm:block"
-            title="Open in Discord"
-          >
-            <MessageSquare size={13} />
-          </button>
+          <div className="flex items-center gap-0.5 shrink-0">
+            <button
+              onClick={() => onCopy(entry.address)}
+              className="p-1 rounded hover:bg-oct-surface text-oct-muted hover:text-oct-text transition-colors"
+              title="Copy address"
+            >
+              {isCopied ? <Check size={13} className="text-green-400" /> : <Copy size={13} />}
+            </button>
+            <button
+              onClick={() => onOpen(entry.address, entry.evmChain)}
+              className="p-1 rounded hover:bg-oct-surface text-oct-muted hover:text-oct-text transition-colors"
+              title="Open chart"
+            >
+              <ExternalLink size={13} />
+            </button>
+            <button
+              onClick={() => onOpenDiscord(entry)}
+              className="p-1 rounded hover:bg-oct-surface text-oct-muted hover:text-oct-text transition-colors hidden sm:block"
+              title="Open in Discord"
+            >
+              <MessageSquare size={13} />
+            </button>
+          </div>
         </div>
 
-        <div className="flex-1 min-w-0" />
+        <div className="flex-1 min-w-0 hidden sm:block" />
 
         <span className="text-xs text-oct-muted font-mono shrink-0 tabular-nums">
           {timeAgo(entry.timestamp)}
@@ -336,17 +347,11 @@ function ContractRow({
         </button>
       </div>
 
-      {/* Underneath heading — token identity (Rick / Dex enrichment) */}
-      {(entry.tokenName || entry.tokenSymbol || entry.description) && (
+      {(subtitle || entry.fdvAtCallDisplay || entry.liquidityDisplay || entry.description) && (
         <div className="pl-[4.5rem] sm:pl-24 min-w-0">
           <div className="flex items-baseline gap-2 min-w-0 flex-wrap">
-            {entry.tokenSymbol && (
-              <span className="font-mono text-sm font-semibold text-oct-text">
-                ${entry.tokenSymbol}
-              </span>
-            )}
-            {entry.tokenName && (
-              <span className="text-sm text-oct-text/90 truncate">{entry.tokenName}</span>
+            {subtitle && (
+              <span className="text-sm text-oct-text/90 truncate">{subtitle}</span>
             )}
             {entry.fdvAtCallDisplay && (
               <span className="font-mono text-[11px] text-oct-live">
@@ -367,7 +372,7 @@ function ContractRow({
         </div>
       )}
 
-      {!entry.tokenName && !entry.tokenSymbol && (
+      {!subtitle && !entry.fdvAtCallDisplay && !entry.liquidityDisplay && !entry.description && (
         <div className="pl-[4.5rem] sm:pl-24 text-xs text-oct-muted truncate">
           <span className="text-oct-text/80 font-medium">{entry.authorName}</span>
           {' · '}
@@ -394,6 +399,7 @@ function ContractCard({
     : entry.chain.toUpperCase();
 
   const isNew = entry.firstSeen !== false;
+  const { ticker, subtitle } = contractDisplay(entry, false);
 
   return (
     <div className="bg-oct-surface rounded-cockpit border border-oct-border p-3 flex flex-col gap-2.5 hover:border-oct-muted/40 transition-colors group relative">
@@ -424,25 +430,26 @@ function ContractCard({
         <span className="text-xs text-oct-muted ml-auto pr-5 font-mono">{timeAgo(entry.timestamp)}</span>
       </div>
 
-      <div
-        className="font-mono text-sm cursor-pointer hover:underline truncate"
-        style={{ color }}
-        title={entry.address}
-        onClick={() => onCopy(entry.address)}
-      >
-        {entry.address}
+      <div className="min-w-0">
+        <div
+          className={`font-mono text-sm font-semibold truncate ${entry.tokenSymbol ? 'text-oct-text' : ''}`}
+          style={entry.tokenSymbol ? undefined : { color }}
+          title={entry.address}
+        >
+          {ticker}
+        </div>
+        {subtitle && (
+          <div className="text-xs text-oct-muted truncate mt-0.5">{subtitle}</div>
+        )}
       </div>
 
-      {(entry.tokenName || entry.tokenSymbol) && (
+      {(entry.fdvAtCallDisplay || entry.liquidityDisplay) && (
         <div className="flex items-baseline gap-2 min-w-0 flex-wrap">
-          {entry.tokenSymbol && (
-            <span className="font-mono text-sm font-semibold text-oct-text">${entry.tokenSymbol}</span>
-          )}
-          {entry.tokenName && (
-            <span className="text-sm text-oct-muted truncate">{entry.tokenName}</span>
-          )}
           {entry.fdvAtCallDisplay && (
             <span className="font-mono text-[11px] text-oct-live">FDV {entry.fdvAtCallDisplay}</span>
+          )}
+          {entry.liquidityDisplay && (
+            <span className="font-mono text-[11px] text-oct-muted">Liq {entry.liquidityDisplay}</span>
           )}
         </div>
       )}
@@ -451,7 +458,7 @@ function ContractCard({
         <button
           onClick={() => onCopy(entry.address)}
           className="flex items-center gap-1 px-2 py-1 rounded-cockpit text-xs bg-oct-bg hover:bg-oct-surface-raised transition-colors text-oct-muted hover:text-oct-text border border-oct-border"
-          title="Copy CA"
+          title="Copy address"
         >
           {isCopied ? <Check size={11} className="text-green-400" /> : <Copy size={11} />}
           <span>{isCopied ? 'Copied' : 'Copy CA'}</span>

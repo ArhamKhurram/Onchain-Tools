@@ -30,17 +30,17 @@ export default function FeedToolbar() {
     ) : null;
 
   return (
-    <div className="shrink-0 h-10 px-3 flex items-center gap-2 border-b-2 border-black bg-oct-surface">
+    <div className="shrink-0 h-10 px-3 flex items-center gap-2 border-b-2 border-black bg-black">
       {/* Room tabs */}
       <div className="flex items-center gap-1 min-w-0 flex-1 overflow-x-auto scrollbar-none">
         <button
           type="button"
           onClick={() => setActiveRoom('mentions')}
           className={[
-            'shrink-0 flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs font-medium transition-colors',
+            'shrink-0 flex items-center gap-1.5 px-2.5 py-1 font-mono text-[10px] sm:text-xs uppercase tracking-[0.1em] transition-colors',
             isActive('mentions')
-              ? 'bg-oct-accent-dim text-oct-accent'
-              : 'text-oct-muted hover:text-oct-text hover:bg-oct-surface-raised',
+              ? 'text-oct-accent border-b-2 border-oct-accent'
+              : 'text-oct-muted hover:text-oct-text',
           ].join(' ')}
           title="Mentions"
         >
@@ -58,10 +58,10 @@ export default function FeedToolbar() {
               type="button"
               onClick={() => setActiveRoom(room.id)}
               className={[
-                'shrink-0 flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs font-medium transition-colors max-w-[140px]',
+                'shrink-0 flex items-center gap-1.5 px-2.5 py-1 font-mono text-[10px] sm:text-xs uppercase tracking-[0.1em] transition-colors max-w-[140px]',
                 active
-                  ? 'bg-oct-accent-dim text-oct-accent'
-                  : 'text-oct-muted hover:text-oct-text hover:bg-oct-surface-raised',
+                  ? 'text-oct-accent border-b-2 border-oct-accent'
+                  : 'text-oct-muted hover:text-oct-text',
               ].join(' ')}
               title={room.name}
             >
