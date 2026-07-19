@@ -157,3 +157,111 @@ export function extractTradesArray(json: any): any[] {
   }
   return [];
 }
+
+export interface FomoLeaderboardEntry {
+  fomoUserId: string;
+  fomoHandle: string | null;
+  displayName: string | null;
+  pnl?: number | null;
+  volume?: number | null;
+  rank?: number | null;
+}
+
+/** Map OCT contract chain hints to FOMO network IDs (subset of supported chains). */
+export function networkIdFromContract(chain: 'evm' | 'sol', evmChain?: string | null): number | null {
+  if (chain === 'sol') return 1399811149;
+  switch ((evmChain ?? '').toLowerCase()) {
+    case 'eth':
+    case 'ethereum':
+      return 1;
+    case 'bsc':
+    case 'bnb':
+      return 56;
+    case 'base':
+      return 8453;
+    default:
+      return null;
+  }
+}
+
+function pickLeaderboardUser(obj: any): { fomoUserId: string; fomoHandle: string | null; displayName: string | null } | null {
+  if (!obj || typeof obj !== 'object') return null;
+  const user = obj.user ?? obj.trader ?? obj.profile ?? obj;
+  const fomoUserId = firstString(user.id, user.userId, user.user_id, obj.userId, obj.id);
+  if (!fomoUserId) return null;
+  return {
+    fomoUserId,
+    fomoHandle: firstString(user.userHandle, user.handle, user.username, obj.userHandle),
+    displayName: firstString(user.displayName, user.name, obj.displayName),
+  };
+}
+
+/** Best-effort extraction of leaderboard rows from a FOMO JSON body. */
+export function extractLeaderboardEntries(json: any): FomoLeaderboardEntry[] {
+  const rawList: any[] = Array.isArray(json)
+    ? json
+    : extractTradesArray(json); // reuses envelope fallbacks (responseObject, data, …)
+
+  const entries: FomoLeaderboardEntry[] = [];
+  for (let i = 0; i < rawList.length; i++) {
+    const row = rawList[i];
+    const picked = pickLeaderboardUser(row);
+    if (!picked) continue;
+    entries.push({
+      ...picked,
+      pnl: firstNumber(row.pnl, row.totalPnl, row.realizedPnl, row.profit, row.totalProfit),
+      volume: firstNumber(row.volume, row.totalVolume, row.tradeVolume),
+      rank: firstNumber(row.rank, row.position) ?? i + 1,
+    });
+  }
+  return entries;
+}
+
+export interface HodlerOverlapResult {
+  tokenAddress: string;
+  networkId: number;
+  trackedCount: number;
+  trackedHandles: string[];
+}
+
+/** Match FOMO top-holders payload against a set of tracked FOMO user ids/handles. */
+export function matchHoldersToTracked(
+  tokenAddress: string,
+  networkId: number,
+  hodlersJson: any,
+  trackedById: Map<string, { fomo_handle: string | null }>,
+  trackedHandles: Set<string>,
+): HodlerOverlapResult {
+  const list: any[] = Array.isArray(hodlersJson?.responseObject)
+    ? hodlersJson.responseObject
+    : [];
+  const entry = list.find(
+    (e) =>
+      String(e?.tokenAddress ?? e?.address ?? '').toLowerCase() === tokenAddress.toLowerCase() &&
+      Number(e?.networkId) === Number(networkId),
+  );
+  const holders: any[] = Array.isArray(entry?.topHolders) ? entry.topHolders : [];
+  const matchedHandles = new Set<string>();
+
+  for (const h of holders) {
+    const user = h?.user ?? h ?? {};
+    const id = firstString(user.id, user.userId, user.user_id);
+    const handle = firstString(user.userHandle, user.handle, user.username)?.toLowerCase() ?? null;
+
+    if (id && trackedById.has(id)) {
+      const tracked = trackedById.get(id)!;
+      matchedHandles.add(tracked.fomo_handle ?? handle ?? id);
+      continue;
+    }
+    if (handle && trackedHandles.has(handle)) {
+      matchedHandles.add(handle);
+    }
+  }
+
+  return {
+    tokenAddress,
+    networkId,
+    trackedCount: matchedHandles.size,
+    trackedHandles: [...matchedHandles],
+  };
+}

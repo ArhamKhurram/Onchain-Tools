@@ -52,6 +52,7 @@ export interface PushoverTriggers {
   highlightedUserContract: boolean;
   contract: boolean;
   keyword: boolean;
+  signalConvergence: boolean;
 }
 
 export interface PushoverFilters {
@@ -116,6 +117,8 @@ export interface AppConfig {
   contractClickAction: ContractClickAction;
   showFullContractAddress: boolean;
   autoOpenHighlightedContracts: boolean;
+  /** Minutes within which a FOMO buy + contract call count as signal convergence. */
+  signalConvergenceWindowMinutes: number;
   globalKeywordPatterns: KeywordPattern[];
   keywordAlertsEnabled: boolean;
   desktopNotifications: boolean;

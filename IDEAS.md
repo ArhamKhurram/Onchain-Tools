@@ -22,11 +22,12 @@ who tracks them.
 - **Merged so far:** `backend/src/fomo/client.ts` (`FomoClient`) + `types.ts`;
   Playwright deps added; `FOMO_*` documented in `backend/.env.example`;
   tracked-user CRUD via Supabase RLS (console reads/writes `fomo_tracked_users`
-  directly; backend `/api/fomo/resolve` for handle lookup only); per-user
-  Pushover toggle on the FOMO tab.
-- **Blocked on:** shared `FOMO_REFRESH_TOKEN` to verify whether
-  `/feed/tradingActivity` is a global firehose or following-only (changes whether
-  adding a tracked user requires the shared account to follow them first).
+  directly; backend `/api/fomo/resolve` + `/api/fomo/tracked` for handle lookup
+  and follow sync); per-user Pushover toggle on the FOMO tab; fan-out poller
+  with auto-follow sync (`FOMO_ENSURE_FOLLOWS`); Railway nixpacks installs
+  Chromium for Playwright.
+- **Blocked on:** shared `FOMO_REFRESH_TOKEN` in prod to confirm whether
+  `/feed/tradingActivity` is a global firehose or following-only.
 
 ---
 
@@ -39,12 +40,19 @@ _(Nothing committed yet — pick from backlog below.)_
 ## Recently shipped (Jul 2026)
 
 - **FOMO storage fix** — console persists tracked users via Supabase RLS; backend
-  accepts `SUPABASE_SERVICE_ROLE_KEY` alias; resolve-only REST route for lookups.
+  accepts `SUPABASE_SERVICE_ROLE_KEY` alias; resolve + track REST routes with
+  shared-account follow sync.
 - **Per-tracked-user Pushover toggle** — bell control on each FOMO row.
 - **Signal convergence v1** — in-app alert when a contract call and a tracked
-  FOMO buy hit the same token within 30 minutes.
+  FOMO buy hit the same token within 30 minutes; convergence badge on Radar rows;
+  optional Pushover via `/api/pushover/signal-convergence`.
+- **FOMO leaderboard** — top traders (24h / all-time) on the Wallets → FOMO tab;
+  one-click track from a row.
+- **Holder overlap** — Radar shows how many tracked FOMO traders hold each contract.
 - **Console code-splitting** — lazy-loaded routes, lazy `GlobalSettings`, vendor
-  manualChunks in Vite.
+  manualChunks in Vite (main chunk ~150 kB).
+- **Railway Playwright** — nixpacks installs Chromium system deps + browser for
+  FOMO client at deploy time.
 
 ---
 
@@ -64,12 +72,12 @@ account, auto-populate the on-chain watchlist with their real wallets. Only pays
 off once the on-chain detection engine above exists — deferred until then.
 
 ### Holder overlap on contracts
-In the Radar / contract view, show "N of your tracked traders hold this" via
-`/hodlers/top`. Instant conviction signal on a contract.
+~~In the Radar / contract view, show "N of your tracked traders hold this" via
+`/hodlers/top`. Instant conviction signal on a contract.~~ **Shipped Jul 2026.**
 
 ### Leaderboard → one-click track
-Surface FOMO's top traders (`/v2/leaderboard`, `/v2/leaderboard/24h`); tap a row
-to add them to your FOMO track list.
+~~Surface FOMO's top traders (`/v2/leaderboard`, `/v2/leaderboard/24h`); tap a row
+to add them to your FOMO track list.~~ **Shipped Jul 2026.**
 
 ### Unified alerts center
 One place for every trigger — Discord highlight, contract detected, FOMO
@@ -81,8 +89,8 @@ Filters per tracked FOMO user: buys only, min $ size threshold, specific chains,
 custom sound. Routes through existing Pushover triggers.
 
 ### Signal convergence v2
-Pushover + configurable time window; surface convergence badge on contract rows;
-dedupe across tabs.
+Configurable time window in Settings; richer dedupe across tabs; unified alerts
+center integration.
 
 ### FOMO auth — Options B / C (revisit later)
 We chose Option A (shared account). Alternatives if it hits rate limits / ToS
@@ -102,5 +110,3 @@ reusable backend service; the Discord layer is future work.
 ## Known gaps / tech debt
 - Prod Supabase (`vmlxyqzjdaegkfylxfka`) migrations status vs dev — verify before
   relying on prod schema.
-- FOMO integration needs Chromium at runtime → `nixpacks.toml` on Railway must
-  install Playwright's browser (not yet configured).

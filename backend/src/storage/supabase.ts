@@ -26,7 +26,7 @@ const DEFAULT_SETTINGS: Omit<AppConfig, 'discordTokens' | 'rooms'> = {
   pushover: {
     enabled: false, appToken: '', userKey: '',
     priority: 1 as const, sound: 'siren' as const,
-    triggers: { highlightedUser: false, highlightedUserContract: true, contract: false, keyword: false },
+    triggers: { highlightedUser: false, highlightedUserContract: true, contract: false, keyword: false, signalConvergence: false },
     filters: { userIds: [], channelIds: [], guildIds: [] },
   },
   contractLinkTemplates: {
@@ -38,6 +38,7 @@ const DEFAULT_SETTINGS: Omit<AppConfig, 'discordTokens' | 'rooms'> = {
   contractClickAction: 'copy_open',
   showFullContractAddress: false,
   autoOpenHighlightedContracts: false,
+  signalConvergenceWindowMinutes: 30,
   globalKeywordPatterns: [],
   keywordAlertsEnabled: true,
   desktopNotifications: false,

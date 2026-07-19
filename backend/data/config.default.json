@@ -28,7 +28,8 @@
       "highlightedUser": false,
       "highlightedUserContract": true,
       "contract": false,
-      "keyword": false
+      "keyword": false,
+      "signalConvergence": false
     },
     "filters": {
       "userIds": [],
@@ -44,6 +45,7 @@
   },
   "contractClickAction": "copy_open",
   "autoOpenHighlightedContracts": true,
+  "signalConvergenceWindowMinutes": 30,
   "badgeClickAction": "discord",
   "messageDisplay": "default",
   "compactModeAvatars": true,

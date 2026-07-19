@@ -16,11 +16,16 @@ export const UPDATES: UpdateEntry[] = [
       '**Per-trader Pushover toggle** — enable or disable Pushover alerts per tracked FOMO user from the bell icon on each row',
       '**Signal convergence alerts (v1)** — high-priority in-app toast when a contract call and a tracked FOMO buy hit the same token within 30 minutes',
       '**Console code-splitting** — dashboard routes, Settings, and GlobalSettings load on demand; vendor libraries split into separate chunks for faster first paint',
+      '**FOMO leaderboard** — browse top FOMO traders (24h or all-time) on the Wallets tab and track them in one click',
+      '**Holder overlap on Radar** — contract rows show how many of your tracked FOMO traders hold the token',
+      '**Convergence badge + Pushover** — Radar marks cross-source hits; optional Pushover when feed chatter and a tracked FOMO buy align on the same token',
+      '**FOMO follow sync + Railway Chromium** — shared service account auto-follows tracked users when needed; deploy installs Playwright browser deps',
     ],
     fixed: [
       '**Rescan metadata** — scanning the same contract again keeps $TICKER, FDV, and liquidity from the earlier enriched row instead of reverting to a raw address',
       '**Contracts disappearing in dev** — periodic refetches no longer replace the in-memory feed with an empty database list when using the client-side Discord gateway',
       '**FOMO Supabase key alias** — backend FOMO storage accepts `SUPABASE_SERVICE_ROLE_KEY` when `SUPABASE_SERVICE_KEY` is unset',
+      '**FOMO poller bootstrap** — fan-out poller runs an initial poll on start and exposes `/api/fomo/status` for frontend gating',
     ],
   },
   {

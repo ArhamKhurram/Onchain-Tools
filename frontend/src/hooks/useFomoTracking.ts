@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
 import { getAccessToken, getSupabase } from '../lib/supabase';
-import type { FomoTrackedUser } from '../types/fomo';
+import type { FomoTrackedUser, FomoServiceStatus, FomoLeaderboardEntry } from '../types/fomo';
 
 const API_BASE = import.meta.env.VITE_API_URL
   ? `${import.meta.env.VITE_API_URL}/api`
@@ -17,10 +17,66 @@ async function fomoFetch(input: string, init?: RequestInit): Promise<Response> {
   return fetch(input, { ...init, headers });
 }
 
-interface ResolvedFomoUser {
-  fomoUserId: string;
-  fomoHandle: string | null;
-  displayName: string | null;
+async function fetchFomoStatus(): Promise<FomoServiceStatus | null> {
+  try {
+    const res = await fomoFetch(`${API_BASE}/fomo/status`);
+    if (!res.ok) return null;
+    return (await res.json()) as FomoServiceStatus;
+  } catch {
+    return null;
+  }
+}
+
+export function useFomoServiceStatus() {
+  const [status, setStatus] = useState<FomoServiceStatus | null>(null);
+  const [loading, setLoading] = useState(true);
+
+  const refresh = useCallback(async () => {
+    setLoading(true);
+    setStatus(await fetchFomoStatus());
+    setLoading(false);
+  }, []);
+
+  useEffect(() => {
+    refresh();
+  }, [refresh]);
+
+  return { status, loading, refresh };
+}
+
+async function fetchLeaderboard(window: 'all' | '24h', limit = 50): Promise<FomoLeaderboardEntry[]> {
+  const params = new URLSearchParams({ limit: String(limit) });
+  if (window === '24h') params.set('window', '24h');
+  const res = await fomoFetch(`${API_BASE}/fomo/leaderboard?${params}`);
+  const body = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(body.error ?? 'Failed to load leaderboard.');
+  return (body.entries ?? []) as FomoLeaderboardEntry[];
+}
+
+export function useFomoLeaderboard() {
+  const [window, setWindow] = useState<'all' | '24h'>('24h');
+  const [entries, setEntries] = useState<FomoLeaderboardEntry[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const refresh = useCallback(async () => {
+    setLoading(true);
+    setError(null);
+    try {
+      setEntries(await fetchLeaderboard(window));
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to load leaderboard.');
+      setEntries([]);
+    } finally {
+      setLoading(false);
+    }
+  }, [window]);
+
+  useEffect(() => {
+    refresh();
+  }, [refresh]);
+
+  return { window, setWindow, entries, loading, error, refresh };
 }
 
 // Distinct outcomes the UI needs to surface for track. The `status` mirrors the
@@ -74,35 +130,16 @@ export function useFomoTracking(userId: string | undefined) {
     if (!userId) return { ok: false, status: 401, error: 'Not signed in.' };
 
     try {
-      const res = await fomoFetch(`${API_BASE}/fomo/resolve`, {
+      const res = await fomoFetch(`${API_BASE}/fomo/tracked`, {
         method: 'POST',
         body: JSON.stringify({ query: trimmed }),
       });
       const body = await res.json().catch(() => ({}));
       if (!res.ok) {
-        return { ok: false, status: res.status, error: body.error ?? 'Failed to resolve FOMO user.' };
+        return { ok: false, status: res.status, error: body.error ?? 'Failed to track FOMO user.' };
       }
 
-      const resolved = body as ResolvedFomoUser;
-      const { data, error: insertError } = await getSupabase()
-        .from('fomo_tracked_users')
-        .insert({
-          user_id: userId,
-          fomo_user_id: resolved.fomoUserId,
-          fomo_handle: resolved.fomoHandle,
-          display_name: resolved.displayName,
-        })
-        .select(TRACKED_SELECT)
-        .single();
-
-      if (insertError) {
-        if (insertError.code === '23505') {
-          return { ok: false, status: 409, error: 'You are already tracking this FOMO user.' };
-        }
-        return { ok: false, status: 500, error: insertError.message || 'Failed to track user.' };
-      }
-
-      const user = data as FomoTrackedUser;
+      const user = body as FomoTrackedUser;
       setTracked((prev) => [user, ...prev.filter((u) => u.id !== user.id)]);
       return { ok: true, user };
     } catch (err) {

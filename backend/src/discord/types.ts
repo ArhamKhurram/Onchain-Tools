@@ -139,6 +139,7 @@ export interface PushoverTriggers {
   highlightedUserContract: boolean;
   contract: boolean;
   keyword: boolean;
+  signalConvergence: boolean;
 }
 
 export interface PushoverFilters {
@@ -203,6 +204,7 @@ export interface AppConfig {
   contractClickAction: ContractClickAction;
   showFullContractAddress: boolean;
   autoOpenHighlightedContracts: boolean;
+  signalConvergenceWindowMinutes: number;
   globalKeywordPatterns: KeywordPattern[];
   keywordAlertsEnabled: boolean;
   desktopNotifications: boolean;

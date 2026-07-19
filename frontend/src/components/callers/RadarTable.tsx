@@ -1,6 +1,12 @@
 import { useEffect, useMemo, useState } from 'react';
-import { RefreshCw, Star, Copy, Check } from 'lucide-react';
+import { RefreshCw, Star, Copy, Check, Users } from 'lucide-react';
 import { useAppStore } from '../../stores/appStore';
+import { useFomoHolderOverlap } from '../../hooks/useFomoHolderOverlap';
+import SignalConvergenceBadge from '../SignalConvergenceBadge';
+import {
+  findConvergenceForAddress,
+  getSignalConvergenceWindowMs,
+} from '../../utils/signalConvergence';
 import type { ContractEntry } from '../../types';
 
 interface RadarRow {
@@ -171,7 +177,12 @@ async function fetchMcNow(address: string): Promise<{ mc: number; display: strin
 
 export default function RadarTable() {
   const contracts = useAppStore((s) => s.contracts);
+  const fomoTrades = useAppStore((s) => s.fomoTrades);
+  const config = useAppStore((s) => s.config);
+  const convergenceWindowMs = getSignalConvergenceWindowMs(config);
+  const convergenceWindowMinutes = config?.signalConvergenceWindowMinutes ?? 30;
   const fetchContracts = useAppStore((s) => s.fetchContracts);
+  const { overlaps } = useFomoHolderOverlap(contracts);
   const [liveMc, setLiveMc] = useState<Record<string, LiveMc>>({});
   const [refreshing, setRefreshing] = useState(false);
   const [refreshingRow, setRefreshingRow] = useState<string | null>(null);
@@ -272,13 +283,14 @@ export default function RadarTable() {
       </div>
 
       <div className="flex-1 overflow-auto">
-        <table className="w-full text-left border-collapse min-w-[1040px]">
+        <table className="w-full text-left border-collapse min-w-[1100px]">
           <thead className="sticky top-0 bg-oct-surface border-b-2 border-black z-10">
             <tr className="font-mono text-[10px] font-bold uppercase tracking-wider text-oct-muted">
               <th className="px-3 py-2 font-medium w-8" />
               <th className="px-3 py-2 font-medium">Token</th>
               <th className="px-3 py-2 font-medium text-right">Mentions</th>
               <th className="px-3 py-2 font-medium text-right">Callers</th>
+              <th className="px-3 py-2 font-medium text-right">FOMO</th>
               <th className="px-3 py-2 font-medium text-right">Groups</th>
               <th className="px-3 py-2 font-medium">Plat</th>
               <th className="px-3 py-2 font-medium text-right">15m</th>
@@ -302,10 +314,18 @@ export default function RadarTable() {
                 r.mcAtCall && mcNow && r.mcAtCall > 0 ? mcNow / r.mcAtCall : undefined;
               const tag = r.mentions >= 5 ? 'crowded' : r.mentions === 1 ? 'early' : null;
               const plat = platformMeta(r.chain, r.evmChain);
+              const convergenceTrade = findConvergenceForAddress(
+                r.address,
+                contracts,
+                fomoTrades,
+                convergenceWindowMs,
+              );
               const shortAddr = `${r.address.slice(0, 6)}...${r.address.slice(-4)}`;
               const ticker = r.symbol ? `$${r.symbol}` : shortAddr;
               const subtitle = r.name ?? (r.symbol ? shortAddr : null);
               const isCopied = copiedAddr === key;
+              const overlap = overlaps[key];
+              const fomoHold = overlap?.trackedCount ?? 0;
 
               return (
                 <tr
@@ -335,6 +355,12 @@ export default function RadarTable() {
                               early
                             </span>
                           )}
+                          {convergenceTrade && (
+                            <SignalConvergenceBadge
+                              trade={convergenceTrade}
+                              windowMinutes={convergenceWindowMinutes}
+                            />
+                          )}
                         </div>
                         {subtitle && (
                           <div className="text-xs text-oct-muted truncate">{subtitle}</div>
@@ -352,6 +378,19 @@ export default function RadarTable() {
                   </td>
                   <td className="px-3 py-2 text-right font-mono text-sm text-oct-text tabular-nums">{r.mentions}</td>
                   <td className="px-3 py-2 text-right font-mono text-sm text-oct-text tabular-nums">{r.callers.size}</td>
+                  <td className="px-3 py-2 text-right">
+                    {fomoHold > 0 ? (
+                      <span
+                        className="inline-flex items-center gap-1 font-mono text-xs font-bold text-oct-accent"
+                        title={overlap?.trackedHandles?.map((h) => `@${h}`).join(', ') ?? ''}
+                      >
+                        <Users size={12} />
+                        {fomoHold}
+                      </span>
+                    ) : (
+                      <span className="text-oct-muted">·</span>
+                    )}
+                  </td>
                   <td className="px-3 py-2 text-right font-mono text-sm text-oct-text tabular-nums">{r.groups.size}</td>
                   <td className="px-3 py-2">
                     <span className="flex items-center gap-1.5 font-mono text-xs text-oct-muted" title={plat.label}>
@@ -406,7 +445,7 @@ export default function RadarTable() {
             })}
             {rows.length === 0 && (
               <tr>
-                <td colSpan={15} className="px-4 py-16 text-center text-sm text-oct-muted">
+                <td colSpan={16} className="px-4 py-16 text-center text-sm text-oct-muted">
                   No tokens in this window. Contracts from Feed will aggregate here.
                 </td>
               </tr>

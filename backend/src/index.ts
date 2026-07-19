@@ -46,7 +46,7 @@ const telegramManagers = new Map<string, TelegramClientManager>();
 function checkPushover(cfg: PushoverConfig, msg: FrontendMessage, evmChainHint: string | null, contractLinkTemplates: ContractLinkTemplates): void {
   if (!cfg.enabled || !cfg.appToken || !cfg.userKey) return;
 
-  const t = cfg.triggers ?? { highlightedUser: false, highlightedUserContract: true, contract: false, keyword: false };
+  const t = cfg.triggers ?? { highlightedUser: false, highlightedUserContract: true, contract: false, keyword: false, signalConvergence: false };
   const f = cfg.filters ?? { userIds: [], channelIds: [], guildIds: [] };
 
   const triggered =

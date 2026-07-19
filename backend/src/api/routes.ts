@@ -15,6 +15,8 @@ import { StringSession } from 'teleproto/sessions/index.js';
 import type { TelegramClientManager } from '../telegram/clientManager.js';
 import { createFomoRouter } from '../fomo/routes.js';
 import { tryParseTokenEnrichment } from '../utils/rickEmbedParser.js';
+import { sendPushover } from '../utils/pushover.js';
+import { buildContractUrl } from '../utils/contract.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const SOUNDS_DIR = join(__dirname, '../../data/sounds');
@@ -745,7 +747,7 @@ export function createRouter(wsServer: WsServer): Router {
 
   router.put('/config', async (req, res) => {
     const userId = getUserId(req);
-    const { globalHighlightedUsers, contractDetection, guildColors, dmColors, telegramColors, enabledGuilds, hiddenUsers, evmAddressColor, solAddressColor, openInDiscordApp, openInTelegramApp, messageSounds, soundSettings, channelSounds, pushover, contractLinkTemplates, contractClickAction, showFullContractAddress, autoOpenHighlightedContracts, globalKeywordPatterns, keywordAlertsEnabled, desktopNotifications, mentionsUserEnabled, mentionsRoleEnabled, mentionsHereEnabled, mentionsEveryoneEnabled, badgeClickAction, chattingEnabled, messageDisplay, compactModeAvatars, roleColors, mobileZoomScale, splitLayout, paneRoomIds, paneLocks, gridMirror, seenAnnouncements, discordProxyUrl } = req.body;
+    const { globalHighlightedUsers, contractDetection, guildColors, dmColors, telegramColors, enabledGuilds, hiddenUsers, evmAddressColor, solAddressColor, openInDiscordApp, openInTelegramApp, messageSounds, soundSettings, channelSounds, pushover, contractLinkTemplates, contractClickAction, showFullContractAddress, autoOpenHighlightedContracts, signalConvergenceWindowMinutes, globalKeywordPatterns, keywordAlertsEnabled, desktopNotifications, mentionsUserEnabled, mentionsRoleEnabled, mentionsHereEnabled, mentionsEveryoneEnabled, badgeClickAction, chattingEnabled, messageDisplay, compactModeAvatars, roleColors, mobileZoomScale, splitLayout, paneRoomIds, paneLocks, gridMirror, seenAnnouncements, discordProxyUrl } = req.body;
 
     // The Discord proxy only makes sense in local mode (the connection leaves the
     // user's own machine). In hosted mode the server IP is fixed, and honouring a
@@ -779,6 +781,9 @@ export function createRouter(wsServer: WsServer): Router {
       ...(contractClickAction !== undefined && { contractClickAction }),
       ...(showFullContractAddress !== undefined && { showFullContractAddress }),
       ...(autoOpenHighlightedContracts !== undefined && { autoOpenHighlightedContracts }),
+      ...(signalConvergenceWindowMinutes !== undefined && {
+        signalConvergenceWindowMinutes: Math.max(1, Math.min(240, Number(signalConvergenceWindowMinutes) || 30)),
+      }),
       ...(globalKeywordPatterns !== undefined && { globalKeywordPatterns }),
       ...(keywordAlertsEnabled !== undefined && { keywordAlertsEnabled }),
       ...(desktopNotifications !== undefined && { desktopNotifications }),
@@ -1345,6 +1350,50 @@ export function createRouter(wsServer: WsServer): Router {
   });
 
   // --- FOMO user tracking ---
+
+  router.post('/pushover/signal-convergence', async (req, res) => {
+    const userId = getUserId(req);
+    const { contractAddress, tokenSymbol, traderName, channelName, evmChain } = req.body ?? {};
+
+    if (typeof contractAddress !== 'string' || !contractAddress.trim()) {
+      return res.status(400).json({ error: 'contractAddress is required.' });
+    }
+
+    const config = await storage.getConfig(userId);
+    const cfg = config.pushover;
+    if (!cfg?.enabled || !cfg.appToken || !cfg.userKey) {
+      return res.json({ sent: false });
+    }
+
+    const triggers = cfg.triggers ?? {
+      highlightedUser: false,
+      highlightedUserContract: true,
+      contract: false,
+      keyword: false,
+      signalConvergence: false,
+    };
+    if (!triggers.signalConvergence) {
+      return res.json({ sent: false });
+    }
+
+    const token = tokenSymbol || contractAddress.slice(0, 8);
+    const trader = typeof traderName === 'string' && traderName.trim() ? traderName.trim() : 'Tracked trader';
+    const channel = typeof channelName === 'string' && channelName.trim() ? channelName.trim() : 'feed';
+    const url = buildContractUrl(
+      contractAddress.trim(),
+      config.contractLinkTemplates,
+      typeof evmChain === 'string' ? evmChain : undefined,
+    );
+
+    await sendPushover(cfg, {
+      title: 'Signal Convergence',
+      message: `${trader} bought ${token} — also called in ${channel}`,
+      url,
+      urlTitle: 'Open chart',
+    });
+
+    res.json({ sent: true });
+  });
 
   router.use('/fomo', createFomoRouter());
 

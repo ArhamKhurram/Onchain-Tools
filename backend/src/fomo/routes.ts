@@ -3,8 +3,16 @@
 
 import { Router } from 'express';
 import { isHostedMode } from '../storage/index.js';
-import { ensureSharedFomoClient } from './client.js';
-import { getFomoServiceClient, type FomoTrackedUserRow } from './store.js';
+import { ensureSharedFomoClient, resolveFomoRefreshToken } from './client.js';
+import { ensureSharedAccountFollows } from './follows.js';
+import { getFomoPollerStatus } from './poller.js';
+import {
+  getFomoServiceClient,
+  extractLeaderboardEntries,
+  matchHoldersToTracked,
+  networkIdFromContract,
+  type FomoTrackedUserRow,
+} from './store.js';
 import type { FomoClient } from './client.js';
 
 function getUserId(req: any): string {
@@ -77,6 +85,122 @@ async function resolveFomoUser(client: FomoClient, query: string): Promise<Resol
 
 export function createFomoRouter(): Router {
   const router = Router();
+
+  // GET /api/fomo/status — whether the shared FOMO account is configured.
+  router.get('/status', async (_req, res) => {
+    const refreshToken = await resolveFomoRefreshToken();
+    const poller = getFomoPollerStatus();
+    res.json({
+      configured: !!refreshToken,
+      pollerActive: poller.active,
+      pollerReason: poller.reason ?? null,
+      ensureFollows: process.env.FOMO_ENSURE_FOLLOWS !== 'false',
+    });
+  });
+
+  // GET /api/fomo/leaderboard?window=24h|all&limit=50
+  router.get('/leaderboard', async (req, res) => {
+    const windowParam = typeof req.query.window === 'string' ? req.query.window : 'all';
+    const window = windowParam === '24h' ? '24h' : undefined;
+    const limitRaw = Number.parseInt(String(req.query.limit ?? '50'), 10);
+    const limit = Number.isFinite(limitRaw) ? Math.min(Math.max(limitRaw, 1), 100) : 50;
+
+    const client = await ensureSharedFomoClient();
+    if (!client) {
+      return res.status(503).json({
+        error: 'FOMO service account is not configured. Seed fomo_poll_state.refresh_token or set FOMO_REFRESH_TOKEN.',
+      });
+    }
+
+    try {
+      await client.init();
+      const result = await client.getLeaderboard(limit, window);
+      if (!result.status || result.status < 200 || result.status >= 300) {
+        return res.status(502).json({ error: 'Failed to fetch FOMO leaderboard.' });
+      }
+      res.json({ entries: extractLeaderboardEntries(result.json) });
+    } catch (err: any) {
+      res.status(500).json({ error: safeError(err, 'Failed to fetch FOMO leaderboard') });
+    }
+  });
+
+  // POST /api/fomo/hodlers/overlap — body { tokens: [{ address, chain, evmChain? }] }
+  router.post('/hodlers/overlap', async (req, res) => {
+    const userId = getUserId(req);
+    const db = getFomoServiceClient();
+    if (!db) return res.status(503).json({ error: 'FOMO tracking is not available (storage not configured).' });
+
+    const rawTokens = req.body?.tokens;
+    if (!Array.isArray(rawTokens) || rawTokens.length === 0) {
+      return res.status(400).json({ error: 'tokens (non-empty array) is required.' });
+    }
+
+    const tokens = rawTokens
+      .slice(0, 40)
+      .map((t: any) => {
+        const address = typeof t?.address === 'string' ? t.address.trim() : '';
+        const chain = t?.chain === 'sol' ? 'sol' : t?.chain === 'evm' ? 'evm' : null;
+        const evmChain = typeof t?.evmChain === 'string' ? t.evmChain : undefined;
+        const networkId = chain ? networkIdFromContract(chain, evmChain) : null;
+        return address && networkId ? { address, networkId } : null;
+      })
+      .filter(Boolean) as { address: string; networkId: number }[];
+
+    if (tokens.length === 0) {
+      return res.json({ overlaps: {} });
+    }
+
+    const client = await ensureSharedFomoClient();
+    if (!client) {
+      return res.status(503).json({
+        error: 'FOMO service account is not configured. Seed fomo_poll_state.refresh_token or set FOMO_REFRESH_TOKEN.',
+      });
+    }
+
+    try {
+      const { data: tracked, error: trackedError } = await db
+        .from('fomo_tracked_users')
+        .select('fomo_user_id, fomo_handle')
+        .eq('user_id', userId);
+      if (trackedError) throw trackedError;
+
+      const trackedById = new Map<string, { fomo_handle: string | null }>();
+      const trackedHandles = new Set<string>();
+      for (const row of tracked ?? []) {
+        trackedById.set(row.fomo_user_id, { fomo_handle: row.fomo_handle });
+        if (row.fomo_handle) trackedHandles.add(row.fomo_handle.toLowerCase());
+      }
+
+      await client.init();
+      const holdersQuery = encodeURIComponent(
+        JSON.stringify(tokens.map((t) => ({ address: t.address, networkId: t.networkId }))),
+      );
+      const batchResult = await client.call(`/hodlers/top?tokens=${holdersQuery}`);
+
+      if (!batchResult.status || batchResult.status < 200 || batchResult.status >= 300) {
+        return res.status(502).json({ error: 'Failed to fetch FOMO holder data.' });
+      }
+
+      const overlaps: Record<string, { trackedCount: number; trackedHandles: string[] }> = {};
+      for (const token of tokens) {
+        const match = matchHoldersToTracked(
+          token.address,
+          token.networkId,
+          batchResult.json,
+          trackedById,
+          trackedHandles,
+        );
+        overlaps[token.address.toLowerCase()] = {
+          trackedCount: match.trackedCount,
+          trackedHandles: match.trackedHandles,
+        };
+      }
+
+      res.json({ overlaps });
+    } catch (err: any) {
+      res.status(500).json({ error: safeError(err, 'Failed to compute holder overlap') });
+    }
+  });
 
   // POST /api/fomo/resolve — body { query } → resolve a FOMO user (no DB write).
   // The console persists tracked users via Supabase RLS; this route only needs the
@@ -163,13 +287,9 @@ export function createFomoRouter(): Router {
         throw error;
       }
 
-      // --- Extension point (feed-scope handling) ---------------------------
-      // If FOMO's trading-activity feed turns out to be FOLLOWING-scoped (i.e.
-      // it only surfaces trades from accounts the shared service account
-      // follows) rather than a global firehose, this is where we'd make the
-      // shared account follow `resolved.fomoUserId` so its trades appear in the
-      // poll. Left as a no-op until the feed scope is verified.
-      // await ensureSharedAccountFollows(client, resolved.fomoUserId);
+      // If tradingActivity is following-scoped, make the shared account follow
+      // this trader so their trades appear in the global poll feed.
+      await ensureSharedAccountFollows(client, resolved.fomoUserId);
 
       res.status(201).json(data as FomoTrackedUserRow);
     } catch (err: any) {

@@ -1,10 +1,12 @@
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import { AlertTriangle, Bell, BellOff, CheckCircle2, Plus, RefreshCw, Trash2, UserPlus, Users } from 'lucide-react';
-import { useFomoTracking } from '../../hooks/useFomoTracking';
+import { useFomoServiceStatus, useFomoTracking } from '../../hooks/useFomoTracking';
 import type { FomoTrackedUser } from '../../types/fomo';
+import FomoLeaderboard from './FomoLeaderboard';
 import FomoTradeFeed from './FomoTradeFeed';
 
 type Feedback = { tone: 'success' | 'warning' | 'error'; text: string };
+type FomoSubview = 'tracking' | 'leaderboard';
 
 function trackedLabel(user: FomoTrackedUser): string {
   return user.display_name || (user.fomo_handle ? `@${user.fomo_handle}` : user.fomo_user_id);
@@ -18,11 +20,40 @@ function formatDate(iso: string): string {
 
 export default function FomoTracker({ userId }: { userId: string }) {
   const { tracked, loading, error, refresh, track, untrack, updateNotifyPushover } = useFomoTracking(userId);
+  const { status: serviceStatus } = useFomoServiceStatus();
+  const [subview, setSubview] = useState<FomoSubview>('tracking');
   const [query, setQuery] = useState('');
   const [submitting, setSubmitting] = useState(false);
+  const [trackingLeaderId, setTrackingLeaderId] = useState<string | null>(null);
   const [feedback, setFeedback] = useState<Feedback | null>(null);
   const [removingId, setRemovingId] = useState<string | null>(null);
   const [togglingPushoverId, setTogglingPushoverId] = useState<string | null>(null);
+
+  const trackedIds = useMemo(() => new Set(tracked.map((u) => u.fomo_user_id)), [tracked]);
+  const trackedHandles = useMemo(
+    () => new Set(tracked.map((u) => u.fomo_handle?.toLowerCase()).filter(Boolean) as string[]),
+    [tracked],
+  );
+
+  const trackFromLeaderboard = async (q: string, fomoUserId: string) => {
+    setTrackingLeaderId(fomoUserId);
+    const result = await track(q);
+    if (result.ok) {
+      setFeedback({ tone: 'success', text: `Now tracking ${trackedLabel(result.user)}.` });
+    } else if (result.status === 409) {
+      setFeedback({ tone: 'warning', text: 'You are already tracking this FOMO user.' });
+    } else if (result.status === 503) {
+      setFeedback({
+        tone: 'error',
+        text: 'FOMO integration not configured on the server. Add FOMO_REFRESH_TOKEN to backend/.env.',
+      });
+    } else {
+      setFeedback({ tone: 'error', text: result.error || 'Failed to track user.' });
+    }
+    setTrackingLeaderId(null);
+    if (result.ok) return { ok: true as const };
+    return { ok: false as const, status: result.status, error: result.error };
+  };
 
   const handleTrack = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -40,7 +71,7 @@ export default function FomoTracker({ userId }: { userId: string }) {
     } else if (result.status === 503) {
       setFeedback({
         tone: 'error',
-        text: 'FOMO integration not configured on the server. Tracking is unavailable right now.',
+        text: 'FOMO integration not configured on the server. Add FOMO_REFRESH_TOKEN to backend/.env (see .env.example).',
       });
     } else {
       setFeedback({ tone: 'error', text: result.error || 'Failed to track user.' });
@@ -95,6 +126,35 @@ export default function FomoTracker({ userId }: { userId: string }) {
           </button>
         </div>
 
+        {serviceStatus && !serviceStatus.configured && (
+          <div className="mb-3 flex items-start gap-2 px-3 py-2 rounded-cockpit border-2 border-oct-accent bg-oct-accent-dim text-sm text-oct-accent">
+            <AlertTriangle size={16} className="shrink-0 mt-0.5" />
+            <span>
+              FOMO service account is not configured. Set <code className="font-mono text-xs">FOMO_REFRESH_TOKEN</code> in{' '}
+              <code className="font-mono text-xs">backend/.env</code> or seed{' '}
+              <code className="font-mono text-xs">fomo_poll_state.refresh_token</code> in Supabase.
+            </span>
+          </div>
+        )}
+
+        <div className="flex gap-2 mb-3">
+          {(['tracking', 'leaderboard'] as const).map((id) => (
+            <button
+              key={id}
+              type="button"
+              onClick={() => setSubview(id)}
+              className={`px-3 py-1 rounded-cockpit text-xs font-bold uppercase border-2 transition-all ${
+                subview === id
+                  ? 'bg-oct-accent text-white border-black shadow-oct-hard-sm'
+                  : 'text-oct-muted border-oct-border-bright hover:text-oct-text'
+              }`}
+            >
+              {id === 'tracking' ? 'My Tracked' : 'Leaderboard'}
+            </button>
+          ))}
+        </div>
+
+        {subview === 'tracking' && (
         <form onSubmit={handleTrack} className="flex flex-col sm:flex-row gap-2">
           <div className="relative flex-1">
             <UserPlus size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-oct-muted pointer-events-none" />
@@ -115,6 +175,7 @@ export default function FomoTracker({ userId }: { userId: string }) {
             Track
           </button>
         </form>
+        )}
 
         {feedback && (
           <div className={`mt-2 flex items-start gap-2 px-3 py-2 rounded-cockpit border-2 text-sm ${feedbackClass}`}>
@@ -131,6 +192,18 @@ export default function FomoTracker({ userId }: { userId: string }) {
       {/* Body: tracked list + live feed */}
       <div className="flex-1 min-h-0 overflow-hidden px-4 sm:px-6 py-4">
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 h-full min-h-0">
+          {subview === 'leaderboard' ? (
+            <>
+              <FomoLeaderboard
+                trackedIds={trackedIds}
+                trackedHandles={trackedHandles}
+                onTrack={trackFromLeaderboard}
+                trackingId={trackingLeaderId}
+              />
+              <FomoTradeFeed />
+            </>
+          ) : (
+            <>
           {/* Tracked list */}
           <div className="brutal-card flex flex-col min-h-0 overflow-hidden">
             <div className="shrink-0 flex items-center gap-2 px-4 py-3 border-b-2 border-black bg-oct-surface">
@@ -212,6 +285,8 @@ export default function FomoTracker({ userId }: { userId: string }) {
 
           {/* Live trade feed */}
           <FomoTradeFeed />
+            </>
+          )}
         </div>
       </div>
     </div>

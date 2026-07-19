@@ -38,7 +38,7 @@ const DEFAULT_CONFIG: AppConfig = {
   pushover: {
     enabled: false, appToken: '', userKey: '',
     priority: 1 as const, sound: 'siren' as const,
-    triggers: { highlightedUser: false, highlightedUserContract: true, contract: false, keyword: false },
+    triggers: { highlightedUser: false, highlightedUserContract: true, contract: false, keyword: false, signalConvergence: false },
     filters: { userIds: [], channelIds: [], guildIds: [] },
   },
   contractLinkTemplates: {
@@ -50,6 +50,7 @@ const DEFAULT_CONFIG: AppConfig = {
   contractClickAction: 'copy_open',
   showFullContractAddress: false,
   autoOpenHighlightedContracts: false,
+  signalConvergenceWindowMinutes: 30,
   globalKeywordPatterns: [],
   keywordAlertsEnabled: true,
   desktopNotifications: false,
@@ -151,7 +152,7 @@ class ConfigStore {
     return this.config;
   }
 
-  updateConfig(partial: Partial<Pick<AppConfig, 'globalHighlightedUsers' | 'contractDetection' | 'guildColors' | 'dmColors' | 'enabledGuilds' | 'evmAddressColor' | 'solAddressColor' | 'openInDiscordApp' | 'openInTelegramApp' | 'hiddenUsers' | 'messageSounds' | 'soundSettings' | 'channelSounds' | 'pushover' | 'contractLinkTemplates' | 'contractClickAction' | 'showFullContractAddress' | 'autoOpenHighlightedContracts' | 'globalKeywordPatterns' | 'keywordAlertsEnabled' | 'desktopNotifications' | 'mentionsUserEnabled' | 'mentionsRoleEnabled' | 'mentionsHereEnabled' | 'mentionsEveryoneEnabled' | 'badgeClickAction' | 'chattingEnabled' | 'messageDisplay' | 'compactModeAvatars' | 'roleColors' | 'mobileZoomScale' | 'splitLayout' | 'paneRoomIds' | 'paneLocks' | 'gridMirror' | 'seenAnnouncements' | 'telegramApiId' | 'telegramApiHash' | 'telegramSessions' | 'discordProxyUrl'>>): AppConfig {
+  updateConfig(partial: Partial<Pick<AppConfig, 'globalHighlightedUsers' | 'contractDetection' | 'guildColors' | 'dmColors' | 'enabledGuilds' | 'evmAddressColor' | 'solAddressColor' | 'openInDiscordApp' | 'openInTelegramApp' | 'hiddenUsers' | 'messageSounds' | 'soundSettings' | 'channelSounds' | 'pushover' | 'contractLinkTemplates' | 'contractClickAction' | 'showFullContractAddress' | 'autoOpenHighlightedContracts' | 'signalConvergenceWindowMinutes' | 'globalKeywordPatterns' | 'keywordAlertsEnabled' | 'desktopNotifications' | 'mentionsUserEnabled' | 'mentionsRoleEnabled' | 'mentionsHereEnabled' | 'mentionsEveryoneEnabled' | 'badgeClickAction' | 'chattingEnabled' | 'messageDisplay' | 'compactModeAvatars' | 'roleColors' | 'mobileZoomScale' | 'splitLayout' | 'paneRoomIds' | 'paneLocks' | 'gridMirror' | 'seenAnnouncements' | 'telegramApiId' | 'telegramApiHash' | 'telegramSessions' | 'discordProxyUrl'>>): AppConfig {
     Object.assign(this.config, partial);
     this.save();
     return this.config;

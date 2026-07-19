@@ -94,7 +94,7 @@ export default function GlobalSettings() {
   const [pushoverUserKey, setPushoverUserKey] = useState('');
   const [pushoverPriority, setPushoverPriority] = useState<PushoverPriority>(1);
   const [pushoverSound, setPushoverSound] = useState<PushoverSound>('siren');
-  const defaultTriggers: PushoverTriggers = { highlightedUser: false, highlightedUserContract: true, contract: false, keyword: false };
+  const defaultTriggers: PushoverTriggers = { highlightedUser: false, highlightedUserContract: true, contract: false, keyword: false, signalConvergence: false };
   const defaultFilters: PushoverFilters = { userIds: [], channelIds: [], guildIds: [] };
   const [pushoverTriggers, setPushoverTriggers] = useState<PushoverTriggers>({ ...defaultTriggers });
   const [pushoverFilters, setPushoverFilters] = useState<PushoverFilters>({ ...defaultFilters });
@@ -105,6 +105,7 @@ export default function GlobalSettings() {
   const [contractClickAction, setContractClickAction] = useState<ContractClickAction>('copy_open');
   const [showFullContractAddress, setShowFullContractAddress] = useState(false);
   const [autoOpenHighlightedContracts, setAutoOpenHighlightedContracts] = useState(false);
+  const [signalConvergenceWindowMinutes, setSignalConvergenceWindowMinutes] = useState(30);
   const [globalKeywordPatterns, setGlobalKeywordPatterns] = useState<KeywordPattern[]>([]);
   const [keywordAlertsEnabled, setKeywordAlertsEnabled] = useState(true);
   const [desktopNotifications, setDesktopNotifications] = useState(false);
@@ -165,7 +166,7 @@ export default function GlobalSettings() {
       setPushoverUserKey(config.pushover?.userKey ?? '');
       setPushoverPriority(config.pushover?.priority ?? 1);
       setPushoverSound(config.pushover?.sound ?? 'siren');
-      setPushoverTriggers(config.pushover?.triggers ?? { ...defaultTriggers });
+      setPushoverTriggers({ ...defaultTriggers, ...config.pushover?.triggers });
       setPushoverFilters(config.pushover?.filters ?? { ...defaultFilters });
       setSolPlatform(config.contractLinkTemplates?.solPlatform ?? 'axiom');
       setEvmPlatform(config.contractLinkTemplates?.evmPlatform ?? 'gmgn');
@@ -174,6 +175,7 @@ export default function GlobalSettings() {
       setContractClickAction(config.contractClickAction ?? 'copy_open');
       setShowFullContractAddress(config.showFullContractAddress ?? false);
       setAutoOpenHighlightedContracts(config.autoOpenHighlightedContracts ?? false);
+      setSignalConvergenceWindowMinutes(config.signalConvergenceWindowMinutes ?? 30);
       setGlobalKeywordPatterns(config.globalKeywordPatterns ?? []);
       setKeywordAlertsEnabled(config.keywordAlertsEnabled ?? true);
       setDesktopNotifications(config.desktopNotifications ?? false);
@@ -234,6 +236,7 @@ export default function GlobalSettings() {
       contractClickAction !== (config.contractClickAction ?? 'copy_open') ||
       showFullContractAddress !== (config.showFullContractAddress ?? false) ||
       autoOpenHighlightedContracts !== (config.autoOpenHighlightedContracts ?? false) ||
+      signalConvergenceWindowMinutes !== (config.signalConvergenceWindowMinutes ?? 30) ||
       !kpEqual(globalKeywordPatterns, config.globalKeywordPatterns ?? []) ||
       keywordAlertsEnabled !== (config.keywordAlertsEnabled ?? true) ||
       desktopNotifications !== (config.desktopNotifications ?? false) ||
@@ -251,7 +254,7 @@ export default function GlobalSettings() {
     );
   }, [config, globalUsers, contractDetection, guildColors, dmColors, telegramColors, enabledGuilds, evmAddressColor, solAddressColor,
     openInDiscordApp, openInTelegramApp, messageSounds, soundSettings, channelSounds, pushoverEnabled, pushoverAppToken, pushoverUserKey, pushoverPriority, pushoverSound, pushoverTriggers, pushoverFilters,
-    solPlatform, evmPlatform, customSolUrl, customEvmUrl, contractClickAction, showFullContractAddress, autoOpenHighlightedContracts,
+    solPlatform, evmPlatform, customSolUrl, customEvmUrl, contractClickAction, showFullContractAddress, autoOpenHighlightedContracts, signalConvergenceWindowMinutes,
     globalKeywordPatterns, keywordAlertsEnabled, desktopNotifications, mentionsUserEnabled, mentionsRoleEnabled, mentionsHereEnabled, mentionsEveryoneEnabled, badgeClickAction, chattingEnabled, messageDisplay, compactModeAvatars, roleColors, mobileZoomScale, splitLayout]);
 
   useEffect(() => {
@@ -293,6 +296,7 @@ export default function GlobalSettings() {
         contractClickAction,
         showFullContractAddress,
         autoOpenHighlightedContracts,
+        signalConvergenceWindowMinutes,
         globalKeywordPatterns,
         keywordAlertsEnabled,
         desktopNotifications,
@@ -1007,6 +1011,24 @@ export default function GlobalSettings() {
                     </div>
 
                     <div className="p-3 sm:p-4 bg-discord-sidebar rounded-lg">
+                      <h4 className="text-xs sm:text-sm font-semibold text-white mb-2">Signal Convergence Window</h4>
+                      <p className="text-xs sm:text-sm text-discord-text-muted mb-3">
+                        When a contract appears in your feed and a tracked FOMO user buys the same token within this window, a convergence alert fires.
+                      </p>
+                      <div className="flex items-center gap-3">
+                        <input
+                          type="number"
+                          min={1}
+                          max={240}
+                          value={signalConvergenceWindowMinutes}
+                          onChange={(e) => setSignalConvergenceWindowMinutes(Math.max(1, Math.min(240, Number(e.target.value) || 30)))}
+                          className="w-20 bg-discord-dark border-none rounded px-2 py-1.5 text-sm text-discord-text outline-none focus:ring-1 focus:ring-discord-blurple font-mono"
+                        />
+                        <span className="text-xs sm:text-sm text-discord-text-muted">minutes (default 30)</span>
+                      </div>
+                    </div>
+
+                    <div className="p-3 sm:p-4 bg-discord-sidebar rounded-lg">
                       <h4 className="text-xs sm:text-sm font-semibold text-white mb-2">Address Colors</h4>
                       <p className="text-xs sm:text-sm text-discord-text-muted mb-3">
                         Customize highlight colors for detected contract addresses by chain type.
@@ -1664,6 +1686,11 @@ export default function GlobalSettings() {
                             value={pushoverTriggers.keyword}
                             onChange={(v) => setPushoverTriggers((p) => ({ ...p, keyword: v }))}
                             label="Keyword pattern matched"
+                          />
+                          <Toggle
+                            value={pushoverTriggers.signalConvergence ?? false}
+                            onChange={(v) => setPushoverTriggers((p) => ({ ...p, signalConvergence: v }))}
+                            label="Signal convergence (contract call + FOMO buy overlap)"
                           />
                         </div>
 

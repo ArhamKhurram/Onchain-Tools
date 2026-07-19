@@ -1,13 +1,19 @@
-import type { ContractEntry, FrontendMessage } from '../types';
+import type { AppConfig, ContractEntry, FrontendMessage } from '../types';
 import type { FomoTrade } from '../types/fomo';
 
 /** Default window: contract in feed + FOMO buy within 30 minutes. */
 export const SIGNAL_CONVERGENCE_WINDOW_MS = 30 * 60 * 1000;
+export const DEFAULT_SIGNAL_CONVERGENCE_WINDOW_MINUTES = 30;
 
 export interface SignalConvergenceMatch {
   contract: ContractEntry;
   trade: FomoTrade;
   key: string;
+}
+
+export function getSignalConvergenceWindowMs(config?: AppConfig | null): number {
+  const minutes = config?.signalConvergenceWindowMinutes ?? DEFAULT_SIGNAL_CONVERGENCE_WINDOW_MINUTES;
+  return Math.max(1, minutes) * 60_000;
 }
 
 function normalizeAddress(address: string): string {
@@ -64,6 +70,21 @@ export function findConvergenceForContract(
   return null;
 }
 
+export function findConvergenceForAddress(
+  address: string,
+  contracts: ContractEntry[],
+  trades: FomoTrade[],
+  windowMs = SIGNAL_CONVERGENCE_WINDOW_MS,
+): FomoTrade | null {
+  const normalized = normalizeAddress(address);
+  for (const contract of contracts) {
+    if (normalizeAddress(contract.address) !== normalized) continue;
+    const trade = findConvergenceForContract(contract, trades, windowMs);
+    if (trade) return trade;
+  }
+  return null;
+}
+
 export function convergenceAlertReason(contract: ContractEntry, trade: FomoTrade): string {
   const trader = trade.displayName || (trade.fomoHandle ? `@${trade.fomoHandle}` : 'Tracked trader');
   const token = trade.tokenSymbol || contract.tokenSymbol || contract.address.slice(0, 8);
@@ -71,7 +92,11 @@ export function convergenceAlertReason(contract: ContractEntry, trade: FomoTrade
   return `Signal convergence: ${trader} bought ${token} — also called in ${channel}`;
 }
 
-export function convergenceAlertMessage(contract: ContractEntry, trade: FomoTrade): FrontendMessage {
+export function convergenceAlertMessage(
+  contract: ContractEntry,
+  trade: FomoTrade,
+  windowMinutes = DEFAULT_SIGNAL_CONVERGENCE_WINDOW_MINUTES,
+): FrontendMessage {
   const token = trade.tokenSymbol || contract.tokenSymbol || contract.address;
   const trader = trade.displayName || trade.fomoHandle || 'Tracked trader';
   return {
@@ -86,7 +111,7 @@ export function convergenceAlertMessage(contract: ContractEntry, trade: FomoTrad
       displayName: trader,
       avatar: null,
     },
-    content: `${trader} bought ${token} within ${Math.round(SIGNAL_CONVERGENCE_WINDOW_MS / 60_000)}m of a contract call in ${contract.channelName}.`,
+    content: `${trader} bought ${token} within ${windowMinutes}m of a contract call in ${contract.channelName}.`,
     timestamp: new Date().toISOString(),
     attachments: [],
     embeds: [],

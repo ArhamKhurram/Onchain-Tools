@@ -3,6 +3,8 @@ import { Search, ExternalLink, Copy, Check, Trash2, LayoutGrid, List, X, Message
 import { useAppStore } from '../stores/appStore';
 import { buildContractUrl } from '../utils/contractUrl';
 import ConfirmModal from './ConfirmModal';
+import SignalConvergenceBadge from './SignalConvergenceBadge';
+import { useConvergenceForContract } from '../hooks/useSignalConvergence';
 import type { ContractEntry } from '../types';
 import { colorWithExtraAlpha } from './ColorPickerWithAlpha';
 
@@ -277,6 +279,7 @@ function ContractRow({
 
   const isNew = entry.firstSeen !== false;
   const { ticker, subtitle } = contractDisplay(entry, showFull);
+  const { trade: convergenceTrade, windowMinutes } = useConvergenceForContract(entry);
 
   return (
     <div className="flex flex-col gap-1 px-3 sm:px-4 py-2.5 hover:bg-oct-surface-raised/40 transition-colors group border-b border-oct-border/60">
@@ -297,6 +300,10 @@ function ContractRow({
         >
           {isNew ? 'NEW' : 'RESCAN'}
         </span>
+
+        {convergenceTrade && (
+          <SignalConvergenceBadge trade={convergenceTrade} windowMinutes={windowMinutes} />
+        )}
 
         <div className="flex items-center gap-1.5 min-w-0 flex-1 sm:flex-none">
           <span
@@ -400,6 +407,7 @@ function ContractCard({
 
   const isNew = entry.firstSeen !== false;
   const { ticker, subtitle } = contractDisplay(entry, false);
+  const { trade: convergenceTrade, windowMinutes } = useConvergenceForContract(entry);
 
   return (
     <div className="bg-oct-surface rounded-cockpit border border-oct-border p-3 flex flex-col gap-2.5 hover:border-oct-muted/40 transition-colors group relative">
@@ -427,6 +435,9 @@ function ContractCard({
         >
           {isNew ? 'NEW' : 'RESCAN'}
         </span>
+        {convergenceTrade && (
+          <SignalConvergenceBadge trade={convergenceTrade} windowMinutes={windowMinutes} />
+        )}
         <span className="text-xs text-oct-muted ml-auto pr-5 font-mono">{timeAgo(entry.timestamp)}</span>
       </div>
 

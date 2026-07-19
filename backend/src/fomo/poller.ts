@@ -11,6 +11,7 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
 import type { WsServer } from '../ws/server.js';
 import { ensureSharedFomoClient, type FomoClient } from './client.js';
+import { syncAllTrackedFollows } from './follows.js';
 import {
   getFomoServiceClient,
   normalizeTrade,
@@ -38,6 +39,7 @@ class FomoPoller {
   private polling = false;
   private started = false;
   private loggedSample = false;
+  private status: FomoPollerStatus = { active: false, reason: 'no_supabase' };
 
   constructor(wsServer: WsServer) {
     this.wsServer = wsServer;
@@ -50,6 +52,7 @@ class FomoPoller {
     const db = getFomoServiceClient();
     if (!db) {
       console.log('[FomoPoller] Supabase not configured; FOMO poller idle.');
+      this.status = { active: false, reason: 'no_supabase' };
       return;
     }
     this.db = db;
@@ -67,6 +70,7 @@ class FomoPoller {
       const client = await ensureSharedFomoClient();
       if (!client) {
         console.log('[FomoPoller] No FOMO refresh token in DB or env; poller idle.');
+        this.status = { active: false, reason: 'no_refresh_token' };
         return;
       }
       this.client = client;
@@ -75,14 +79,35 @@ class FomoPoller {
       // Launches stealth Chromium + exchanges the refresh token for a JWT.
       await this.client.init();
 
+      await this.syncTrackedFollows();
+
       const interval = Number.parseInt(process.env.FOMO_POLL_INTERVAL_MS ?? '', 10) || DEFAULT_INTERVAL_MS;
       console.log(`[FomoPoller] Started fan-out poller (interval ${interval}ms).`);
+      void this.poll().catch((err) => console.error('[FomoPoller] initial poll error:', (err as Error)?.message));
       this.timer = setInterval(() => {
         void this.poll().catch((err) => console.error('[FomoPoller] poll error:', (err as Error)?.message));
       }, interval);
+      this.status = { active: true, reason: 'running' };
     } catch (err) {
       console.error('[FomoPoller] Failed to start:', (err as Error)?.message);
+      this.status = { active: false, reason: 'bootstrap_failed' };
     }
+  }
+
+  getStatus(): FomoPollerStatus {
+    return this.status;
+  }
+
+  private async syncTrackedFollows(): Promise<void> {
+    if (!this.client || !this.db) return;
+    const { data, error } = await this.db.from('fomo_tracked_users').select('fomo_user_id');
+    if (error) {
+      console.warn('[FomoPoller] Could not load tracked users for follow sync:', error.message);
+      return;
+    }
+    const ids = (data ?? []).map((row) => row.fomo_user_id).filter(Boolean);
+    if (ids.length === 0) return;
+    await syncAllTrackedFollows(this.client, ids);
   }
 
   private async loadState(): Promise<void> {
@@ -235,6 +260,17 @@ class FomoPoller {
 }
 
 let _poller: FomoPoller | null = null;
+
+export interface FomoPollerStatus {
+  active: boolean;
+  reason?: 'no_supabase' | 'no_refresh_token' | 'bootstrap_failed' | 'running';
+}
+
+/** Lightweight status for the /api/fomo/status route and frontend gating. */
+export function getFomoPollerStatus(): FomoPollerStatus {
+  if (!_poller) return { active: false, reason: 'no_supabase' };
+  return _poller.getStatus();
+}
 
 /**
  * Start the global FOMO fan-out poller. No-op (idle) without a shared FOMO

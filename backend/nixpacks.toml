@@ -2,6 +2,23 @@
 
 [phases.setup]
 nixPkgs = ["nodejs_20"]
+aptPkgs = [
+  "libnss3",
+  "libnspr4",
+  "libatk1.0-0",
+  "libatk-bridge2.0-0",
+  "libcups2",
+  "libdrm2",
+  "libxkbcommon0",
+  "libxcomposite1",
+  "libxdamage1",
+  "libxfixes3",
+  "libxrandr2",
+  "libgbm1",
+  "libasound2",
+  "libpango-1.0-0",
+  "libcairo2",
+]
 
 [phases.install]
 cmds = ["npm ci --include=dev"]
@@ -9,8 +26,11 @@ cmds = ["npm ci --include=dev"]
 [phases.build]
 cmds = [
   "npm run build",
-  "npx playwright install chromium"
+  "npx playwright install chromium --with-deps"
 ]
 
 [start]
 cmd = "npm run start"
+
+[variables]
+PLAYWRIGHT_BROWSERS_PATH = "/app/node_modules/playwright-core/.local-browsers"

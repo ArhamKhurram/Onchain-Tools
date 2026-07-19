@@ -33,3 +33,24 @@ export interface FomoTrade extends FomoTradeEvent {
   receivedAt: number;
   key: string;
 }
+
+export interface FomoLeaderboardEntry {
+  fomoUserId: string;
+  fomoHandle: string | null;
+  displayName: string | null;
+  pnl?: number | null;
+  volume?: number | null;
+  rank?: number | null;
+}
+
+export interface FomoServiceStatus {
+  configured: boolean;
+  pollerActive: boolean;
+  pollerReason: string | null;
+  ensureFollows: boolean;
+}
+
+export interface FomoHolderOverlap {
+  trackedCount: number;
+  trackedHandles: string[];
+}
