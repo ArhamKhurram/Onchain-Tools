@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { RefreshCw, Star, Copy, Check, Users } from 'lucide-react';
+import { RefreshCw, Star, Copy, Check, Users, ChevronUp, ChevronDown } from 'lucide-react';
 import { useAppStore } from '../../stores/appStore';
 import { useFomoHolderOverlap } from '../../hooks/useFomoHolderOverlap';
 import SignalConvergenceBadge from '../SignalConvergenceBadge';
@@ -151,7 +151,68 @@ function buildRadar(contracts: ContractEntry[]): RadarRow[] {
     row.name = row.name ?? c.tokenName;
     row.evmChain = row.evmChain ?? c.evmChain;
   }
-  return [...map.values()].sort((a, b) => b.mentions - a.mentions || b.lastMentionAt - a.lastMentionAt);
+  return [...map.values()];
+}
+
+type SortKey =
+  | 'token'
+  | 'mentions'
+  | 'callers'
+  | 'fomo'
+  | 'groups'
+  | 'plat'
+  | 'm15'
+  | 'h1'
+  | 'h4'
+  | 'firstCaller'
+  | 'mcAtCall'
+  | 'mcNow'
+  | 'mult'
+  | 'recent';
+
+type SortDir = 'asc' | 'desc';
+
+function SortHeader({
+  label,
+  sortKey,
+  activeKey,
+  dir,
+  onSort,
+  align = 'left',
+}: {
+  label: string;
+  sortKey: SortKey;
+  activeKey: SortKey;
+  dir: SortDir;
+  onSort: (key: SortKey) => void;
+  align?: 'left' | 'right';
+}) {
+  const active = activeKey === sortKey;
+  return (
+    <th className={`px-3 py-2 font-medium ${align === 'right' ? 'text-right' : ''}`}>
+      <button
+        type="button"
+        onClick={() => onSort(sortKey)}
+        className={`inline-flex items-center gap-1 uppercase tracking-wider transition-colors ${
+          align === 'right' ? 'flex-row-reverse ml-auto' : ''
+        } ${active ? 'text-oct-accent' : 'text-oct-muted hover:text-oct-text'}`}
+      >
+        <span>{label}</span>
+        <span className={`inline-flex flex-col -space-y-1 shrink-0 ${active ? 'text-oct-accent' : 'text-oct-muted/60'}`}>
+          <ChevronUp
+            size={10}
+            strokeWidth={2.5}
+            className={active && dir === 'asc' ? 'opacity-100' : 'opacity-35'}
+          />
+          <ChevronDown
+            size={10}
+            strokeWidth={2.5}
+            className={active && dir === 'desc' ? 'opacity-100' : 'opacity-35'}
+          />
+        </span>
+      </button>
+    </th>
+  );
 }
 
 async function fetchMcNow(address: string): Promise<{ mc: number; display: string } | null> {
@@ -187,7 +248,28 @@ export default function RadarTable() {
   const [refreshing, setRefreshing] = useState(false);
   const [refreshingRow, setRefreshingRow] = useState<string | null>(null);
   const [windowFilter, setWindowFilter] = useState<'1h' | '4h' | '24h' | 'all'>('24h');
+  const [sortKey, setSortKey] = useState<SortKey>('recent');
+  const [sortDir, setSortDir] = useState<SortDir>('desc');
   const [copiedAddr, setCopiedAddr] = useState<string | null>(null);
+
+  const handleSort = (key: SortKey) => {
+    if (sortKey === key) {
+      setSortDir((d) => (d === 'asc' ? 'desc' : 'asc'));
+    } else {
+      setSortKey(key);
+      const ascFirst: SortKey[] = ['token', 'firstCaller', 'plat'];
+      setSortDir(ascFirst.includes(key) ? 'asc' : 'desc');
+    }
+  };
+
+  const applyLatestSort = () => {
+    if (sortKey === 'recent') {
+      setSortDir((d) => (d === 'desc' ? 'asc' : 'desc'));
+    } else {
+      setSortKey('recent');
+      setSortDir('desc');
+    }
+  };
 
   const handleCopy = (address: string) => {
     navigator.clipboard.writeText(address);
@@ -201,14 +283,96 @@ export default function RadarTable() {
 
   const rows = useMemo(() => {
     const all = buildRadar(contracts);
-    if (windowFilter === 'all') return all;
-    const windowMs =
-      windowFilter === '1h' ? 3_600_000
-        : windowFilter === '4h' ? 14_400_000
-          : 86_400_000;
-    const cutoff = Date.now() - windowMs;
-    return all.filter((r) => r.lastMentionAt >= cutoff);
-  }, [contracts, windowFilter]);
+    const filtered =
+      windowFilter === 'all'
+        ? all
+        : all.filter((r) => {
+            const windowMs =
+              windowFilter === '1h' ? 3_600_000
+                : windowFilter === '4h' ? 14_400_000
+                  : 86_400_000;
+            const cutoff = Date.now() - windowMs;
+            return r.lastMentionAt >= cutoff;
+          });
+
+    const dir = sortDir === 'asc' ? 1 : -1;
+    const cmpNum = (a: number | undefined | null, b: number | undefined | null) => {
+      const av = a ?? -Infinity;
+      const bv = b ?? -Infinity;
+      if (av === bv) return 0;
+      return av < bv ? -dir : dir;
+    };
+    const cmpStr = (a: string | undefined, b: string | undefined) => {
+      const av = (a ?? '').toLowerCase();
+      const bv = (b ?? '').toLowerCase();
+      if (av === bv) return 0;
+      return av < bv ? -dir : dir;
+    };
+
+    return [...filtered].sort((a, b) => {
+      const fomoA = overlaps[a.address.toLowerCase()]?.trackedCount ?? 0;
+      const fomoB = overlaps[b.address.toLowerCase()]?.trackedCount ?? 0;
+      const liveA = liveMc[a.address.toLowerCase()];
+      const liveB = liveMc[b.address.toLowerCase()];
+      const mcNowA = liveA?.mc ?? a.mcAtCall;
+      const mcNowB = liveB?.mc ?? b.mcAtCall;
+      const multA = a.mcAtCall && mcNowA && a.mcAtCall > 0 ? mcNowA / a.mcAtCall : undefined;
+      const multB = b.mcAtCall && mcNowB && b.mcAtCall > 0 ? mcNowB / b.mcAtCall : undefined;
+
+      let result = 0;
+      switch (sortKey) {
+        case 'recent':
+          result = cmpNum(a.lastMentionAt, b.lastMentionAt);
+          break;
+        case 'token':
+          result = cmpStr(a.symbol ?? a.address, b.symbol ?? b.address);
+          break;
+        case 'mentions':
+          result = cmpNum(a.mentions, b.mentions);
+          break;
+        case 'callers':
+          result = cmpNum(a.callers.size, b.callers.size);
+          break;
+        case 'fomo':
+          result = cmpNum(fomoA, fomoB);
+          break;
+        case 'groups':
+          result = cmpNum(a.groups.size, b.groups.size);
+          break;
+        case 'plat':
+          result = cmpStr(
+            platformMeta(a.chain, a.evmChain).label,
+            platformMeta(b.chain, b.evmChain).label,
+          );
+          break;
+        case 'm15':
+          result = cmpNum(countWithin(a.timestamps, 900_000), countWithin(b.timestamps, 900_000));
+          break;
+        case 'h1':
+          result = cmpNum(countWithin(a.timestamps, 3_600_000), countWithin(b.timestamps, 3_600_000));
+          break;
+        case 'h4':
+          result = cmpNum(countWithin(a.timestamps, 14_400_000), countWithin(b.timestamps, 14_400_000));
+          break;
+        case 'firstCaller':
+          result = cmpStr(a.firstCaller, b.firstCaller);
+          break;
+        case 'mcAtCall':
+          result = cmpNum(a.mcAtCall, b.mcAtCall);
+          break;
+        case 'mcNow':
+          result = cmpNum(mcNowA, mcNowB);
+          break;
+        case 'mult':
+          result = cmpNum(multA, multB);
+          break;
+        default:
+          result = 0;
+      }
+      if (result !== 0) return result;
+      return b.lastMentionAt - a.lastMentionAt;
+    });
+  }, [contracts, windowFilter, sortKey, sortDir, liveMc, overlaps]);
 
   const refreshOne = async (address: string) => {
     setRefreshingRow(address.toLowerCase());
@@ -267,6 +431,20 @@ export default function RadarTable() {
             {w}
           </button>
         ))}
+        <span className="w-px h-4 bg-oct-border-bright mx-0.5" aria-hidden />
+        <span className="font-mono text-[10px] font-bold uppercase tracking-widest text-oct-muted">sort:</span>
+        <button
+          type="button"
+          onClick={applyLatestSort}
+          title={sortKey === 'recent' && sortDir === 'asc' ? 'Oldest mention first' : 'Newest mention first'}
+          className={`px-2 py-1 rounded-cockpit text-xs font-mono font-bold border-2 transition-all duration-100 ${
+            sortKey === 'recent'
+              ? 'bg-oct-accent text-white border-black shadow-oct-hard-sm'
+              : 'text-oct-muted border-transparent hover:text-oct-text hover:border-oct-border-bright'
+          }`}
+        >
+          latest{sortKey === 'recent' ? (sortDir === 'desc' ? ' ↓' : ' ↑') : ''}
+        </button>
         <div className="flex-1" />
         <span className="font-mono text-[11px] text-oct-muted">
           {rows.length} tokens
@@ -287,20 +465,21 @@ export default function RadarTable() {
           <thead className="sticky top-0 bg-oct-surface border-b-2 border-black z-10">
             <tr className="font-mono text-[10px] font-bold uppercase tracking-wider text-oct-muted">
               <th className="px-3 py-2 font-medium w-8" />
-              <th className="px-3 py-2 font-medium">Token</th>
-              <th className="px-3 py-2 font-medium text-right">Mentions</th>
-              <th className="px-3 py-2 font-medium text-right">Callers</th>
-              <th className="px-3 py-2 font-medium text-right">FOMO</th>
-              <th className="px-3 py-2 font-medium text-right">Groups</th>
-              <th className="px-3 py-2 font-medium">Plat</th>
-              <th className="px-3 py-2 font-medium text-right">15m</th>
-              <th className="px-3 py-2 font-medium text-right">1h</th>
-              <th className="px-3 py-2 font-medium text-right">4h</th>
+              <SortHeader label="Token" sortKey="token" activeKey={sortKey} dir={sortDir} onSort={handleSort} />
+              <SortHeader label="Mentions" sortKey="mentions" activeKey={sortKey} dir={sortDir} onSort={handleSort} align="right" />
+              <SortHeader label="Callers" sortKey="callers" activeKey={sortKey} dir={sortDir} onSort={handleSort} align="right" />
+              <SortHeader label="FOMO" sortKey="fomo" activeKey={sortKey} dir={sortDir} onSort={handleSort} align="right" />
+              <SortHeader label="Groups" sortKey="groups" activeKey={sortKey} dir={sortDir} onSort={handleSort} align="right" />
+              <SortHeader label="Plat" sortKey="plat" activeKey={sortKey} dir={sortDir} onSort={handleSort} />
+              <SortHeader label="15m" sortKey="m15" activeKey={sortKey} dir={sortDir} onSort={handleSort} align="right" />
+              <SortHeader label="1h" sortKey="h1" activeKey={sortKey} dir={sortDir} onSort={handleSort} align="right" />
+              <SortHeader label="4h" sortKey="h4" activeKey={sortKey} dir={sortDir} onSort={handleSort} align="right" />
               <th className="px-3 py-2 font-medium">Spark</th>
-              <th className="px-3 py-2 font-medium">First caller</th>
-              <th className="px-3 py-2 font-medium text-right">MC@call</th>
-              <th className="px-3 py-2 font-medium text-right">MC now</th>
-              <th className="px-3 py-2 font-medium text-right">x</th>
+              <SortHeader label="Latest" sortKey="recent" activeKey={sortKey} dir={sortDir} onSort={handleSort} align="right" />
+              <SortHeader label="First caller" sortKey="firstCaller" activeKey={sortKey} dir={sortDir} onSort={handleSort} />
+              <SortHeader label="MC@call" sortKey="mcAtCall" activeKey={sortKey} dir={sortDir} onSort={handleSort} align="right" />
+              <SortHeader label="MC now" sortKey="mcNow" activeKey={sortKey} dir={sortDir} onSort={handleSort} align="right" />
+              <SortHeader label="x" sortKey="mult" activeKey={sortKey} dir={sortDir} onSort={handleSort} align="right" />
               <th className="px-3 py-2 font-medium w-8" />
             </tr>
           </thead>
@@ -410,6 +589,9 @@ export default function RadarTable() {
                   <td className="px-3 py-2 text-oct-live">
                     <Sparkline timestamps={r.timestamps} firstSeenAt={r.firstSeenAt} />
                   </td>
+                  <td className="px-3 py-2 text-right font-mono text-xs text-oct-muted tabular-nums whitespace-nowrap">
+                    {timeAgoShort(r.lastMentionAt)}
+                  </td>
                   <td className="px-3 py-2 text-sm text-oct-muted truncate max-w-[120px]">{r.firstCaller}</td>
                   <td className="px-3 py-2 text-right font-mono text-sm text-oct-muted tabular-nums">
                     {r.mcAtCallDisplay ?? '—'}
@@ -445,7 +627,7 @@ export default function RadarTable() {
             })}
             {rows.length === 0 && (
               <tr>
-                <td colSpan={16} className="px-4 py-16 text-center text-sm text-oct-muted">
+                <td colSpan={17} className="px-4 py-16 text-center text-sm text-oct-muted">
                   No tokens in this window. Contracts from Feed will aggregate here.
                 </td>
               </tr>
