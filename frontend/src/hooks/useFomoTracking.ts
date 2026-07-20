@@ -49,7 +49,7 @@ async function fetchLeaderboard(window: 'all' | '24h', limit = 50): Promise<Fomo
   if (window === '24h') params.set('window', '24h');
   const res = await fomoFetch(`${API_BASE}/fomo/leaderboard?${params}`);
   const body = await res.json().catch(() => ({}));
-  if (!res.ok) throw new Error(body.error ?? 'Failed to load leaderboard.');
+  if (!res.ok) throw new Error(body.error ?? `Failed to load leaderboard (${res.status}).`);
   return (body.entries ?? []) as FomoLeaderboardEntry[];
 }
 

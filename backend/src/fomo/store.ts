@@ -196,11 +196,23 @@ function pickLeaderboardUser(obj: any): { fomoUserId: string; fomoHandle: string
   };
 }
 
+/** Pull leaderboard rows from a FOMO /v2/leaderboard* JSON body. */
+function extractLeaderboardArray(json: any): any[] {
+  if (Array.isArray(json)) return json;
+  if (!json || typeof json !== 'object') return [];
+  const obj = json.responseObject;
+  if (obj && typeof obj === 'object') {
+    if (Array.isArray(obj.leaderboard)) return obj.leaderboard;
+    if (Array.isArray(obj.leaderBoard)) return obj.leaderBoard;
+    if (Array.isArray(obj.entries)) return obj.entries;
+    if (Array.isArray(obj.users)) return obj.users;
+  }
+  return extractTradesArray(json);
+}
+
 /** Best-effort extraction of leaderboard rows from a FOMO JSON body. */
 export function extractLeaderboardEntries(json: any): FomoLeaderboardEntry[] {
-  const rawList: any[] = Array.isArray(json)
-    ? json
-    : extractTradesArray(json); // reuses envelope fallbacks (responseObject, data, …)
+  const rawList = extractLeaderboardArray(json);
 
   const entries: FomoLeaderboardEntry[] = [];
   for (let i = 0; i < rawList.length; i++) {
@@ -209,8 +221,18 @@ export function extractLeaderboardEntries(json: any): FomoLeaderboardEntry[] {
     if (!picked) continue;
     entries.push({
       ...picked,
-      pnl: firstNumber(row.pnl, row.totalPnl, row.realizedPnl, row.profit, row.totalProfit),
-      volume: firstNumber(row.volume, row.totalVolume, row.tradeVolume),
+      pnl: firstNumber(
+        row.pnl24h,
+        row.pnl7d,
+        row.pnl30d,
+        row.pnlAll,
+        row.pnl,
+        row.totalPnl,
+        row.realizedPnl,
+        row.profit,
+        row.totalProfit,
+      ),
+      volume: firstNumber(row.totalVolume, row.volume, row.totalVolumeUsd, row.tradeVolume),
       rank: firstNumber(row.rank, row.position) ?? i + 1,
     });
   }

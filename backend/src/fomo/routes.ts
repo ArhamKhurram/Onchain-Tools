@@ -116,10 +116,19 @@ export function createFomoRouter(): Router {
       await client.init();
       const result = await client.getLeaderboard(limit, window);
       if (!result.status || result.status < 200 || result.status >= 300) {
+        console.error(
+          `[FomoAPI] Leaderboard upstream ${result.status ?? 0}:`,
+          result.text?.slice?.(0, 500) ?? '(no body)',
+        );
         return res.status(502).json({ error: 'Failed to fetch FOMO leaderboard.' });
       }
-      res.json({ entries: extractLeaderboardEntries(result.json) });
+      const entries = extractLeaderboardEntries(result.json);
+      if (entries.length === 0) {
+        console.warn('[FomoAPI] Leaderboard returned 0 parsed entries; envelope may have changed.');
+      }
+      res.json({ entries });
     } catch (err: any) {
+      console.error('[FomoAPI] Leaderboard error:', err?.message ?? err);
       res.status(500).json({ error: safeError(err, 'Failed to fetch FOMO leaderboard') });
     }
   });

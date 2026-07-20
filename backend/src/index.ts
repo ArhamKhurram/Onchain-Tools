@@ -3,7 +3,9 @@ import path from 'path';
 import { fileURLToPath } from 'url';
 
 const __envDir = path.dirname(fileURLToPath(import.meta.url));
-dotenvConfig({ path: path.resolve(__envDir, '../.env'), override: true });
+const envPath = path.resolve(__envDir, '../.env');
+// Never let a bundled/empty .env override Railway/Vercel injected secrets.
+dotenvConfig({ path: envPath, override: false });
 import express from 'express';
 import cors from 'cors';
 import helmet from 'helmet';
