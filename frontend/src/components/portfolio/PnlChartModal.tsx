@@ -10,7 +10,7 @@ import {
   YAxis,
 } from 'recharts';
 import type { DailyPnlResponse } from '../../types/portfolio';
-import { formatUsd } from '../../types/portfolio';
+import { formatPortfolioError, formatUsd } from '../../types/portfolio';
 
 interface PnlChartModalProps {
   open: boolean;
@@ -62,7 +62,7 @@ export default function PnlChartModal({ open, onClose, data, loading, error }: P
             </div>
           )}
           {!loading && error && (
-            <div className="h-full flex items-center justify-center font-mono text-xs text-red-400">{error}</div>
+            <div className="h-full flex items-center justify-center font-mono text-xs text-red-400">{formatPortfolioError(error)}</div>
           )}
           {!loading && !error && chartData.length === 0 && (
             <div className="h-full flex flex-col items-center justify-center gap-2 font-mono text-xs text-white/50 text-center px-6">

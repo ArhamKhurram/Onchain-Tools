@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { ChevronLeft, ChevronRight, X } from 'lucide-react';
 import type { DailyPnlResponse } from '../../types/portfolio';
-import { formatUsd } from '../../types/portfolio';
+import { formatPortfolioError, formatUsd } from '../../types/portfolio';
 
 interface PnlCalendarModalProps {
   open: boolean;
@@ -69,7 +69,9 @@ export default function PnlCalendarModal({ open, onClose, data, loading, error }
 
         <div className="p-5">
           {loading && <p className="font-mono text-xs text-oct-muted text-center py-8">Loading calendar…</p>}
-          {!loading && error && <p className="font-mono text-xs text-red-400 text-center py-8">{error}</p>}
+          {!loading && error && (
+            <p className="font-mono text-xs text-red-400 text-center py-8">{formatPortfolioError(error)}</p>
+          )}
 
           {!loading && !error && (
             <>

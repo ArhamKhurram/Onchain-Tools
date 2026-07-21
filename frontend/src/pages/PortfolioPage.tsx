@@ -262,15 +262,15 @@ export default function PortfolioPage() {
         open={chartOpen}
         onClose={() => setChartOpen(false)}
         data={pnlData}
-        loading={pnlLoading || (loading && pnlData.days.length === 0)}
-        error={pnlError}
+        loading={pnlLoading && pnlData.days.length === 0}
+        error={pnlData.days.length === 0 ? pnlError : null}
       />
       <PnlCalendarModal
         open={calendarOpen}
         onClose={() => setCalendarOpen(false)}
         data={pnlData}
-        loading={pnlLoading || (loading && pnlData.days.length === 0)}
-        error={pnlError}
+        loading={pnlLoading && pnlData.days.length === 0}
+        error={pnlData.days.length === 0 ? pnlError : null}
       />
     </div>
   );
