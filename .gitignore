@@ -152,3 +152,6 @@ supabase/.temp/
 supabase/.branches/
 .vercel
 .env*.local
+
+# GMGN signing keys (never commit)
+gmgn_*.pem
