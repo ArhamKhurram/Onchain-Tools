@@ -1,24 +1,27 @@
 import { useEffect, useRef, useState } from 'react';
 import { ChevronDown, Plus } from 'lucide-react';
+import { useAppStore } from '../../stores/appStore';
 import {
   WORKSPACE_MAX_PANELS,
   WORKSPACE_WIDGETS,
-  appendWorkspacePanel,
+  appendPanelToColumn,
+  countPanels,
+  defaultAddColumnId,
 } from '../../data/workspaceWidgets';
-import type { WorkspacePanel, WorkspacePanelType } from '../../types/workspace';
-import { useAppStore } from '../../stores/appStore';
+import type { WorkspaceLayout, WorkspacePanelType } from '../../types/workspace';
 
 interface WidgetPickerProps {
-  panels: WorkspacePanel[];
-  onAdd: (panels: WorkspacePanel[]) => void;
-  onPickRoom: (type: WorkspacePanelType) => void;
+  layout: WorkspaceLayout;
+  onChange: (layout: WorkspaceLayout) => void;
+  onPickRoom: () => void;
 }
 
-export default function WidgetPicker({ panels, onAdd, onPickRoom }: WidgetPickerProps) {
+export default function WidgetPicker({ layout, onChange, onPickRoom }: WidgetPickerProps) {
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
   const rooms = useAppStore((s) => s.rooms);
-  const atMax = panels.length >= WORKSPACE_MAX_PANELS;
+  const panelCount = countPanels(layout);
+  const atMax = panelCount >= WORKSPACE_MAX_PANELS;
 
   useEffect(() => {
     if (!open) return;
@@ -32,16 +35,17 @@ export default function WidgetPicker({ panels, onAdd, onPickRoom }: WidgetPicker
   const handleAdd = (type: WorkspacePanelType) => {
     if (atMax) return;
     setOpen(false);
+    const columnId = defaultAddColumnId(layout);
     if (type === 'room') {
       const firstRoom = rooms[0]?.id;
       if (firstRoom) {
-        onAdd(appendWorkspacePanel(panels, type, { roomId: firstRoom }));
+        onChange(appendPanelToColumn(layout, columnId, type, { roomId: firstRoom }));
       } else {
-        onPickRoom(type);
+        onPickRoom();
       }
       return;
     }
-    onAdd(appendWorkspacePanel(panels, type));
+    onChange(appendPanelToColumn(layout, columnId, type));
   };
 
   return (
@@ -53,7 +57,7 @@ export default function WidgetPicker({ panels, onAdd, onPickRoom }: WidgetPicker
         className="inline-flex items-center gap-1.5 px-3 py-1.5 font-mono text-[10px] sm:text-xs font-bold uppercase tracking-wide border-2 border-black bg-oct-accent text-white shadow-oct-hard-sm hover:brightness-110 disabled:opacity-40 disabled:cursor-not-allowed transition-all"
       >
         <Plus size={14} strokeWidth={2.5} />
-        Add panel ({panels.length}/{WORKSPACE_MAX_PANELS})
+        Add panel ({panelCount}/{WORKSPACE_MAX_PANELS})
         <ChevronDown size={12} className={`transition-transform ${open ? 'rotate-180' : ''}`} />
       </button>
       {open && (

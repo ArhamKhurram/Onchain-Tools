@@ -1,6 +1,6 @@
-import type { WorkspacePanel } from './workspace';
+import type { WorkspaceLayout, WorkspaceLayoutPersisted } from './workspace';
 
-export type { WorkspacePanel, WorkspacePanelConfig, WorkspacePanelType } from './workspace';
+export type { WorkspaceLayout, WorkspaceLayoutPersisted, WorkspacePanelSlot, WorkspacePanelType, WorkspaceColumn } from './workspace';
 
 export type MessageSource = 'discord' | 'telegram';
 
@@ -141,8 +141,8 @@ export interface AppConfig {
   paneRoomIds: string[];
   paneLocks: boolean[];
   gridMirror: boolean;
-  /** Custom workspace tab panel layout (persisted per user). */
-  workspaceLayout?: WorkspacePanel[];
+  /** Custom workspace tab layout (column stacks, persisted per user). */
+  workspaceLayout?: WorkspaceLayoutPersisted;
   seenAnnouncements: string[];
   telegramApiId?: string;
   telegramApiHash?: string;

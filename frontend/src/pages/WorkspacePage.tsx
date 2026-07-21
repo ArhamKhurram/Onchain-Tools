@@ -3,16 +3,20 @@ import { LayoutGrid } from 'lucide-react';
 import { useAuthSession } from '../hooks/useAuthSession';
 import { useAppStore } from '../stores/appStore';
 import ConsoleEmptyState from '../components/console/ConsoleEmptyState';
-import WorkspaceGrid from '../components/workspace/WorkspaceGrid';
+import WorkspaceColumnLayout from '../components/workspace/WorkspaceColumnLayout';
 import WorkspaceToolbar from '../components/workspace/WorkspaceToolbar';
 import RoomPickerModal from '../components/workspace/RoomPickerModal';
 import {
+  addColumn,
+  appendPanelToColumn,
   createDefaultWorkspaceLayout,
+  defaultAddColumnId,
+  removePanel,
   resolveWorkspaceLayout,
-  appendWorkspacePanel,
+  updatePanelConfig,
 } from '../data/workspaceWidgets';
 import { routes } from '../lib/routes';
-import type { WorkspacePanel } from '../types/workspace';
+import type { WorkspaceLayout, WorkspacePanelSlot } from '../types/workspace';
 
 type RoomPickTarget =
   | { mode: 'configure'; panelId: string }
@@ -33,7 +37,7 @@ export default function WorkspacePage() {
   );
 
   const [editMode, setEditMode] = useState(false);
-  const [draft, setDraft] = useState<WorkspacePanel[]>(savedLayout);
+  const [draft, setDraft] = useState<WorkspaceLayout>(savedLayout);
   const [saving, setSaving] = useState(false);
   const [roomPick, setRoomPick] = useState<RoomPickTarget>(null);
 
@@ -41,7 +45,7 @@ export default function WorkspacePage() {
     if (!editMode) setDraft(savedLayout);
   }, [editMode, savedLayout]);
 
-  const panels = editMode ? draft : savedLayout;
+  const layout = editMode ? draft : savedLayout;
 
   const handleSave = useCallback(async () => {
     setSaving(true);
@@ -62,24 +66,22 @@ export default function WorkspacePage() {
     setDraft(createDefaultWorkspaceLayout(firstRoomId));
   };
 
-  const handleRemove = (id: string) => {
-    setDraft((prev) => prev.filter((p) => p.id !== id));
+  const handleRemovePanel = (panelId: string) => {
+    setDraft((prev) => removePanel(prev, panelId));
   };
 
-  const handleConfigure = (panel: WorkspacePanel) => {
+  const handleConfigurePanel = (panel: WorkspacePanelSlot) => {
     setRoomPick({ mode: 'configure', panelId: panel.id });
   };
 
   const handleRoomSelect = (roomId: string) => {
     if (!roomPick) return;
     if (roomPick.mode === 'configure') {
-      setDraft((prev) =>
-        prev.map((p) =>
-          p.id === roomPick.panelId ? { ...p, config: { ...p.config, roomId } } : p,
-        ),
-      );
+      setDraft((prev) => updatePanelConfig(prev, roomPick.panelId, { roomId }));
     } else if (roomPick.mode === 'add') {
-      setDraft((prev) => appendWorkspacePanel(prev, 'room', { roomId }));
+      setDraft((prev) =>
+        appendPanelToColumn(prev, defaultAddColumnId(prev), 'room', { roomId }),
+      );
     }
     setRoomPick(null);
   };
@@ -110,8 +112,8 @@ export default function WorkspacePage() {
   return (
     <div className="flex flex-col h-full min-h-0 bg-oct-bg">
       <WorkspaceToolbar
+        layout={layout}
         editMode={editMode}
-        panels={panels}
         saving={saving}
         onStartEdit={() => {
           setDraft(savedLayout);
@@ -120,21 +122,22 @@ export default function WorkspacePage() {
         onCancel={handleCancel}
         onSave={handleSave}
         onReset={handleReset}
-        onPanelsChange={setDraft}
+        onLayoutChange={setDraft}
         onPickRoom={() => setRoomPick({ mode: 'add' })}
+        onAddColumn={() => setDraft((prev) => addColumn(prev))}
       />
-      <WorkspaceGrid
-        panels={panels}
+      <WorkspaceColumnLayout
+        layout={layout}
         editMode={editMode}
         onChange={setDraft}
-        onRemove={handleRemove}
-        onConfigure={handleConfigure}
+        onRemovePanel={handleRemovePanel}
+        onConfigurePanel={handleConfigurePanel}
       />
       <RoomPickerModal
         open={roomPick !== null}
         selectedRoomId={
           roomPick?.mode === 'configure'
-            ? draft.find((p) => p.id === roomPick.panelId)?.config?.roomId
+            ? findPanel(draft, roomPick.panelId)?.config?.roomId
             : undefined
         }
         onSelect={handleRoomSelect}
@@ -143,10 +146,18 @@ export default function WorkspacePage() {
       {editMode && (
         <div className="shrink-0 px-4 py-2 border-t-2 border-black bg-black/80 text-center">
           <p className="font-mono text-[10px] uppercase tracking-widest text-oct-muted">
-            Drag panels to rearrange · resize from corners · save when done
+            Drag panel headers to reorder · drag splitters to resize · fits your screen
           </p>
         </div>
       )}
     </div>
   );
+}
+
+function findPanel(layout: WorkspaceLayout, panelId: string): WorkspacePanelSlot | undefined {
+  for (const col of layout.columns) {
+    const p = col.panels.find((x) => x.id === panelId);
+    if (p) return p;
+  }
+  return undefined;
 }

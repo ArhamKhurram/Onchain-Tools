@@ -3,10 +3,10 @@ import ContractDashboard from '../ContractDashboard';
 import RadarTable from '../callers/RadarTable';
 import FomoTradeFeed from '../fomo/FomoTradeFeed';
 import WorkspaceFomoLeaderboard from './WorkspaceFomoLeaderboard';
-import type { WorkspacePanel } from '../../types/workspace';
+import type { WorkspacePanelSlot } from '../../types/workspace';
 
 interface PanelContentProps {
-  panel: WorkspacePanel;
+  panel: WorkspacePanelSlot;
 }
 
 export default function PanelContent({ panel }: PanelContentProps) {
@@ -43,7 +43,7 @@ export default function PanelContent({ panel }: PanelContentProps) {
   }
 }
 
-export function panelSubtitle(panel: WorkspacePanel, roomName: string | null): string | null {
+export function panelSubtitle(panel: WorkspacePanelSlot, roomName: string | null): string | null {
   if (panel.type === 'room' && roomName) return roomName;
   if (panel.type === 'contracts') return 'Live detections';
   if (panel.type === 'radar') return 'Token radar';

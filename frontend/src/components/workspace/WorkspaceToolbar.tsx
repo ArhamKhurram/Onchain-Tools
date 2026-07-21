@@ -1,40 +1,61 @@
-import { Check, LayoutGrid, Pencil, RotateCcw, X } from 'lucide-react';
+import { Check, Columns3, LayoutGrid, Pencil, RotateCcw, X } from 'lucide-react';
 import WidgetPicker from './WidgetPicker';
-import type { WorkspacePanel } from '../../types/workspace';
+import { WORKSPACE_MAX_COLUMNS, countPanels } from '../../data/workspaceWidgets';
+import type { WorkspaceLayout } from '../../types/workspace';
 
 interface WorkspaceToolbarProps {
+  layout: WorkspaceLayout;
   editMode: boolean;
-  panels: WorkspacePanel[];
   saving: boolean;
   onStartEdit: () => void;
   onCancel: () => void;
   onSave: () => void;
   onReset: () => void;
-  onPanelsChange: (panels: WorkspacePanel[]) => void;
+  onLayoutChange: (layout: WorkspaceLayout) => void;
   onPickRoom: () => void;
+  onAddColumn: () => void;
 }
 
 export default function WorkspaceToolbar({
+  layout,
   editMode,
-  panels,
   saving,
   onStartEdit,
   onCancel,
   onSave,
   onReset,
-  onPanelsChange,
+  onLayoutChange,
   onPickRoom,
+  onAddColumn,
 }: WorkspaceToolbarProps) {
+  const panelCount = countPanels(layout);
+  const canAddColumn = layout.columns.length < WORKSPACE_MAX_COLUMNS;
+
   return (
     <div className="shrink-0 flex flex-wrap items-center gap-2 px-3 sm:px-4 py-2.5 border-b-2 border-black bg-oct-surface">
       <LayoutGrid size={16} className="text-oct-accent shrink-0" />
       <span className="font-mono text-[10px] font-bold uppercase tracking-widest text-oct-muted hidden sm:inline">
         Workspace
       </span>
+      {!editMode && panelCount > 0 && (
+        <span className="font-mono text-[10px] text-oct-muted tabular-nums">
+          {layout.columns.length} col · {panelCount} panels
+        </span>
+      )}
       <div className="flex-1" />
       {editMode ? (
         <>
-          <WidgetPicker panels={panels} onAdd={onPanelsChange} onPickRoom={onPickRoom} />
+          <WidgetPicker layout={layout} onChange={onLayoutChange} onPickRoom={onPickRoom} />
+          <button
+            type="button"
+            onClick={onAddColumn}
+            disabled={!canAddColumn}
+            className="inline-flex items-center gap-1 px-2.5 py-1.5 font-mono text-[10px] font-bold uppercase border-2 border-oct-border-bright text-oct-muted hover:text-oct-text disabled:opacity-40"
+            title="Add column"
+          >
+            <Columns3 size={14} />
+            Column
+          </button>
           <button
             type="button"
             onClick={onReset}

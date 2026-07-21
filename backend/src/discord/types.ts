@@ -223,15 +223,7 @@ export interface AppConfig {
   paneRoomIds: string[];
   paneLocks: boolean[];
   gridMirror: boolean;
-  workspaceLayout?: {
-    id: string;
-    type: 'room' | 'contracts' | 'radar' | 'fomo-feed' | 'fomo-leaderboard';
-    x: number;
-    y: number;
-    w: number;
-    h: number;
-    config?: { roomId?: string };
-  }[];
+  workspaceLayout?: Record<string, unknown> | Record<string, unknown>[];
   seenAnnouncements: string[];
   telegramApiId?: string;
   telegramApiHash?: string;

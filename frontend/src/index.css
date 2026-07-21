@@ -116,19 +116,4 @@ h3 {
   background: #ff2a2a;
 }
 
-/* Workspace grid (react-grid-layout) */
-.react-grid-item.react-grid-placeholder {
-  background: rgba(255, 42, 42, 0.12);
-  border: 2px dashed #ff2a2a;
-  opacity: 1;
-  border-radius: 0;
-}
-
-.react-grid-item > .react-resizable-handle::after {
-  border-right-color: #666;
-  border-bottom-color: #666;
-}
-
-.react-grid-item.react-draggable-dragging {
-  z-index: 50;
-}
+/* Workspace column resize handles */
