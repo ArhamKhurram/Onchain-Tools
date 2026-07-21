@@ -1,6 +1,7 @@
 import { readFileSync, writeFileSync, existsSync } from 'fs';
 import { join, dirname } from 'path';
 import { fileURLToPath } from 'url';
+import { mergeEnrichmentPatch } from './enrichmentMerge.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const DATA_DIR = process.env.OCT_DATA_DIR || process.env.TRENCHCORD_DATA_DIR || join(__dirname, '../../data');
@@ -34,7 +35,7 @@ export interface ContractEntry {
   volumeDisplay?: string;
   priceUsd?: number;
   tokenAge?: string;
-  enrichmentSource?: 'rick' | 'dexscreener';
+  enrichmentSource?: 'rick' | 'dexscreener' | 'gmgn';
   enrichedAt?: string;
 }
 
@@ -152,12 +153,19 @@ class ContractLog {
     }
     if (!best) return null;
 
-    // Don't overwrite Rick with DexScreener
-    if (best.enrichmentSource === 'rick' && patch.enrichmentSource === 'dexscreener') {
-      return best;
-    }
+    const merged = mergeEnrichmentPatch(
+      {
+        tokenName: best.tokenName,
+        tokenSymbol: best.tokenSymbol,
+        tokenPair: best.tokenPair,
+        evmChain: best.evmChain,
+        enrichmentSource: best.enrichmentSource,
+        enrichedAt: best.enrichedAt,
+      },
+      patch,
+    );
 
-    Object.assign(best, patch, { enrichedAt: patch.enrichedAt ?? new Date().toISOString() });
+    Object.assign(best, merged, { enrichedAt: merged.enrichedAt ?? new Date().toISOString() });
     this.save();
     return best;
   }

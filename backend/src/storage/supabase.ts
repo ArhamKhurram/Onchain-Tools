@@ -4,6 +4,7 @@ import { encryptToken, decryptToken, maskToken } from '../auth/encryption.js';
 import type { StorageProvider } from './interface.js';
 import type { AppConfig, Room, ChannelRef, KeywordPattern } from '../discord/types.js';
 import type { ContractEntry, ContractEnrichmentPatch } from '../utils/contractLog.js';
+import { mergeEnrichmentPatch } from '../utils/enrichmentMerge.js';
 
 const DEFAULT_SETTINGS: Omit<AppConfig, 'discordTokens' | 'rooms'> = {
   globalHighlightedUsers: [],
@@ -792,27 +793,40 @@ export class SupabaseStorageProvider implements StorageProvider {
     const row = rows?.[0];
     if (!row) return null;
 
-    if (row.enrichment_source === 'rick' && patch.enrichmentSource === 'dexscreener') {
-      return this.mapContractRow(row);
-    }
+    const existing = this.mapContractRow(row);
+    const merged = mergeEnrichmentPatch(
+      {
+        tokenName: existing.tokenName,
+        tokenSymbol: existing.tokenSymbol,
+        tokenPair: existing.tokenPair,
+        evmChain: existing.evmChain,
+        enrichmentSource: existing.enrichmentSource,
+        enrichedAt: existing.enrichedAt,
+      },
+      patch,
+    );
 
     const update: Record<string, unknown> = {
-      enriched_at: patch.enrichedAt ?? new Date().toISOString(),
+      enriched_at: merged.enrichedAt ?? new Date().toISOString(),
     };
-    if (patch.tokenName !== undefined) update.token_name = patch.tokenName;
-    if (patch.tokenSymbol !== undefined) update.token_symbol = patch.tokenSymbol;
-    if (patch.tokenPair !== undefined) update.token_pair = patch.tokenPair;
-    if (patch.description !== undefined) update.description = patch.description;
-    if (patch.fdvAtCall !== undefined) update.fdv_at_call = patch.fdvAtCall;
-    if (patch.fdvAtCallDisplay !== undefined) update.fdv_at_call_display = patch.fdvAtCallDisplay;
-    if (patch.liquidityUsd !== undefined) update.liquidity_usd = patch.liquidityUsd;
-    if (patch.liquidityDisplay !== undefined) update.liquidity_display = patch.liquidityDisplay;
-    if (patch.volumeUsd !== undefined) update.volume_usd = patch.volumeUsd;
-    if (patch.volumeDisplay !== undefined) update.volume_display = patch.volumeDisplay;
-    if (patch.priceUsd !== undefined) update.price_usd = patch.priceUsd;
-    if (patch.tokenAge !== undefined) update.token_age = patch.tokenAge;
-    if (patch.enrichmentSource !== undefined) update.enrichment_source = patch.enrichmentSource;
-    if (patch.evmChain !== undefined && !row.evm_chain) update.evm_chain = patch.evmChain;
+    if (merged.tokenName !== undefined) update.token_name = merged.tokenName;
+    if (merged.tokenSymbol !== undefined) update.token_symbol = merged.tokenSymbol;
+    if (merged.tokenPair !== undefined) update.token_pair = merged.tokenPair;
+    if (merged.description !== undefined) update.description = merged.description;
+    if (merged.fdvAtCall !== undefined) update.fdv_at_call = merged.fdvAtCall;
+    if (merged.fdvAtCallDisplay !== undefined) update.fdv_at_call_display = merged.fdvAtCallDisplay;
+    if (merged.liquidityUsd !== undefined) update.liquidity_usd = merged.liquidityUsd;
+    if (merged.liquidityDisplay !== undefined) update.liquidity_display = merged.liquidityDisplay;
+    if (merged.volumeUsd !== undefined) update.volume_usd = merged.volumeUsd;
+    if (merged.volumeDisplay !== undefined) update.volume_display = merged.volumeDisplay;
+    if (merged.priceUsd !== undefined) update.price_usd = merged.priceUsd;
+    if (merged.tokenAge !== undefined) update.token_age = merged.tokenAge;
+    if (merged.enrichmentSource !== undefined) update.enrichment_source = merged.enrichmentSource;
+    if (merged.evmChain !== undefined && !row.evm_chain) update.evm_chain = merged.evmChain;
+
+    if (Object.keys(update).length <= 1 && !merged.tokenName && !merged.tokenSymbol && !merged.tokenPair && !merged.evmChain) {
+      return existing;
+    }
 
     const { data: updated, error } = await this.supabase
       .from('contracts')

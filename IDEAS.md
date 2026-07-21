@@ -59,6 +59,23 @@ VPS + caching, not account rotation.
 
 ## Recently shipped (Jul 2026)
 
+### Token enrichment pipeline (Phase 1–2)
+- **Rick + Dex merge fix** — Dex/GMGN fallbacks now run when `tokenSymbol` is missing, even
+  on Rick-enriched rows; secondary sources fill symbol/name only without overwriting Rick FDV/Liq.
+- **`token_catalog` table** — global Supabase cache (address, chain, symbol, fdv, price, source,
+  raw JSON); migration `20260721100000_token_catalog.sql`.
+- **GMGN adapter** — `backend/src/utils/gmgnClient.ts` + `gmgnEnrichment.ts`; Robinhood chain
+  first when `GMGN_API_KEY` is set; DexScreener fallback.
+- **Snapshot API** — `GET /api/tokens/:chain/:address/snapshot` returns cached MC/price; refreshes
+  when stale (>5 min). Radar live MC now uses this instead of client-side Dex calls.
+- **Env** — set `GMGN_API_KEY` on Railway backend (see `backend/.env.example`).
+
+**Phase 3 (follow-ups):**
+- Background catalog warmer / batch refresh for top Radar tokens.
+- Extend GMGN to all supported chains in catalog (not just Robinhood-first).
+- Wire snapshot into Feed contract rows (not only Radar).
+- Prod migration apply + verify `token_catalog` on prod Supabase.
+
 ### FOMO tracking (v1 — fan-out)
 - **Core client** — `FomoClient` + Playwright stealth Chromium; Privy refresh →
   JWT; auto-persist rotated token to `fomo_poll_state`.

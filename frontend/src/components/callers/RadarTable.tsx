@@ -8,6 +8,20 @@ import {
   getSignalConvergenceWindowMs,
 } from '../../utils/signalConvergence';
 import type { ContractEntry } from '../../types';
+import { isHostedMode, getAccessToken } from '../../lib/supabase';
+
+const API_BASE = import.meta.env.VITE_API_URL
+  ? `${import.meta.env.VITE_API_URL}/api`
+  : '/api';
+
+async function apiFetch(input: string, init?: RequestInit): Promise<Response> {
+  const headers = new Headers(init?.headers);
+  if (isHostedMode) {
+    const token = await getAccessToken();
+    if (token) headers.set('Authorization', `Bearer ${token}`);
+  }
+  return fetch(input, { ...init, headers, credentials: 'include' });
+}
 
 interface RadarRow {
   address: string;
@@ -215,22 +229,16 @@ function SortHeader({
   );
 }
 
-async function fetchMcNow(address: string): Promise<{ mc: number; display: string } | null> {
+async function fetchMcNow(address: string, evmChain?: string): Promise<{ mc: number; display: string } | null> {
   try {
-    const res = await fetch(`https://api.dexscreener.com/latest/dex/search?q=${encodeURIComponent(address)}`);
-    if (!res.ok) return null;
-    const data = await res.json() as {
-      pairs?: { baseToken?: { address?: string }; fdv?: number; marketCap?: number; liquidity?: { usd?: number } }[];
-    };
-    const lower = address.toLowerCase();
-    const pairs = (data.pairs ?? []).filter((p) =>
-      p.baseToken?.address?.toLowerCase() === lower || p.baseToken?.address === address,
+    const chain = evmChain ?? (address.startsWith('0x') ? 'unknown' : 'sol');
+    const res = await apiFetch(
+      `${API_BASE}/tokens/${encodeURIComponent(chain)}/${encodeURIComponent(address)}/snapshot`,
     );
-    if (!pairs.length) return null;
-    pairs.sort((a, b) => (b.liquidity?.usd ?? 0) - (a.liquidity?.usd ?? 0));
-    const mc = pairs[0].fdv ?? pairs[0].marketCap;
-    if (mc == null) return null;
-    return { mc, display: formatCompact(mc) };
+    if (!res.ok) return null;
+    const data = await res.json() as { found?: boolean; mc?: number; mcDisplay?: string };
+    if (!data.found || data.mc == null) return null;
+    return { mc: data.mc, display: data.mcDisplay ?? String(data.mc) };
   } catch {
     return null;
   }
@@ -374,10 +382,10 @@ export default function RadarTable({ embedded: _embedded = false }: { embedded?:
     });
   }, [contracts, windowFilter, sortKey, sortDir, liveMc, overlaps]);
 
-  const refreshOne = async (address: string) => {
+  const refreshOne = async (address: string, evmChain?: string) => {
     setRefreshingRow(address.toLowerCase());
     try {
-      const result = await fetchMcNow(address);
+      const result = await fetchMcNow(address, evmChain);
       if (result) {
         setLiveMc((prev) => ({ ...prev, [address.toLowerCase()]: { ...result, at: Date.now() } }));
       }
@@ -391,7 +399,7 @@ export default function RadarTable({ embedded: _embedded = false }: { embedded?:
     try {
       const top = rows.slice(0, 40);
       const results = await Promise.all(
-        top.map(async (r) => [r.address.toLowerCase(), await fetchMcNow(r.address)] as const),
+        top.map(async (r) => [r.address.toLowerCase(), await fetchMcNow(r.address, r.evmChain)] as const),
       );
       setLiveMc((prev) => {
         const next = { ...prev };
@@ -614,7 +622,7 @@ export default function RadarTable({ embedded: _embedded = false }: { embedded?:
                   <td className="px-3 py-2">
                     <button
                       type="button"
-                      onClick={() => refreshOne(r.address)}
+                      onClick={() => refreshOne(r.address, r.evmChain)}
                       disabled={refreshingRow === key}
                       className="p-1 rounded hover:bg-oct-surface text-oct-muted hover:text-oct-text transition-colors"
                       title="Refresh market cap"

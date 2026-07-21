@@ -26,7 +26,8 @@ import { getGateway, setGateway } from './gateway/state.js';
 import { UserGatewayPool } from './gateway/userGatewayPool.js';
 import { buildContractUrl, detectEvmChainFromContent, extractEvmChainFromGmgnLinks, resolveEvmChainFromApi } from './utils/contract.js';
 import { tryParseTokenEnrichment } from './utils/rickEmbedParser.js';
-import { enrichFromDexScreener } from './utils/tokenEnrichment.js';
+import { enrichToken, persistEnrichment } from './utils/tokenSnapshot.js';
+import { needsMetadataFallback } from './utils/enrichmentMerge.js';
 import type { TokenEnrichment } from './utils/rickEmbedParser.js';
 import { processDiscordMessage } from './utils/messageProcessor.js';
 import type { MessageProcessorContext } from './utils/messageProcessor.js';
@@ -143,6 +144,7 @@ async function applyTokenEnrichment(
   );
   if (updated) {
     wsServer.broadcastContractEnrichment(updated, userId);
+    void persistEnrichment(enrichment, enrichment.evmChain);
     if (enrichment.evmChain) {
       const chained = await storage.updateEvmChain(userId, enrichment.address, enrichment.evmChain);
       if (chained) wsServer.broadcastChainUpdate(enrichment.address, enrichment.evmChain, userId);
@@ -157,10 +159,10 @@ function scheduleDexFallback(wsServer: WsServer, userId: string, address: string
       const storage = getStorageProvider();
       const recent = await storage.getContracts(userId, 20);
       const hit = recent.find(
-        (c) => c.address.toLowerCase() === address.toLowerCase() && !c.tokenName && c.enrichmentSource !== 'rick',
+        (c) => c.address.toLowerCase() === address.toLowerCase() && needsMetadataFallback(c),
       );
       if (!hit) return;
-      const enrichment = await enrichFromDexScreener(address);
+      const enrichment = await enrichToken(address, hit.evmChain);
       if (!enrichment) return;
       await applyTokenEnrichment(wsServer, userId, enrichment, channelId);
     } catch (err) {

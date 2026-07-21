@@ -19,7 +19,7 @@ export interface TokenEnrichment {
   priceUsd?: number;
   tokenAge?: string;
   evmChain?: string;
-  enrichmentSource: 'rick' | 'dexscreener';
+  enrichmentSource: 'rick' | 'dexscreener' | 'gmgn';
 }
 
 type EmbedLike = {

@@ -1,6 +1,6 @@
 import type { ContractEntry } from '../types';
 import { useAppStore } from '../stores/appStore';
-import { hasContractMetadata, hydrateContractFromCatalog } from '../utils/contractMetadata';
+import { hasContractMetadata, hydrateContractFromCatalog, mergeEnrichmentIntoEntry } from '../utils/contractMetadata';
 import { isHostedMode, getAccessToken } from '../lib/supabase';
 
 const API_BASE = import.meta.env.VITE_API_URL
@@ -31,30 +31,6 @@ async function apiFetch(input: string, init?: RequestInit): Promise<Response> {
     headers.set('Content-Type', 'application/json');
   }
   return fetch(input, { ...init, headers, credentials: 'include' });
-}
-
-export function mergeEnrichmentIntoEntry(
-  entry: ContractEntry,
-  patch: Partial<ContractEntry>,
-): ContractEntry {
-  return {
-    ...entry,
-    tokenName: patch.tokenName ?? entry.tokenName,
-    tokenSymbol: patch.tokenSymbol ?? entry.tokenSymbol,
-    tokenPair: patch.tokenPair ?? entry.tokenPair,
-    description: patch.description ?? entry.description,
-    fdvAtCall: patch.fdvAtCall ?? entry.fdvAtCall,
-    fdvAtCallDisplay: patch.fdvAtCallDisplay ?? entry.fdvAtCallDisplay,
-    liquidityUsd: patch.liquidityUsd ?? entry.liquidityUsd,
-    liquidityDisplay: patch.liquidityDisplay ?? entry.liquidityDisplay,
-    volumeUsd: patch.volumeUsd ?? entry.volumeUsd,
-    volumeDisplay: patch.volumeDisplay ?? entry.volumeDisplay,
-    priceUsd: patch.priceUsd ?? entry.priceUsd,
-    tokenAge: patch.tokenAge ?? entry.tokenAge,
-    enrichmentSource: patch.enrichmentSource ?? entry.enrichmentSource,
-    enrichedAt: patch.enrichedAt ?? entry.enrichedAt,
-    evmChain: patch.evmChain ?? entry.evmChain,
-  };
 }
 
 function publishContract(entry: ContractEntry, skipCatalogHydrate = false): void {

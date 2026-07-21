@@ -314,7 +314,7 @@ export interface ContractEntry {
   volumeDisplay?: string;
   priceUsd?: number;
   tokenAge?: string;
-  enrichmentSource?: 'rick' | 'dexscreener';
+  enrichmentSource?: 'rick' | 'dexscreener' | 'gmgn';
   enrichedAt?: string;
 }
 

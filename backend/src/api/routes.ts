@@ -15,6 +15,8 @@ import { StringSession } from 'teleproto/sessions/index.js';
 import type { TelegramClientManager } from '../telegram/clientManager.js';
 import { createFomoRouter } from '../fomo/routes.js';
 import { tryParseTokenEnrichment } from '../utils/rickEmbedParser.js';
+import { needsMetadataFallback } from '../utils/enrichmentMerge.js';
+import { enrichToken, getTokenSnapshot, persistEnrichment } from '../utils/tokenSnapshot.js';
 import { sendPushover } from '../utils/pushover.js';
 import { buildContractUrl } from '../utils/contract.js';
 
@@ -1135,6 +1137,20 @@ export function createRouter(wsServer: WsServer): Router {
 
   // --- Contracts ---
 
+  router.get('/tokens/:chain/:address/snapshot', async (req, res) => {
+    try {
+      const { chain, address } = req.params;
+      if (!chain || !address) {
+        return res.status(400).json({ error: 'chain and address are required.' });
+      }
+      const snapshot = await getTokenSnapshot(chain, address);
+      if (!snapshot) return res.json({ found: false });
+      res.json({ found: true, ...snapshot });
+    } catch (err) {
+      res.status(500).json({ error: safeError(err, 'Failed to fetch token snapshot') });
+    }
+  });
+
   router.get('/contracts', async (req, res) => {
     try {
       const userId = getUserId(req);
@@ -1156,17 +1172,17 @@ export function createRouter(wsServer: WsServer): Router {
       await storage.logContract(userId, entry);
       wsServer.broadcastContract(entry, userId);
 
-      const { enrichFromDexScreener } = await import('../utils/tokenEnrichment.js');
       const address: string = entry.address;
       const channelId: string = entry.channelId;
+      const evmChain: string | undefined = entry.evmChain;
       setTimeout(async () => {
         try {
           const recent = await storage.getContracts(userId, 20);
           const hit = recent.find(
-            (c) => c.address.toLowerCase() === address.toLowerCase() && !c.tokenName && c.enrichmentSource !== 'rick',
+            (c) => c.address.toLowerCase() === address.toLowerCase() && needsMetadataFallback(c),
           );
           if (!hit) return;
-          const enrichment = await enrichFromDexScreener(address);
+          const enrichment = await enrichToken(address, hit.evmChain ?? evmChain);
           if (!enrichment) return;
           const updated = await storage.enrichContract(userId, enrichment.address, {
             tokenName: enrichment.tokenName,
@@ -1187,6 +1203,7 @@ export function createRouter(wsServer: WsServer): Router {
           }, channelId);
           if (updated) {
             wsServer.broadcastContractEnrichment(updated, userId);
+            void persistEnrichment(enrichment, enrichment.evmChain ?? hit.evmChain ?? evmChain);
             if (enrichment.evmChain) {
               const chained = await storage.updateEvmChain(userId, enrichment.address, enrichment.evmChain);
               if (chained) wsServer.broadcastChainUpdate(enrichment.address, enrichment.evmChain, userId);
@@ -1236,6 +1253,7 @@ export function createRouter(wsServer: WsServer): Router {
 
       if (updated) {
         wsServer.broadcastContractEnrichment(updated, userId);
+        void persistEnrichment(enrichment, enrichment.evmChain);
         if (enrichment.evmChain) {
           const chained = await storage.updateEvmChain(userId, enrichment.address, enrichment.evmChain);
           if (chained) wsServer.broadcastChainUpdate(enrichment.address, enrichment.evmChain, userId);
@@ -1277,8 +1295,9 @@ export function createRouter(wsServer: WsServer): Router {
         return res.status(400).json({ error: 'address and channelId are required.' });
       }
 
-      const { enrichFromDexScreener } = await import('../utils/tokenEnrichment.js');
-      const enrichment = await enrichFromDexScreener(address);
+      const recent = await storage.getContracts(userId, 20);
+      const hit = recent.find((c) => c.address.toLowerCase() === String(address).toLowerCase());
+      const enrichment = await enrichToken(address, hit?.evmChain);
       if (!enrichment) {
         return res.json({ applied: false });
       }
@@ -1303,6 +1322,7 @@ export function createRouter(wsServer: WsServer): Router {
 
       if (updated) {
         wsServer.broadcastContractEnrichment(updated, userId);
+        void persistEnrichment(enrichment, enrichment.evmChain);
         if (enrichment.evmChain) {
           const chained = await storage.updateEvmChain(userId, enrichment.address, enrichment.evmChain);
           if (chained) wsServer.broadcastChainUpdate(enrichment.address, enrichment.evmChain, userId);
