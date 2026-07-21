@@ -1145,6 +1145,27 @@ export function createRouter(wsServer: WsServer): Router {
       }
       const snapshot = await getTokenSnapshot(chain, address);
       if (!snapshot) return res.json({ found: false });
+
+      if (req.userId && (snapshot.symbol || snapshot.name)) {
+        try {
+          const updated = await storage.enrichContract(req.userId, address, {
+            tokenSymbol: snapshot.symbol,
+            tokenName: snapshot.name,
+            tokenPair: snapshot.pair,
+            fdvAtCall: snapshot.mc,
+            fdvAtCallDisplay: snapshot.mcDisplay,
+            priceUsd: snapshot.priceUsd,
+            liquidityUsd: snapshot.liquidityUsd,
+            enrichmentSource: snapshot.source,
+            enrichedAt: snapshot.enrichedAt,
+            evmChain: snapshot.evmChain,
+          });
+          if (updated) wsServer.broadcastContractEnrichment(updated, req.userId);
+        } catch (err) {
+          console.error('[API] snapshot contract patch failed:', (err as Error).message);
+        }
+      }
+
       res.json({ found: true, ...snapshot });
     } catch (err) {
       res.status(500).json({ error: safeError(err, 'Failed to fetch token snapshot') });

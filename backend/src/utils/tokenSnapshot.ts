@@ -11,11 +11,32 @@ import {
 } from '../storage/tokenCatalog.js';
 
 export async function enrichToken(address: string, chainSlug?: string): Promise<TokenEnrichment | null> {
-  const gmgnChain = resolveGmgnChain(chainSlug);
-  if (gmgnChain && process.env.GMGN_API_KEY) {
-    const gmgn = await enrichFromGmgn(gmgnChain, address);
-    if (gmgn) return gmgn;
+  const chainsToTry: string[] = [];
+  if (chainSlug && chainSlug !== 'unknown') {
+    chainsToTry.push(chainSlug);
+  } else if (address.startsWith('0x')) {
+    chainsToTry.push('robinhood', 'base', 'eth', 'bsc');
+  } else {
+    chainsToTry.push('sol');
   }
+
+  if (process.env.GMGN_API_KEY) {
+    for (const slug of chainsToTry) {
+      const gmgnChain = resolveGmgnChain(slug) ?? (slug === 'sol' ? 'sol' : null);
+      if (!gmgnChain) continue;
+      const gmgn = await enrichFromGmgn(gmgnChain, address);
+      if (gmgn?.tokenSymbol || gmgn?.tokenName) return gmgn;
+      if (gmgn && !gmgn.tokenSymbol) {
+        // Keep MC/liq even if symbol missing — last resort before Dex
+        const dex = await enrichFromDexScreener(address);
+        if (dex?.tokenSymbol) {
+          return { ...gmgn, tokenSymbol: dex.tokenSymbol, tokenName: dex.tokenName ?? gmgn.tokenName, tokenPair: dex.tokenPair ?? gmgn.tokenPair };
+        }
+        return gmgn;
+      }
+    }
+  }
+
   return enrichFromDexScreener(address);
 }
 

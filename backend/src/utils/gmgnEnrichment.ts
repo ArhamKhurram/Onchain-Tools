@@ -25,6 +25,7 @@ type GmgnTokenInfo = {
 
 const GMGN_CHAIN_MAP: Record<string, string> = {
   robinhood: 'robinhood',
+  hood: 'robinhood',
   base: 'base',
   eth: 'eth',
   ethereum: 'eth',

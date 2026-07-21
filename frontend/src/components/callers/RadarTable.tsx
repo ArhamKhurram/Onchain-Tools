@@ -229,19 +229,72 @@ function SortHeader({
   );
 }
 
-async function fetchMcNow(address: string, evmChain?: string): Promise<{ mc: number; display: string } | null> {
+interface TokenSnapshotResult {
+  mc?: number;
+  display?: string;
+  symbol?: string;
+  name?: string;
+  pair?: string;
+  evmChain?: string;
+  source?: ContractEntry['enrichmentSource'];
+}
+
+function resolveSnapshotChain(address: string, evmChain?: string, addressChains?: Record<string, string>): string {
+  if (evmChain) return evmChain;
+  const fromStore = addressChains?.[address.toLowerCase()];
+  if (fromStore) return fromStore;
+  return address.startsWith('0x') ? 'robinhood' : 'sol';
+}
+
+async function fetchTokenSnapshot(
+  address: string,
+  evmChain?: string,
+  addressChains?: Record<string, string>,
+): Promise<TokenSnapshotResult | null> {
   try {
-    const chain = evmChain ?? (address.startsWith('0x') ? 'unknown' : 'sol');
+    const chain = resolveSnapshotChain(address, evmChain, addressChains);
     const res = await apiFetch(
       `${API_BASE}/tokens/${encodeURIComponent(chain)}/${encodeURIComponent(address)}/snapshot`,
     );
     if (!res.ok) return null;
-    const data = await res.json() as { found?: boolean; mc?: number; mcDisplay?: string };
-    if (!data.found || data.mc == null) return null;
-    return { mc: data.mc, display: data.mcDisplay ?? String(data.mc) };
+    const data = await res.json() as {
+      found?: boolean;
+      mc?: number;
+      mcDisplay?: string;
+      symbol?: string;
+      name?: string;
+      pair?: string;
+      evmChain?: string;
+      source?: ContractEntry['enrichmentSource'];
+    };
+    if (!data.found) return null;
+    return {
+      mc: data.mc,
+      display: data.mcDisplay,
+      symbol: data.symbol,
+      name: data.name,
+      pair: data.pair,
+      evmChain: data.evmChain,
+      source: data.source,
+    };
   } catch {
     return null;
   }
+}
+
+function applySnapshotToStore(address: string, snap: TokenSnapshotResult): void {
+  if (!snap.symbol && !snap.name && snap.mc == null) return;
+  useAppStore.getState().enrichContract({
+    address,
+    tokenSymbol: snap.symbol,
+    tokenName: snap.name,
+    tokenPair: snap.pair,
+    fdvAtCall: snap.mc,
+    fdvAtCallDisplay: snap.display,
+    enrichmentSource: snap.source,
+    enrichedAt: new Date().toISOString(),
+    evmChain: snap.evmChain,
+  } as ContractEntry);
 }
 
 export default function RadarTable({ embedded: _embedded = false }: { embedded?: boolean }) {
@@ -251,6 +304,7 @@ export default function RadarTable({ embedded: _embedded = false }: { embedded?:
   const convergenceWindowMs = getSignalConvergenceWindowMs(config);
   const convergenceWindowMinutes = config?.signalConvergenceWindowMinutes ?? 30;
   const fetchContracts = useAppStore((s) => s.fetchContracts);
+  const addressChains = useAppStore((s) => s.addressChains);
   const { overlaps } = useFomoHolderOverlap(contracts);
   const [liveMc, setLiveMc] = useState<Record<string, LiveMc>>({});
   const [refreshing, setRefreshing] = useState(false);
@@ -385,9 +439,19 @@ export default function RadarTable({ embedded: _embedded = false }: { embedded?:
   const refreshOne = async (address: string, evmChain?: string) => {
     setRefreshingRow(address.toLowerCase());
     try {
-      const result = await fetchMcNow(address, evmChain);
+      const result = await fetchTokenSnapshot(address, evmChain, addressChains);
       if (result) {
-        setLiveMc((prev) => ({ ...prev, [address.toLowerCase()]: { ...result, at: Date.now() } }));
+        applySnapshotToStore(address, result);
+        if (result.mc != null) {
+          setLiveMc((prev) => ({
+            ...prev,
+            [address.toLowerCase()]: {
+              mc: result.mc!,
+              display: result.display ?? String(result.mc),
+              at: Date.now(),
+            },
+          }));
+        }
       }
     } finally {
       setRefreshingRow(null);
@@ -399,12 +463,17 @@ export default function RadarTable({ embedded: _embedded = false }: { embedded?:
     try {
       const top = rows.slice(0, 40);
       const results = await Promise.all(
-        top.map(async (r) => [r.address.toLowerCase(), await fetchMcNow(r.address, r.evmChain)] as const),
+        top.map(async (r) => [r.address.toLowerCase(), r.address, await fetchTokenSnapshot(r.address, r.evmChain, addressChains)] as const),
       );
+      for (const [, address, result] of results) {
+        if (result) applySnapshotToStore(address, result);
+      }
       setLiveMc((prev) => {
         const next = { ...prev };
-        for (const [key, result] of results) {
-          if (result) next[key] = { ...result, at: Date.now() };
+        for (const [key, , result] of results) {
+          if (result?.mc != null) {
+            next[key] = { mc: result.mc, display: result.display ?? String(result.mc), at: Date.now() };
+          }
         }
         return next;
       });
