@@ -19,6 +19,7 @@ import { needsMetadataFallback, metadataOnlyEnrichmentPatch } from '../utils/enr
 import { enrichToken, getTokenSnapshot, persistEnrichment } from '../utils/tokenSnapshot.js';
 import { sendPushover } from '../utils/pushover.js';
 import { buildContractUrl } from '../utils/contract.js';
+import { testMissedRunnerForAddress } from '../alerts/missedRunnerTest.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const SOUNDS_DIR = join(__dirname, '../../data/sounds');
@@ -1188,6 +1189,21 @@ export function createRouter(wsServer: WsServer): Router {
       res.json({ found: true, ...snapshot });
     } catch (err) {
       res.status(500).json({ error: safeError(err, 'Failed to fetch token snapshot') });
+    }
+  });
+
+  router.post('/alerts/missed-runner/test', async (req, res) => {
+    try {
+      const userId = getUserId(req);
+      const address = typeof req.body?.address === 'string' ? req.body.address.trim() : '';
+      const force = Boolean(req.body?.force);
+      if (!address) {
+        return res.status(400).json({ error: 'address is required.' });
+      }
+      const result = await testMissedRunnerForAddress(wsServer, userId, address, { force });
+      res.json(result);
+    } catch (err) {
+      res.status(500).json({ error: safeError(err, 'Missed-runner test failed') });
     }
   });
 

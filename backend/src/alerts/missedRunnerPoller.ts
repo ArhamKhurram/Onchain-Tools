@@ -32,7 +32,7 @@ const DEFAULT_MISSED_RUNNER: MissedRunnerConfig = {
   notifyVia: 'toast',
 };
 
-interface TokenCandidate {
+export interface TokenCandidate {
   address: string;
   chain: 'evm' | 'sol';
   evmChain?: string;
@@ -44,17 +44,17 @@ interface TokenCandidate {
   firstSeenAt: string;
 }
 
-function resolveMissedRunnerConfig(config: AppConfig): MissedRunnerConfig {
+export function resolveMissedRunnerConfig(config: AppConfig): MissedRunnerConfig {
   return { ...DEFAULT_MISSED_RUNNER, ...config.missedRunner };
 }
 
-function resolveNotifyVia(config: AppConfig, mr: MissedRunnerConfig): MissedRunnerNotifyVia {
+export function resolveNotifyVia(config: AppConfig, mr: MissedRunnerConfig): MissedRunnerNotifyVia {
   if (mr.notifyVia) return mr.notifyVia;
   if (config.pushover?.enabled && (config.pushover.triggers?.missedRunner ?? false)) return 'pushover';
   return 'toast';
 }
 
-function canSendPushover(config: AppConfig): boolean {
+export function canSendPushover(config: AppConfig): boolean {
   const p = config.pushover;
   return !!(p?.enabled && p.appToken?.trim() && p.userKey?.trim());
 }
@@ -68,7 +68,7 @@ function shouldPollUser(settings: Partial<AppConfig>): boolean {
   return true;
 }
 
-function buildMissedRunnerMessage(
+export function buildMissedRunnerMessage(
   token: TokenCandidate,
   body: string,
   url: string,
@@ -116,7 +116,7 @@ function resolveMcAtCall(group: ContractEntry[]): {
 }
 
 /** Same MC@call logic as Radar buildRadar. */
-function buildTokenCandidates(contracts: ContractEntry[]): TokenCandidate[] {
+export function buildTokenCandidates(contracts: ContractEntry[]): TokenCandidate[] {
   const byAddress = new Map<string, ContractEntry[]>();
   for (const c of contracts) {
     const key = c.address.toLowerCase();
@@ -145,7 +145,7 @@ function buildTokenCandidates(contracts: ContractEntry[]): TokenCandidate[] {
   return out;
 }
 
-function formatAge(firstSeenAt: string): string {
+export function formatMissedRunnerAge(firstSeenAt: string): string {
   const mins = Math.floor((Date.now() - new Date(firstSeenAt).getTime()) / 60_000);
   if (mins < 60) return `${Math.max(1, mins)}m`;
   const hrs = Math.floor(mins / 60);
@@ -302,7 +302,7 @@ class MissedRunnerPoller {
       const multLabel = `${multiplier.toFixed(1)}×`;
       const mcFrom = token.mcAtCallDisplay ?? formatCompact(token.mcAtCall);
       const mcTo = live.mcNowDisplay ?? formatCompact(live.mcNow);
-      const age = formatAge(token.firstSeenAt);
+      const age = formatMissedRunnerAge(token.firstSeenAt);
       const channel = token.channelName ? `#${token.channelName}` : 'your feed';
       const title = `Missed runner: ${symbol} (${multLabel})`;
       const body = `Scanned ${age} ago in ${channel} · MC ${mcFrom} → ${mcTo} · Not in My Wallets`;

@@ -105,6 +105,22 @@ export default function GlobalSettings() {
   const [missedRunnerCooldownHours, setMissedRunnerCooldownHours] = useState(24);
   const [missedRunnerMinMcAtCall, setMissedRunnerMinMcAtCall] = useState('');
   const [missedRunnerNotifyVia, setMissedRunnerNotifyVia] = useState<MissedRunnerNotifyVia>('toast');
+  const [missedRunnerTestAddress, setMissedRunnerTestAddress] = useState('');
+  const [missedRunnerTestForce, setMissedRunnerTestForce] = useState(false);
+  const [missedRunnerTestLoading, setMissedRunnerTestLoading] = useState(false);
+  const [missedRunnerTestResult, setMissedRunnerTestResult] = useState<{
+    ok: boolean;
+    sent: boolean;
+    message: string;
+    diagnostics?: {
+      multiplier?: number;
+      minMultiplier?: number;
+      mcAtCallDisplay?: string;
+      mcNowDisplay?: string;
+      wouldAlert?: boolean;
+      blockReason?: string;
+    };
+  } | null>(null);
   const [solPlatform, setSolPlatform] = useState<SolPlatform>('axiom');
   const [evmPlatform, setEvmPlatform] = useState<EvmPlatform>('gmgn');
   const [customSolUrl, setCustomSolUrl] = useState('');
@@ -380,6 +396,39 @@ export default function GlobalSettings() {
       if (token) headers.set('Authorization', `Bearer ${token}`);
     }
     return fetch(input, { ...init, headers });
+  };
+
+  const handleMissedRunnerTest = async () => {
+    setMissedRunnerTestLoading(true);
+    setMissedRunnerTestResult(null);
+    try {
+      const res = await authedFetch(`${apiBase}/alerts/missed-runner/test`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          address: missedRunnerTestAddress.trim(),
+          force: missedRunnerTestForce,
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        setMissedRunnerTestResult({
+          ok: false,
+          sent: false,
+          message: data.error ?? `Test failed (${res.status})`,
+        });
+        return;
+      }
+      setMissedRunnerTestResult(data);
+    } catch (err: unknown) {
+      setMissedRunnerTestResult({
+        ok: false,
+        sent: false,
+        message: err instanceof Error ? err.message : 'Test failed',
+      });
+    } finally {
+      setMissedRunnerTestLoading(false);
+    }
   };
 
   const handleExport = async () => {
@@ -2035,6 +2084,67 @@ export default function GlobalSettings() {
                           <p className="text-[11px] text-discord-text-muted">
                             Balance checks use Wallets → My Wallets. Keep the site open for toast delivery.
                           </p>
+                          <div className="pt-2 border-t border-discord-input/40 space-y-2">
+                            <label className="text-[11px] text-discord-text-muted block">Test on a token</label>
+                            <p className="text-[10px] text-discord-text-muted">
+                              Paste a contract from your feed to preview the alert. Does not write cooldown rows.
+                            </p>
+                            <input
+                              type="text"
+                              value={missedRunnerTestAddress}
+                              onChange={(e) => {
+                                setMissedRunnerTestAddress(e.target.value);
+                                setMissedRunnerTestResult(null);
+                              }}
+                              placeholder="0x647dd517c8820fc9874e1a3f58e6e0b9a43395c0"
+                              className="w-full bg-discord-dark border border-discord-input rounded px-2 py-1.5 text-sm text-discord-text font-mono outline-none focus:ring-1 focus:ring-discord-blurple"
+                            />
+                            <Toggle
+                              value={missedRunnerTestForce}
+                              onChange={(v) => {
+                                setMissedRunnerTestForce(v);
+                                setMissedRunnerTestResult(null);
+                              }}
+                              label="Force send (ignore multiplier & cooldown)"
+                            />
+                            <button
+                              type="button"
+                              onClick={() => void handleMissedRunnerTest()}
+                              disabled={missedRunnerTestLoading || !missedRunnerTestAddress.trim()}
+                              className="px-3 py-1.5 rounded text-xs font-medium bg-discord-blurple hover:bg-discord-blurple-hover text-white disabled:opacity-50 disabled:cursor-not-allowed"
+                            >
+                              {missedRunnerTestLoading ? 'Running…' : 'Run test alert'}
+                            </button>
+                            {missedRunnerTestResult && (
+                              <div
+                                className={`text-[11px] rounded px-2 py-2 ${
+                                  missedRunnerTestResult.sent
+                                    ? 'bg-discord-green/15 text-discord-green border border-discord-green/30'
+                                    : missedRunnerTestResult.ok
+                                      ? 'bg-discord-yellow/10 text-discord-yellow border border-discord-yellow/30'
+                                      : 'bg-red-500/10 text-red-400 border border-red-500/30'
+                                }`}
+                              >
+                                <p>{missedRunnerTestResult.message}</p>
+                                {missedRunnerTestResult.diagnostics && (
+                                  <p className="mt-1 opacity-90 font-mono text-[10px]">
+                                    {missedRunnerTestResult.diagnostics.mcAtCallDisplay != null && (
+                                      <>MC@call {missedRunnerTestResult.diagnostics.mcAtCallDisplay}</>
+                                    )}
+                                    {missedRunnerTestResult.diagnostics.mcNowDisplay != null && (
+                                      <> → {missedRunnerTestResult.diagnostics.mcNowDisplay}</>
+                                    )}
+                                    {missedRunnerTestResult.diagnostics.multiplier != null && (
+                                      <> · {missedRunnerTestResult.diagnostics.multiplier.toFixed(2)}×</>
+                                    )}
+                                    {missedRunnerTestResult.diagnostics.minMultiplier != null && (
+                                      <> (need {missedRunnerTestResult.diagnostics.minMultiplier.toFixed(2)}×)</>
+                                    )}
+                                  </p>
+                                )}
+                              </div>
+                            )}
+                          </div>
                         </div>
                       )}
                     </div>
