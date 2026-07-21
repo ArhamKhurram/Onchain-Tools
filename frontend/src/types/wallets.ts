@@ -1,4 +1,4 @@
-export type WalletChain = 'bsc' | 'ethereum' | 'solana';
+export type WalletChain = 'bsc' | 'ethereum' | 'solana' | 'base' | 'robinhood';
 
 export interface TrackedWallet {
   id: string;
@@ -27,13 +27,17 @@ export const WALLET_CHAINS: { value: WalletChain | 'all'; label: string }[] = [
   { value: 'all', label: 'All chains' },
   { value: 'ethereum', label: 'Ethereum' },
   { value: 'bsc', label: 'BSC' },
+  { value: 'base', label: 'Base' },
   { value: 'solana', label: 'Solana' },
+  { value: 'robinhood', label: 'Robinhood (HOOD)' },
 ];
 
 export const CHAIN_META: Record<WalletChain, { label: string; short: string; color: string }> = {
   ethereum: { label: 'Ethereum', short: 'ETH', color: '#627eea' },
   bsc: { label: 'BSC', short: 'BSC', color: '#f0b90b' },
+  base: { label: 'Base', short: 'BASE', color: '#0052ff' },
   solana: { label: 'Solana', short: 'SOL', color: '#9945ff' },
+  robinhood: { label: 'Robinhood', short: 'HOOD', color: '#22c55e' },
 };
 
 export function validateWalletAddress(address: string, chain: WalletChain): string | null {

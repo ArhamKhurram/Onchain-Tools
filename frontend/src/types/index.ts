@@ -57,6 +57,15 @@ export interface PushoverTriggers {
   contract: boolean;
   keyword: boolean;
   signalConvergence: boolean;
+  missedRunner: boolean;
+}
+
+export interface MissedRunnerConfig {
+  enabled: boolean;
+  minMultiplier: number;
+  lookbackHours: number;
+  cooldownHours: number;
+  minMcAtCall?: number;
 }
 
 export interface PushoverFilters {
@@ -117,6 +126,7 @@ export interface AppConfig {
   soundSettings: SoundSettings;
   channelSounds: Record<string, SoundConfig>;
   pushover: PushoverConfig;
+  missedRunner: MissedRunnerConfig;
   contractLinkTemplates: ContractLinkTemplates;
   contractClickAction: ContractClickAction;
   showFullContractAddress: boolean;

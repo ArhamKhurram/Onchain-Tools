@@ -2,7 +2,7 @@ import { useState, useEffect, useMemo, useRef, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { routes } from '../lib/routes';
 import { useAppStore } from '../stores/appStore';
-import type { SolPlatform, EvmPlatform, ContractClickAction, BadgeClickAction, KeywordPattern, KeywordMatchMode, SoundSettings, SoundType, SoundConfig, PushoverPriority, PushoverSound, PushoverTriggers, PushoverFilters, MessageDisplay, SplitLayout } from '../types';
+import type { SolPlatform, EvmPlatform, ContractClickAction, BadgeClickAction, KeywordPattern, KeywordMatchMode, SoundSettings, SoundType, SoundConfig, PushoverPriority, PushoverSound, PushoverTriggers, PushoverFilters, MessageDisplay, SplitLayout, MissedRunnerConfig } from '../types';
 import { PUSHOVER_SOUNDS } from '../types';
 import { Key, Search, Plus, Trash2, Eye, EyeOff, Volume2, Upload, Play, Users, Shield, Tag, Zap, Settings2, ArrowLeft, HelpCircle, Bell, PanelLeftOpen, Send, Download, AlertTriangle, AtSign } from 'lucide-react';
 import { requestNotificationPermission } from '../utils/desktopNotification';
@@ -94,10 +94,16 @@ export default function GlobalSettings() {
   const [pushoverUserKey, setPushoverUserKey] = useState('');
   const [pushoverPriority, setPushoverPriority] = useState<PushoverPriority>(1);
   const [pushoverSound, setPushoverSound] = useState<PushoverSound>('siren');
-  const defaultTriggers: PushoverTriggers = { highlightedUser: false, highlightedUserContract: true, contract: false, keyword: false, signalConvergence: false };
+  const defaultTriggers: PushoverTriggers = { highlightedUser: false, highlightedUserContract: true, contract: false, keyword: false, signalConvergence: false, missedRunner: false };
   const defaultFilters: PushoverFilters = { userIds: [], channelIds: [], guildIds: [] };
+  const defaultMissedRunner: MissedRunnerConfig = { enabled: false, minMultiplier: 1.5, lookbackHours: 24, cooldownHours: 24 };
   const [pushoverTriggers, setPushoverTriggers] = useState<PushoverTriggers>({ ...defaultTriggers });
   const [pushoverFilters, setPushoverFilters] = useState<PushoverFilters>({ ...defaultFilters });
+  const [missedRunnerEnabled, setMissedRunnerEnabled] = useState(false);
+  const [missedRunnerMultiplier, setMissedRunnerMultiplier] = useState(1.5);
+  const [missedRunnerLookbackHours, setMissedRunnerLookbackHours] = useState(24);
+  const [missedRunnerCooldownHours, setMissedRunnerCooldownHours] = useState(24);
+  const [missedRunnerMinMcAtCall, setMissedRunnerMinMcAtCall] = useState('');
   const [solPlatform, setSolPlatform] = useState<SolPlatform>('axiom');
   const [evmPlatform, setEvmPlatform] = useState<EvmPlatform>('gmgn');
   const [customSolUrl, setCustomSolUrl] = useState('');
@@ -168,6 +174,12 @@ export default function GlobalSettings() {
       setPushoverSound(config.pushover?.sound ?? 'siren');
       setPushoverTriggers({ ...defaultTriggers, ...config.pushover?.triggers });
       setPushoverFilters(config.pushover?.filters ?? { ...defaultFilters });
+      const mr = { ...defaultMissedRunner, ...config.missedRunner };
+      setMissedRunnerEnabled(mr.enabled);
+      setMissedRunnerMultiplier(mr.minMultiplier);
+      setMissedRunnerLookbackHours(mr.lookbackHours);
+      setMissedRunnerCooldownHours(mr.cooldownHours);
+      setMissedRunnerMinMcAtCall(mr.minMcAtCall != null ? String(mr.minMcAtCall) : '');
       setSolPlatform(config.contractLinkTemplates?.solPlatform ?? 'axiom');
       setEvmPlatform(config.contractLinkTemplates?.evmPlatform ?? 'gmgn');
       setCustomSolUrl(config.contractLinkTemplates?.sol ?? '');
@@ -229,6 +241,11 @@ export default function GlobalSettings() {
       pushoverSound !== (config.pushover?.sound ?? 'siren') ||
       JSON.stringify(pushoverTriggers) !== JSON.stringify(config.pushover?.triggers ?? defaultTriggers) ||
       JSON.stringify(pushoverFilters) !== JSON.stringify(config.pushover?.filters ?? defaultFilters) ||
+      missedRunnerEnabled !== (config.missedRunner?.enabled ?? defaultMissedRunner.enabled) ||
+      missedRunnerMultiplier !== (config.missedRunner?.minMultiplier ?? defaultMissedRunner.minMultiplier) ||
+      missedRunnerLookbackHours !== (config.missedRunner?.lookbackHours ?? defaultMissedRunner.lookbackHours) ||
+      missedRunnerCooldownHours !== (config.missedRunner?.cooldownHours ?? defaultMissedRunner.cooldownHours) ||
+      missedRunnerMinMcAtCall !== (config.missedRunner?.minMcAtCall != null ? String(config.missedRunner.minMcAtCall) : '') ||
       solPlatform !== (config.contractLinkTemplates?.solPlatform ?? 'axiom') ||
       evmPlatform !== (config.contractLinkTemplates?.evmPlatform ?? 'gmgn') ||
       customSolUrl !== (config.contractLinkTemplates?.sol ?? '') ||
@@ -254,6 +271,7 @@ export default function GlobalSettings() {
     );
   }, [config, globalUsers, contractDetection, guildColors, dmColors, telegramColors, enabledGuilds, evmAddressColor, solAddressColor,
     openInDiscordApp, openInTelegramApp, messageSounds, soundSettings, channelSounds, pushoverEnabled, pushoverAppToken, pushoverUserKey, pushoverPriority, pushoverSound, pushoverTriggers, pushoverFilters,
+    missedRunnerEnabled, missedRunnerMultiplier, missedRunnerLookbackHours, missedRunnerCooldownHours, missedRunnerMinMcAtCall,
     solPlatform, evmPlatform, customSolUrl, customEvmUrl, contractClickAction, showFullContractAddress, autoOpenHighlightedContracts, signalConvergenceWindowMinutes,
     globalKeywordPatterns, keywordAlertsEnabled, desktopNotifications, mentionsUserEnabled, mentionsRoleEnabled, mentionsHereEnabled, mentionsEveryoneEnabled, badgeClickAction, chattingEnabled, messageDisplay, compactModeAvatars, roleColors, mobileZoomScale, splitLayout]);
 
@@ -292,6 +310,13 @@ export default function GlobalSettings() {
         soundSettings,
         channelSounds,
         pushover: { enabled: pushoverEnabled, appToken: pushoverAppToken, userKey: pushoverUserKey, priority: pushoverPriority, sound: pushoverSound, triggers: pushoverTriggers, filters: pushoverFilters },
+        missedRunner: {
+          enabled: missedRunnerEnabled,
+          minMultiplier: missedRunnerMultiplier,
+          lookbackHours: missedRunnerLookbackHours,
+          cooldownHours: missedRunnerCooldownHours,
+          ...(missedRunnerMinMcAtCall.trim() ? { minMcAtCall: Number(missedRunnerMinMcAtCall) } : {}),
+        },
         contractLinkTemplates: { evm: customEvmUrl, sol: customSolUrl, solPlatform, evmPlatform },
         contractClickAction,
         showFullContractAddress,
@@ -1692,6 +1717,81 @@ export default function GlobalSettings() {
                             onChange={(v) => setPushoverTriggers((p) => ({ ...p, signalConvergence: v }))}
                             label="Signal convergence (contract call + FOMO buy overlap)"
                           />
+                          <Toggle
+                            value={pushoverTriggers.missedRunner ?? false}
+                            onChange={(v) => setPushoverTriggers((p) => ({ ...p, missedRunner: v }))}
+                            label="Missed runner (token moved up and not in your wallets)"
+                          />
+                        </div>
+
+                        <div className="p-3 sm:p-4 bg-discord-sidebar rounded-lg space-y-3">
+                          <h4 className="text-sm font-semibold text-white">Missed runner alerts</h4>
+                          <p className="text-xs text-discord-text-muted">
+                            Notify when a scanned token hits your multiplier vs MC@call and none of your tracked wallets hold it.
+                            Requires Pushover enabled and the missed-runner trigger above.
+                          </p>
+                          <Toggle
+                            value={missedRunnerEnabled}
+                            onChange={setMissedRunnerEnabled}
+                            label="Enable missed-runner monitoring"
+                          />
+                          {missedRunnerEnabled && (
+                            <div className="space-y-3 pt-1">
+                              <div className="px-2 sm:px-3 py-2 bg-discord-dark rounded">
+                                <label className="text-[11px] text-discord-text-muted mb-1 block">
+                                  Multiplier threshold: {missedRunnerMultiplier.toFixed(2)}× vs MC@call
+                                </label>
+                                <input
+                                  type="range"
+                                  min={1.25}
+                                  max={5}
+                                  step={0.05}
+                                  value={missedRunnerMultiplier}
+                                  onChange={(e) => setMissedRunnerMultiplier(Number(e.target.value))}
+                                  className="w-full accent-discord-blurple"
+                                />
+                              </div>
+                              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                                <div className="px-2 sm:px-3 py-2 bg-discord-dark rounded">
+                                  <label className="text-[11px] text-discord-text-muted mb-1 block">Lookback (hours)</label>
+                                  <input
+                                    type="number"
+                                    min={1}
+                                    max={168}
+                                    value={missedRunnerLookbackHours}
+                                    onChange={(e) => setMissedRunnerLookbackHours(Math.max(1, Number(e.target.value) || 24))}
+                                    className="w-full bg-discord-sidebar border-none rounded px-2 py-1.5 text-sm text-discord-text outline-none focus:ring-1 focus:ring-discord-blurple"
+                                  />
+                                </div>
+                                <div className="px-2 sm:px-3 py-2 bg-discord-dark rounded">
+                                  <label className="text-[11px] text-discord-text-muted mb-1 block">Cooldown per token (hours)</label>
+                                  <input
+                                    type="number"
+                                    min={1}
+                                    max={168}
+                                    value={missedRunnerCooldownHours}
+                                    onChange={(e) => setMissedRunnerCooldownHours(Math.max(1, Number(e.target.value) || 24))}
+                                    className="w-full bg-discord-sidebar border-none rounded px-2 py-1.5 text-sm text-discord-text outline-none focus:ring-1 focus:ring-discord-blurple"
+                                  />
+                                </div>
+                              </div>
+                              <div className="px-2 sm:px-3 py-2 bg-discord-dark rounded">
+                                <label className="text-[11px] text-discord-text-muted mb-1 block">Min MC@call (optional, USD)</label>
+                                <input
+                                  type="number"
+                                  min={0}
+                                  placeholder="e.g. 50000 — skip lower MC scans"
+                                  value={missedRunnerMinMcAtCall}
+                                  onChange={(e) => setMissedRunnerMinMcAtCall(e.target.value)}
+                                  className="w-full bg-discord-sidebar border-none rounded px-2 py-1.5 text-sm text-discord-text outline-none focus:ring-1 focus:ring-discord-blurple"
+                                />
+                              </div>
+                              <p className="text-[11px] text-discord-text-muted">
+                                Balance checks use your Wallets page entries. Solana needs HELIUS_API_KEY on the backend;
+                                EVM chains use Alchemy or public RPC. Robinhood-chain tokens are skipped until on-chain checks exist.
+                              </p>
+                            </div>
+                          )}
                         </div>
 
                         <div className="p-3 sm:p-4 bg-discord-sidebar rounded-lg space-y-3">

@@ -34,6 +34,7 @@ import { processDiscordMessage } from './utils/messageProcessor.js';
 import type { MessageProcessorContext } from './utils/messageProcessor.js';
 import { sendPushover } from './utils/pushover.js';
 import { startFomoPoller } from './fomo/poller.js';
+import { startMissedRunnerPoller } from './alerts/missedRunnerPoller.js';
 import type { DiscordMessage, PushoverConfig, FrontendMessage, ContractLinkTemplates } from './discord/types.js';
 import type { ContractEnrichmentPatch } from './utils/contractLog.js';
 
@@ -50,7 +51,7 @@ const telegramManagers = new Map<string, TelegramClientManager>();
 function checkPushover(cfg: PushoverConfig, msg: FrontendMessage, evmChainHint: string | null, contractLinkTemplates: ContractLinkTemplates): void {
   if (!cfg.enabled || !cfg.appToken || !cfg.userKey) return;
 
-  const t = cfg.triggers ?? { highlightedUser: false, highlightedUserContract: true, contract: false, keyword: false, signalConvergence: false };
+  const t = cfg.triggers ?? { highlightedUser: false, highlightedUserContract: true, contract: false, keyword: false, signalConvergence: false, missedRunner: false };
   const f = cfg.filters ?? { userIds: [], channelIds: [], guildIds: [] };
 
   const triggered =
@@ -644,6 +645,7 @@ httpServer.listen(PORT, async () => {
   // Global FOMO fan-out poller. Self-gates: idle without a shared FOMO service
   // account (FOMO_REFRESH_TOKEN) or Supabase, so this never crashes the server.
   startFomoPoller(wsServer);
+  startMissedRunnerPoller();
 
   if (!isHostedMode()) {
     const storage = getStorageProvider();

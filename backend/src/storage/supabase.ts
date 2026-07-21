@@ -27,8 +27,14 @@ const DEFAULT_SETTINGS: Omit<AppConfig, 'discordTokens' | 'rooms'> = {
   pushover: {
     enabled: false, appToken: '', userKey: '',
     priority: 1 as const, sound: 'siren' as const,
-    triggers: { highlightedUser: false, highlightedUserContract: true, contract: false, keyword: false, signalConvergence: false },
+    triggers: { highlightedUser: false, highlightedUserContract: true, contract: false, keyword: false, signalConvergence: false, missedRunner: false },
     filters: { userIds: [], channelIds: [], guildIds: [] },
+  },
+  missedRunner: {
+    enabled: false,
+    minMultiplier: 1.5,
+    lookbackHours: 24,
+    cooldownHours: 24,
   },
   contractLinkTemplates: {
     evm: 'https://gmgn.ai/base/token/{address}',

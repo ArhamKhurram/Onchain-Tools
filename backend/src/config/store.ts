@@ -38,8 +38,14 @@ const DEFAULT_CONFIG: AppConfig = {
   pushover: {
     enabled: false, appToken: '', userKey: '',
     priority: 1 as const, sound: 'siren' as const,
-    triggers: { highlightedUser: false, highlightedUserContract: true, contract: false, keyword: false, signalConvergence: false },
+    triggers: { highlightedUser: false, highlightedUserContract: true, contract: false, keyword: false, signalConvergence: false, missedRunner: false },
     filters: { userIds: [], channelIds: [], guildIds: [] },
+  },
+  missedRunner: {
+    enabled: false,
+    minMultiplier: 1.5,
+    lookbackHours: 24,
+    cooldownHours: 24,
   },
   contractLinkTemplates: {
     evm: 'https://gmgn.ai/base/token/{address}',
@@ -152,7 +158,7 @@ class ConfigStore {
     return this.config;
   }
 
-  updateConfig(partial: Partial<Pick<AppConfig, 'globalHighlightedUsers' | 'contractDetection' | 'guildColors' | 'dmColors' | 'enabledGuilds' | 'evmAddressColor' | 'solAddressColor' | 'openInDiscordApp' | 'openInTelegramApp' | 'hiddenUsers' | 'messageSounds' | 'soundSettings' | 'channelSounds' | 'pushover' | 'contractLinkTemplates' | 'contractClickAction' | 'showFullContractAddress' | 'autoOpenHighlightedContracts' | 'signalConvergenceWindowMinutes' | 'globalKeywordPatterns' | 'keywordAlertsEnabled' | 'desktopNotifications' | 'mentionsUserEnabled' | 'mentionsRoleEnabled' | 'mentionsHereEnabled' | 'mentionsEveryoneEnabled' | 'badgeClickAction' | 'chattingEnabled' | 'messageDisplay' | 'compactModeAvatars' | 'roleColors' | 'mobileZoomScale' | 'splitLayout' | 'paneRoomIds' | 'paneLocks' | 'gridMirror' | 'seenAnnouncements' | 'telegramApiId' | 'telegramApiHash' | 'telegramSessions' | 'discordProxyUrl'>>): AppConfig {
+  updateConfig(partial: Partial<Pick<AppConfig, 'globalHighlightedUsers' | 'contractDetection' | 'guildColors' | 'dmColors' | 'enabledGuilds' | 'evmAddressColor' | 'solAddressColor' | 'openInDiscordApp' | 'openInTelegramApp' | 'hiddenUsers' | 'messageSounds' | 'soundSettings' | 'channelSounds' | 'pushover' | 'missedRunner' | 'contractLinkTemplates' | 'contractClickAction' | 'showFullContractAddress' | 'autoOpenHighlightedContracts' | 'signalConvergenceWindowMinutes' | 'globalKeywordPatterns' | 'keywordAlertsEnabled' | 'desktopNotifications' | 'mentionsUserEnabled' | 'mentionsRoleEnabled' | 'mentionsHereEnabled' | 'mentionsEveryoneEnabled' | 'badgeClickAction' | 'chattingEnabled' | 'messageDisplay' | 'compactModeAvatars' | 'roleColors' | 'mobileZoomScale' | 'splitLayout' | 'paneRoomIds' | 'paneLocks' | 'gridMirror' | 'seenAnnouncements' | 'telegramApiId' | 'telegramApiHash' | 'telegramSessions' | 'discordProxyUrl'>>): AppConfig {
     Object.assign(this.config, partial);
     this.save();
     return this.config;
