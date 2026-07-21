@@ -167,6 +167,7 @@ async function walletHoldsToken(
 /**
  * Returns whether any holding wallet holds the token on the matching chain.
  * When chain is unsupported or RPC is unavailable, returns skipped=true (caller must not alert).
+ * Exception: Robinhood (HOOD) chain tokens return holds=false — other-chain wallets cannot hold them.
  */
 export async function checkTokenHeldByWallets(
   tokenAddress: string,
@@ -177,10 +178,9 @@ export async function checkTokenHeldByWallets(
   const balanceChain = contractChainToWalletChain(contractChain, evmChain);
   if (!balanceChain) {
     const slug = (evmChain ?? '').toLowerCase();
-    const isRobinhood = slug === 'robinhood' || slug === 'hood';
-    const hasRobinhoodWallet = wallets.some((w) => w.chain === 'robinhood');
-    if (isRobinhood && !hasRobinhoodWallet) {
-      // No Robinhood wallet in My Wallets — user cannot hold HOOD-chain tokens on-chain here.
+    if (slug === 'robinhood' || slug === 'hood') {
+      // HOOD-chain tokens live on Robinhood L2 — not visible via ETH/SOL/Base RPCs.
+      // No Robinhood balance RPC yet; My Wallets on other chains cannot hold these tokens.
       return { holds: false };
     }
     return {
