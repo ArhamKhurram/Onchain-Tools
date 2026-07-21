@@ -67,6 +67,7 @@ export default function PnlChartModal({ open, onClose, data, loading, error }: P
           {!loading && !error && chartData.length === 0 && (
             <div className="h-full flex flex-col items-center justify-center gap-2 font-mono text-xs text-white/50 text-center px-6">
               <p>No classified buy/sell activity in this period.</p>
+              <p className="text-white/35">Chart uses trades from the activity feed below — wait for activity to load, or pick one wallet if rate limited.</p>
               {data?.skippedUnknownType ? (
                 <p className="text-oct-accent/80">
                   {data.skippedUnknownType} trades could not be classified — GMGN may not label buy/sell on this chain.

@@ -2,7 +2,6 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { getAccessToken } from '../lib/supabase';
 import type { HoldingWallet } from '../types/holdingWallets';
 import type {
-  DailyPnlResponse,
   PortfolioActivity,
   PortfolioApiError,
   PortfolioHolding,
@@ -11,7 +10,6 @@ import type {
 } from '../types/portfolio';
 import {
   dedupeHoldingWallets,
-  mergeDailyPnl,
   mergePortfolioStats,
   walletChainToPortfolioParam,
 } from '../types/portfolio';
@@ -73,17 +71,15 @@ async function fetchOneWallet(
   const address = encodeURIComponent(wallet.address);
   const label = walletLabel(wallet);
 
-  const [statsRes, holdingsRes, activityRes] = await Promise.all([
-    portfolioFetch<{ stats: PortfolioStats; period: PortfolioPeriod }>(
-      `/portfolio/${chain}/${address}/stats?period=${period}`,
-    ),
-    portfolioFetch<{ holdings?: PortfolioHolding[] }>(
-      `/portfolio/${chain}/${address}/holdings?limit=50`,
-    ),
-    portfolioFetch<{ activities?: PortfolioActivity[] }>(
-      `/portfolio/${chain}/${address}/activity?limit=${opts.activityLimit}`,
-    ),
-  ]);
+  const statsRes = await portfolioFetch<{ stats: PortfolioStats; period: PortfolioPeriod }>(
+    `/portfolio/${chain}/${address}/stats?period=${period}`,
+  );
+  const holdingsRes = await portfolioFetch<{ holdings?: PortfolioHolding[] }>(
+    `/portfolio/${chain}/${address}/holdings?limit=50`,
+  );
+  const activityRes = await portfolioFetch<{ activities?: PortfolioActivity[] }>(
+    `/portfolio/${chain}/${address}/activity?limit=${opts.activityLimit}`,
+  );
 
   const tag = <T extends PortfolioHolding | PortfolioActivity>(rows: T[]): T[] =>
     opts.tagLabel ? rows.map((r) => ({ ...r, walletLabel: label })) : rows;
@@ -147,9 +143,10 @@ export function usePortfolio(
     setHoldingsNeedsKey(false);
     setGmgnMissing(false);
 
-    const results = await Promise.all(
-      targets.map((w) => fetchOneWallet(w, period, { activityLimit, tagLabel: isAllWallets })),
-    );
+    const results = [];
+    for (const w of targets) {
+      results.push(await fetchOneWallet(w, period, { activityLimit, tagLabel: isAllWallets }));
+    }
 
     const statsList: PortfolioStats[] = [];
     for (const r of results) {
@@ -226,60 +223,4 @@ export function usePortfolio(
 function toNum(value: unknown): number {
   const n = Number(value);
   return Number.isFinite(n) ? n : 0;
-}
-
-export function usePortfolioPnlDaily(
-  allWallets: HoldingWallet[],
-  selectedId: string | null,
-  period: PortfolioPeriod,
-  enabled: boolean,
-) {
-  const deduped = useMemo(() => dedupeHoldingWallets(allWallets), [allWallets]);
-
-  const targets = useMemo(() => {
-    if (deduped.length === 0) return [];
-    if (selectedId === PORTFOLIO_ALL_WALLETS) return deduped;
-    const one = deduped.find((w) => w.id === selectedId) ?? deduped[0];
-    return one ? [one] : [];
-  }, [deduped, selectedId]);
-
-  const [data, setData] = useState<DailyPnlResponse | null>(null);
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-
-  const fetchPnl = useCallback(async () => {
-    if (!enabled || targets.length === 0) return;
-
-    setLoading(true);
-    setError(null);
-
-    const responses = await Promise.all(
-      targets.map(async (wallet) => {
-        const chain = walletChainToPortfolioParam(wallet.chain);
-        const address = encodeURIComponent(wallet.address);
-        const result = await portfolioFetch<DailyPnlResponse>(
-          `/portfolio/${chain}/${address}/pnl-daily?period=${period}`,
-        );
-        return result;
-      }),
-    );
-
-    const ok: { ok: true; data: DailyPnlResponse }[] = [];
-    for (const r of responses) {
-      if (r.ok === true) ok.push(r);
-    }
-    if (ok.length === 0) {
-      setData(null);
-      setError(responses.find((r) => !r.ok)?.error ?? 'Failed to load PnL data.');
-    } else {
-      setData(mergeDailyPnl(ok.map((r) => r.data)));
-    }
-    setLoading(false);
-  }, [targets, period, enabled]);
-
-  useEffect(() => {
-    if (enabled) fetchPnl();
-  }, [enabled, fetchPnl]);
-
-  return { data, loading, error, refresh: fetchPnl };
 }

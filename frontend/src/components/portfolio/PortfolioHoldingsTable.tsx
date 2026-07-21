@@ -1,7 +1,7 @@
 import { ExternalLink } from 'lucide-react';
 import { useAppStore } from '../../stores/appStore';
 import type { GmgnChain, PortfolioHolding } from '../../types/portfolio';
-import { formatUsd, GMGN_CHAIN_SHORT, PORTFOLIO_PANEL, PORTFOLIO_PANEL_HEADER, PORTFOLIO_PANEL_TITLE, toNumber, walletChainToGmgn } from '../../types/portfolio';
+import { formatPortfolioError, formatUsd, GMGN_CHAIN_SHORT, PORTFOLIO_PANEL, PORTFOLIO_PANEL_HEADER, PORTFOLIO_PANEL_TITLE, toNumber, walletChainToGmgn } from '../../types/portfolio';
 import type { WalletChain } from '../../types/wallets';
 import { buildContractUrl } from '../../utils/contractUrl';
 
@@ -46,7 +46,7 @@ export default function PortfolioHoldingsTable({
       )}
 
       {error && !needsPrivateKey && (
-        <p className="px-4 py-3 font-mono text-xs text-red-300">{error}</p>
+        <p className="px-4 py-3 font-mono text-xs text-red-300">{formatPortfolioError(error)}</p>
       )}
 
       {!error && holdings.length === 0 && !loading && (

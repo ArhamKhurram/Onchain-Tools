@@ -4,6 +4,7 @@ import {
   detectAlgorithm,
   signMessage,
 } from './gmgnSigner.js';
+import { isGmgnRateLimited, markGmgnRateLimited, withGmgnLimit } from './gmgnLimiter.js';
 
 const GMGN_HOST = 'https://openapi.gmgn.ai';
 
@@ -88,6 +89,15 @@ async function gmgnRequest<T>(
     'User-Agent': 'oct-backend/1.0',
   };
 
+  if (isGmgnRateLimited()) {
+    return {
+      ok: false,
+      error: 'RATE_LIMIT_BANNED',
+      code: 429,
+      gmgnConfigured: true,
+    };
+  }
+
   if (signed) {
     const privateKeyPem = normalizePrivateKeyPem(process.env.GMGN_PRIVATE_KEY);
     if (!privateKeyPem) {
@@ -114,33 +124,37 @@ async function gmgnRequest<T>(
 
   const url = buildUrl(subPath, query);
 
-  try {
-    const res = await fetch(url, {
-      headers,
-      signal: AbortSignal.timeout(15_000),
-    });
-
-    let json: GmgnApiResponse<T> | null = null;
+  return withGmgnLimit(async () => {
     try {
-      json = (await res.json()) as GmgnApiResponse<T>;
-    } catch {
-      return parseFailure(subPath, res.status, null);
-    }
+      const res = await fetch(url, {
+        headers,
+        signal: AbortSignal.timeout(15_000),
+      });
 
-    if (!res.ok || json.code !== 0) {
-      console.error(`[GMGN] ${subPath} HTTP ${res.status} code=${json.code} error=${json.error ?? json.message}`);
-      return parseFailure(subPath, res.status, json);
-    }
+      let json: GmgnApiResponse<T> | null = null;
+      try {
+        json = (await res.json()) as GmgnApiResponse<T>;
+      } catch {
+        return parseFailure(subPath, res.status, null);
+      }
 
-    return { ok: true, data: json.data };
-  } catch (err) {
-    console.error('[GMGN] request failed:', (err as Error).message);
-    return {
-      ok: false,
-      error: (err as Error).message,
-      gmgnConfigured: true,
-    };
-  }
+      if (!res.ok || json.code !== 0) {
+        const errText = String(json.error ?? json.message ?? `HTTP ${res.status}`);
+        console.error(`[GMGN] ${subPath} HTTP ${res.status} code=${json.code} error=${errText}`);
+        markGmgnRateLimited(errText);
+        return parseFailure(subPath, res.status, json);
+      }
+
+      return { ok: true, data: json.data };
+    } catch (err) {
+      console.error('[GMGN] request failed:', (err as Error).message);
+      return {
+        ok: false,
+        error: (err as Error).message,
+        gmgnConfigured: true,
+      };
+    }
+  });
 }
 
 /** API-key-only GET (stats, activity, token info). */

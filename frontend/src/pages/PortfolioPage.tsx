@@ -15,11 +15,10 @@ import {
   PORTFOLIO_ALL_WALLETS,
   setStoredPortfolioWalletId,
   usePortfolio,
-  usePortfolioPnlDaily,
 } from '../hooks/usePortfolio';
 import { routes } from '../lib/routes';
 import type { PortfolioPeriod } from '../types/portfolio';
-import { isEvmWalletChain } from '../types/portfolio';
+import { aggregateDailyPnlFromActivity, formatPortfolioError, isEvmWalletChain } from '../types/portfolio';
 
 export default function PortfolioPage() {
   const { isAuthenticated, ready, userId } = useAuthSession();
@@ -63,12 +62,9 @@ export default function PortfolioPage() {
     }
   }, [dedupedWallets, selectedWalletId]);
 
-  const pnlEnabled = chartOpen || calendarOpen;
-  const { data: pnlData, loading: pnlLoading, error: pnlError } = usePortfolioPnlDaily(
-    wallets,
-    selectedWalletId,
-    period,
-    pnlEnabled,
+  const pnlData = useMemo(
+    () => aggregateDailyPnlFromActivity(activity, period),
+    [activity, period],
   );
 
   const handleWalletChange = (id: string) => {
@@ -197,9 +193,9 @@ export default function PortfolioPage() {
           </div>
         )}
 
-        {(statsError || activityError) && !gmgnMissing && (
+        {(statsError || activityError || holdingsError) && !gmgnMissing && (
           <div className="border-2 border-red-500/50 bg-red-950/30 px-4 py-3 font-mono text-xs text-red-200 flex items-center justify-between gap-3">
-            <span>{statsError ?? activityError}</span>
+            <span>{formatPortfolioError(statsError ?? activityError ?? holdingsError)}</span>
             <button type="button" onClick={() => refresh()} className="text-oct-accent underline hover:no-underline">
               Retry
             </button>
@@ -252,15 +248,15 @@ export default function PortfolioPage() {
         open={chartOpen}
         onClose={() => setChartOpen(false)}
         data={pnlData}
-        loading={pnlLoading}
-        error={pnlError}
+        loading={loading}
+        error={null}
       />
       <PnlCalendarModal
         open={calendarOpen}
         onClose={() => setCalendarOpen(false)}
         data={pnlData}
-        loading={pnlLoading}
-        error={pnlError}
+        loading={loading}
+        error={null}
       />
     </div>
   );

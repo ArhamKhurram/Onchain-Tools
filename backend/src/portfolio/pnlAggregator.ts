@@ -26,6 +26,15 @@ function toUsd(value: unknown): number {
   return Number.isFinite(n) ? n : 0;
 }
 
+function activityUsd(item: WalletActivityItem): number {
+  const cost = Math.abs(toUsd(item.cost_usd));
+  if (cost > 0) return cost;
+  const amt = toUsd(item.token_amount);
+  const price = toUsd(item.price_usd);
+  if (amt > 0 && price > 0) return amt * price;
+  return 0;
+}
+
 function utcDateKey(unixSec: number): string {
   const d = new Date(unixSec * 1000);
   return d.toISOString().slice(0, 10);
@@ -49,7 +58,7 @@ export function aggregateDailyPnl(
       continue;
     }
 
-    const usd = Math.abs(toUsd(item.cost_usd));
+    const usd = activityUsd(item);
     if (usd <= 0) continue;
 
     const date = utcDateKey(ts);

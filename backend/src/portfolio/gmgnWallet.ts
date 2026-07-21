@@ -1,4 +1,6 @@
 import { gmgnGet, gmgnSignedGet, type GmgnResult } from '../utils/gmgnClient.js';
+import { mapSequential } from '../utils/gmgnLimiter.js';
+import { classifyActivitySide } from './activityUtils.js';
 
 export type OctWalletChain = 'bsc' | 'ethereum' | 'solana' | 'base' | 'robinhood';
 export type GmgnChain = 'sol' | 'base' | 'bsc' | 'eth' | 'robinhood';
@@ -243,34 +245,37 @@ export async function fetchAllWalletActivity(
   return all;
 }
 
-/** PnL aggregation: fetch buy + sell streams explicitly (helps chains with missing type on mixed feed). */
+/** PnL aggregation: paginate mixed feed (lighter than 3 parallel typed streams). */
 export async function fetchWalletActivityForPnl(
   chain: GmgnChain,
   address: string,
   opts: { maxPages?: number; maxEvents?: number; periodDays?: number } = {},
 ): Promise<WalletActivityItem[]> {
-  const perTypeCap = Math.ceil((opts.maxEvents ?? 1000) / 2);
-  const pageOpts = { ...opts, maxEvents: perTypeCap };
+  const mixed = await fetchAllWalletActivity(chain, address, {
+    maxPages: opts.maxPages ?? 4,
+    maxEvents: opts.maxEvents ?? 400,
+    periodDays: opts.periodDays ?? 30,
+  });
 
-  const [buys, sells, mixed] = await Promise.all([
-    fetchAllWalletActivity(chain, address, { ...pageOpts, types: ['buy'] }),
-    fetchAllWalletActivity(chain, address, { ...pageOpts, types: ['sell'] }),
-    fetchAllWalletActivity(chain, address, pageOpts),
-  ]);
+  const hasSide = mixed.some((item) => classifyActivitySide(item) != null);
+  if (hasSide) return mixed;
 
-  if (buys.length > 0 || sells.length > 0) {
-    const seen = new Set<string>();
-    const merged: WalletActivityItem[] = [];
-    for (const item of [...buys, ...sells]) {
-      const key = `${item.transaction_hash ?? ''}:${item.timestamp}:${item.type}`;
-      if (seen.has(key)) continue;
-      seen.add(key);
-      merged.push(item);
-    }
-    return merged;
+  const perTypeCap = Math.ceil((opts.maxEvents ?? 400) / 2);
+  const pageOpts = { ...opts, maxPages: 2, maxEvents: perTypeCap };
+  const buys = await fetchAllWalletActivity(chain, address, { ...pageOpts, types: ['buy'] });
+  const sells = await fetchAllWalletActivity(chain, address, { ...pageOpts, types: ['sell'] });
+
+  if (buys.length === 0 && sells.length === 0) return mixed;
+
+  const seen = new Set<string>();
+  const merged: WalletActivityItem[] = [];
+  for (const item of [...buys, ...sells]) {
+    const key = `${item.transaction_hash ?? ''}:${item.timestamp}:${item.type}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    merged.push(item);
   }
-
-  return mixed;
+  return merged;
 }
 
 // ---- Multi-chain aggregation (EVM wallets query eth/base/bsc together) ----
@@ -339,7 +344,7 @@ export async function fetchWalletStatsMerged(
 ): Promise<GmgnResult<WalletStats>> {
   if (chains.length === 1) return fetchWalletStats(chains[0], address, period);
 
-  const results = await Promise.all(chains.map((c) => fetchWalletStats(c, address, period)));
+  const results = await mapSequential(chains, (c) => fetchWalletStats(c, address, period));
   const okData = results.filter((r): r is { ok: true; data: WalletStats } => r.ok).map((r) => r.data);
   if (okData.length === 0) return pickError(results);
 
@@ -353,9 +358,7 @@ export async function fetchWalletHoldingsMerged(
 ): Promise<GmgnResult<WalletHoldingsResponse>> {
   if (chains.length === 1) return fetchWalletHoldings(chains[0], address, extra);
 
-  const results = await Promise.all(
-    chains.map(async (c) => ({ c, r: await fetchWalletHoldings(c, address, extra) })),
-  );
+  const results = await mapSequential(chains, async (c) => ({ c, r: await fetchWalletHoldings(c, address, extra) }));
   if (results.every(({ r }) => !r.ok)) return pickError(results.map(({ r }) => r));
 
   const holdings: WalletHolding[] = [];
@@ -375,9 +378,7 @@ export async function fetchWalletActivityMerged(
 ): Promise<GmgnResult<WalletActivityResponse>> {
   if (chains.length === 1) return fetchWalletActivity(chains[0], address, { limit });
 
-  const results = await Promise.all(
-    chains.map(async (c) => ({ c, r: await fetchWalletActivity(c, address, { limit }) })),
-  );
+  const results = await mapSequential(chains, async (c) => ({ c, r: await fetchWalletActivity(c, address, { limit }) }));
   if (results.every(({ r }) => !r.ok)) return pickError(results.map(({ r }) => r));
 
   const activities: WalletActivityItem[] = [];
@@ -395,8 +396,8 @@ export async function fetchAllWalletActivityMerged(
   address: string,
   opts: { maxPages?: number; maxEvents?: number; periodDays?: number } = {},
 ): Promise<WalletActivityItem[]> {
-  const perChain = await Promise.all(
-    chains.map((c) => fetchWalletActivityForPnl(c, address, opts)),
+  const perChain = await mapSequential(chains, (c) =>
+    fetchWalletActivityForPnl(c, address, opts),
   );
   return perChain.flat();
 }

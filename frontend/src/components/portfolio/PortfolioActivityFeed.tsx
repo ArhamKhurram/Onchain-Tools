@@ -4,6 +4,7 @@ import {
   classifyActivitySide,
   formatAge,
   formatMarketCap,
+  formatPortfolioError,
   formatUsd,
   GMGN_CHAIN_SHORT,
   PORTFOLIO_PANEL,
@@ -64,7 +65,9 @@ export default function PortfolioActivityFeed({
       </div>
 
       {error && (
-        <p className="px-4 py-3 font-mono text-xs text-red-300 border-b border-oct-accent/20">{error}</p>
+        <p className="px-4 py-3 font-mono text-xs text-red-300 border-b border-oct-accent/20">
+          {formatPortfolioError(error)}
+        </p>
       )}
 
       {!error && activity.length === 0 && !loading && (

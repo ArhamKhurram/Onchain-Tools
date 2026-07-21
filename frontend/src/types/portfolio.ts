@@ -280,6 +280,82 @@ export function mergeDailyPnl(responses: DailyPnlResponse[]): DailyPnlResponse {
   };
 }
 
+function activityUsd(item: PortfolioActivity): number {
+  const cost = Math.abs(toNumber(item.cost_usd));
+  if (cost > 0) return cost;
+  const amt = toNumber(item.token_amount);
+  const price = toNumber(item.price_usd);
+  if (amt > 0 && price > 0) return amt * price;
+  return 0;
+}
+
+/** Build chart/calendar data from the activity feed already on screen (no extra GMGN calls). */
+export function aggregateDailyPnlFromActivity(
+  activities: PortfolioActivity[],
+  period: PortfolioPeriod,
+): DailyPnlResponse {
+  const periodDays = period === '7d' ? 7 : 30;
+  const cutoffSec = Math.floor(Date.now() / 1000) - periodDays * 86_400;
+  const buckets = new Map<string, DailyPnlDay>();
+  let skippedUnknownType = 0;
+
+  for (const item of activities) {
+    const ts = Number(item.timestamp);
+    if (!Number.isFinite(ts) || ts < cutoffSec) continue;
+
+    const side = classifyActivitySide(item);
+    if (!side) {
+      skippedUnknownType += 1;
+      continue;
+    }
+
+    const usd = activityUsd(item);
+    if (usd <= 0) continue;
+
+    const date = new Date(ts * 1000).toISOString().slice(0, 10);
+    const row = buckets.get(date) ?? { date, netPnl: 0, buyUsd: 0, sellUsd: 0, tradeCount: 0 };
+
+    if (side === 'buy') {
+      row.buyUsd += usd;
+      row.netPnl -= usd;
+    } else {
+      row.sellUsd += usd;
+      row.netPnl += usd;
+    }
+    row.tradeCount += 1;
+    buckets.set(date, row);
+  }
+
+  const days = [...buckets.values()].sort((a, b) => a.date.localeCompare(b.date));
+  let running = 0;
+  const cumulative = days.map((day) => {
+    running += day.netPnl;
+    return { date: day.date, cumulativePnl: running };
+  });
+
+  return {
+    period,
+    days,
+    cumulative,
+    skippedUnknownType,
+    note: 'Daily PnL from visible activity feed (recent trades). Buys negative, sells positive.',
+  };
+}
+
+export function isGmgnRateLimitError(message: string | null | undefined): boolean {
+  if (!message) return false;
+  const lower = message.toLowerCase();
+  return lower.includes('rate_limit') || lower.includes('too many');
+}
+
+export function formatPortfolioError(message: string | null | undefined): string {
+  if (!message) return 'Request failed.';
+  if (isGmgnRateLimitError(message)) {
+    return 'GMGN rate limit — wait 1–2 minutes, pick one wallet, then hit Refresh.';
+  }
+  return message;
+}
+
 /** Shared panel chrome for portfolio sections. */
 export const PORTFOLIO_PANEL =
   'border-2 border-oct-accent/35 bg-gradient-to-b from-oct-accent/[0.07] to-oct-surface shadow-[inset_0_1px_0_rgba(255,59,59,0.12)]';
