@@ -1,7 +1,12 @@
 import { NavLink, Outlet, useNavigate } from 'react-router-dom';
+import { Rocket } from 'lucide-react';
 import { useAuthSession } from '../hooks/useAuthSession';
 import { isHostedMode, getSupabase } from '../lib/supabase';
 import { LANDING_URL, routes } from '../lib/routes';
+import { useAppStore } from '../stores/appStore';
+import { useUpdatesUiStore } from '../stores/updatesUiStore';
+import { UPDATE_SLIDES } from '../data/updates';
+import { getSeenIds } from '../utils/announcements';
 
 const NAV: { to: string; label: string; end?: boolean }[] = [
   { to: routes.home, label: 'Home', end: true },
@@ -21,6 +26,13 @@ function navClass({ isActive }: { isActive: boolean }) {
 export default function AppShell() {
   const { isAuthenticated, user } = useAuthSession();
   const navigate = useNavigate();
+  const config = useAppStore((s) => s.config);
+  const openChangelog = useUpdatesUiStore((s) => s.openChangelog);
+
+  const unseenCount = UPDATE_SLIDES.filter((s) => {
+    const seen = new Set([...getSeenIds(), ...(config?.seenAnnouncements ?? [])]);
+    return !seen.has(s.id);
+  }).length;
 
   const handleSignOut = async () => {
     if (isHostedMode) {
@@ -53,6 +65,18 @@ export default function AppShell() {
         </nav>
 
         <div className="flex items-center gap-2 shrink-0">
+          <button
+            type="button"
+            onClick={openChangelog}
+            className="relative p-1.5 rounded-cockpit text-oct-muted hover:text-oct-accent border-2 border-transparent hover:border-oct-border-bright transition-colors"
+            title="What's new"
+            aria-label="What's new"
+          >
+            <Rocket size={16} strokeWidth={2} />
+            {unseenCount > 0 && (
+              <span className="absolute -top-0.5 -right-0.5 w-2 h-2 rounded-full bg-oct-accent border border-black" />
+            )}
+          </button>
           {isHostedMode && !isAuthenticated ? (
             <button
               type="button"
