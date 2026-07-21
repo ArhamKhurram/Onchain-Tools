@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { getAccessToken } from '../lib/supabase';
 import type { HoldingWallet } from '../types/holdingWallets';
 import type {
+  DailyPnlResponse,
   PortfolioActivity,
   PortfolioApiError,
   PortfolioHolding,
@@ -10,6 +11,7 @@ import type {
 } from '../types/portfolio';
 import {
   dedupeHoldingWallets,
+  mergeDailyPnl,
   mergePortfolioStats,
   walletChainToPortfolioParam,
 } from '../types/portfolio';
@@ -223,4 +225,58 @@ export function usePortfolio(
 function toNum(value: unknown): number {
   const n = Number(value);
   return Number.isFinite(n) ? n : 0;
+}
+
+/** Deep PnL history — fetched only when chart/calendar opens, one wallet at a time. */
+export function usePortfolioPnlDaily(
+  allWallets: HoldingWallet[],
+  selectedId: string | null,
+  period: PortfolioPeriod,
+  enabled: boolean,
+) {
+  const deduped = useMemo(() => dedupeHoldingWallets(allWallets), [allWallets]);
+
+  const targets = useMemo(() => {
+    if (deduped.length === 0) return [];
+    if (selectedId === PORTFOLIO_ALL_WALLETS) return deduped;
+    const one = deduped.find((w) => w.id === selectedId) ?? deduped[0];
+    return one ? [one] : [];
+  }, [deduped, selectedId]);
+
+  const [data, setData] = useState<DailyPnlResponse | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const fetchPnl = useCallback(async () => {
+    if (!enabled || targets.length === 0) return;
+
+    setLoading(true);
+    setError(null);
+
+    const responses: Array<{ ok: true; data: DailyPnlResponse } | PortfolioApiError> = [];
+    for (const wallet of targets) {
+      const chain = walletChainToPortfolioParam(wallet.chain);
+      const address = encodeURIComponent(wallet.address);
+      responses.push(
+        await portfolioFetch<DailyPnlResponse>(
+          `/portfolio/${chain}/${address}/pnl-daily?period=${period}`,
+        ),
+      );
+    }
+
+    const ok = responses.filter((r): r is { ok: true; data: DailyPnlResponse } => r.ok === true);
+    if (ok.length === 0) {
+      setData(null);
+      setError(responses.find((r) => !r.ok)?.error ?? 'Failed to load PnL data.');
+    } else {
+      setData(mergeDailyPnl(ok.map((r) => r.data)));
+    }
+    setLoading(false);
+  }, [targets, period, enabled]);
+
+  useEffect(() => {
+    if (enabled) fetchPnl();
+  }, [enabled, fetchPnl]);
+
+  return { data, loading, error, refresh: fetchPnl };
 }

@@ -15,6 +15,7 @@ import {
   PORTFOLIO_ALL_WALLETS,
   setStoredPortfolioWalletId,
   usePortfolio,
+  usePortfolioPnlDaily,
 } from '../hooks/usePortfolio';
 import { routes } from '../lib/routes';
 import type { PortfolioPeriod } from '../types/portfolio';
@@ -62,10 +63,23 @@ export default function PortfolioPage() {
     }
   }, [dedupedWallets, selectedWalletId]);
 
-  const pnlData = useMemo(
+  const pnlEnabled = chartOpen || calendarOpen;
+  const { data: pnlFetched, loading: pnlLoading, error: pnlError } = usePortfolioPnlDaily(
+    wallets,
+    selectedWalletId,
+    period,
+    pnlEnabled,
+  );
+
+  const pnlFromActivity = useMemo(
     () => aggregateDailyPnlFromActivity(activity, period),
     [activity, period],
   );
+
+  const pnlData = useMemo(() => {
+    if (pnlFetched && pnlFetched.days.length > 0) return pnlFetched;
+    return pnlFromActivity;
+  }, [pnlFetched, pnlFromActivity]);
 
   const handleWalletChange = (id: string) => {
     setSelectedWalletId(id);
@@ -248,15 +262,15 @@ export default function PortfolioPage() {
         open={chartOpen}
         onClose={() => setChartOpen(false)}
         data={pnlData}
-        loading={loading}
-        error={null}
+        loading={pnlLoading || (loading && pnlData.days.length === 0)}
+        error={pnlError}
       />
       <PnlCalendarModal
         open={calendarOpen}
         onClose={() => setCalendarOpen(false)}
         data={pnlData}
-        loading={loading}
-        error={null}
+        loading={pnlLoading || (loading && pnlData.days.length === 0)}
+        error={pnlError}
       />
     </div>
   );
