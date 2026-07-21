@@ -26,6 +26,13 @@ function getVerifier() {
 }
 
 export function authMiddleware(req: Request, res: Response, next: NextFunction): void {
+  // Read-only GMGN env probe — no secrets, useful for local + Railway debugging.
+  if (req.path === '/portfolio/status') {
+    if (!isHostedMode()) req.userId = LOCAL_USER_ID;
+    next();
+    return;
+  }
+
   if (!isHostedMode()) {
     req.userId = LOCAL_USER_ID;
     next();

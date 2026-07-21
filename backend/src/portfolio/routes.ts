@@ -12,6 +12,7 @@ import {
 } from './gmgnWallet.js';
 import { aggregateDailyPnl } from './pnlAggregator.js';
 import { userOwnsHoldingWallet } from './ownership.js';
+import { getGmgnEnvStatus, probeGmgn } from './status.js';
 
 function getUserId(req: { userId?: string }): string {
   return req.userId ?? 'local';
@@ -78,6 +79,23 @@ async function resolveTarget(
 
 export function createPortfolioRouter(): Router {
   const router = Router();
+
+  /** Debug: GMGN env + optional live probes (no secrets returned). */
+  router.get('/status', async (req, res) => {
+    try {
+      const probeChain = typeof req.query.probeChain === 'string' ? req.query.probeChain : undefined;
+      const probeAddress = typeof req.query.probeAddress === 'string' ? req.query.probeAddress : undefined;
+
+      if (probeChain || probeAddress) {
+        const full = await probeGmgn({ probeChain, probeAddress });
+        return res.json(full);
+      }
+
+      res.json({ env: getGmgnEnvStatus(), probes: {} });
+    } catch (err) {
+      res.status(500).json({ error: safeError(err, 'Failed to read GMGN status') });
+    }
+  });
 
   router.get('/:chainParam/:address/stats', async (req, res) => {
     try {
