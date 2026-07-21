@@ -1359,22 +1359,24 @@ export function createRouter(wsServer: WsServer): Router {
 
       res.json({
         applied: true,
-        enrichment: metadataOnlyEnrichmentPatch({
+        enrichment: {
           address: enrichment.address,
-          tokenName: enrichment.tokenName,
-          tokenSymbol: enrichment.tokenSymbol,
-          tokenPair: enrichment.tokenPair,
-          description: enrichment.description,
-          liquidityUsd: enrichment.liquidityUsd,
-          liquidityDisplay: enrichment.liquidityDisplay,
-          volumeUsd: enrichment.volumeUsd,
-          volumeDisplay: enrichment.volumeDisplay,
-          priceUsd: enrichment.priceUsd,
-          tokenAge: enrichment.tokenAge,
-          evmChain: enrichment.evmChain,
-          enrichmentSource: enrichment.enrichmentSource,
-          enrichedAt: new Date().toISOString(),
-        }),
+          ...metadataOnlyEnrichmentPatch({
+            tokenName: enrichment.tokenName,
+            tokenSymbol: enrichment.tokenSymbol,
+            tokenPair: enrichment.tokenPair,
+            description: enrichment.description,
+            liquidityUsd: enrichment.liquidityUsd,
+            liquidityDisplay: enrichment.liquidityDisplay,
+            volumeUsd: enrichment.volumeUsd,
+            volumeDisplay: enrichment.volumeDisplay,
+            priceUsd: enrichment.priceUsd,
+            tokenAge: enrichment.tokenAge,
+            evmChain: enrichment.evmChain,
+            enrichmentSource: enrichment.enrichmentSource,
+            enrichedAt: new Date().toISOString(),
+          }),
+        },
       });
     } catch (err) {
       res.status(500).json({ error: safeError(err, 'Failed to enrich contract from DexScreener') });
