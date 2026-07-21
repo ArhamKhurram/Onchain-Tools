@@ -610,10 +610,12 @@ if (isHostedMode()) {
 
   const generalLimiter = rateLimit({
     windowMs: 1 * 60 * 1000,
-    max: 120,
+    max: 300,
     standardHeaders: true,
     legacyHeaders: false,
     message: { error: 'Too many requests, please try again later.' },
+    skip: (req) =>
+      req.method === 'POST' && req.originalUrl.includes('/alerts/missed-runner/test'),
   });
   app.use('/api', generalLimiter);
 }

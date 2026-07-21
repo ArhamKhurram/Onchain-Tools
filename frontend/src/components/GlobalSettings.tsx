@@ -415,7 +415,9 @@ export default function GlobalSettings() {
         setMissedRunnerTestResult({
           ok: false,
           sent: false,
-          message: data.error ?? `Test failed (${res.status})`,
+          message: res.status === 429
+            ? (data.error ?? 'Rate limited — wait a minute and try again.')
+            : (data.error ?? `Test failed (${res.status})`),
         });
         return;
       }

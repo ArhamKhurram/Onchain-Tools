@@ -1,4 +1,5 @@
 import { Router, static as expressStatic } from 'express';
+import rateLimit from 'express-rate-limit';
 import multer from 'multer';
 import { existsSync, mkdirSync, unlinkSync } from 'fs';
 import { join, dirname, extname } from 'path';
@@ -67,6 +68,15 @@ function getUserId(req: any): string {
 export function createRouter(wsServer: WsServer): Router {
   const router = Router();
   const storage = getStorageProvider();
+
+  const missedRunnerTestLimiter = rateLimit({
+    windowMs: 60_000,
+    max: 12,
+    standardHeaders: true,
+    legacyHeaders: false,
+    keyGenerator: (req) => req.userId ?? req.ip ?? 'unknown',
+    message: { error: 'Too many test alerts — wait a minute and try again.' },
+  });
 
   async function requireGateway(req: any, res: any): Promise<GatewayManager | null> {
     const { getUserGateway, connectGateway } = await import('../index.js');
@@ -1192,7 +1202,7 @@ export function createRouter(wsServer: WsServer): Router {
     }
   });
 
-  router.post('/alerts/missed-runner/test', async (req, res) => {
+  router.post('/alerts/missed-runner/test', missedRunnerTestLimiter, async (req, res) => {
     try {
       const userId = getUserId(req);
       const address = typeof req.body?.address === 'string' ? req.body.address.trim() : '';
