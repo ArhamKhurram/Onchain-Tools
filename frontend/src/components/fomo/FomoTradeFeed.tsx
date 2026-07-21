@@ -53,7 +53,7 @@ export default function FomoTradeFeed({ embedded = false }: { embedded?: boolean
         </div>
       )}
 
-      <div className="flex-1 min-h-0 overflow-auto">
+      <div className="flex-1 min-h-0 overflow-auto overscroll-contain" style={{ overflowAnchor: 'none' }}>
         {fomoTrades.length === 0 ? (
           <div className="flex flex-col items-center justify-center py-16 px-6 text-center">
             <div className="w-12 h-12 rounded-cockpit border-2 border-black bg-oct-surface-raised shadow-oct-hard flex items-center justify-center mb-4">

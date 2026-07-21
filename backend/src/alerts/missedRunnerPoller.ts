@@ -145,14 +145,14 @@ class MissedRunnerPoller {
       .map((row) => row.user_id as string);
   }
 
-  private async loadTrackedWallets(userId: string): Promise<TrackedWalletRow[]> {
+  private async loadHoldingWallets(userId: string): Promise<TrackedWalletRow[]> {
     if (!this.db) return [];
     const { data, error } = await this.db
-      .from('user_tracked_wallets')
+      .from('user_holding_wallets')
       .select('id, address, chain')
       .eq('user_id', userId);
     if (error) {
-      console.warn(`[MissedRunnerPoller] Wallets load failed for ${userId}:`, error.message);
+      console.warn(`[MissedRunnerPoller] Holding wallets load failed for ${userId}:`, error.message);
       return [];
     }
     return (data ?? []) as TrackedWalletRow[];
@@ -208,7 +208,7 @@ class MissedRunnerPoller {
     const candidates = buildTokenCandidates(contracts);
     if (candidates.length === 0) return;
 
-    const wallets = await this.loadTrackedWallets(userId);
+    const wallets = await this.loadHoldingWallets(userId);
 
     for (const token of candidates) {
       if (mr.minMcAtCall != null && token.mcAtCall < mr.minMcAtCall) continue;

@@ -114,7 +114,7 @@ export default function ContractDashboard({ embedded = false }: ContractDashboar
   const solColor = config?.solAddressColor ?? '#14f195';
 
   return (
-    <div className="flex-1 flex flex-col min-h-0 bg-oct-bg overflow-hidden">
+    <div className="h-full flex flex-col min-h-0 bg-oct-bg overflow-hidden">
       {/* Header */}
       <div className="border-b-2 border-black bg-oct-surface shrink-0">
         {!embedded && (
@@ -199,7 +199,10 @@ export default function ContractDashboard({ embedded = false }: ContractDashboar
       </div>
 
       {/* Content */}
-      <div className="flex-1 min-h-0 overflow-y-auto">
+      <div
+        className="flex-1 min-h-0 overflow-y-auto overscroll-contain"
+        style={{ overflowAnchor: 'none' }}
+      >
         {filtered.length === 0 ? (
           <div className="flex items-center justify-center h-full text-oct-muted text-sm">
             {contracts.length === 0 ? 'No contracts detected yet' : 'No contracts match your filters'}

@@ -1,5 +1,5 @@
 /**
- * On-chain token balance checks for user_tracked_wallets.
+ * On-chain token balance checks for user_holding_wallets (My Wallets).
  * Solana via Helius RPC; EVM via Alchemy or public RPC eth_call balanceOf.
  */
 
@@ -164,7 +164,7 @@ async function walletHoldsToken(
 }
 
 /**
- * Returns whether any tracked wallet holds the token on the matching chain.
+ * Returns whether any holding wallet holds the token on the matching chain.
  * When chain is unsupported or RPC is unavailable, returns skipped=true (caller must not alert).
  */
 export async function checkTokenHeldByWallets(
@@ -187,7 +187,7 @@ export async function checkTokenHeldByWallets(
     return {
       holds: false,
       skipped: true,
-      reason: `no tracked wallets on ${balanceChain}`,
+      reason: `no holding wallets on ${balanceChain}`,
     };
   }
 

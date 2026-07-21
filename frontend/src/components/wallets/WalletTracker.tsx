@@ -104,7 +104,7 @@ export default function WalletTracker({ userId }: WalletTrackerProps) {
         <div className="flex flex-wrap items-center gap-3 mb-3">
           <div className="flex items-center gap-2">
             <Wallet size={18} className="text-oct-accent" />
-            <h1 className="text-lg font-extrabold uppercase text-oct-text">Wallets</h1>
+            <h1 className="text-lg font-extrabold uppercase text-oct-text">Tracked Wallets</h1>
             <span className="text-xs font-mono text-oct-muted tabular-nums">{filtered.length}</span>
           </div>
           <div className="flex-1" />
@@ -179,7 +179,7 @@ export default function WalletTracker({ userId }: WalletTrackerProps) {
             </p>
             <p className="text-sm text-oct-muted mb-5 max-w-sm">
               {wallets.length === 0
-                ? 'Add an address to start monitoring on-chain activity.'
+                ? 'Add whale or KOL addresses to monitor their on-chain activity.'
                 : 'Try a different search or chain filter.'}
             </p>
             {wallets.length === 0 && (
@@ -189,7 +189,7 @@ export default function WalletTracker({ userId }: WalletTrackerProps) {
                 className="brutal-btn px-4 py-2 text-sm"
               >
                 <Plus size={16} />
-                Add your first wallet
+                Add your first tracked wallet
               </button>
             )}
           </div>

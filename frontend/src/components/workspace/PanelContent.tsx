@@ -12,35 +12,43 @@ interface PanelContentProps {
 export default function PanelContent({ panel }: PanelContentProps) {
   const roomId = panel.config?.roomId;
 
-  switch (panel.type) {
-    case 'room':
-      if (!roomId) {
+  const content = (() => {
+    switch (panel.type) {
+      case 'room':
+        if (!roomId) {
+          return (
+            <div className="flex items-center justify-center h-full p-6 text-center">
+              <p className="text-sm text-oct-muted font-mono">Pick a room in panel settings</p>
+            </div>
+          );
+        }
         return (
-          <div className="flex items-center justify-center h-full p-6 text-center">
-            <p className="text-sm text-oct-muted font-mono">Pick a room in panel settings</p>
-          </div>
+          <ChatPane
+            roomId={roomId}
+            paneIndex={0}
+            paneCount={1}
+            editMode={false}
+            variant="workspace"
+          />
         );
-      }
-      return (
-        <ChatPane
-          roomId={roomId}
-          paneIndex={0}
-          paneCount={1}
-          editMode={false}
-          variant="workspace"
-        />
-      );
-    case 'contracts':
-      return <ContractDashboard embedded />;
-    case 'radar':
-      return <RadarTable embedded />;
-    case 'fomo-feed':
-      return <FomoTradeFeed embedded />;
-    case 'fomo-leaderboard':
-      return <WorkspaceFomoLeaderboard />;
-    default:
-      return null;
-  }
+      case 'contracts':
+        return <ContractDashboard embedded />;
+      case 'radar':
+        return <RadarTable embedded />;
+      case 'fomo-feed':
+        return <FomoTradeFeed embedded />;
+      case 'fomo-leaderboard':
+        return <WorkspaceFomoLeaderboard />;
+      default:
+        return null;
+    }
+  })();
+
+  return (
+    <div className="h-full min-h-0 flex flex-col overflow-hidden">
+      {content}
+    </div>
+  );
 }
 
 export function panelSubtitle(panel: WorkspacePanelSlot, roomName: string | null): string | null {

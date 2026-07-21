@@ -1727,7 +1727,7 @@ export default function GlobalSettings() {
                         <div className="p-3 sm:p-4 bg-discord-sidebar rounded-lg space-y-3">
                           <h4 className="text-sm font-semibold text-white">Missed runner alerts</h4>
                           <p className="text-xs text-discord-text-muted">
-                            Notify when a scanned token hits your multiplier vs MC@call and none of your tracked wallets hold it.
+                            Notify when a scanned token hits your multiplier vs MC@call and none of your My Wallets hold it.
                             Requires Pushover enabled and the missed-runner trigger above.
                           </p>
                           <Toggle
@@ -1787,7 +1787,7 @@ export default function GlobalSettings() {
                                 />
                               </div>
                               <p className="text-[11px] text-discord-text-muted">
-                                Balance checks use your Wallets page entries. Solana needs HELIUS_API_KEY on the backend;
+                                Balance checks use addresses on Wallets → My Wallets. Solana needs HELIUS_API_KEY on the backend;
                                 EVM chains use Alchemy or public RPC. Robinhood-chain tokens are skipped until on-chain checks exist.
                               </p>
                             </div>

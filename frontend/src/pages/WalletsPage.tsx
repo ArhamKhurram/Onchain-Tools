@@ -3,27 +3,34 @@ import { useSearchParams } from 'react-router-dom';
 import { Wallet } from 'lucide-react';
 import { useAuthSession } from '../hooks/useAuthSession';
 import WalletTracker from '../components/wallets/WalletTracker';
+import MyWalletsTracker from '../components/wallets/MyWalletsTracker';
 import FomoTracker from '../components/fomo/FomoTracker';
 import ConsoleEmptyState from '../components/console/ConsoleEmptyState';
 import ConsoleSubnav from '../components/console/ConsoleSubnav';
 import { routes } from '../lib/routes';
 
-type WalletsView = 'wallets' | 'fomo';
+type WalletsView = 'tracked' | 'mine' | 'fomo';
 
 const WALLETS_TABS = [
-  { id: 'wallets' as const, label: 'Wallets' },
+  { id: 'tracked' as const, label: 'Tracked Wallets' },
+  { id: 'mine' as const, label: 'My Wallets' },
   { id: 'fomo' as const, label: 'FOMO Tracking' },
 ];
+
+function parseView(raw: string | null): WalletsView {
+  if (raw === 'fomo') return 'fomo';
+  if (raw === 'mine') return 'mine';
+  // legacy ?view=wallets
+  return 'tracked';
+}
 
 export default function WalletsPage() {
   const { isAuthenticated, ready, userId } = useAuthSession();
   const [searchParams, setSearchParams] = useSearchParams();
-  const view = useMemo<WalletsView>(() => {
-    return searchParams.get('view') === 'fomo' ? 'fomo' : 'wallets';
-  }, [searchParams]);
+  const view = useMemo(() => parseView(searchParams.get('view')), [searchParams]);
 
   const setView = (next: WalletsView) => {
-    setSearchParams(next === 'wallets' ? {} : { view: next }, { replace: true });
+    setSearchParams(next === 'tracked' ? {} : { view: next }, { replace: true });
   };
 
   if (!ready) {
@@ -40,7 +47,7 @@ export default function WalletsPage() {
         icon={Wallet}
         eyebrow="[ TRACK ]"
         title="Sign in to track wallets"
-        description="Your tracked wallets and FOMO traders are private — scoped to your account only."
+        description="Your tracked wallets, trading wallets, and FOMO traders are private — scoped to your account only."
         actionLabel="SIGN IN"
         actionTo={routes.login}
         secondaryLabel="← Back to console home"
@@ -61,7 +68,13 @@ export default function WalletsPage() {
     <div className="h-full min-h-0 flex flex-col bg-oct-bg">
       <ConsoleSubnav tabs={WALLETS_TABS} active={view} onChange={setView} />
       <div className="flex-1 min-h-0">
-        {view === 'fomo' ? <FomoTracker userId={userId} /> : <WalletTracker userId={userId} />}
+        {view === 'fomo' ? (
+          <FomoTracker userId={userId} />
+        ) : view === 'mine' ? (
+          <MyWalletsTracker userId={userId} />
+        ) : (
+          <WalletTracker userId={userId} />
+        )}
       </div>
     </div>
   );

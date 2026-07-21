@@ -78,7 +78,7 @@ export default function WorkspacePanelChrome({
           </button>
         )}
       </div>
-      <div className="flex-1 min-h-0 overflow-hidden">
+      <div className="flex flex-col flex-1 min-h-0 overflow-hidden">
         <PanelContent panel={panel} />
       </div>
     </div>

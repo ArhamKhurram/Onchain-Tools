@@ -517,7 +517,7 @@ export default function RadarTable({ embedded: _embedded = false }: { embedded?:
   }, [rows.length, windowFilter]);
 
   return (
-    <div className="flex-1 flex flex-col min-h-0 bg-oct-bg">
+    <div className="h-full flex flex-col min-h-0 bg-oct-bg overflow-hidden">
       <div className="shrink-0 flex items-center gap-2 px-4 py-2.5 border-b-2 border-black bg-oct-surface">
         <span className="font-mono text-[10px] font-bold uppercase tracking-widest text-oct-muted">view: tokens</span>
         {(['1h', '4h', '24h', 'all'] as const).map((w) => (
@@ -563,7 +563,7 @@ export default function RadarTable({ embedded: _embedded = false }: { embedded?:
         </button>
       </div>
 
-      <div className="flex-1 overflow-auto">
+      <div className="flex-1 min-h-0 overflow-auto overscroll-contain" style={{ overflowAnchor: 'none' }}>
         <table className="w-full text-left border-collapse min-w-[1100px]">
           <thead className="sticky top-0 bg-oct-surface border-b-2 border-black z-10">
             <tr className="font-mono text-[10px] font-bold uppercase tracking-wider text-oct-muted">
