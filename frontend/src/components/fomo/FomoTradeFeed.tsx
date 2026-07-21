@@ -18,12 +18,13 @@ function traderLabel(trade: FomoTrade): string {
   return 'Unknown trader';
 }
 
-export default function FomoTradeFeed() {
+export default function FomoTradeFeed({ embedded = false }: { embedded?: boolean }) {
   const fomoTrades = useAppStore((s) => s.fomoTrades);
   const clearFomoTrades = useAppStore((s) => s.clearFomoTrades);
 
   return (
-    <div className="brutal-card flex flex-col min-h-0 overflow-hidden">
+    <div className={`flex flex-col min-h-0 overflow-hidden h-full ${embedded ? '' : 'brutal-card'}`}>
+      {!embedded && (
       <div className="shrink-0 flex items-center gap-2 px-4 py-3 border-b-2 border-black bg-oct-surface">
         <Radio size={16} className="text-oct-accent" />
         <h2 className="text-sm font-extrabold uppercase tracking-wide text-oct-text">Live Trade Feed</h2>
@@ -39,6 +40,18 @@ export default function FomoTradeFeed() {
           </button>
         )}
       </div>
+      )}
+      {embedded && fomoTrades.length > 0 && (
+        <div className="shrink-0 flex justify-end px-2 py-1 border-b border-oct-border">
+          <button
+            type="button"
+            onClick={clearFomoTrades}
+            className="text-[10px] font-bold uppercase text-oct-muted hover:text-oct-text"
+          >
+            Clear
+          </button>
+        </div>
+      )}
 
       <div className="flex-1 min-h-0 overflow-auto">
         {fomoTrades.length === 0 ? (

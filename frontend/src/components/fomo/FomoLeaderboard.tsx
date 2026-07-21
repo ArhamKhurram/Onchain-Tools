@@ -20,6 +20,7 @@ interface FomoLeaderboardProps {
   trackedHandles: Set<string>;
   onTrack: (query: string, fomoUserId: string) => Promise<{ ok: boolean; status?: number; error?: string }>;
   trackingId: string | null;
+  embedded?: boolean;
 }
 
 export default function FomoLeaderboard({
@@ -27,6 +28,7 @@ export default function FomoLeaderboard({
   trackedHandles,
   onTrack,
   trackingId,
+  embedded = false,
 }: FomoLeaderboardProps) {
   const { window, setWindow, entries, loading, error, refresh } = useFomoLeaderboard();
 
@@ -40,10 +42,14 @@ export default function FomoLeaderboard({
   };
 
   return (
-    <div className="brutal-card flex flex-col min-h-0 overflow-hidden">
-      <div className="shrink-0 flex flex-wrap items-center gap-2 px-4 py-3 border-b-2 border-black bg-oct-surface">
-        <Trophy size={16} className="text-oct-accent" />
-        <h2 className="text-sm font-extrabold uppercase tracking-wide text-oct-text">Top Traders</h2>
+    <div className={`flex flex-col min-h-0 overflow-hidden h-full ${embedded ? '' : 'brutal-card'}`}>
+      <div className={`shrink-0 flex flex-wrap items-center gap-2 px-4 py-3 border-b-2 border-black bg-oct-surface ${embedded ? 'py-2' : ''}`}>
+        {!embedded && (
+          <>
+            <Trophy size={16} className="text-oct-accent" />
+            <h2 className="text-sm font-extrabold uppercase tracking-wide text-oct-text">Top Traders</h2>
+          </>
+        )}
         <div className="flex gap-1">
           {(['24h', 'all'] as const).map((w) => (
             <button

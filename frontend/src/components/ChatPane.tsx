@@ -34,13 +34,14 @@ interface ChatPaneProps {
   paneIndex: number;
   paneCount: number;
   editMode: boolean;
-  variant?: 'grid' | 'popout';
+  variant?: 'grid' | 'popout' | 'workspace';
   onMoveLeft?: () => void;
   onMoveRight?: () => void;
 }
 
 export default function ChatPane({ roomId, paneIndex, paneCount, editMode, variant = 'grid', onMoveLeft, onMoveRight }: ChatPaneProps) {
   const isPopout = variant === 'popout';
+  const isWorkspace = variant === 'workspace';
   const rooms = useAppStore((s) => s.rooms);
   const messages = useAppStore((s) => s.messages);
   const config = useAppStore((s) => s.config);
@@ -481,7 +482,7 @@ export default function ChatPane({ roomId, paneIndex, paneCount, editMode, varia
   const HeaderIcon = isMentionsView ? AtSign : isTgDMView ? Send : isDMView ? MessageCircle : Hash;
   const headerIconClass = isTgDMView ? 'text-[#2AABEE]' : 'text-discord-channel-icon';
 
-  const canDrag = editMode && paneCount > 1 && !locked;
+  const canDrag = editMode && paneCount > 1 && !locked && !isWorkspace;
   const canPopOut = variant === 'grid' && !!window.oct?.openPopout && !poppedOutRoomIds.includes(roomId);
 
   const handleDrop = (e: React.DragEvent) => {
@@ -647,7 +648,7 @@ export default function ChatPane({ roomId, paneIndex, paneCount, editMode, varia
               </button>
             </Tip>
           )}
-          {editMode && onMoveLeft && (
+          {editMode && !isWorkspace && onMoveLeft && (
             <Tip label="Move chat to left side">
               <button
                 onClick={onMoveLeft}
@@ -657,7 +658,7 @@ export default function ChatPane({ roomId, paneIndex, paneCount, editMode, varia
               </button>
             </Tip>
           )}
-          {editMode && onMoveRight && (
+          {editMode && !isWorkspace && onMoveRight && (
             <Tip label="Move chat to right side">
               <button
                 onClick={onMoveRight}
@@ -667,7 +668,7 @@ export default function ChatPane({ roomId, paneIndex, paneCount, editMode, varia
               </button>
             </Tip>
           )}
-          {paneIndex === 0 && paneCount > 1 && (
+          {paneIndex === 0 && paneCount > 1 && !isWorkspace && (
             <Tip label={isGrid ? 'Single row layout' : 'Two rows layout'}>
               <button
                 onClick={() => updateConfig({ splitLayout: isGrid ? 'row' : 'grid' })}
@@ -677,7 +678,7 @@ export default function ChatPane({ roomId, paneIndex, paneCount, editMode, varia
               </button>
             </Tip>
           )}
-          {!isPopout && (
+          {!isPopout && !isWorkspace && (
             <Tip label={locked ? 'Unlock pane' : 'Lock pane (prevent changing room)'}>
               <button
                 onClick={() => togglePaneLock(paneIndex)}
@@ -687,7 +688,7 @@ export default function ChatPane({ roomId, paneIndex, paneCount, editMode, varia
               </button>
             </Tip>
           )}
-          {!isPopout && paneCount < MAX_PANES && (
+          {!isPopout && !isWorkspace && paneCount < MAX_PANES && (
             <Tip label="Add chat pane">
               <button
                 onClick={() => addPane()}
@@ -697,7 +698,7 @@ export default function ChatPane({ roomId, paneIndex, paneCount, editMode, varia
               </button>
             </Tip>
           )}
-          {paneCount > 1 && (
+          {paneCount > 1 && !isWorkspace && (
             <Tip label="Close pane">
               <button
                 onClick={() => removePane(paneIndex)}

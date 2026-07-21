@@ -1,3 +1,7 @@
+import type { WorkspacePanel } from './workspace';
+
+export type { WorkspacePanel, WorkspacePanelConfig, WorkspacePanelType } from './workspace';
+
 export type MessageSource = 'discord' | 'telegram';
 
 export interface ChannelRef {
@@ -137,6 +141,8 @@ export interface AppConfig {
   paneRoomIds: string[];
   paneLocks: boolean[];
   gridMirror: boolean;
+  /** Custom workspace tab panel layout (persisted per user). */
+  workspaceLayout?: WorkspacePanel[];
   seenAnnouncements: string[];
   telegramApiId?: string;
   telegramApiHash?: string;

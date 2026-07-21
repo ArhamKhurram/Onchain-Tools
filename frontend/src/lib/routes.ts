@@ -4,6 +4,7 @@ export const routes = {
   feed: '/feed',
   wallets: '/wallets',
   callers: '/callers',
+  workspace: '/workspace',
   settings: '/settings',
   login: '/login',
 } as const;

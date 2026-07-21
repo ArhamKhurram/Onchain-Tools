@@ -7,6 +7,7 @@ const DashboardPage = lazy(() => import('./pages/DashboardPage'));
 const FeedPage = lazy(() => import('./pages/FeedPage'));
 const WalletsPage = lazy(() => import('./pages/WalletsPage'));
 const CallersPage = lazy(() => import('./pages/CallersPage'));
+const WorkspacePage = lazy(() => import('./pages/WorkspacePage'));
 const SettingsPage = lazy(() => import('./pages/SettingsPage'));
 const LoginPage = lazy(() => import('./pages/LoginPage'));
 
@@ -31,6 +32,7 @@ export default function App() {
               <Route path="feed" element={<FeedPage />} />
               <Route path="wallets" element={<WalletsPage />} />
               <Route path="callers" element={<CallersPage />} />
+              <Route path="workspace" element={<WorkspacePage />} />
               <Route path="settings" element={<SettingsPage />} />
               <Route path="login" element={<LoginPage />} />
             </Route>

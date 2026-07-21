@@ -57,6 +57,7 @@ const DEFAULT_SETTINGS: Omit<AppConfig, 'discordTokens' | 'rooms'> = {
   paneRoomIds: [],
   paneLocks: [],
   gridMirror: false,
+  workspaceLayout: [],
   seenAnnouncements: [],
   telegramColors: {},
 };

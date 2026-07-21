@@ -236,7 +236,7 @@ async function fetchMcNow(address: string): Promise<{ mc: number; display: strin
   }
 }
 
-export default function RadarTable() {
+export default function RadarTable({ embedded: _embedded = false }: { embedded?: boolean }) {
   const contracts = useAppStore((s) => s.contracts);
   const fomoTrades = useAppStore((s) => s.fomoTrades);
   const config = useAppStore((s) => s.config);

@@ -40,7 +40,11 @@ function contractDisplay(entry: ContractEntry, showFull: boolean) {
 
 type ViewMode = 'table' | 'cards';
 
-export default function ContractDashboard() {
+interface ContractDashboardProps {
+  embedded?: boolean;
+}
+
+export default function ContractDashboard({ embedded = false }: ContractDashboardProps) {
   const contracts = useAppStore((s) => s.contracts);
   const fetchContracts = useAppStore((s) => s.fetchContracts);
   const deleteContract = useAppStore((s) => s.deleteContract);
@@ -113,6 +117,7 @@ export default function ContractDashboard() {
     <div className="flex-1 flex flex-col min-h-0 bg-oct-bg overflow-hidden">
       {/* Header */}
       <div className="border-b-2 border-black bg-oct-surface shrink-0">
+        {!embedded && (
         <div className="flex items-center gap-2 sm:gap-3 px-3 sm:px-4 py-3">
           {sidebarCollapsed && (
             <button
@@ -137,6 +142,7 @@ export default function ContractDashboard() {
             </button>
           )}
         </div>
+        )}
         <div className="flex items-center gap-2 px-3 sm:px-4 pb-3 overflow-x-auto scrollbar-none">
           <div className="flex rounded-cockpit overflow-hidden border-2 border-black text-xs shrink-0">
             <button
