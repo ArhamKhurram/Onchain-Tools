@@ -40,6 +40,7 @@ export function contractChainToWalletChain(
   if (slug === 'eth' || slug === 'ethereum') return 'ethereum';
   if (slug === 'bsc' || slug === 'bnb') return 'bsc';
   if (slug === 'base') return 'base';
+  if (slug === 'robinhood' || slug === 'hood') return null;
   return null;
 }
 
@@ -175,6 +176,13 @@ export async function checkTokenHeldByWallets(
 ): Promise<BalanceCheckResult> {
   const balanceChain = contractChainToWalletChain(contractChain, evmChain);
   if (!balanceChain) {
+    const slug = (evmChain ?? '').toLowerCase();
+    const isRobinhood = slug === 'robinhood' || slug === 'hood';
+    const hasRobinhoodWallet = wallets.some((w) => w.chain === 'robinhood');
+    if (isRobinhood && !hasRobinhoodWallet) {
+      // No Robinhood wallet in My Wallets — user cannot hold HOOD-chain tokens on-chain here.
+      return { holds: false };
+    }
     return {
       holds: false,
       skipped: true,

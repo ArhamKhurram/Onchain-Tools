@@ -163,12 +163,14 @@ function buildRadar(contracts: ContractEntry[]): RadarRow[] {
   }
 
   for (const row of map.values()) {
-    const earliest = contracts
-      .filter((c) => c.address.toLowerCase() === row.address.toLowerCase())
-      .sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime())[0];
-    if (earliest) {
-      row.mcAtCall = earliest.fdvAtCall;
-      row.mcAtCallDisplay = earliest.fdvAtCallDisplay;
+    const group = contracts.filter((c) => c.address.toLowerCase() === row.address.toLowerCase());
+    const sorted = [...group].sort(
+      (a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime(),
+    );
+    const withMc = sorted.find((c) => c.fdvAtCall != null && c.fdvAtCall > 0);
+    if (withMc) {
+      row.mcAtCall = withMc.fdvAtCall;
+      row.mcAtCallDisplay = withMc.fdvAtCallDisplay;
     }
   }
 

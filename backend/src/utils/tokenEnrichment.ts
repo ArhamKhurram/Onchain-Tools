@@ -4,6 +4,7 @@
 
 import type { TokenEnrichment } from './rickEmbedParser.js';
 import { parseCompactUsd } from './rickEmbedParser.js';
+import { enrichFromGmgn, resolveGmgnChain } from './gmgnEnrichment.js';
 
 function formatCompact(n: number): string {
   if (n >= 1e9) return `${(n / 1e9).toFixed(1)}B`;
@@ -86,12 +87,29 @@ export async function enrichFromDexScreener(address: string): Promise<TokenEnric
   }
 }
 
-/** Live market-cap snapshot for Radar (does not overwrite mc@call). */
-export async function fetchLiveMarketCap(address: string): Promise<{
+/** Live market-cap snapshot for Radar / missed-runner (does not overwrite mc@call). */
+export async function fetchLiveMarketCap(
+  address: string,
+  chainSlug?: string,
+): Promise<{
   mcNow?: number;
   mcNowDisplay?: string;
   priceUsd?: number;
 } | null> {
+  if (chainSlug && process.env.GMGN_API_KEY) {
+    const gmgnChain = resolveGmgnChain(chainSlug) ?? (chainSlug === 'sol' ? 'sol' : null);
+    if (gmgnChain) {
+      const gmgn = await enrichFromGmgn(gmgnChain, address);
+      if (gmgn?.fdvAtCall != null && gmgn.fdvAtCall > 0) {
+        return {
+          mcNow: gmgn.fdvAtCall,
+          mcNowDisplay: gmgn.fdvAtCallDisplay,
+          priceUsd: gmgn.priceUsd,
+        };
+      }
+    }
+  }
+
   const enriched = await enrichFromDexScreener(address);
   if (!enriched) return null;
   return {

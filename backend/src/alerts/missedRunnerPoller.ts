@@ -97,11 +97,28 @@ function buildMissedRunnerMessage(
   };
 }
 
-/** Same earliest-scan MC logic as Radar buildRadar. */
+/** Earliest scan time + first available MC@call (Rick often omits FDV on the first row). */
+function resolveMcAtCall(group: ContractEntry[]): {
+  mcAtCall: number;
+  mcAtCallDisplay?: string;
+  firstSeenAt: string;
+} | null {
+  const sorted = [...group].sort(
+    (a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime(),
+  );
+  const withMc = sorted.find((c) => c.fdvAtCall != null && c.fdvAtCall > 0);
+  if (!withMc?.fdvAtCall) return null;
+  return {
+    mcAtCall: withMc.fdvAtCall,
+    mcAtCallDisplay: withMc.fdvAtCallDisplay,
+    firstSeenAt: sorted[0].timestamp,
+  };
+}
+
+/** Same MC@call logic as Radar buildRadar. */
 function buildTokenCandidates(contracts: ContractEntry[]): TokenCandidate[] {
   const byAddress = new Map<string, ContractEntry[]>();
   for (const c of contracts) {
-    if (c.fdvAtCall == null || c.fdvAtCall <= 0) continue;
     const key = c.address.toLowerCase();
     const list = byAddress.get(key) ?? [];
     list.push(c);
@@ -110,20 +127,19 @@ function buildTokenCandidates(contracts: ContractEntry[]): TokenCandidate[] {
 
   const out: TokenCandidate[] = [];
   for (const [, group] of byAddress) {
-    const earliest = [...group].sort(
-      (a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime(),
-    )[0];
-    if (!earliest?.fdvAtCall) continue;
+    const resolved = resolveMcAtCall(group);
+    if (!resolved) continue;
+    const meta = group.find((c) => c.fdvAtCall === resolved.mcAtCall) ?? group[0];
     out.push({
-      address: earliest.address,
-      chain: earliest.chain,
-      evmChain: earliest.evmChain,
-      mcAtCall: earliest.fdvAtCall,
-      mcAtCallDisplay: earliest.fdvAtCallDisplay,
-      tokenSymbol: earliest.tokenSymbol,
-      tokenName: earliest.tokenName,
-      channelName: earliest.channelName,
-      firstSeenAt: earliest.timestamp,
+      address: meta.address,
+      chain: meta.chain,
+      evmChain: meta.evmChain,
+      mcAtCall: resolved.mcAtCall,
+      mcAtCallDisplay: resolved.mcAtCallDisplay,
+      tokenSymbol: meta.tokenSymbol,
+      tokenName: meta.tokenName,
+      channelName: meta.channelName,
+      firstSeenAt: resolved.firstSeenAt,
     });
   }
   return out;
@@ -258,7 +274,7 @@ class MissedRunnerPoller {
       if (mr.minMcAtCall != null && token.mcAtCall < mr.minMcAtCall) continue;
       if (await this.isOnCooldown(userId, token.address)) continue;
 
-      const live = await fetchLiveMarketCap(token.address);
+      const live = await fetchLiveMarketCap(token.address, token.evmChain ?? undefined);
       if (!live?.mcNow || live.mcNow <= 0) continue;
 
       const multiplier = live.mcNow / token.mcAtCall;
