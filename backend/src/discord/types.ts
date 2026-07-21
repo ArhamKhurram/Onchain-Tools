@@ -154,7 +154,19 @@ export interface MissedRunnerConfig {
   lookbackHours: number;
   cooldownHours: number;
   minMcAtCall?: number;
+  notifyVia?: MissedRunnerNotifyVia;
 }
+
+export type MissedRunnerNotifyVia = 'toast' | 'pushover' | 'both';
+
+export type ToastPosition =
+  | 'top-left'
+  | 'top-center'
+  | 'top-right'
+  | 'bottom-left'
+  | 'bottom-center'
+  | 'bottom-right'
+  | 'center';
 
 export interface PushoverFilters {
   userIds: string[];
@@ -223,6 +235,8 @@ export interface AppConfig {
   globalKeywordPatterns: KeywordPattern[];
   keywordAlertsEnabled: boolean;
   desktopNotifications: boolean;
+  toastAlertsEnabled: boolean;
+  toastPosition: ToastPosition;
   mentionsUserEnabled: boolean;
   mentionsRoleEnabled: boolean;
   mentionsHereEnabled: boolean;

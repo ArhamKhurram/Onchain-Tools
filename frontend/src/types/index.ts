@@ -66,7 +66,36 @@ export interface MissedRunnerConfig {
   lookbackHours: number;
   cooldownHours: number;
   minMcAtCall?: number;
+  /** How to deliver missed-runner alerts. Legacy: omit + Pushover trigger → pushover only. */
+  notifyVia?: MissedRunnerNotifyVia;
 }
+
+export type MissedRunnerNotifyVia = 'toast' | 'pushover' | 'both';
+
+export const MISSED_RUNNER_NOTIFY_OPTIONS: { value: MissedRunnerNotifyVia; label: string; hint: string }[] = [
+  { value: 'toast', label: 'Toast', hint: 'In-app popup only' },
+  { value: 'pushover', label: 'Pushover', hint: 'Phone push only' },
+  { value: 'both', label: 'Both', hint: 'Toast + Pushover' },
+];
+
+export type ToastPosition =
+  | 'top-left'
+  | 'top-center'
+  | 'top-right'
+  | 'bottom-left'
+  | 'bottom-center'
+  | 'bottom-right'
+  | 'center';
+
+export const TOAST_POSITIONS: { value: ToastPosition; label: string }[] = [
+  { value: 'top-left', label: 'Top left' },
+  { value: 'top-center', label: 'Top center' },
+  { value: 'top-right', label: 'Top right' },
+  { value: 'bottom-left', label: 'Bottom left' },
+  { value: 'bottom-center', label: 'Bottom center' },
+  { value: 'bottom-right', label: 'Bottom right' },
+  { value: 'center', label: 'Center' },
+];
 
 export interface PushoverFilters {
   userIds: string[];
@@ -136,6 +165,8 @@ export interface AppConfig {
   globalKeywordPatterns: KeywordPattern[];
   keywordAlertsEnabled: boolean;
   desktopNotifications: boolean;
+  toastAlertsEnabled: boolean;
+  toastPosition: ToastPosition;
   mentionsUserEnabled: boolean;
   mentionsRoleEnabled: boolean;
   mentionsHereEnabled: boolean;
@@ -330,7 +361,7 @@ export interface ContractEntry {
 
 export interface Alert {
   id: string;
-  type: 'highlighted_user' | 'contract_address' | 'keyword_match' | 'signal_convergence';
+  type: 'highlighted_user' | 'contract_address' | 'keyword_match' | 'signal_convergence' | 'missed_runner';
   message: FrontendMessage;
   reason: string;
   timestamp: number;

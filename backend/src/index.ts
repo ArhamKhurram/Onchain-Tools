@@ -645,7 +645,7 @@ httpServer.listen(PORT, async () => {
   // Global FOMO fan-out poller. Self-gates: idle without a shared FOMO service
   // account (FOMO_REFRESH_TOKEN) or Supabase, so this never crashes the server.
   startFomoPoller(wsServer);
-  startMissedRunnerPoller();
+  startMissedRunnerPoller(wsServer);
 
   if (!isHostedMode()) {
     const storage = getStorageProvider();

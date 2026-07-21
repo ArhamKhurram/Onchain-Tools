@@ -2,8 +2,8 @@ import { useState, useEffect, useMemo, useRef, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { routes } from '../lib/routes';
 import { useAppStore } from '../stores/appStore';
-import type { SolPlatform, EvmPlatform, ContractClickAction, BadgeClickAction, KeywordPattern, KeywordMatchMode, SoundSettings, SoundType, SoundConfig, PushoverPriority, PushoverSound, PushoverTriggers, PushoverFilters, MessageDisplay, SplitLayout, MissedRunnerConfig } from '../types';
-import { PUSHOVER_SOUNDS } from '../types';
+import type { SolPlatform, EvmPlatform, ContractClickAction, BadgeClickAction, KeywordPattern, KeywordMatchMode, SoundSettings, SoundType, SoundConfig, PushoverPriority, PushoverSound, PushoverTriggers, PushoverFilters, MessageDisplay, SplitLayout, MissedRunnerConfig, MissedRunnerNotifyVia, ToastPosition } from '../types';
+import { PUSHOVER_SOUNDS, TOAST_POSITIONS, MISSED_RUNNER_NOTIFY_OPTIONS } from '../types';
 import { Key, Search, Plus, Trash2, Eye, EyeOff, Volume2, Upload, Play, Users, Shield, Tag, Zap, Settings2, ArrowLeft, HelpCircle, Bell, PanelLeftOpen, Send, Download, AlertTriangle, AtSign } from 'lucide-react';
 import { requestNotificationPermission } from '../utils/desktopNotification';
 import { previewSound, previewPreset, PRESET_SOUNDS } from '../utils/notificationSound';
@@ -96,7 +96,7 @@ export default function GlobalSettings() {
   const [pushoverSound, setPushoverSound] = useState<PushoverSound>('siren');
   const defaultTriggers: PushoverTriggers = { highlightedUser: false, highlightedUserContract: true, contract: false, keyword: false, signalConvergence: false, missedRunner: false };
   const defaultFilters: PushoverFilters = { userIds: [], channelIds: [], guildIds: [] };
-  const defaultMissedRunner: MissedRunnerConfig = { enabled: false, minMultiplier: 1.5, lookbackHours: 24, cooldownHours: 24 };
+  const defaultMissedRunner: MissedRunnerConfig = { enabled: false, minMultiplier: 1.5, lookbackHours: 24, cooldownHours: 24, notifyVia: 'toast' };
   const [pushoverTriggers, setPushoverTriggers] = useState<PushoverTriggers>({ ...defaultTriggers });
   const [pushoverFilters, setPushoverFilters] = useState<PushoverFilters>({ ...defaultFilters });
   const [missedRunnerEnabled, setMissedRunnerEnabled] = useState(false);
@@ -104,6 +104,7 @@ export default function GlobalSettings() {
   const [missedRunnerLookbackHours, setMissedRunnerLookbackHours] = useState(24);
   const [missedRunnerCooldownHours, setMissedRunnerCooldownHours] = useState(24);
   const [missedRunnerMinMcAtCall, setMissedRunnerMinMcAtCall] = useState('');
+  const [missedRunnerNotifyVia, setMissedRunnerNotifyVia] = useState<MissedRunnerNotifyVia>('toast');
   const [solPlatform, setSolPlatform] = useState<SolPlatform>('axiom');
   const [evmPlatform, setEvmPlatform] = useState<EvmPlatform>('gmgn');
   const [customSolUrl, setCustomSolUrl] = useState('');
@@ -115,6 +116,8 @@ export default function GlobalSettings() {
   const [globalKeywordPatterns, setGlobalKeywordPatterns] = useState<KeywordPattern[]>([]);
   const [keywordAlertsEnabled, setKeywordAlertsEnabled] = useState(true);
   const [desktopNotifications, setDesktopNotifications] = useState(false);
+  const [toastAlertsEnabled, setToastAlertsEnabled] = useState(true);
+  const [toastPosition, setToastPosition] = useState<ToastPosition>('top-right');
   const [mentionsUserEnabled, setMentionsUserEnabled] = useState(true);
   const [mentionsRoleEnabled, setMentionsRoleEnabled] = useState(true);
   const [mentionsHereEnabled, setMentionsHereEnabled] = useState(false);
@@ -180,6 +183,7 @@ export default function GlobalSettings() {
       setMissedRunnerLookbackHours(mr.lookbackHours);
       setMissedRunnerCooldownHours(mr.cooldownHours);
       setMissedRunnerMinMcAtCall(mr.minMcAtCall != null ? String(mr.minMcAtCall) : '');
+      setMissedRunnerNotifyVia(mr.notifyVia ?? (config.pushover?.triggers?.missedRunner ? 'pushover' : 'toast'));
       setSolPlatform(config.contractLinkTemplates?.solPlatform ?? 'axiom');
       setEvmPlatform(config.contractLinkTemplates?.evmPlatform ?? 'gmgn');
       setCustomSolUrl(config.contractLinkTemplates?.sol ?? '');
@@ -191,6 +195,8 @@ export default function GlobalSettings() {
       setGlobalKeywordPatterns(config.globalKeywordPatterns ?? []);
       setKeywordAlertsEnabled(config.keywordAlertsEnabled ?? true);
       setDesktopNotifications(config.desktopNotifications ?? false);
+      setToastAlertsEnabled(config.toastAlertsEnabled ?? true);
+      setToastPosition(config.toastPosition ?? 'top-right');
       setMentionsUserEnabled(config.mentionsUserEnabled ?? true);
       setMentionsRoleEnabled(config.mentionsRoleEnabled ?? true);
       setMentionsHereEnabled(config.mentionsHereEnabled ?? false);
@@ -246,6 +252,7 @@ export default function GlobalSettings() {
       missedRunnerLookbackHours !== (config.missedRunner?.lookbackHours ?? defaultMissedRunner.lookbackHours) ||
       missedRunnerCooldownHours !== (config.missedRunner?.cooldownHours ?? defaultMissedRunner.cooldownHours) ||
       missedRunnerMinMcAtCall !== (config.missedRunner?.minMcAtCall != null ? String(config.missedRunner.minMcAtCall) : '') ||
+      missedRunnerNotifyVia !== (config.missedRunner?.notifyVia ?? (config.pushover?.triggers?.missedRunner ? 'pushover' : 'toast')) ||
       solPlatform !== (config.contractLinkTemplates?.solPlatform ?? 'axiom') ||
       evmPlatform !== (config.contractLinkTemplates?.evmPlatform ?? 'gmgn') ||
       customSolUrl !== (config.contractLinkTemplates?.sol ?? '') ||
@@ -257,6 +264,8 @@ export default function GlobalSettings() {
       !kpEqual(globalKeywordPatterns, config.globalKeywordPatterns ?? []) ||
       keywordAlertsEnabled !== (config.keywordAlertsEnabled ?? true) ||
       desktopNotifications !== (config.desktopNotifications ?? false) ||
+      toastAlertsEnabled !== (config.toastAlertsEnabled ?? true) ||
+      toastPosition !== (config.toastPosition ?? 'top-right') ||
       mentionsUserEnabled !== (config.mentionsUserEnabled ?? true) ||
       mentionsRoleEnabled !== (config.mentionsRoleEnabled ?? true) ||
       mentionsHereEnabled !== (config.mentionsHereEnabled ?? false) ||
@@ -271,9 +280,9 @@ export default function GlobalSettings() {
     );
   }, [config, globalUsers, contractDetection, guildColors, dmColors, telegramColors, enabledGuilds, evmAddressColor, solAddressColor,
     openInDiscordApp, openInTelegramApp, messageSounds, soundSettings, channelSounds, pushoverEnabled, pushoverAppToken, pushoverUserKey, pushoverPriority, pushoverSound, pushoverTriggers, pushoverFilters,
-    missedRunnerEnabled, missedRunnerMultiplier, missedRunnerLookbackHours, missedRunnerCooldownHours, missedRunnerMinMcAtCall,
+    missedRunnerEnabled, missedRunnerMultiplier, missedRunnerLookbackHours, missedRunnerCooldownHours, missedRunnerMinMcAtCall, missedRunnerNotifyVia,
     solPlatform, evmPlatform, customSolUrl, customEvmUrl, contractClickAction, showFullContractAddress, autoOpenHighlightedContracts, signalConvergenceWindowMinutes,
-    globalKeywordPatterns, keywordAlertsEnabled, desktopNotifications, mentionsUserEnabled, mentionsRoleEnabled, mentionsHereEnabled, mentionsEveryoneEnabled, badgeClickAction, chattingEnabled, messageDisplay, compactModeAvatars, roleColors, mobileZoomScale, splitLayout]);
+    globalKeywordPatterns, keywordAlertsEnabled, desktopNotifications, toastAlertsEnabled, toastPosition, mentionsUserEnabled, mentionsRoleEnabled, mentionsHereEnabled, mentionsEveryoneEnabled, badgeClickAction, chattingEnabled, messageDisplay, compactModeAvatars, roleColors, mobileZoomScale, splitLayout]);
 
   useEffect(() => {
     if (!hasUnsavedChanges) return;
@@ -315,6 +324,7 @@ export default function GlobalSettings() {
           minMultiplier: missedRunnerMultiplier,
           lookbackHours: missedRunnerLookbackHours,
           cooldownHours: missedRunnerCooldownHours,
+          notifyVia: missedRunnerNotifyVia,
           ...(missedRunnerMinMcAtCall.trim() ? { minMcAtCall: Number(missedRunnerMinMcAtCall) } : {}),
         },
         contractLinkTemplates: { evm: customEvmUrl, sol: customSolUrl, solPlatform, evmPlatform },
@@ -325,6 +335,8 @@ export default function GlobalSettings() {
         globalKeywordPatterns,
         keywordAlertsEnabled,
         desktopNotifications,
+        toastAlertsEnabled,
+        toastPosition,
         mentionsUserEnabled,
         mentionsRoleEnabled,
         mentionsHereEnabled,
@@ -1097,6 +1109,36 @@ export default function GlobalSettings() {
 
                   <div className="space-y-5">
                     <div className="p-3 sm:p-4 bg-discord-sidebar rounded-lg">
+                      <h4 className="text-xs sm:text-sm font-semibold text-white mb-2">On-site toast alerts</h4>
+                      <Toggle
+                        value={toastAlertsEnabled}
+                        onChange={setToastAlertsEnabled}
+                        label="Show in-app toast popups for highlighted users, contracts, keywords, and convergence"
+                      />
+                      {toastAlertsEnabled && (
+                        <div className="mt-3">
+                          <label className="block text-xs text-discord-text-muted mb-2">Toast position</label>
+                          <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+                            {TOAST_POSITIONS.map(({ value, label }) => (
+                              <button
+                                key={value}
+                                type="button"
+                                onClick={() => setToastPosition(value)}
+                                className={`px-2 py-1.5 rounded text-xs font-medium border transition-colors ${
+                                  toastPosition === value
+                                    ? 'bg-discord-blurple text-white border-discord-blurple'
+                                    : 'bg-discord-dark text-discord-text-muted border-discord-input hover:text-discord-text'
+                                }`}
+                              >
+                                {label}
+                              </button>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+                    </div>
+
+                    <div className="p-3 sm:p-4 bg-discord-sidebar rounded-lg">
                       <h4 className="text-xs sm:text-sm font-semibold text-white mb-2">Desktop Notifications</h4>
                       <Toggle
                         value={desktopNotifications}
@@ -1717,18 +1759,12 @@ export default function GlobalSettings() {
                             onChange={(v) => setPushoverTriggers((p) => ({ ...p, signalConvergence: v }))}
                             label="Signal convergence (contract call + FOMO buy overlap)"
                           />
-                          <Toggle
-                            value={pushoverTriggers.missedRunner ?? false}
-                            onChange={(v) => setPushoverTriggers((p) => ({ ...p, missedRunner: v }))}
-                            label="Missed runner (token moved up and not in your wallets)"
-                          />
                         </div>
 
                         <div className="p-3 sm:p-4 bg-discord-sidebar rounded-lg space-y-3">
                           <h4 className="text-sm font-semibold text-white">Missed runner alerts</h4>
                           <p className="text-xs text-discord-text-muted">
                             Notify when a scanned token hits your multiplier vs MC@call and none of your My Wallets hold it.
-                            Requires Pushover enabled and the missed-runner trigger above.
                           </p>
                           <Toggle
                             value={missedRunnerEnabled}
@@ -1737,6 +1773,36 @@ export default function GlobalSettings() {
                           />
                           {missedRunnerEnabled && (
                             <div className="space-y-3 pt-1">
+                              <div>
+                                <label className="text-[11px] text-discord-text-muted mb-2 block">Deliver via</label>
+                                <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+                                  {MISSED_RUNNER_NOTIFY_OPTIONS.map(({ value, label, hint }) => (
+                                    <button
+                                      key={value}
+                                      type="button"
+                                      onClick={() => setMissedRunnerNotifyVia(value)}
+                                      className={`px-2 py-2 rounded text-left border transition-colors ${
+                                        missedRunnerNotifyVia === value
+                                          ? 'bg-discord-blurple/20 border-discord-blurple text-white'
+                                          : 'bg-discord-dark border-discord-input text-discord-text-muted hover:text-discord-text'
+                                      }`}
+                                    >
+                                      <span className="block text-xs font-semibold">{label}</span>
+                                      <span className="block text-[10px] opacity-80 mt-0.5">{hint}</span>
+                                    </button>
+                                  ))}
+                                </div>
+                                {(missedRunnerNotifyVia === 'pushover' || missedRunnerNotifyVia === 'both') && !pushoverEnabled && (
+                                  <p className="text-[11px] text-orange-400 mt-2">
+                                    Pushover must be enabled above with app token and user key.
+                                  </p>
+                                )}
+                                {(missedRunnerNotifyVia === 'toast' || missedRunnerNotifyVia === 'both') && (
+                                  <p className="text-[10px] text-discord-text-muted mt-2">
+                                    Toast position is set under Sounds &amp; Notifications → On-site toast alerts.
+                                  </p>
+                                )}
+                              </div>
                               <div className="px-2 sm:px-3 py-2 bg-discord-dark rounded">
                                 <label className="text-[11px] text-discord-text-muted mb-1 block">
                                   Multiplier threshold: {missedRunnerMultiplier.toFixed(2)}× vs MC@call

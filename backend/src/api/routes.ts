@@ -749,7 +749,7 @@ export function createRouter(wsServer: WsServer): Router {
 
   router.put('/config', async (req, res) => {
     const userId = getUserId(req);
-    const { globalHighlightedUsers, contractDetection, guildColors, dmColors, telegramColors, enabledGuilds, hiddenUsers, evmAddressColor, solAddressColor, openInDiscordApp, openInTelegramApp, messageSounds, soundSettings, channelSounds, pushover, contractLinkTemplates, contractClickAction, showFullContractAddress, autoOpenHighlightedContracts, signalConvergenceWindowMinutes, globalKeywordPatterns, keywordAlertsEnabled, desktopNotifications, mentionsUserEnabled, mentionsRoleEnabled, mentionsHereEnabled, mentionsEveryoneEnabled, badgeClickAction, chattingEnabled, messageDisplay, compactModeAvatars, roleColors, mobileZoomScale, splitLayout, paneRoomIds, paneLocks, gridMirror, seenAnnouncements, discordProxyUrl } = req.body;
+    const { globalHighlightedUsers, contractDetection, guildColors, dmColors, telegramColors, enabledGuilds, hiddenUsers, evmAddressColor, solAddressColor, openInDiscordApp, openInTelegramApp, messageSounds, soundSettings, channelSounds, pushover, missedRunner, contractLinkTemplates, contractClickAction, showFullContractAddress, autoOpenHighlightedContracts, signalConvergenceWindowMinutes, globalKeywordPatterns, keywordAlertsEnabled, desktopNotifications, toastAlertsEnabled, toastPosition, mentionsUserEnabled, mentionsRoleEnabled, mentionsHereEnabled, mentionsEveryoneEnabled, badgeClickAction, chattingEnabled, messageDisplay, compactModeAvatars, roleColors, mobileZoomScale, splitLayout, paneRoomIds, paneLocks, gridMirror, seenAnnouncements, discordProxyUrl, workspaceLayout } = req.body;
 
     // The Discord proxy only makes sense in local mode (the connection leaves the
     // user's own machine). In hosted mode the server IP is fixed, and honouring a
@@ -779,6 +779,20 @@ export function createRouter(wsServer: WsServer): Router {
       ...(soundSettings !== undefined && { soundSettings }),
       ...(channelSounds !== undefined && { channelSounds }),
       ...(pushover !== undefined && { pushover }),
+      ...(missedRunner !== undefined && {
+        missedRunner: {
+          enabled: Boolean(missedRunner.enabled),
+          minMultiplier: Math.max(1.25, Math.min(5, Number(missedRunner.minMultiplier) || 1.5)),
+          lookbackHours: Math.max(1, Math.min(168, Number(missedRunner.lookbackHours) || 24)),
+          cooldownHours: Math.max(1, Math.min(168, Number(missedRunner.cooldownHours) || 24)),
+          ...(missedRunner.minMcAtCall != null && Number(missedRunner.minMcAtCall) > 0
+            ? { minMcAtCall: Number(missedRunner.minMcAtCall) }
+            : {}),
+          notifyVia: (['toast', 'pushover', 'both'] as const).includes(missedRunner.notifyVia)
+            ? missedRunner.notifyVia
+            : 'toast',
+        },
+      }),
       ...(contractLinkTemplates !== undefined && { contractLinkTemplates }),
       ...(contractClickAction !== undefined && { contractClickAction }),
       ...(showFullContractAddress !== undefined && { showFullContractAddress }),
@@ -789,6 +803,14 @@ export function createRouter(wsServer: WsServer): Router {
       ...(globalKeywordPatterns !== undefined && { globalKeywordPatterns }),
       ...(keywordAlertsEnabled !== undefined && { keywordAlertsEnabled }),
       ...(desktopNotifications !== undefined && { desktopNotifications }),
+      ...(toastAlertsEnabled !== undefined && { toastAlertsEnabled: Boolean(toastAlertsEnabled) }),
+      ...(toastPosition !== undefined && {
+        toastPosition: [
+          'top-left', 'top-center', 'top-right',
+          'bottom-left', 'bottom-center', 'bottom-right',
+          'center',
+        ].includes(toastPosition) ? toastPosition : 'top-right',
+      }),
       ...(mentionsUserEnabled !== undefined && { mentionsUserEnabled }),
       ...(mentionsRoleEnabled !== undefined && { mentionsRoleEnabled }),
       ...(mentionsHereEnabled !== undefined && { mentionsHereEnabled }),
@@ -804,6 +826,7 @@ export function createRouter(wsServer: WsServer): Router {
       ...(paneLocks !== undefined && { paneLocks }),
       ...(gridMirror !== undefined && { gridMirror }),
       ...(seenAnnouncements !== undefined && { seenAnnouncements }),
+      ...(workspaceLayout !== undefined && { workspaceLayout }),
     });
 
     // Reconnect Discord so the new proxy takes effect immediately (local mode).

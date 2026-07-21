@@ -46,6 +46,7 @@ const DEFAULT_CONFIG: AppConfig = {
     minMultiplier: 1.5,
     lookbackHours: 24,
     cooldownHours: 24,
+    notifyVia: 'toast',
   },
   contractLinkTemplates: {
     evm: 'https://gmgn.ai/base/token/{address}',
@@ -60,6 +61,8 @@ const DEFAULT_CONFIG: AppConfig = {
   globalKeywordPatterns: [],
   keywordAlertsEnabled: true,
   desktopNotifications: false,
+  toastAlertsEnabled: true,
+  toastPosition: 'top-right',
   mentionsUserEnabled: true,
   mentionsRoleEnabled: true,
   mentionsHereEnabled: false,
@@ -158,7 +161,7 @@ class ConfigStore {
     return this.config;
   }
 
-  updateConfig(partial: Partial<Pick<AppConfig, 'globalHighlightedUsers' | 'contractDetection' | 'guildColors' | 'dmColors' | 'enabledGuilds' | 'evmAddressColor' | 'solAddressColor' | 'openInDiscordApp' | 'openInTelegramApp' | 'hiddenUsers' | 'messageSounds' | 'soundSettings' | 'channelSounds' | 'pushover' | 'missedRunner' | 'contractLinkTemplates' | 'contractClickAction' | 'showFullContractAddress' | 'autoOpenHighlightedContracts' | 'signalConvergenceWindowMinutes' | 'globalKeywordPatterns' | 'keywordAlertsEnabled' | 'desktopNotifications' | 'mentionsUserEnabled' | 'mentionsRoleEnabled' | 'mentionsHereEnabled' | 'mentionsEveryoneEnabled' | 'badgeClickAction' | 'chattingEnabled' | 'messageDisplay' | 'compactModeAvatars' | 'roleColors' | 'mobileZoomScale' | 'splitLayout' | 'paneRoomIds' | 'paneLocks' | 'gridMirror' | 'seenAnnouncements' | 'telegramApiId' | 'telegramApiHash' | 'telegramSessions' | 'discordProxyUrl'>>): AppConfig {
+  updateConfig(partial: Partial<Pick<AppConfig, 'globalHighlightedUsers' | 'contractDetection' | 'guildColors' | 'dmColors' | 'enabledGuilds' | 'evmAddressColor' | 'solAddressColor' | 'openInDiscordApp' | 'openInTelegramApp' | 'hiddenUsers' | 'messageSounds' | 'soundSettings' | 'channelSounds' | 'pushover' | 'missedRunner' | 'contractLinkTemplates' | 'contractClickAction' | 'showFullContractAddress' | 'autoOpenHighlightedContracts' | 'signalConvergenceWindowMinutes' | 'globalKeywordPatterns' | 'keywordAlertsEnabled' | 'desktopNotifications' | 'toastAlertsEnabled' | 'toastPosition' | 'mentionsUserEnabled' | 'mentionsRoleEnabled' | 'mentionsHereEnabled' | 'mentionsEveryoneEnabled' | 'badgeClickAction' | 'chattingEnabled' | 'messageDisplay' | 'compactModeAvatars' | 'roleColors' | 'mobileZoomScale' | 'splitLayout' | 'paneRoomIds' | 'paneLocks' | 'gridMirror' | 'seenAnnouncements' | 'telegramApiId' | 'telegramApiHash' | 'telegramSessions' | 'discordProxyUrl'>>): AppConfig {
     Object.assign(this.config, partial);
     this.save();
     return this.config;

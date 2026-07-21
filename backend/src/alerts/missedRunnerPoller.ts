@@ -5,7 +5,7 @@
  * 1. Load recent contracts with MC@call
  * 2. Dedupe by token; keep earliest scan MC
  * 3. Fetch live MC via DexScreener
- * 4. If multiplier threshold met and user doesn't hold token → Pushover
+ * 4. If multiplier threshold met and user doesn't hold token → toast / Pushover / both
  * 5. Record dedupe row in missed_runner_alerts
  *
  * Self-gates on Supabase (hosted mode). Idle in local/json mode without Supabase.
@@ -19,7 +19,8 @@ import { fetchLiveMarketCap } from '../utils/tokenEnrichment.js';
 import { buildContractUrl } from '../utils/contract.js';
 import { checkTokenHeldByWallets, formatCompact, type TrackedWalletRow } from '../wallets/balanceChecker.js';
 import type { ContractEntry } from '../utils/contractLog.js';
-import type { AppConfig, MissedRunnerConfig } from '../discord/types.js';
+import type { AppConfig, FrontendMessage, MissedRunnerConfig, MissedRunnerNotifyVia } from '../discord/types.js';
+import type { WsServer } from '../ws/server.js';
 
 const DEFAULT_INTERVAL_MS = 180_000; // 3 min
 
@@ -28,6 +29,7 @@ const DEFAULT_MISSED_RUNNER: MissedRunnerConfig = {
   minMultiplier: 1.5,
   lookbackHours: 24,
   cooldownHours: 24,
+  notifyVia: 'toast',
 };
 
 interface TokenCandidate {
@@ -46,16 +48,53 @@ function resolveMissedRunnerConfig(config: AppConfig): MissedRunnerConfig {
   return { ...DEFAULT_MISSED_RUNNER, ...config.missedRunner };
 }
 
-function shouldNotify(config: AppConfig): boolean {
-  const mr = resolveMissedRunnerConfig(config);
-  const triggers = config.pushover?.triggers ?? {};
-  return (
-    mr.enabled
-    && config.pushover?.enabled
-    && !!config.pushover.appToken
-    && !!config.pushover.userKey
-    && (triggers.missedRunner ?? false)
-  );
+function resolveNotifyVia(config: AppConfig, mr: MissedRunnerConfig): MissedRunnerNotifyVia {
+  if (mr.notifyVia) return mr.notifyVia;
+  if (config.pushover?.enabled && (config.pushover.triggers?.missedRunner ?? false)) return 'pushover';
+  return 'toast';
+}
+
+function canSendPushover(config: AppConfig): boolean {
+  const p = config.pushover;
+  return !!(p?.enabled && p.appToken?.trim() && p.userKey?.trim());
+}
+
+function shouldPollUser(settings: Partial<AppConfig>): boolean {
+  const mr = { ...DEFAULT_MISSED_RUNNER, ...settings.missedRunner };
+  if (!mr.enabled) return false;
+  const via = resolveNotifyVia(settings as AppConfig, mr);
+  if (via === 'toast') return true;
+  if (via === 'pushover') return canSendPushover(settings as AppConfig);
+  return true;
+}
+
+function buildMissedRunnerMessage(
+  token: TokenCandidate,
+  body: string,
+  url: string,
+): FrontendMessage {
+  return {
+    id: `missed-runner-${token.address}-${Date.now()}`,
+    channelId: 'missed-runner',
+    guildId: null,
+    channelName: token.channelName ?? 'Missed runner',
+    guildName: null,
+    author: {
+      id: 'oct-missed-runner',
+      username: 'OCT',
+      displayName: 'Missed Runner',
+      avatar: null,
+    },
+    content: body,
+    timestamp: new Date().toISOString(),
+    attachments: [],
+    embeds: [],
+    isHighlighted: false,
+    hasContractAddress: true,
+    contractAddresses: [token.address],
+    mentions: {},
+    platformUrl: url,
+  };
 }
 
 /** Same earliest-scan MC logic as Radar buildRadar. */
@@ -99,10 +138,15 @@ function formatAge(firstSeenAt: string): string {
 }
 
 class MissedRunnerPoller {
+  private wsServer: WsServer;
   private db: SupabaseClient | null = null;
   private timer: NodeJS.Timeout | null = null;
   private polling = false;
   private started = false;
+
+  constructor(wsServer: WsServer) {
+    this.wsServer = wsServer;
+  }
 
   start(): void {
     if (this.started) return;
@@ -136,12 +180,7 @@ class MissedRunnerPoller {
       return [];
     }
     return (data ?? [])
-      .filter((row) => {
-        const settings = (row.settings ?? {}) as Partial<Pick<AppConfig, 'missedRunner' | 'pushover'>>;
-        const mr = { ...DEFAULT_MISSED_RUNNER, ...settings.missedRunner };
-        const triggers = settings.pushover?.triggers;
-        return mr.enabled && settings.pushover?.enabled && (triggers?.missedRunner ?? false);
-      })
+      .filter((row) => shouldPollUser((row.settings ?? {}) as Partial<AppConfig>))
       .map((row) => row.user_id as string);
   }
 
@@ -200,9 +239,14 @@ class MissedRunnerPoller {
   private async processUser(userId: string): Promise<void> {
     const storage = getStorageProvider();
     const config = await storage.getConfig(userId);
-    if (!shouldNotify(config)) return;
-
     const mr = resolveMissedRunnerConfig(config);
+    if (!mr.enabled) return;
+
+    const via = resolveNotifyVia(config, mr);
+    const sendToast = via === 'toast' || via === 'both';
+    const sendPush = (via === 'pushover' || via === 'both') && canSendPushover(config);
+    if (!sendToast && !sendPush) return;
+
     const since = new Date(Date.now() - mr.lookbackHours * 3_600_000).toISOString();
     const contracts = await storage.getContracts(userId, 500, since);
     const candidates = buildTokenCandidates(contracts);
@@ -244,6 +288,8 @@ class MissedRunnerPoller {
       const mcTo = live.mcNowDisplay ?? formatCompact(live.mcNow);
       const age = formatAge(token.firstSeenAt);
       const channel = token.channelName ? `#${token.channelName}` : 'your feed';
+      const title = `Missed runner: ${symbol} (${multLabel})`;
+      const body = `Scanned ${age} ago in ${channel} · MC ${mcFrom} → ${mcTo} · Not in My Wallets`;
 
       const url = buildContractUrl(
         token.address,
@@ -251,12 +297,22 @@ class MissedRunnerPoller {
         token.evmChain ?? undefined,
       );
 
-      await sendPushover(config.pushover, {
-        title: `Missed runner: ${symbol} (${multLabel})`,
-        message: `Scanned ${age} ago in ${channel} · MC ${mcFrom} → ${mcTo} · Not in your wallets`,
-        url,
-        urlTitle: 'Open token',
-      });
+      if (sendToast) {
+        this.wsServer.broadcastAlert({
+          type: 'missed_runner',
+          reason: title,
+          message: buildMissedRunnerMessage(token, body, url),
+        }, userId);
+      }
+
+      if (sendPush) {
+        await sendPushover(config.pushover, {
+          title,
+          message: body,
+          url,
+          urlTitle: 'Open token',
+        });
+      }
     }
   }
 
@@ -280,9 +336,9 @@ class MissedRunnerPoller {
 
 let _poller: MissedRunnerPoller | null = null;
 
-export function startMissedRunnerPoller(): void {
+export function startMissedRunnerPoller(wsServer: WsServer): void {
   if (_poller) return;
-  _poller = new MissedRunnerPoller();
+  _poller = new MissedRunnerPoller(wsServer);
   _poller.start();
 }
 

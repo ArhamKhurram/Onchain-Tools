@@ -35,6 +35,7 @@ const DEFAULT_SETTINGS: Omit<AppConfig, 'discordTokens' | 'rooms'> = {
     minMultiplier: 1.5,
     lookbackHours: 24,
     cooldownHours: 24,
+    notifyVia: 'toast',
   },
   contractLinkTemplates: {
     evm: 'https://gmgn.ai/base/token/{address}',
@@ -49,6 +50,8 @@ const DEFAULT_SETTINGS: Omit<AppConfig, 'discordTokens' | 'rooms'> = {
   globalKeywordPatterns: [],
   keywordAlertsEnabled: true,
   desktopNotifications: false,
+  toastAlertsEnabled: true,
+  toastPosition: 'top-right',
   mentionsUserEnabled: true,
   mentionsRoleEnabled: true,
   mentionsHereEnabled: false,
