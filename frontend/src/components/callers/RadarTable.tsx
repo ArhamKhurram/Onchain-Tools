@@ -229,9 +229,7 @@ function SortHeader({
   );
 }
 
-interface TokenSnapshotResult {
-  mc?: number;
-  display?: string;
+interface TokenMetadataResult {
   symbol?: string;
   name?: string;
   pair?: string;
@@ -246,11 +244,32 @@ function resolveSnapshotChain(address: string, evmChain?: string, addressChains?
   return address.startsWith('0x') ? 'robinhood' : 'sol';
 }
 
-async function fetchTokenSnapshot(
+async function fetchMcNow(address: string): Promise<{ mc: number; display: string } | null> {
+  try {
+    const res = await fetch(`https://api.dexscreener.com/latest/dex/search?q=${encodeURIComponent(address)}`);
+    if (!res.ok) return null;
+    const data = await res.json() as {
+      pairs?: { baseToken?: { address?: string }; fdv?: number; marketCap?: number; liquidity?: { usd?: number } }[];
+    };
+    const lower = address.toLowerCase();
+    const pairs = (data.pairs ?? []).filter((p) =>
+      p.baseToken?.address?.toLowerCase() === lower || p.baseToken?.address === address,
+    );
+    if (!pairs.length) return null;
+    pairs.sort((a, b) => (b.liquidity?.usd ?? 0) - (a.liquidity?.usd ?? 0));
+    const mc = pairs[0].fdv ?? pairs[0].marketCap;
+    if (mc == null) return null;
+    return { mc, display: formatCompact(mc) };
+  } catch {
+    return null;
+  }
+}
+
+async function fetchTokenMetadata(
   address: string,
   evmChain?: string,
   addressChains?: Record<string, string>,
-): Promise<TokenSnapshotResult | null> {
+): Promise<TokenMetadataResult | null> {
   try {
     const chain = resolveSnapshotChain(address, evmChain, addressChains);
     const res = await apiFetch(
@@ -259,18 +278,14 @@ async function fetchTokenSnapshot(
     if (!res.ok) return null;
     const data = await res.json() as {
       found?: boolean;
-      mc?: number;
-      mcDisplay?: string;
       symbol?: string;
       name?: string;
       pair?: string;
       evmChain?: string;
       source?: ContractEntry['enrichmentSource'];
     };
-    if (!data.found) return null;
+    if (!data.found || (!data.symbol && !data.name)) return null;
     return {
-      mc: data.mc,
-      display: data.mcDisplay,
       symbol: data.symbol,
       name: data.name,
       pair: data.pair,
@@ -282,18 +297,16 @@ async function fetchTokenSnapshot(
   }
 }
 
-function applySnapshotToStore(address: string, snap: TokenSnapshotResult): void {
-  if (!snap.symbol && !snap.name && snap.mc == null) return;
+function applyMetadataToStore(address: string, meta: TokenMetadataResult): void {
+  if (!meta.symbol && !meta.name) return;
   useAppStore.getState().enrichContract({
     address,
-    tokenSymbol: snap.symbol,
-    tokenName: snap.name,
-    tokenPair: snap.pair,
-    fdvAtCall: snap.mc,
-    fdvAtCallDisplay: snap.display,
-    enrichmentSource: snap.source,
+    tokenSymbol: meta.symbol,
+    tokenName: meta.name,
+    tokenPair: meta.pair,
+    enrichmentSource: meta.source,
     enrichedAt: new Date().toISOString(),
-    evmChain: snap.evmChain,
+    evmChain: meta.evmChain,
   } as ContractEntry);
 }
 
@@ -439,19 +452,16 @@ export default function RadarTable({ embedded: _embedded = false }: { embedded?:
   const refreshOne = async (address: string, evmChain?: string) => {
     setRefreshingRow(address.toLowerCase());
     try {
-      const result = await fetchTokenSnapshot(address, evmChain, addressChains);
-      if (result) {
-        applySnapshotToStore(address, result);
-        if (result.mc != null) {
-          setLiveMc((prev) => ({
-            ...prev,
-            [address.toLowerCase()]: {
-              mc: result.mc!,
-              display: result.display ?? String(result.mc),
-              at: Date.now(),
-            },
-          }));
-        }
+      const [mc, meta] = await Promise.all([
+        fetchMcNow(address),
+        fetchTokenMetadata(address, evmChain, addressChains),
+      ]);
+      if (meta) applyMetadataToStore(address, meta);
+      if (mc) {
+        setLiveMc((prev) => ({
+          ...prev,
+          [address.toLowerCase()]: { ...mc, at: Date.now() },
+        }));
       }
     } finally {
       setRefreshingRow(null);
@@ -459,24 +469,33 @@ export default function RadarTable({ embedded: _embedded = false }: { embedded?:
   };
 
   const refreshLiveMc = async () => {
+    const top = rows.slice(0, 40);
+    const results = await Promise.all(
+      top.map(async (r) => [r.address.toLowerCase(), await fetchMcNow(r.address)] as const),
+    );
+    setLiveMc((prev) => {
+      const next = { ...prev };
+      for (const [key, result] of results) {
+        if (result) next[key] = { ...result, at: Date.now() };
+      }
+      return next;
+    });
+  };
+
+  const refreshTokenNames = async () => {
+    const top = rows.slice(0, 40);
+    const results = await Promise.all(
+      top.map(async (r) => [r.address, await fetchTokenMetadata(r.address, r.evmChain, addressChains)] as const),
+    );
+    for (const [address, meta] of results) {
+      if (meta) applyMetadataToStore(address, meta);
+    }
+  };
+
+  const refreshAll = async () => {
     setRefreshing(true);
     try {
-      const top = rows.slice(0, 40);
-      const results = await Promise.all(
-        top.map(async (r) => [r.address.toLowerCase(), r.address, await fetchTokenSnapshot(r.address, r.evmChain, addressChains)] as const),
-      );
-      for (const [, address, result] of results) {
-        if (result) applySnapshotToStore(address, result);
-      }
-      setLiveMc((prev) => {
-        const next = { ...prev };
-        for (const [key, , result] of results) {
-          if (result?.mc != null) {
-            next[key] = { mc: result.mc, display: result.display ?? String(result.mc), at: Date.now() };
-          }
-        }
-        return next;
-      });
+      await Promise.all([refreshLiveMc(), refreshTokenNames()]);
     } finally {
       setRefreshing(false);
     }
@@ -528,7 +547,7 @@ export default function RadarTable({ embedded: _embedded = false }: { embedded?:
         </span>
         <button
           type="button"
-          onClick={refreshLiveMc}
+          onClick={refreshAll}
           disabled={refreshing}
           className="flex items-center gap-1.5 px-2 py-1 rounded-cockpit text-xs font-bold uppercase text-oct-muted hover:text-oct-text border-2 border-oct-border-bright hover:border-oct-text transition-colors"
         >
