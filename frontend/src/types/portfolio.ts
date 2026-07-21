@@ -352,6 +352,13 @@ export function isGmgnRateLimitError(message: string | null | undefined): boolea
 
 export function formatPortfolioError(message: string | null | undefined): string {
   if (!message) return 'Request failed.';
+  const lower = message.toLowerCase();
+  if (lower.includes('insufficient permissions') || lower.includes('lacks sufficient')) {
+    return 'Birdeye API plan blocked this endpoint — check your plan at bds.birdeye.so.';
+  }
+  if (lower.includes('too many')) {
+    return 'Birdeye rate limit — wait ~1 minute, try one wallet instead of All Wallets, then Refresh.';
+  }
   if (isGmgnRateLimitError(message)) {
     return 'GMGN rate limit — wait 1–2 minutes, pick one wallet, then hit Refresh.';
   }

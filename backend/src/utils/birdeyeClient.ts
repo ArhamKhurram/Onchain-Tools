@@ -1,3 +1,5 @@
+import { markBirdeyeRateLimited, withBirdeyeLimit } from './birdeyeLimiter.js';
+
 const BIRDEYE_HOST = 'https://public-api.birdeye.so';
 
 export type BirdeyeChain =
@@ -73,43 +75,47 @@ export async function birdeyeGet<T>(
   if (hit) return hit;
 
   try {
-    const res = await fetch(url, {
-      headers: {
-        'X-API-KEY': apiKey,
-        Accept: 'application/json',
-        'x-chain': chain,
-      },
-      signal: AbortSignal.timeout(20_000),
+    return await withBirdeyeLimit(async () => {
+      const res = await fetch(url, {
+        headers: {
+          'X-API-KEY': apiKey,
+          Accept: 'application/json',
+          'x-chain': chain,
+        },
+        signal: AbortSignal.timeout(20_000),
+      });
+
+      let json: BirdeyeEnvelope<T> | null = null;
+      try {
+        json = (await res.json()) as BirdeyeEnvelope<T>;
+      } catch {
+        const result: BirdeyeResult<T> = {
+          ok: false,
+          error: `Birdeye HTTP ${res.status}`,
+          code: res.status,
+          birdeyeConfigured: true,
+        };
+        writeCache(key, result);
+        return result;
+      }
+
+      if (!res.ok || !json.success) {
+        const msg = json.message ?? `Birdeye HTTP ${res.status}`;
+        markBirdeyeRateLimited(msg);
+        const result: BirdeyeResult<T> = {
+          ok: false,
+          error: msg,
+          code: res.status,
+          birdeyeConfigured: true,
+        };
+        writeCache(key, result);
+        return result;
+      }
+
+      const ok: BirdeyeResult<T> = { ok: true, data: json.data as T };
+      writeCache(key, ok);
+      return ok;
     });
-
-    let json: BirdeyeEnvelope<T> | null = null;
-    try {
-      json = (await res.json()) as BirdeyeEnvelope<T>;
-    } catch {
-      const result: BirdeyeResult<T> = {
-        ok: false,
-        error: `Birdeye HTTP ${res.status}`,
-        code: res.status,
-        birdeyeConfigured: true,
-      };
-      writeCache(key, result);
-      return result;
-    }
-
-    if (!res.ok || !json.success) {
-      const result: BirdeyeResult<T> = {
-        ok: false,
-        error: json.message ?? `Birdeye HTTP ${res.status}`,
-        code: res.status,
-        birdeyeConfigured: true,
-      };
-      writeCache(key, result);
-      return result;
-    }
-
-    const ok: BirdeyeResult<T> = { ok: true, data: json.data as T };
-    writeCache(key, ok);
-    return ok;
   } catch (err) {
     return {
       ok: false,
@@ -135,46 +141,50 @@ export async function birdeyePost<T>(
   if (hit) return hit;
 
   try {
-    const res = await fetch(url, {
-      method: 'POST',
-      headers: {
-        'X-API-KEY': apiKey,
-        Accept: 'application/json',
-        'Content-Type': 'application/json',
-        'x-chain': chain,
-      },
-      body: bodyStr,
-      signal: AbortSignal.timeout(25_000),
+    return await withBirdeyeLimit(async () => {
+      const res = await fetch(url, {
+        method: 'POST',
+        headers: {
+          'X-API-KEY': apiKey,
+          Accept: 'application/json',
+          'Content-Type': 'application/json',
+          'x-chain': chain,
+        },
+        body: bodyStr,
+        signal: AbortSignal.timeout(25_000),
+      });
+
+      let json: BirdeyeEnvelope<T> | null = null;
+      try {
+        json = (await res.json()) as BirdeyeEnvelope<T>;
+      } catch {
+        const result: BirdeyeResult<T> = {
+          ok: false,
+          error: `Birdeye HTTP ${res.status}`,
+          code: res.status,
+          birdeyeConfigured: true,
+        };
+        writeCache(key, result);
+        return result;
+      }
+
+      if (!res.ok || !json.success) {
+        const msg = json.message ?? `Birdeye HTTP ${res.status}`;
+        markBirdeyeRateLimited(msg);
+        const result: BirdeyeResult<T> = {
+          ok: false,
+          error: msg,
+          code: res.status,
+          birdeyeConfigured: true,
+        };
+        writeCache(key, result);
+        return result;
+      }
+
+      const ok: BirdeyeResult<T> = { ok: true, data: json.data as T };
+      writeCache(key, ok);
+      return ok;
     });
-
-    let json: BirdeyeEnvelope<T> | null = null;
-    try {
-      json = (await res.json()) as BirdeyeEnvelope<T>;
-    } catch {
-      const result: BirdeyeResult<T> = {
-        ok: false,
-        error: `Birdeye HTTP ${res.status}`,
-        code: res.status,
-        birdeyeConfigured: true,
-      };
-      writeCache(key, result);
-      return result;
-    }
-
-    if (!res.ok || !json.success) {
-      const result: BirdeyeResult<T> = {
-        ok: false,
-        error: json.message ?? `Birdeye HTTP ${res.status}`,
-        code: res.status,
-        birdeyeConfigured: true,
-      };
-      writeCache(key, result);
-      return result;
-    }
-
-    const ok: BirdeyeResult<T> = { ok: true, data: json.data as T };
-    writeCache(key, ok);
-    return ok;
   } catch (err) {
     return {
       ok: false,

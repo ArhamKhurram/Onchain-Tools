@@ -70,7 +70,11 @@ type PnlChartPoint = {
 type PnlDetailsToken = {
   symbol?: string;
   address?: string;
-  quantity?: { holding?: number };
+  quantity?: {
+    holding?: number;
+    total_bought_amount?: number;
+    total_sold_amount?: number;
+  };
   cashflow_usd?: { current_value?: number; total_invested?: number };
   pnl?: {
     realized_profit?: number;
@@ -86,6 +90,26 @@ type PnlDetailsToken = {
 type PnlDetailsData = {
   tokens?: PnlDetailsToken[];
   summary?: PnlSummaryData['summary'];
+};
+
+type SeekByTimeItem = {
+  tx_hash?: string;
+  block_unix_time?: number;
+  volume_usd?: number;
+  base?: {
+    symbol?: string;
+    address?: string;
+    type_swap?: string;
+    ui_amount?: number;
+    price?: number;
+  };
+  quote?: {
+    symbol?: string;
+    address?: string;
+    type_swap?: string;
+    ui_amount?: number;
+    price?: number;
+  };
 };
 
 type TxListItem = {
@@ -217,7 +241,27 @@ export async function fetchWalletPnlChartBirdeye(
       time_to: formatBirdeyeTime(now),
     },
   );
-  if (!result.ok) return result;
+
+  if (!result.ok) {
+    const permissionDenied =
+      result.code === 401 ||
+      result.error.toLowerCase().includes('insufficient permissions') ||
+      result.error.toLowerCase().includes('too many');
+    if (!permissionDenied) return result;
+
+    const activity = await fetchWalletActivityBirdeye(chain, address, periodDays === 7 ? 120 : 200);
+    if (!activity.ok) return result;
+
+    const { aggregateDailyPnl } = await import('./pnlAggregator.js');
+    const data = aggregateDailyPnl(activity.data.activities, periodDays);
+    return {
+      ok: true,
+      data: {
+        ...data,
+        note: 'Daily PnL from Birdeye trade history (chart API unavailable on this plan).',
+      },
+    };
+  }
 
   const raw = result.data;
   const points: PnlChartPoint[] = Array.isArray(raw) ? raw : (raw as { data?: PnlChartPoint[] }).data ?? [];
@@ -304,9 +348,12 @@ export async function fetchWalletPnlChartMergedBirdeye(
 }
 
 function tokenToHolding(token: PnlDetailsToken, chain: BirdeyeChain): WalletHolding | null {
-  const holding = num(token.quantity?.holding);
+  const bought = num(token.quantity?.total_bought_amount);
+  const sold = num(token.quantity?.total_sold_amount);
+  const holding = num(token.quantity?.holding) || Math.max(0, bought - sold);
   const usd = num(token.cashflow_usd?.current_value);
-  if (holding <= 0 && usd <= 0) return null;
+  const unrealized = num(token.pnl?.unrealized_usd ?? token.pnl?.unrealized_profit);
+  if (holding <= 0 && usd <= 0 && unrealized <= 0) return null;
 
   const gmgnChain = (Object.entries(GMGN_TO_BIRDEYE).find(([, b]) => b === chain)?.[0] ?? chain) as GmgnChain;
 
@@ -338,6 +385,7 @@ export async function fetchWalletHoldingsBirdeye(
     sort_type: 'desc',
     limit: Math.min(limit, 100),
     offset: 0,
+    holding_check: true,
   });
   if (!result.ok) return result;
 
@@ -376,6 +424,29 @@ export async function fetchWalletHoldingsMergedBirdeye(
   return { ok: true, data: { holdings: holdings.slice(0, limit) } };
 }
 
+function mapSeekByTimeItem(item: SeekByTimeItem, chain: BirdeyeChain): WalletActivityItem {
+  const gmgnChain = (Object.entries(GMGN_TO_BIRDEYE).find(([, b]) => b === chain)?.[0] ?? chain) as GmgnChain;
+  const quoteFrom = item.quote?.type_swap === 'from';
+  const quoteTo = item.quote?.type_swap === 'to';
+  const type: 'buy' | 'sell' = quoteFrom ? 'buy' : quoteTo ? 'sell' : 'buy';
+  const token = type === 'buy' ? item.base : item.base;
+
+  return {
+    chain: gmgnChain,
+    transaction_hash: item.tx_hash,
+    type,
+    side: type,
+    token: {
+      address: token?.address,
+      symbol: token?.symbol,
+    },
+    token_amount: token?.ui_amount,
+    cost_usd: item.volume_usd,
+    price_usd: token?.price,
+    timestamp: num(item.block_unix_time) || undefined,
+  };
+}
+
 function mapTxItem(item: TxListItem, chain: BirdeyeChain): WalletActivityItem {
   const side = String(item.side ?? item.type ?? '').toLowerCase();
   const gmgnChain = (Object.entries(GMGN_TO_BIRDEYE).find(([, b]) => b === chain)?.[0] ?? chain) as GmgnChain;
@@ -401,23 +472,27 @@ export async function fetchWalletActivityBirdeye(
   chain: BirdeyeChain,
   address: string,
   limit: number,
+  periodDays: 7 | 30 = 30,
 ): Promise<BirdeyeResult<{ activities: WalletActivityItem[] }>> {
-  const result = await birdeyeGet<{ items?: TxListItem[]; txs?: TxListItem[] } | TxListItem[]>(
+  const afterTime = Math.floor(Date.now() / 1000) - periodDays * 86_400;
+  const result = await birdeyeGet<{ items?: SeekByTimeItem[] }>(
     chain,
-    '/v1/wallet/tx_list',
-    { wallet: address, limit: Math.min(limit, 100) },
+    '/trader/txs/seek_by_time',
+    {
+      address,
+      limit: Math.min(limit, 100),
+      after_time: afterTime,
+      tx_type: 'swap',
+      sort_type: 'desc',
+    },
   );
 
   if (!result.ok) {
     return result as BirdeyeResult<{ activities: WalletActivityItem[] }>;
   }
 
-  const raw = result.data;
-  const items: TxListItem[] = Array.isArray(raw)
-    ? raw
-    : raw.items ?? raw.txs ?? [];
-
-  const activities = items.map((item) => mapTxItem(item, chain));
+  const items = result.data.items ?? [];
+  const activities = items.map((item) => mapSeekByTimeItem(item, chain));
   activities.sort((a, b) => num(b.timestamp) - num(a.timestamp));
 
   return { ok: true, data: { activities: activities.slice(0, limit) } };
