@@ -42,7 +42,7 @@ export function getGmgnEnvStatus(): GmgnEnvStatus {
   };
 }
 
-function probeResult<T>(result: GmgnResult<T>) {
+export function probeResult<T>(result: GmgnResult<T>) {
   if (result.ok) return { ok: true as const };
   return {
     ok: false as const,

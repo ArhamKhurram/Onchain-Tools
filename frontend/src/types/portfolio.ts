@@ -118,6 +118,8 @@ export type PortfolioApiError = {
   error: string;
   needsPrivateKey?: boolean;
   gmgnConfigured?: boolean;
+  birdeyeConfigured?: boolean;
+  provider?: string;
 };
 
 export function walletChainToGmgn(chain: WalletChain): GmgnChain {

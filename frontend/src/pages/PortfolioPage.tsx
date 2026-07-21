@@ -41,6 +41,8 @@ export default function PortfolioPage() {
     holdingsNeedsKey,
     activityError,
     gmgnMissing,
+    birdeyeMissing,
+    portfolioApiMissing,
     totalHoldingsUsd,
     isAllWallets,
     refresh,
@@ -103,7 +105,7 @@ export default function PortfolioPage() {
         icon={PieChart}
         eyebrow="[ PORTFOLIO ]"
         title="Sign in to view portfolio"
-        description="Portfolio reads wallets from My Wallets and pulls GMGN stats, holdings, and trade history for your buy wallets."
+        description="Portfolio reads wallets from My Wallets and pulls Birdeye/GMGN stats, holdings, and trade history for your buy wallets."
         actionLabel="SIGN IN"
         actionTo={routes.login}
         secondaryLabel="← Back to console home"
@@ -201,13 +203,14 @@ export default function PortfolioPage() {
       </div>
 
       <div className="flex-1 min-h-0 overflow-y-auto px-4 sm:px-6 py-5 space-y-5">
-        {gmgnMissing && (
+        {portfolioApiMissing && (
           <div className="border-2 border-amber-500/50 bg-amber-950/30 px-4 py-3 font-mono text-xs text-amber-200">
-            Portfolio requires <code className="text-amber-100">GMGN_API_KEY</code> on the backend server (Railway).
+            Portfolio requires <code className="text-amber-100">BIRDEYE_API_KEY</code> or{' '}
+            <code className="text-amber-100">GMGN_API_KEY</code> on the backend server (Railway).
           </div>
         )}
 
-        {(statsError || activityError || holdingsError) && !gmgnMissing && (
+        {(statsError || activityError || holdingsError) && !portfolioApiMissing && (
           <div className="border-2 border-red-500/50 bg-red-950/30 px-4 py-3 font-mono text-xs text-red-200 flex items-center justify-between gap-3">
             <span>{formatPortfolioError(statsError ?? activityError ?? holdingsError)}</span>
             <button type="button" onClick={() => refresh()} className="text-oct-accent underline hover:no-underline">
