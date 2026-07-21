@@ -60,6 +60,11 @@ export type ContractEnrichmentPatch = Partial<
   >
 >;
 
+export interface EnrichContractOptions {
+  channelId?: string;
+  messageId?: string;
+}
+
 class ContractLog {
   private entries: ContractEntry[] = [];
 
@@ -132,17 +137,35 @@ class ContractLog {
     return changed;
   }
 
-  enrichContract(address: string, patch: ContractEnrichmentPatch, channelId?: string): ContractEntry | null {
+  enrichContract(
+    address: string,
+    patch: ContractEnrichmentPatch,
+    options?: EnrichContractOptions,
+  ): ContractEntry | null {
+    const channelId = options?.channelId;
+    const messageId = options?.messageId;
     const key = address.toLowerCase();
     let best: ContractEntry | null = null;
-    for (const entry of this.entries) {
-      if (entry.address.toLowerCase() !== key) continue;
-      if (channelId && entry.channelId !== channelId) continue;
-      if (!best || new Date(entry.timestamp).getTime() > new Date(best.timestamp).getTime()) {
+
+    if (messageId) {
+      for (const entry of this.entries) {
+        if (entry.address.toLowerCase() !== key) continue;
+        if (entry.messageId !== messageId) continue;
         best = entry;
+        break;
       }
     }
-    // Fall back to any address match if channel-scoped miss
+
+    if (!best) {
+      for (const entry of this.entries) {
+        if (entry.address.toLowerCase() !== key) continue;
+        if (channelId && entry.channelId !== channelId) continue;
+        if (!best || new Date(entry.timestamp).getTime() > new Date(best.timestamp).getTime()) {
+          best = entry;
+        }
+      }
+    }
+
     if (!best && channelId) {
       for (const entry of this.entries) {
         if (entry.address.toLowerCase() !== key) continue;
@@ -151,6 +174,7 @@ class ContractLog {
         }
       }
     }
+
     if (!best) return null;
 
     const merged = mergeEnrichmentPatch(
@@ -161,6 +185,8 @@ class ContractLog {
         evmChain: best.evmChain,
         enrichmentSource: best.enrichmentSource,
         enrichedAt: best.enrichedAt,
+        fdvAtCall: best.fdvAtCall,
+        fdvAtCallDisplay: best.fdvAtCallDisplay,
       },
       patch,
     );

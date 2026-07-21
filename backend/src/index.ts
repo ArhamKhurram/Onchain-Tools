@@ -25,7 +25,7 @@ import { authMiddleware } from './auth/middleware.js';
 import { getGateway, setGateway } from './gateway/state.js';
 import { UserGatewayPool } from './gateway/userGatewayPool.js';
 import { buildContractUrl, detectEvmChainFromContent, extractEvmChainFromGmgnLinks, resolveEvmChainFromApi } from './utils/contract.js';
-import { tryParseTokenEnrichment } from './utils/rickEmbedParser.js';
+import { tryParseTokenEnrichment, buildRickReplyContext } from './utils/rickEmbedParser.js';
 import { enrichToken, persistEnrichment } from './utils/tokenSnapshot.js';
 import { needsMetadataFallback } from './utils/enrichmentMerge.js';
 import type { TokenEnrichment } from './utils/rickEmbedParser.js';
@@ -133,14 +133,14 @@ async function applyTokenEnrichment(
   wsServer: WsServer,
   userId: string,
   enrichment: TokenEnrichment,
-  channelId?: string,
+  options?: { channelId?: string; messageId?: string },
 ): Promise<void> {
   const storage = getStorageProvider();
   const updated = await storage.enrichContract(
     userId,
     enrichment.address,
     enrichmentToPatch(enrichment),
-    channelId,
+    options,
   );
   if (updated) {
     wsServer.broadcastContractEnrichment(updated, userId);
@@ -153,18 +153,27 @@ async function applyTokenEnrichment(
 }
 
 /** Schedule DexScreener fallback if Rick doesn't enrich within a few seconds. */
-function scheduleDexFallback(wsServer: WsServer, userId: string, address: string, channelId: string): void {
+function scheduleDexFallback(
+  wsServer: WsServer,
+  userId: string,
+  address: string,
+  channelId: string,
+  messageId: string,
+): void {
   setTimeout(async () => {
     try {
       const storage = getStorageProvider();
       const recent = await storage.getContracts(userId, 20);
       const hit = recent.find(
-        (c) => c.address.toLowerCase() === address.toLowerCase() && needsMetadataFallback(c),
+        (c) =>
+          c.messageId === messageId
+          && c.address.toLowerCase() === address.toLowerCase()
+          && needsMetadataFallback(c),
       );
       if (!hit) return;
       const enrichment = await enrichToken(address, hit.evmChain);
       if (!enrichment) return;
-      await applyTokenEnrichment(wsServer, userId, enrichment, channelId);
+      await applyTokenEnrichment(wsServer, userId, enrichment, { channelId, messageId });
     } catch (err) {
       console.error('[App] Dex fallback failed:', (err as Error).message);
     }
@@ -257,19 +266,24 @@ function wireGatewayEvents(gw: GatewayManager, wsServer: WsServer, userId: strin
         }
         // Always broadcast so the live feed updates even if DB write fails
         wsServer.broadcastContract(entry, userId);
-        scheduleDexFallback(wsServer, userId, addr, frontendMsg.channelId);
+        scheduleDexFallback(wsServer, userId, addr, frontendMsg.channelId, frontendMsg.id);
       }
       backfillEvmChainsFromApi(wsServer, userId, frontendMsg.contractAddresses, evmChainHint);
     }
 
-    // Rick (or similar) bot embed — enrich matching contract rows
+    const rickReply = buildRickReplyContext(rawMsg.referenced_message);
     const rickEnrichment = tryParseTokenEnrichment({
       embeds: rawMsg.embeds,
       content: rawMsg.content,
       authorUsername: rawMsg.author?.username,
+      addressOverride: rickReply.addressOverride,
+      callerName: rickReply.callerName,
     });
     if (rickEnrichment) {
-      await applyTokenEnrichment(wsServer, userId, rickEnrichment, rawMsg.channel_id);
+      await applyTokenEnrichment(wsServer, userId, rickEnrichment, {
+        channelId: rawMsg.channel_id,
+        messageId: rickReply.messageId,
+      });
     }
 
     const gmgnChainUpdates = extractEvmChainFromGmgnLinks(rawMsg.content, rawMsg.embeds);
@@ -308,14 +322,19 @@ function wireGatewayEvents(gw: GatewayManager, wsServer: WsServer, userId: strin
       editedTimestamp: rawMsg.edited_timestamp ?? null,
     }, roomIds, userId);
 
-    // Embeds often arrive via MESSAGE_UPDATE (Rick fills in after post)
+    const rickReply = buildRickReplyContext(rawMsg.referenced_message);
     const rickEnrichment = tryParseTokenEnrichment({
       embeds: rawMsg.embeds,
       content: rawMsg.content,
       authorUsername: rawMsg.author?.username,
+      addressOverride: rickReply.addressOverride,
+      callerName: rickReply.callerName,
     });
     if (rickEnrichment) {
-      await applyTokenEnrichment(wsServer, userId, rickEnrichment, rawMsg.channel_id);
+      await applyTokenEnrichment(wsServer, userId, rickEnrichment, {
+        channelId: rawMsg.channel_id,
+        messageId: rickReply.messageId,
+      });
     }
   });
 

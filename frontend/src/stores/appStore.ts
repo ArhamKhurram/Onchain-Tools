@@ -874,17 +874,30 @@ export const useAppStore = create<AppState>((set, get) => {
   enrichContract: (entry) => {
     resolvePendingEnrichment(entry);
     const key = entry.address.toLowerCase();
+    const metadataOnly = (c: ContractEntry): Partial<ContractEntry> => ({
+      tokenName: c.tokenName ?? entry.tokenName,
+      tokenSymbol: c.tokenSymbol ?? entry.tokenSymbol,
+      tokenPair: c.tokenPair ?? entry.tokenPair,
+      description: c.description ?? entry.description,
+      evmChain: c.evmChain ?? entry.evmChain,
+      enrichmentSource: c.enrichmentSource ?? entry.enrichmentSource,
+      enrichedAt: entry.enrichedAt ?? c.enrichedAt,
+    });
+
     set((state) => ({
       contracts: state.contracts.map((c) => {
         if (c.address.toLowerCase() !== key) return c;
+        if (entry.messageId && c.messageId !== entry.messageId) {
+          return { ...c, ...metadataOnly(c) };
+        }
         return {
           ...c,
           tokenName: entry.tokenName ?? c.tokenName,
           tokenSymbol: entry.tokenSymbol ?? c.tokenSymbol,
           tokenPair: entry.tokenPair ?? c.tokenPair,
           description: entry.description ?? c.description,
-          fdvAtCall: entry.fdvAtCall ?? c.fdvAtCall,
-          fdvAtCallDisplay: entry.fdvAtCallDisplay ?? c.fdvAtCallDisplay,
+          fdvAtCall: c.fdvAtCall ?? entry.fdvAtCall,
+          fdvAtCallDisplay: c.fdvAtCallDisplay ?? entry.fdvAtCallDisplay,
           liquidityUsd: entry.liquidityUsd ?? c.liquidityUsd,
           liquidityDisplay: entry.liquidityDisplay ?? c.liquidityDisplay,
           volumeUsd: entry.volumeUsd ?? c.volumeUsd,

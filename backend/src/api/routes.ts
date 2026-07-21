@@ -14,7 +14,7 @@ import { TelegramClient } from 'teleproto';
 import { StringSession } from 'teleproto/sessions/index.js';
 import type { TelegramClientManager } from '../telegram/clientManager.js';
 import { createFomoRouter } from '../fomo/routes.js';
-import { tryParseTokenEnrichment } from '../utils/rickEmbedParser.js';
+import { tryParseTokenEnrichment, buildRickReplyContext } from '../utils/rickEmbedParser.js';
 import { needsMetadataFallback } from '../utils/enrichmentMerge.js';
 import { enrichToken, getTokenSnapshot, persistEnrichment } from '../utils/tokenSnapshot.js';
 import { sendPushover } from '../utils/pushover.js';
@@ -1196,7 +1196,10 @@ export function createRouter(wsServer: WsServer): Router {
         try {
           const recent = await storage.getContracts(userId, 20);
           const hit = recent.find(
-            (c) => c.address.toLowerCase() === address.toLowerCase() && needsMetadataFallback(c),
+            (c) =>
+              c.messageId === entry.messageId
+              && c.address.toLowerCase() === address.toLowerCase()
+              && needsMetadataFallback(c),
           );
           if (!hit) return;
           const enrichment = await enrichToken(address, hit.evmChain ?? evmChain);
@@ -1217,7 +1220,7 @@ export function createRouter(wsServer: WsServer): Router {
             evmChain: enrichment.evmChain,
             enrichmentSource: enrichment.enrichmentSource,
             enrichedAt: new Date().toISOString(),
-          }, channelId);
+          }, { channelId, messageId: entry.messageId });
           if (updated) {
             wsServer.broadcastContractEnrichment(updated, userId);
             void persistEnrichment(enrichment, enrichment.evmChain ?? hit.evmChain ?? evmChain);
@@ -1240,12 +1243,19 @@ export function createRouter(wsServer: WsServer): Router {
   router.post('/contracts/rick-enrich', async (req, res) => {
     try {
       const userId = getUserId(req);
-      const { channelId, embeds, content, authorUsername } = req.body ?? {};
+      const { channelId, embeds, content, authorUsername, referencedMessage } = req.body ?? {};
       if (!channelId) {
         return res.status(400).json({ error: 'channelId is required.' });
       }
 
-      const enrichment = tryParseTokenEnrichment({ embeds, content, authorUsername });
+      const rickReply = buildRickReplyContext(referencedMessage);
+      const enrichment = tryParseTokenEnrichment({
+        embeds,
+        content,
+        authorUsername,
+        addressOverride: rickReply.addressOverride,
+        callerName: rickReply.callerName,
+      });
       if (!enrichment?.address) {
         return res.json({ applied: false });
       }
@@ -1266,7 +1276,7 @@ export function createRouter(wsServer: WsServer): Router {
         evmChain: enrichment.evmChain,
         enrichmentSource: enrichment.enrichmentSource,
         enrichedAt: new Date().toISOString(),
-      }, channelId);
+      }, { channelId, messageId: rickReply.messageId });
 
       if (updated) {
         wsServer.broadcastContractEnrichment(updated, userId);
@@ -1307,13 +1317,17 @@ export function createRouter(wsServer: WsServer): Router {
   router.post('/contracts/dex-enrich', async (req, res) => {
     try {
       const userId = getUserId(req);
-      const { address, channelId } = req.body ?? {};
+      const { address, channelId, messageId } = req.body ?? {};
       if (!address || !channelId) {
         return res.status(400).json({ error: 'address and channelId are required.' });
       }
 
       const recent = await storage.getContracts(userId, 20);
-      const hit = recent.find((c) => c.address.toLowerCase() === String(address).toLowerCase());
+      const hit = recent.find((c) => {
+        if (c.address.toLowerCase() !== String(address).toLowerCase()) return false;
+        if (messageId) return c.messageId === messageId;
+        return c.channelId === channelId;
+      });
       const enrichment = await enrichToken(address, hit?.evmChain);
       if (!enrichment) {
         return res.json({ applied: false });
@@ -1335,7 +1349,7 @@ export function createRouter(wsServer: WsServer): Router {
         evmChain: enrichment.evmChain,
         enrichmentSource: enrichment.enrichmentSource,
         enrichedAt: new Date().toISOString(),
-      }, channelId);
+      }, { channelId, messageId });
 
       if (updated) {
         wsServer.broadcastContractEnrichment(updated, userId);

@@ -58,7 +58,11 @@ async function finalizeAfterTimeout(key: string): Promise<void> {
   try {
     const res = await apiFetch(`${API_BASE}/contracts/dex-enrich`, {
       method: 'POST',
-      body: JSON.stringify({ address: entry.address, channelId: entry.channelId }),
+      body: JSON.stringify({
+        address: entry.address,
+        channelId: entry.channelId,
+        messageId: entry.messageId,
+      }),
     });
     if (res.ok) {
       const data = await res.json() as {
@@ -110,6 +114,7 @@ export function resolvePendingEnrichment(enriched: ContractEntry): void {
   const addr = enriched.address.toLowerCase();
   for (const [key, item] of [...pending.entries()]) {
     if (item.entry.address.toLowerCase() !== addr) continue;
+    if (enriched.messageId && item.entry.messageId !== enriched.messageId) continue;
     flushPending(key, enriched);
   }
 }
@@ -119,6 +124,11 @@ export async function tryRickEnrich(msg: {
   embeds?: unknown;
   content?: string;
   author?: { username?: string };
+  referenced_message?: {
+    id?: string;
+    content?: string;
+    author?: { username?: string; global_name?: string | null };
+  } | null;
 }): Promise<void> {
   if (!msg.embeds || !Array.isArray(msg.embeds) || msg.embeds.length === 0) return;
   try {
@@ -129,6 +139,13 @@ export async function tryRickEnrich(msg: {
         embeds: msg.embeds,
         content: msg.content,
         authorUsername: msg.author?.username,
+        referencedMessage: msg.referenced_message
+          ? {
+              id: msg.referenced_message.id,
+              content: msg.referenced_message.content,
+              author: msg.referenced_message.author,
+            }
+          : undefined,
       }),
     });
     if (!res.ok) return;

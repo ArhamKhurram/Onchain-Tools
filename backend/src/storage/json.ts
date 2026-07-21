@@ -2,7 +2,7 @@ import { configStore } from '../config/store.js';
 import { contractLog } from '../utils/contractLog.js';
 import type { StorageProvider } from './interface.js';
 import type { AppConfig, Room } from '../discord/types.js';
-import type { ContractEntry, ContractEnrichmentPatch } from '../utils/contractLog.js';
+import type { ContractEntry, ContractEnrichmentPatch, EnrichContractOptions } from '../utils/contractLog.js';
 
 /**
  * JSON file-backed storage provider for local (single-user) mode.
@@ -82,9 +82,9 @@ export class JsonStorageProvider implements StorageProvider {
     _userId: string,
     address: string,
     patch: ContractEnrichmentPatch,
-    channelId?: string,
+    options?: EnrichContractOptions,
   ): Promise<ContractEntry | null> {
-    return contractLog.enrichContract(address, patch, channelId);
+    return contractLog.enrichContract(address, patch, options);
   }
 
   async hasAddress(_userId: string, address: string): Promise<boolean> {

@@ -3,7 +3,7 @@ import { v4 as uuidv4 } from 'uuid';
 import { encryptToken, decryptToken, maskToken } from '../auth/encryption.js';
 import type { StorageProvider } from './interface.js';
 import type { AppConfig, Room, ChannelRef, KeywordPattern } from '../discord/types.js';
-import type { ContractEntry, ContractEnrichmentPatch } from '../utils/contractLog.js';
+import type { ContractEntry, ContractEnrichmentPatch, EnrichContractOptions } from '../utils/contractLog.js';
 import { mergeEnrichmentPatch } from '../utils/enrichmentMerge.js';
 
 const DEFAULT_SETTINGS: Omit<AppConfig, 'discordTokens' | 'rooms'> = {
@@ -684,8 +684,6 @@ export class SupabaseStorageProvider implements StorageProvider {
           tokenSymbol: entry.tokenSymbol ?? prior.tokenSymbol,
           tokenPair: entry.tokenPair ?? prior.tokenPair,
           description: entry.description ?? prior.description,
-          fdvAtCall: entry.fdvAtCall ?? prior.fdvAtCall,
-          fdvAtCallDisplay: entry.fdvAtCallDisplay ?? prior.fdvAtCallDisplay,
           liquidityUsd: entry.liquidityUsd ?? prior.liquidityUsd,
           liquidityDisplay: entry.liquidityDisplay ?? prior.liquidityDisplay,
           volumeUsd: entry.volumeUsd ?? prior.volumeUsd,
@@ -764,33 +762,51 @@ export class SupabaseStorageProvider implements StorageProvider {
     userId: string,
     address: string,
     patch: ContractEnrichmentPatch,
-    channelId?: string,
+    options?: EnrichContractOptions,
   ): Promise<ContractEntry | null> {
-    let query = this.supabase
-      .from('contracts')
-      .select('*')
-      .eq('user_id', userId)
-      .ilike('address', address)
-      .order('timestamp', { ascending: false })
-      .limit(5);
+    const channelId = options?.channelId;
+    const messageId = options?.messageId;
 
-    if (channelId) {
-      query = query.eq('channel_id', channelId);
+    let row: Record<string, unknown> | undefined;
+
+    if (messageId) {
+      const { data } = await this.supabase
+        .from('contracts')
+        .select('*')
+        .eq('user_id', userId)
+        .eq('message_id', messageId)
+        .ilike('address', address)
+        .limit(1);
+      row = data?.[0];
     }
 
-    let { data: rows } = await query;
-    if ((!rows || rows.length === 0) && channelId) {
-      const fallback = await this.supabase
+    if (!row) {
+      let query = this.supabase
         .from('contracts')
         .select('*')
         .eq('user_id', userId)
         .ilike('address', address)
         .order('timestamp', { ascending: false })
         .limit(1);
-      rows = fallback.data;
+
+      if (channelId) {
+        query = query.eq('channel_id', channelId);
+      }
+
+      let { data: rows } = await query;
+      if ((!rows || rows.length === 0) && channelId) {
+        const fallback = await this.supabase
+          .from('contracts')
+          .select('*')
+          .eq('user_id', userId)
+          .ilike('address', address)
+          .order('timestamp', { ascending: false })
+          .limit(1);
+        rows = fallback.data;
+      }
+      row = rows?.[0];
     }
 
-    const row = rows?.[0];
     if (!row) return null;
 
     const existing = this.mapContractRow(row);
@@ -802,6 +818,8 @@ export class SupabaseStorageProvider implements StorageProvider {
         evmChain: existing.evmChain,
         enrichmentSource: existing.enrichmentSource,
         enrichedAt: existing.enrichedAt,
+        fdvAtCall: existing.fdvAtCall,
+        fdvAtCallDisplay: existing.fdvAtCallDisplay,
       },
       patch,
     );
@@ -832,13 +850,13 @@ export class SupabaseStorageProvider implements StorageProvider {
       .from('contracts')
       .update(update)
       .eq('user_id', userId)
+      .eq('message_id', row.message_id as string)
       .ilike('address', address)
       .select('*')
-      .order('timestamp', { ascending: false });
+      .single();
 
     throwIfError({ error }, 'Failed to enrich contract');
-    const latest = updated?.[0];
-    return latest ? this.mapContractRow(latest) : null;
+    return updated ? this.mapContractRow(updated) : null;
   }
 
   private mapContractRow(row: any): ContractEntry {

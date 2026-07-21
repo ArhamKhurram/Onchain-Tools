@@ -1,5 +1,5 @@
 import type { AppConfig, Room } from '../discord/types.js';
-import type { ContractEntry, ContractEnrichmentPatch } from '../utils/contractLog.js';
+import type { ContractEntry, ContractEnrichmentPatch, EnrichContractOptions } from '../utils/contractLog.js';
 
 export interface StorageProvider {
   getConfig(userId: string): Promise<AppConfig>;
@@ -23,7 +23,7 @@ export interface StorageProvider {
   deleteContract(userId: string, messageId: string, address: string): Promise<boolean>;
   deleteAllContracts(userId: string): Promise<void>;
   updateEvmChain(userId: string, address: string, evmChain: string): Promise<boolean>;
-  enrichContract(userId: string, address: string, patch: ContractEnrichmentPatch, channelId?: string): Promise<ContractEntry | null>;
+  enrichContract(userId: string, address: string, patch: ContractEnrichmentPatch, options?: EnrichContractOptions): Promise<ContractEntry | null>;
   hasAddress(userId: string, address: string): Promise<boolean>;
 
   cacheUserName(userId: string, discordUserId: string, displayName: string): Promise<void>;

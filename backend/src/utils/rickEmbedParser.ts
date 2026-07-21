@@ -4,6 +4,8 @@
  * Description packs FDV / Liq / Vol / Age as emoji-labeled metrics.
  */
 
+import { detectContractAddresses } from './contract.js';
+
 export interface TokenEnrichment {
   address: string;
   tokenName?: string;
@@ -22,11 +24,18 @@ export interface TokenEnrichment {
   enrichmentSource: 'rick' | 'dexscreener' | 'gmgn';
 }
 
+export interface RickReplyContext {
+  addressOverride?: string;
+  callerName?: string;
+  messageId?: string;
+}
+
 type EmbedLike = {
   title?: string;
   description?: string;
   author?: { name?: string };
   fields?: { name: string; value: string }[];
+  footer?: { text?: string };
 };
 
 const ADDR_RE = /0x[a-fA-F0-9]{40}/;
@@ -57,6 +66,7 @@ function embedBlob(embeds: EmbedLike[]): string {
     if (e.title) parts.push(e.title);
     if (e.description) parts.push(e.description);
     if (e.author?.name) parts.push(e.author.name);
+    if (e.footer?.text) parts.push(e.footer.text);
     if (e.fields) {
       for (const f of e.fields) {
         parts.push(f.name, f.value);
@@ -79,14 +89,35 @@ function looksLikeRick(embeds: EmbedLike[], authorUsername?: string): boolean {
 function extractAddress(blob: string): string | null {
   const evm = blob.match(ADDR_RE);
   if (evm) return evm[0];
-  // Prefer Sol addresses that appear after "CA" labels
   const labeled = blob.match(/(?:CA|Contract)[:\s`]*([1-9A-HJ-NP-Za-km-z]{32,44})/i);
   if (labeled) return labeled[1];
   return null;
 }
 
+function normalizeCallerName(name: string): string {
+  return name.toLowerCase().replace(/[^a-z0-9]/g, '');
+}
+
+function callerNamesMatch(footerUser: string, callerName: string): boolean {
+  const a = normalizeCallerName(footerUser);
+  const b = normalizeCallerName(callerName);
+  if (!a || !b) return false;
+  return a.includes(b) || b.includes(a);
+}
+
+/** Rick footer lines like "jace444444 @ 341.3K" — caller entry MC. */
+export function parseFooterCallMc(blob: string): { username?: string; display: string; value?: number } | null {
+  const m = blob.match(/(?:^|[\n|])\s*([A-Za-z0-9_]+)?\s*@\s*\$?\s*([\d.]+[KMBTkmbt]?)/);
+  if (!m?.[2]) return null;
+  const display = m[2].trim();
+  return {
+    username: m[1]?.trim() || undefined,
+    display,
+    value: parseCompactUsd(display),
+  };
+}
+
 function parseTitle(title: string): Pick<TokenEnrichment, 'tokenName' | 'tokenSymbol' | 'tokenPair'> {
-  // "Robinhood the Cat · ROBINHOOD/WETH" or "Name - SYMBOL/PAIR"
   const parts = title.split(/\s*[·•|]\s*/);
   if (parts.length >= 2) {
     const name = parts[0].trim();
@@ -120,27 +151,38 @@ function pickMetric(blob: string, patterns: RegExp[]): { display?: string; value
   return {};
 }
 
+function pickFdvAtCall(blob: string, callerName?: string): { display?: string; value?: number } {
+  const footer = parseFooterCallMc(blob);
+  const mainFdv = pickMetric(blob, [
+    /FDV[^0-9$]*\$?\s*([\d.]+[KMBTkmbt]?)/i,
+    /💎[^0-9$]*\$?\s*([\d.]+[KMBTkmbt]?)/,
+  ]);
+
+  if (footer?.value != null && callerName && footer.username && callerNamesMatch(footer.username, callerName)) {
+    return { display: footer.display, value: footer.value };
+  }
+  return mainFdv;
+}
+
 /**
  * Try to parse token enrichment from Discord embeds (Rick and similar bots).
  */
 export function parseRickEmbeds(
   embeds: EmbedLike[] | undefined,
   authorUsername?: string,
+  replyContext?: Pick<RickReplyContext, 'addressOverride' | 'callerName'>,
 ): TokenEnrichment | null {
   if (!embeds || embeds.length === 0) return null;
   if (!looksLikeRick(embeds, authorUsername)) return null;
 
   const blob = embedBlob(embeds);
-  const address = extractAddress(blob);
+  const address = replyContext?.addressOverride ?? extractAddress(blob);
   if (!address) return null;
 
   const titleEmbed = embeds.find((e) => e.title) ?? embeds[0];
   const fromTitle = titleEmbed?.title ? parseTitle(titleEmbed.title) : {};
 
-  const fdv = pickMetric(blob, [
-    /FDV[^0-9$]*\$?\s*([\d.]+[KMBTkmbt]?)/i,
-    /💎[^0-9$]*\$?\s*([\d.]+[KMBTkmbt]?)/,
-  ]);
+  const fdv = pickFdvAtCall(blob, replyContext?.callerName);
   const liq = pickMetric(blob, [
     /Liq(?:uidity)?[^0-9$]*\$?\s*([\d.]+[KMBTkmbt]?)/i,
     /💧[^0-9$]*\$?\s*([\d.]+[KMBTkmbt]?)/,
@@ -160,7 +202,6 @@ export function parseRickEmbeds(
 
   let description: string | undefined;
   if (titleEmbed?.description) {
-    // First non-metric line as soft description
     const lines = titleEmbed.description.split('\n').map((l) => l.trim()).filter(Boolean);
     const soft = lines.find((l) => !/FDV|Liq|Vol|Age|TH|HP|\$[\d.]/.test(l) && l.length > 8 && l.length < 120);
     description = soft;
@@ -180,6 +221,7 @@ export function parseRickEmbeds(
     tokenAge: ageMatch?.[1],
     evmChain: chainMatch?.[1]?.toLowerCase() === 'ethereum' ? 'eth'
       : chainMatch?.[1]?.toLowerCase() === 'bnb' ? 'bsc'
+      : chainMatch?.[1]?.toLowerCase() === 'solana' ? 'sol'
       : chainMatch?.[1]?.toLowerCase(),
     enrichmentSource: 'rick',
   };
@@ -192,8 +234,32 @@ export function tryParseTokenEnrichment(opts: {
   embeds?: EmbedLike[];
   content?: string;
   authorUsername?: string;
+  addressOverride?: string;
+  callerName?: string;
 }): TokenEnrichment | null {
-  const fromEmbeds = parseRickEmbeds(opts.embeds, opts.authorUsername);
+  const fromEmbeds = parseRickEmbeds(opts.embeds, opts.authorUsername, {
+    addressOverride: opts.addressOverride,
+    callerName: opts.callerName,
+  });
   if (fromEmbeds) return fromEmbeds;
   return null;
+}
+
+export function buildRickReplyContext(referencedMessage?: {
+  id?: string;
+  content?: string;
+  author?: { username?: string; global_name?: string | null };
+} | null): RickReplyContext {
+  if (!referencedMessage) return {};
+
+  const refContent = referencedMessage.content ?? '';
+  const addresses = refContent ? detectContractAddresses(refContent).addresses : [];
+  const callerName = referencedMessage.author?.global_name
+    ?? referencedMessage.author?.username;
+
+  return {
+    messageId: referencedMessage.id,
+    addressOverride: addresses[0],
+    callerName: callerName ?? undefined,
+  };
 }
