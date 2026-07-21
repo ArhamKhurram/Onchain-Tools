@@ -1,4 +1,5 @@
 import type { WalletActivityItem } from './gmgnWallet.js';
+import { classifyActivitySide } from './activityUtils.js';
 
 export type DailyPnlDay = {
   date: string;
@@ -17,6 +18,7 @@ export type DailyPnlResult = {
   days: DailyPnlDay[];
   cumulative: DailyPnlCumulative[];
   note: string;
+  skippedUnknownType: number;
 };
 
 function toUsd(value: unknown): number {
@@ -35,19 +37,25 @@ export function aggregateDailyPnl(
 ): DailyPnlResult {
   const cutoffSec = Math.floor(Date.now() / 1000) - periodDays * 86_400;
   const buckets = new Map<string, DailyPnlDay>();
+  let skippedUnknownType = 0;
 
   for (const item of activities) {
     const ts = Number(item.timestamp);
     if (!Number.isFinite(ts) || ts < cutoffSec) continue;
 
-    const type = String(item.type ?? '').toLowerCase();
-    if (type !== 'buy' && type !== 'sell') continue;
+    const side = classifyActivitySide(item);
+    if (!side) {
+      skippedUnknownType += 1;
+      continue;
+    }
 
     const usd = Math.abs(toUsd(item.cost_usd));
+    if (usd <= 0) continue;
+
     const date = utcDateKey(ts);
     const row = buckets.get(date) ?? { date, netPnl: 0, buyUsd: 0, sellUsd: 0, tradeCount: 0 };
 
-    if (type === 'buy') {
+    if (side === 'buy') {
       row.buyUsd += usd;
       row.netPnl -= usd;
     } else {
@@ -69,6 +77,7 @@ export function aggregateDailyPnl(
   return {
     days,
     cumulative,
-    note: 'Trade-based daily PnL estimated from GMGN wallet activity (buy/sell USD).',
+    skippedUnknownType,
+    note: 'Trade-based daily PnL from GMGN activity USD (buys negative, sells positive). Not an official equity curve.',
   };
 }

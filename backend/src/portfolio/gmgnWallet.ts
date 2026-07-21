@@ -128,13 +128,18 @@ export type WalletActivityItem = {
   chain?: GmgnChain;
   transaction_hash?: string;
   type?: string;
+  side?: string;
+  event_type?: string;
+  is_buy?: boolean | string | number;
   token?: {
     address?: string;
     symbol?: string;
+    market_cap?: number | string;
   };
   token_amount?: number | string;
   cost_usd?: number | string;
   price_usd?: number | string;
+  market_cap?: number | string;
   timestamp?: number | string;
 };
 
@@ -193,10 +198,10 @@ export async function fetchWalletActivity(
 export async function fetchAllWalletActivity(
   chain: GmgnChain,
   address: string,
-  opts: { maxPages?: number; maxEvents?: number; periodDays?: number } = {},
+  opts: { maxPages?: number; maxEvents?: number; periodDays?: number; types?: string[] } = {},
 ): Promise<WalletActivityItem[]> {
-  const maxPages = opts.maxPages ?? 5;
-  const maxEvents = opts.maxEvents ?? 500;
+  const maxPages = opts.maxPages ?? 10;
+  const maxEvents = opts.maxEvents ?? 1000;
   const periodDays = opts.periodDays ?? 30;
   const cutoffSec = Math.floor(Date.now() / 1000) - periodDays * 86_400;
 
@@ -204,8 +209,9 @@ export async function fetchAllWalletActivity(
   let cursor: string | undefined;
 
   for (let page = 0; page < maxPages && all.length < maxEvents; page += 1) {
-    const extra: Record<string, string | number> = { limit: 100 };
+    const extra: Record<string, string | number | string[]> = { limit: 100 };
     if (cursor) extra.cursor = cursor;
+    if (opts.types?.length) extra.type = opts.types;
 
     const result = await fetchWalletActivity(chain, address, extra);
     if (!result.ok) break;
@@ -213,20 +219,58 @@ export async function fetchAllWalletActivity(
     const batch = result.data.activities ?? [];
     if (batch.length === 0) break;
 
+    let hitCutoff = false;
     for (const item of batch) {
       const ts = Number(item.timestamp);
       if (Number.isFinite(ts) && ts < cutoffSec) {
-        return all;
+        hitCutoff = true;
+        break;
       }
-      all.push({ ...item, chain });
+      all.push({
+        ...item,
+        chain,
+        type: item.type ?? (opts.types?.length === 1 ? opts.types[0] : item.type),
+      });
       if (all.length >= maxEvents) break;
     }
+
+    if (hitCutoff || all.length >= maxEvents) break;
 
     cursor = result.data.next;
     if (!cursor) break;
   }
 
   return all;
+}
+
+/** PnL aggregation: fetch buy + sell streams explicitly (helps chains with missing type on mixed feed). */
+export async function fetchWalletActivityForPnl(
+  chain: GmgnChain,
+  address: string,
+  opts: { maxPages?: number; maxEvents?: number; periodDays?: number } = {},
+): Promise<WalletActivityItem[]> {
+  const perTypeCap = Math.ceil((opts.maxEvents ?? 1000) / 2);
+  const pageOpts = { ...opts, maxEvents: perTypeCap };
+
+  const [buys, sells, mixed] = await Promise.all([
+    fetchAllWalletActivity(chain, address, { ...pageOpts, types: ['buy'] }),
+    fetchAllWalletActivity(chain, address, { ...pageOpts, types: ['sell'] }),
+    fetchAllWalletActivity(chain, address, pageOpts),
+  ]);
+
+  if (buys.length > 0 || sells.length > 0) {
+    const seen = new Set<string>();
+    const merged: WalletActivityItem[] = [];
+    for (const item of [...buys, ...sells]) {
+      const key = `${item.transaction_hash ?? ''}:${item.timestamp}:${item.type}`;
+      if (seen.has(key)) continue;
+      seen.add(key);
+      merged.push(item);
+    }
+    return merged;
+  }
+
+  return mixed;
 }
 
 // ---- Multi-chain aggregation (EVM wallets query eth/base/bsc together) ----
@@ -351,6 +395,8 @@ export async function fetchAllWalletActivityMerged(
   address: string,
   opts: { maxPages?: number; maxEvents?: number; periodDays?: number } = {},
 ): Promise<WalletActivityItem[]> {
-  const perChain = await Promise.all(chains.map((c) => fetchAllWalletActivity(c, address, opts)));
+  const perChain = await Promise.all(
+    chains.map((c) => fetchWalletActivityForPnl(c, address, opts)),
+  );
   return perChain.flat();
 }

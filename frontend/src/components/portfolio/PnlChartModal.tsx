@@ -40,13 +40,13 @@ export default function PnlChartModal({ open, onClose, data, loading, error }: P
   return (
     <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/80 p-4" onClick={onClose}>
       <div
-        className="bg-oct-surface border-2 border-black shadow-oct-hard-lg w-full max-w-3xl overflow-hidden"
+        className="bg-oct-surface border-2 border-oct-accent/40 shadow-oct-hard-lg w-full max-w-3xl overflow-hidden"
         onClick={(e) => e.stopPropagation()}
       >
-        <div className="px-5 py-4 border-b-2 border-black flex items-center justify-between gap-3">
+        <div className="px-5 py-4 border-b-2 border-oct-accent/30 bg-oct-accent/[0.06] flex items-center justify-between gap-3">
           <div>
-            <h3 className="font-display text-2xl text-oct-text tracking-tight">PnL Chart</h3>
-            <p className="font-mono text-[10px] text-oct-muted mt-1">
+            <h3 className="font-display text-2xl text-white tracking-tight">PnL Chart</h3>
+            <p className="font-mono text-[10px] text-white/50 mt-1">
               {data?.note ?? 'Trade-based cumulative daily PnL'}
             </p>
           </div>
@@ -65,8 +65,13 @@ export default function PnlChartModal({ open, onClose, data, loading, error }: P
             <div className="h-full flex items-center justify-center font-mono text-xs text-red-400">{error}</div>
           )}
           {!loading && !error && chartData.length === 0 && (
-            <div className="h-full flex items-center justify-center font-mono text-xs text-oct-muted">
-              No buy/sell activity in this period.
+            <div className="h-full flex flex-col items-center justify-center gap-2 font-mono text-xs text-white/50 text-center px-6">
+              <p>No classified buy/sell activity in this period.</p>
+              {data?.skippedUnknownType ? (
+                <p className="text-oct-accent/80">
+                  {data.skippedUnknownType} trades could not be classified — GMGN may not label buy/sell on this chain.
+                </p>
+              ) : null}
             </div>
           )}
           {!loading && !error && chartData.length > 0 && (
@@ -84,7 +89,7 @@ export default function PnlChartModal({ open, onClose, data, loading, error }: P
                   labelFormatter={(label) => `Date: ${label}`}
                   contentStyle={{ background: '#111', border: '2px solid #000', fontFamily: 'monospace', fontSize: 11 }}
                 />
-                <Line type="monotone" dataKey="cumulativePnl" stroke="#f97316" strokeWidth={2} dot={false} />
+                <Line type="monotone" dataKey="cumulativePnl" stroke="#ff3b3b" strokeWidth={2} dot={{ r: 3, fill: '#ff3b3b' }} />
               </LineChart>
             </ResponsiveContainer>
           )}

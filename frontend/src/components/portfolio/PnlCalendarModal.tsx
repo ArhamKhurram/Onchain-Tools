@@ -54,13 +54,13 @@ export default function PnlCalendarModal({ open, onClose, data, loading, error }
   return (
     <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/80 p-4" onClick={onClose}>
       <div
-        className="bg-oct-surface border-2 border-black shadow-oct-hard-lg w-full max-w-2xl overflow-hidden"
+        className="bg-oct-surface border-2 border-oct-accent/40 shadow-oct-hard-lg w-full max-w-2xl overflow-hidden"
         onClick={(e) => e.stopPropagation()}
       >
-        <div className="px-5 py-4 border-b-2 border-black flex items-center justify-between gap-3">
+        <div className="px-5 py-4 border-b-2 border-oct-accent/30 bg-oct-accent/[0.06] flex items-center justify-between gap-3">
           <div>
-            <h3 className="font-display text-2xl text-oct-text tracking-tight">PnL Calendar</h3>
-            <p className="font-mono text-[10px] text-oct-muted mt-1">Daily net PnL from buy/sell USD (estimated)</p>
+            <h3 className="font-display text-2xl text-white tracking-tight">PnL Calendar</h3>
+            <p className="font-mono text-[10px] text-white/50 mt-1">Daily net PnL from buy/sell USD (estimated)</p>
           </div>
           <button type="button" onClick={onClose} className="p-1 text-oct-muted hover:text-white">
             <X size={18} />

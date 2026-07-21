@@ -117,7 +117,7 @@ export function createPortfolioRouter(): Router {
       const target = await resolveTarget(req, res);
       if (!target) return;
 
-      const limit = req.query.limit ? Number(req.query.limit) : 20;
+      const limit = req.query.limit ? Number(req.query.limit) : 50;
       const result = await fetchWalletActivityMerged(target.chains, target.address, limit);
       if (!result.ok) return res.status(portfolioErrorStatus(result)).json(result);
 

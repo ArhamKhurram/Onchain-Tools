@@ -1,3 +1,4 @@
+import type { HoldingWallet } from './holdingWallets';
 import type { WalletChain } from './wallets';
 
 export type PortfolioPeriod = '7d' | '30d';
@@ -52,6 +53,7 @@ export type PortfolioStats = {
 
 export type PortfolioHolding = {
   chain?: GmgnChain;
+  walletLabel?: string;
   token?: {
     address?: string;
     symbol?: string;
@@ -72,14 +74,21 @@ export type PortfolioHolding = {
 
 export type PortfolioActivity = {
   chain?: GmgnChain;
+  walletLabel?: string;
   transaction_hash?: string;
   type?: string;
+  side?: string;
+  event_type?: string;
+  is_buy?: boolean | string | number;
   token?: {
     address?: string;
     symbol?: string;
+    market_cap?: number | string;
   };
   token_amount?: number | string;
   cost_usd?: number | string;
+  price_usd?: number | string;
+  market_cap?: number | string;
   timestamp?: number | string;
 };
 
@@ -101,6 +110,7 @@ export type DailyPnlResponse = {
   days: DailyPnlDay[];
   cumulative: DailyPnlCumulative[];
   note: string;
+  skippedUnknownType?: number;
 };
 
 export type PortfolioApiError = {
@@ -152,3 +162,128 @@ export function txExplorerUrl(gmgnChain: GmgnChain, hash: string): string | null
       return null;
   }
 }
+
+export type ActivitySide = 'buy' | 'sell';
+
+export function classifyActivitySide(item: PortfolioActivity): ActivitySide | null {
+  const raw = String(item.type ?? item.side ?? item.event_type ?? '')
+    .toLowerCase()
+    .replace(/[_\s-]/g, '');
+
+  if (raw.includes('buy') || raw === 'transferin' || raw === 'add') return 'buy';
+  if (raw.includes('sell') || raw === 'transferout' || raw === 'remove') return 'sell';
+
+  const isBuy = item.is_buy;
+  if (isBuy === true || isBuy === 'true' || isBuy === 1 || isBuy === '1') return 'buy';
+  if (isBuy === false || isBuy === 'false' || isBuy === 0 || isBuy === '0') return 'sell';
+
+  return null;
+}
+
+export function formatAge(ts: unknown): string {
+  const n = Number(ts);
+  if (!Number.isFinite(n)) return '—';
+  const sec = Math.max(0, Math.floor(Date.now() / 1000 - n));
+  if (sec < 60) return `${sec}s`;
+  if (sec < 3600) return `${Math.floor(sec / 60)}m`;
+  if (sec < 86_400) return `${Math.floor(sec / 3600)}h`;
+  return `${Math.floor(sec / 86_400)}d`;
+}
+
+export function formatMarketCap(value: unknown): string | null {
+  const n = toNumber(value);
+  if (n <= 0) return null;
+  if (n >= 1_000_000) return `$${(n / 1_000_000).toFixed(2)}M`;
+  if (n >= 1_000) return `$${(n / 1_000).toFixed(1)}K`;
+  return `$${n.toFixed(0)}`;
+}
+
+export function dedupeHoldingWallets(wallets: HoldingWallet[]): HoldingWallet[] {
+  const seen = new Set<string>();
+  const out: HoldingWallet[] = [];
+  for (const w of wallets) {
+    const key = isEvmWalletChain(w.chain)
+      ? `evm:${w.address.toLowerCase()}`
+      : `${w.chain}:${w.chain === 'solana' ? w.address : w.address.toLowerCase()}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    out.push(w);
+  }
+  return out;
+}
+
+export function mergePortfolioStats(list: PortfolioStats[]): PortfolioStats {
+  let realized = 0;
+  let unrealized = 0;
+  let cost = 0;
+  let buy = 0;
+  let sell = 0;
+  let winrateWeighted = 0;
+  let tradeWeight = 0;
+
+  for (const s of list) {
+    realized += toNumber(s.realized_profit);
+    unrealized += toNumber(s.unrealized_profit);
+    cost += toNumber(s.total_cost);
+    const b = toNumber(s.buy_count);
+    const se = toNumber(s.sell_count);
+    buy += b;
+    sell += se;
+    const trades = b + se;
+    if (trades > 0) {
+      winrateWeighted += toNumber(s.winrate) * trades;
+      tradeWeight += trades;
+    }
+  }
+
+  return {
+    realized_profit: realized,
+    unrealized_profit: unrealized,
+    total_cost: cost,
+    buy_count: buy,
+    sell_count: sell,
+    winrate: tradeWeight > 0 ? winrateWeighted / tradeWeight : 0,
+    pnl: cost > 0 ? realized / cost : 0,
+  };
+}
+
+export function mergeDailyPnl(responses: DailyPnlResponse[]): DailyPnlResponse {
+  const dayMap = new Map<string, DailyPnlDay>();
+  let skipped = 0;
+  let note = responses[0]?.note ?? '';
+
+  for (const resp of responses) {
+    skipped += resp.skippedUnknownType ?? 0;
+    for (const day of resp.days) {
+      const row = dayMap.get(day.date) ?? { date: day.date, netPnl: 0, buyUsd: 0, sellUsd: 0, tradeCount: 0 };
+      row.netPnl += day.netPnl;
+      row.buyUsd += day.buyUsd;
+      row.sellUsd += day.sellUsd;
+      row.tradeCount += day.tradeCount;
+      dayMap.set(day.date, row);
+    }
+  }
+
+  const days = [...dayMap.values()].sort((a, b) => a.date.localeCompare(b.date));
+  let running = 0;
+  const cumulative = days.map((day) => {
+    running += day.netPnl;
+    return { date: day.date, cumulativePnl: running };
+  });
+
+  return {
+    period: responses[0]?.period ?? '30d',
+    days,
+    cumulative,
+    skippedUnknownType: skipped,
+    note,
+  };
+}
+
+/** Shared panel chrome for portfolio sections. */
+export const PORTFOLIO_PANEL =
+  'border-2 border-oct-accent/35 bg-gradient-to-b from-oct-accent/[0.07] to-oct-surface shadow-[inset_0_1px_0_rgba(255,59,59,0.12)]';
+export const PORTFOLIO_PANEL_HEADER =
+  'px-4 py-3 border-b-2 border-oct-accent/30 bg-oct-accent/[0.06] flex items-center justify-between';
+export const PORTFOLIO_PANEL_TITLE =
+  'font-mono text-xs uppercase tracking-[0.16em] text-white font-semibold';
