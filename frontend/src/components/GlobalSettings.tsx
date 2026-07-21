@@ -309,9 +309,6 @@ export default function GlobalSettings() {
   const handleSave = async () => {
     setSaving(true);
     setSaveError(null);
-    // #region agent log
-    fetch('http://127.0.0.1:7280/ingest/fb0ec303-d32c-4569-a0f8-cf88d8b908bc',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'8c6103'},body:JSON.stringify({sessionId:'8c6103',location:'GlobalSettings.tsx:handleSave:start',message:'save clicked',data:{missedRunnerEnabled,missedRunnerNotifyVia,hasUnsavedChanges},timestamp:Date.now(),hypothesisId:'B'})}).catch(()=>{});
-    // #endregion
     try {
       await updateConfig({
         globalHighlightedUsers: globalUsers,
@@ -358,15 +355,9 @@ export default function GlobalSettings() {
         mobileZoomScale,
         splitLayout,
       });
-      // #region agent log
-      fetch('http://127.0.0.1:7280/ingest/fb0ec303-d32c-4569-a0f8-cf88d8b908bc',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'8c6103'},body:JSON.stringify({sessionId:'8c6103',location:'GlobalSettings.tsx:handleSave:success',message:'save completed',data:{missedRunnerEnabled,missedRunnerNotifyVia},timestamp:Date.now(),hypothesisId:'B',runId:'post-fix'})}).catch(()=>{});
-      // #endregion
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : 'Failed to save settings';
       setSaveError(message);
-      // #region agent log
-      fetch('http://127.0.0.1:7280/ingest/fb0ec303-d32c-4569-a0f8-cf88d8b908bc',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'8c6103'},body:JSON.stringify({sessionId:'8c6103',location:'GlobalSettings.tsx:handleSave:error',message:'save failed',data:{error:message},timestamp:Date.now(),hypothesisId:'A'})}).catch(()=>{});
-      // #endregion
     } finally {
       setSaving(false);
     }
