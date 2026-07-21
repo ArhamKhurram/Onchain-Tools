@@ -15,7 +15,7 @@ import { StringSession } from 'teleproto/sessions/index.js';
 import type { TelegramClientManager } from '../telegram/clientManager.js';
 import { createFomoRouter } from '../fomo/routes.js';
 import { tryParseTokenEnrichment, buildRickReplyContext } from '../utils/rickEmbedParser.js';
-import { needsMetadataFallback } from '../utils/enrichmentMerge.js';
+import { needsMetadataFallback, metadataOnlyEnrichmentPatch } from '../utils/enrichmentMerge.js';
 import { enrichToken, getTokenSnapshot, persistEnrichment } from '../utils/tokenSnapshot.js';
 import { sendPushover } from '../utils/pushover.js';
 import { buildContractUrl } from '../utils/contract.js';
@@ -1204,13 +1204,11 @@ export function createRouter(wsServer: WsServer): Router {
           if (!hit) return;
           const enrichment = await enrichToken(address, hit.evmChain ?? evmChain);
           if (!enrichment) return;
-          const updated = await storage.enrichContract(userId, enrichment.address, {
+          const updated = await storage.enrichContract(userId, enrichment.address, metadataOnlyEnrichmentPatch({
             tokenName: enrichment.tokenName,
             tokenSymbol: enrichment.tokenSymbol,
             tokenPair: enrichment.tokenPair,
             description: enrichment.description,
-            fdvAtCall: enrichment.fdvAtCall,
-            fdvAtCallDisplay: enrichment.fdvAtCallDisplay,
             liquidityUsd: enrichment.liquidityUsd,
             liquidityDisplay: enrichment.liquidityDisplay,
             volumeUsd: enrichment.volumeUsd,
@@ -1220,7 +1218,7 @@ export function createRouter(wsServer: WsServer): Router {
             evmChain: enrichment.evmChain,
             enrichmentSource: enrichment.enrichmentSource,
             enrichedAt: new Date().toISOString(),
-          }, { channelId, messageId: entry.messageId });
+          }), { channelId, messageId: entry.messageId });
           if (updated) {
             wsServer.broadcastContractEnrichment(updated, userId);
             void persistEnrichment(enrichment, enrichment.evmChain ?? hit.evmChain ?? evmChain);
@@ -1248,7 +1246,7 @@ export function createRouter(wsServer: WsServer): Router {
         return res.status(400).json({ error: 'channelId is required.' });
       }
 
-      const rickReply = buildRickReplyContext(referencedMessage);
+      const rickReply = buildRickReplyContext(referencedMessage, req.body?.messageReference);
       const enrichment = tryParseTokenEnrichment({
         embeds,
         content,
@@ -1333,13 +1331,11 @@ export function createRouter(wsServer: WsServer): Router {
         return res.json({ applied: false });
       }
 
-      const updated = await storage.enrichContract(userId, enrichment.address, {
+      const updated = await storage.enrichContract(userId, enrichment.address, metadataOnlyEnrichmentPatch({
         tokenName: enrichment.tokenName,
         tokenSymbol: enrichment.tokenSymbol,
         tokenPair: enrichment.tokenPair,
         description: enrichment.description,
-        fdvAtCall: enrichment.fdvAtCall,
-        fdvAtCallDisplay: enrichment.fdvAtCallDisplay,
         liquidityUsd: enrichment.liquidityUsd,
         liquidityDisplay: enrichment.liquidityDisplay,
         volumeUsd: enrichment.volumeUsd,
@@ -1349,7 +1345,7 @@ export function createRouter(wsServer: WsServer): Router {
         evmChain: enrichment.evmChain,
         enrichmentSource: enrichment.enrichmentSource,
         enrichedAt: new Date().toISOString(),
-      }, { channelId, messageId });
+      }), { channelId, messageId });
 
       if (updated) {
         wsServer.broadcastContractEnrichment(updated, userId);
@@ -1363,14 +1359,12 @@ export function createRouter(wsServer: WsServer): Router {
 
       res.json({
         applied: true,
-        enrichment: {
+        enrichment: metadataOnlyEnrichmentPatch({
           address: enrichment.address,
           tokenName: enrichment.tokenName,
           tokenSymbol: enrichment.tokenSymbol,
           tokenPair: enrichment.tokenPair,
           description: enrichment.description,
-          fdvAtCall: enrichment.fdvAtCall,
-          fdvAtCallDisplay: enrichment.fdvAtCallDisplay,
           liquidityUsd: enrichment.liquidityUsd,
           liquidityDisplay: enrichment.liquidityDisplay,
           volumeUsd: enrichment.volumeUsd,
@@ -1380,7 +1374,7 @@ export function createRouter(wsServer: WsServer): Router {
           evmChain: enrichment.evmChain,
           enrichmentSource: enrichment.enrichmentSource,
           enrichedAt: new Date().toISOString(),
-        },
+        }),
       });
     } catch (err) {
       res.status(500).json({ error: safeError(err, 'Failed to enrich contract from DexScreener') });

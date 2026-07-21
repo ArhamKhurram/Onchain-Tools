@@ -4,6 +4,13 @@ export type EnrichmentSource = 'rick' | 'dexscreener' | 'gmgn';
 
 const SECONDARY_SOURCES = new Set<EnrichmentSource>(['dexscreener', 'gmgn']);
 
+export function metadataOnlyEnrichmentPatch(
+  patch: ContractEnrichmentPatch,
+): ContractEnrichmentPatch {
+  const { fdvAtCall: _fdv, fdvAtCallDisplay: _display, ...rest } = patch;
+  return rest;
+}
+
 export function needsMetadataFallback(entry: {
   tokenSymbol?: string;
   tokenName?: string;

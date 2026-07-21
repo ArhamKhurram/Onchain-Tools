@@ -144,8 +144,6 @@ function buildRadar(contracts: ContractEntry[]): RadarRow[] {
         firstSeenAt: ts,
         lastMentionAt: ts,
         timestamps: [],
-        mcAtCall: c.fdvAtCall,
-        mcAtCallDisplay: c.fdvAtCallDisplay,
       };
       map.set(key, row);
     }
@@ -157,14 +155,23 @@ function buildRadar(contracts: ContractEntry[]): RadarRow[] {
     if (ts < row.firstSeenAt) {
       row.firstSeenAt = ts;
       row.firstCaller = c.authorName;
-      row.mcAtCall = c.fdvAtCall ?? row.mcAtCall;
-      row.mcAtCallDisplay = c.fdvAtCallDisplay ?? row.mcAtCallDisplay;
     }
     if (ts > row.lastMentionAt) row.lastMentionAt = ts;
     row.symbol = row.symbol ?? c.tokenSymbol;
     row.name = row.name ?? c.tokenName;
     row.evmChain = row.evmChain ?? c.evmChain;
   }
+
+  for (const row of map.values()) {
+    const earliest = contracts
+      .filter((c) => c.address.toLowerCase() === row.address.toLowerCase())
+      .sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime())[0];
+    if (earliest) {
+      row.mcAtCall = earliest.fdvAtCall;
+      row.mcAtCallDisplay = earliest.fdvAtCallDisplay;
+    }
+  }
+
   return [...map.values()];
 }
 
@@ -389,8 +396,8 @@ export default function RadarTable({ embedded: _embedded = false }: { embedded?:
       const fomoB = overlaps[b.address.toLowerCase()]?.trackedCount ?? 0;
       const liveA = liveMc[a.address.toLowerCase()];
       const liveB = liveMc[b.address.toLowerCase()];
-      const mcNowA = liveA?.mc ?? a.mcAtCall;
-      const mcNowB = liveB?.mc ?? b.mcAtCall;
+      const mcNowA = liveA?.mc;
+      const mcNowB = liveB?.mc;
       const multA = a.mcAtCall && mcNowA && a.mcAtCall > 0 ? mcNowA / a.mcAtCall : undefined;
       const multB = b.mcAtCall && mcNowB && b.mcAtCall > 0 ? mcNowB / b.mcAtCall : undefined;
 
@@ -583,8 +590,8 @@ export default function RadarTable({ embedded: _embedded = false }: { embedded?:
             {rows.map((r) => {
               const key = r.address.toLowerCase();
               const live = liveMc[key];
-              const mcNow = live?.mc ?? r.mcAtCall;
-              const mcNowDisplay = live?.display ?? r.mcAtCallDisplay;
+              const mcNow = live?.mc;
+              const mcNowDisplay = live?.display;
               const mult =
                 r.mcAtCall && mcNow && r.mcAtCall > 0 ? mcNow / r.mcAtCall : undefined;
               const tag = r.mentions >= 5 ? 'crowded' : r.mentions === 1 ? 'early' : null;

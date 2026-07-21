@@ -41,6 +41,11 @@ export interface DiscordMessage {
   mention_everyone?: boolean;
   mention_channels?: { id: string; guild_id: string; name: string; type: number }[];
   referenced_message?: DiscordMessage | null;
+  message_reference?: {
+    message_id?: string;
+    channel_id?: string;
+    guild_id?: string;
+  } | null;
   reactions?: DiscordReaction[];
 }
 

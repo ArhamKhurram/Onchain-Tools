@@ -5,6 +5,7 @@
  */
 
 import { detectContractAddresses } from './contract.js';
+import { lookupCachedMessage } from './messageReplyCache.js';
 
 export interface TokenEnrichment {
   address: string;
@@ -245,20 +246,38 @@ export function tryParseTokenEnrichment(opts: {
   return null;
 }
 
-export function buildRickReplyContext(referencedMessage?: {
-  id?: string;
-  content?: string;
-  author?: { username?: string; global_name?: string | null };
-} | null): RickReplyContext {
-  if (!referencedMessage) return {};
+export function buildRickReplyContext(
+  referencedMessage?: {
+    id?: string;
+    content?: string;
+    author?: { username?: string; global_name?: string | null };
+  } | null,
+  messageReference?: { message_id?: string } | null,
+): RickReplyContext {
+  let ref = referencedMessage;
+  if ((!ref?.content || !ref.id) && messageReference?.message_id) {
+    const cached = lookupCachedMessage(messageReference.message_id);
+    if (cached) {
+      ref = {
+        id: messageReference.message_id,
+        content: cached.content,
+        author: {
+          username: cached.authorUsername,
+          global_name: cached.authorName,
+        },
+      };
+    } else if (messageReference.message_id) {
+      return { messageId: messageReference.message_id };
+    }
+  }
+  if (!ref) return {};
 
-  const refContent = referencedMessage.content ?? '';
+  const refContent = ref.content ?? '';
   const addresses = refContent ? detectContractAddresses(refContent).addresses : [];
-  const callerName = referencedMessage.author?.global_name
-    ?? referencedMessage.author?.username;
+  const callerName = ref.author?.global_name ?? ref.author?.username;
 
   return {
-    messageId: referencedMessage.id,
+    messageId: ref.id,
     addressOverride: addresses[0],
     callerName: callerName ?? undefined,
   };

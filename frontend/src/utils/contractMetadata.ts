@@ -23,7 +23,7 @@ export type ContractMetadata = Pick<
 >;
 
 export function hasContractMetadata(entry: ContractEntry): boolean {
-  return !!(entry.tokenSymbol || entry.tokenName || entry.fdvAtCallDisplay);
+  return !!(entry.tokenSymbol || entry.tokenName);
 }
 
 export function mergeEnrichmentIntoEntry(
@@ -81,8 +81,6 @@ export function hydrateContractFromCatalog(
     tokenSymbol: entry.tokenSymbol ?? prior.tokenSymbol,
     tokenPair: entry.tokenPair ?? prior.tokenPair,
     description: entry.description ?? prior.description,
-    fdvAtCall: entry.fdvAtCall ?? prior.fdvAtCall,
-    fdvAtCallDisplay: entry.fdvAtCallDisplay ?? prior.fdvAtCallDisplay,
     liquidityUsd: entry.liquidityUsd ?? prior.liquidityUsd,
     liquidityDisplay: entry.liquidityDisplay ?? prior.liquidityDisplay,
     volumeUsd: entry.volumeUsd ?? prior.volumeUsd,

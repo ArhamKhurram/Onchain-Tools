@@ -27,7 +27,8 @@ import { UserGatewayPool } from './gateway/userGatewayPool.js';
 import { buildContractUrl, detectEvmChainFromContent, extractEvmChainFromGmgnLinks, resolveEvmChainFromApi } from './utils/contract.js';
 import { tryParseTokenEnrichment, buildRickReplyContext } from './utils/rickEmbedParser.js';
 import { enrichToken, persistEnrichment } from './utils/tokenSnapshot.js';
-import { needsMetadataFallback } from './utils/enrichmentMerge.js';
+import { needsMetadataFallback, metadataOnlyEnrichmentPatch } from './utils/enrichmentMerge.js';
+import { cacheDiscordMessage } from './utils/messageReplyCache.js';
 import type { TokenEnrichment } from './utils/rickEmbedParser.js';
 import { processDiscordMessage } from './utils/messageProcessor.js';
 import type { MessageProcessorContext } from './utils/messageProcessor.js';
@@ -109,8 +110,8 @@ function backfillEvmChainsFromApi(
   }
 }
 
-function enrichmentToPatch(e: TokenEnrichment): ContractEnrichmentPatch {
-  return {
+function enrichmentToPatch(e: TokenEnrichment, opts?: { metadataOnly?: boolean }): ContractEnrichmentPatch {
+  const patch: ContractEnrichmentPatch = {
     tokenName: e.tokenName,
     tokenSymbol: e.tokenSymbol,
     tokenPair: e.tokenPair,
@@ -127,6 +128,7 @@ function enrichmentToPatch(e: TokenEnrichment): ContractEnrichmentPatch {
     enrichmentSource: e.enrichmentSource,
     enrichedAt: new Date().toISOString(),
   };
+  return opts?.metadataOnly ? metadataOnlyEnrichmentPatch(patch) : patch;
 }
 
 async function applyTokenEnrichment(
@@ -134,12 +136,13 @@ async function applyTokenEnrichment(
   userId: string,
   enrichment: TokenEnrichment,
   options?: { channelId?: string; messageId?: string },
+  patchOpts?: { metadataOnly?: boolean },
 ): Promise<void> {
   const storage = getStorageProvider();
   const updated = await storage.enrichContract(
     userId,
     enrichment.address,
-    enrichmentToPatch(enrichment),
+    enrichmentToPatch(enrichment, patchOpts),
     options,
   );
   if (updated) {
@@ -173,11 +176,11 @@ function scheduleDexFallback(
       if (!hit) return;
       const enrichment = await enrichToken(address, hit.evmChain);
       if (!enrichment) return;
-      await applyTokenEnrichment(wsServer, userId, enrichment, { channelId, messageId });
+      await applyTokenEnrichment(wsServer, userId, enrichment, { channelId, messageId }, { metadataOnly: true });
     } catch (err) {
       console.error('[App] Dex fallback failed:', (err as Error).message);
     }
-  }, 8_000);
+  }, 15_000);
 }
 
 function wireGatewayEvents(gw: GatewayManager, wsServer: WsServer, userId: string): void {
@@ -193,6 +196,8 @@ function wireGatewayEvents(gw: GatewayManager, wsServer: WsServer, userId: strin
     const rooms = await storage.getRoomsForChannel(userId, rawMsg.channel_id);
 
     if (rooms.length === 0 && !isDM) return;
+
+    cacheDiscordMessage(rawMsg);
 
     const config = await storage.getConfig(userId);
     const isHighlighted = await storage.isUserHighlighted(userId, rawMsg.author.id);
@@ -271,7 +276,7 @@ function wireGatewayEvents(gw: GatewayManager, wsServer: WsServer, userId: strin
       backfillEvmChainsFromApi(wsServer, userId, frontendMsg.contractAddresses, evmChainHint);
     }
 
-    const rickReply = buildRickReplyContext(rawMsg.referenced_message);
+    const rickReply = buildRickReplyContext(rawMsg.referenced_message, rawMsg.message_reference);
     const rickEnrichment = tryParseTokenEnrichment({
       embeds: rawMsg.embeds,
       content: rawMsg.content,
@@ -322,7 +327,9 @@ function wireGatewayEvents(gw: GatewayManager, wsServer: WsServer, userId: strin
       editedTimestamp: rawMsg.edited_timestamp ?? null,
     }, roomIds, userId);
 
-    const rickReply = buildRickReplyContext(rawMsg.referenced_message);
+    cacheDiscordMessage(rawMsg);
+
+    const rickReply = buildRickReplyContext(rawMsg.referenced_message, rawMsg.message_reference);
     const rickEnrichment = tryParseTokenEnrichment({
       embeds: rawMsg.embeds,
       content: rawMsg.content,

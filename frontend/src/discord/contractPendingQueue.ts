@@ -129,6 +129,9 @@ export async function tryRickEnrich(msg: {
     content?: string;
     author?: { username?: string; global_name?: string | null };
   } | null;
+  message_reference?: {
+    message_id?: string;
+  } | null;
 }): Promise<void> {
   if (!msg.embeds || !Array.isArray(msg.embeds) || msg.embeds.length === 0) return;
   try {
@@ -145,6 +148,9 @@ export async function tryRickEnrich(msg: {
               content: msg.referenced_message.content,
               author: msg.referenced_message.author,
             }
+          : undefined,
+        messageReference: msg.message_reference
+          ? { message_id: msg.message_reference.message_id }
           : undefined,
       }),
     });

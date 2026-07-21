@@ -672,7 +672,7 @@ export class SupabaseStorageProvider implements StorageProvider {
         .select('*')
         .eq('user_id', userId)
         .ilike('address', entry.address)
-        .or('token_symbol.not.is.null,token_name.not.is.null,fdv_at_call_display.not.is.null')
+        .or('token_symbol.not.is.null,token_name.not.is.null')
         .order('timestamp', { ascending: false })
         .limit(1);
 

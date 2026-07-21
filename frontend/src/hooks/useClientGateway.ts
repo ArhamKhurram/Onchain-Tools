@@ -16,6 +16,7 @@ import { playHighlightSound, playContractAlertSound, playKeywordAlertSound } fro
 import { showDesktopNotification } from '../utils/desktopNotification';
 import { buildContractUrl } from '../utils/contractUrl';
 import { queueContractDetection, tryRickEnrich } from '../discord/contractPendingQueue';
+import { cacheDiscordMessage } from '../discord/messageReplyCache';
 
 function isUserHighlighted(
   discordUserId: string,
@@ -91,6 +92,8 @@ function handleLiveMessage(gw: GatewayManager, rawMsg: DiscordMessage & { _chann
     r.channels.some((c) => c.channelId === rawMsg.channel_id && (c.source ?? 'discord') === 'discord'),
   );
   if (matchedRooms.length === 0 && !isDM) return;
+
+  cacheDiscordMessage(rawMsg);
 
   const roomIds = matchedRooms.map((r) => r.id);
   if (isDM) roomIds.push(`dm:${rawMsg.channel_id}`);
