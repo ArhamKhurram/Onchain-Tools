@@ -8,51 +8,89 @@ once shipped.
 
 ## In progress
 
-### FOMO Tracking (fan-out)
-Track FOMO (fomo.family) users; when a tracked user buys/sells, notify everyone
-who tracks them.
-- **Auth model:** Option A — single shared FOMO service account (creds in
-  `backend/.env` as `FOMO_*`). Privy refresh-token → access JWT; API calls run
-  inside stealth Chromium to clear Cloudflare.
-- **Architecture:** fan-out-on-write. One global poll of `/feed/tradingActivity`
-  for the whole platform → route each trade to the OCT users who track that FOMO
-  user. O(1) polling regardless of user count.
-- **UI:** tab on the Wallets page — `Wallets` (on-chain) | `FOMO Tracking` (FOMO users).
-- **Delivery:** in-app live feed + Pushover.
-- **Merged so far:** `backend/src/fomo/client.ts` (`FomoClient`) + `types.ts`;
-  Playwright deps added; `FOMO_*` documented in `backend/.env.example`;
-  tracked-user CRUD via Supabase RLS (console reads/writes `fomo_tracked_users`
-  directly; backend `/api/fomo/resolve` + `/api/fomo/tracked` for handle lookup
-  and follow sync); per-user Pushover toggle on the FOMO tab; fan-out poller
-  with auto-follow sync (`FOMO_ENSURE_FOLLOWS`); Railway nixpacks installs
-  Chromium for Playwright.
-- **Blocked on:** shared `FOMO_REFRESH_TOKEN` in prod to confirm whether
-  `/feed/tradingActivity` is a global firehose or following-only.
+_(Nothing actively in flight — pick from Planned next.)_
 
 ---
 
 ## Planned next
 
-_(Nothing committed yet — pick from backlog below.)_
+### FOMO prod reliability rework
+Prod FOMO works locally but breaks on Railway: Cloudflare blocks datacenter IPs
+(`upstream 0`), leaderboard/holders fail without warm browser session, and API
+volume is uncached. **Do not** solve with 20 manual accounts — one shared
+service account is correct; fix infra + caching.
+
+**Root causes (three different limits):**
+- **Cloudflare** — cold Playwright on Railway datacenter IP; manual `FOMO_CF_*`
+  env copy is a band-aid. Dev works because home IP + warm session.
+- **FOMO API rate limit** — HTTP 429 from too many calls on one account/IP.
+- **OCT express limiter** — 120 req/min on `/api` in hosted mode; needs
+  `trust proxy` behind Railway.
+
+**Tier 0 (current):** one shared account, fan-out poller, no caching — breaks in prod.
+
+**Recommended path:**
+
+*Phase 1 — stop the bleeding (1–2 days)*
+- Init browser **once** at boot; reuse shared client for all routes (no re-`init()`
+  per leaderboard request).
+- **Server-side cache** — leaderboard 5–15 min, hodlers overlap 15 min.
+- **Adaptive poll interval** — 10s when users connected, 30–60s when idle.
+- **`trust proxy`** on Railway for express-rate-limit.
+- Richer **`/api/fomo/status`** — last successful poll, last CF error, token age.
+
+*Phase 2 — prod behaves like dev (3–5 days)*
+- **Dedicated FOMO worker** on always-on VPS/Fly with persistent Playwright
+  profile (survives redeploys). OCT backend calls internal proxy.
+- Optional residential proxy if CF still blocks.
+
+*Phase 3 — account pool (only if 429s persist after Phase 1–2)*
+- `fomo_service_accounts` table; 2–3 service accounts; auto-rotate on 429.
+- Fully automated — no manual cookie copying.
+
+**Do not:** 20 manual accounts, per-user FOMO OAuth (Option B/C), uncached
+leaderboard + overlap + poller from one cold Railway container.
+
+**Privy refresh token:** already auto-rotates into `fomo_poll_state` — manual
+update only when session fully revoked. Friend's bot likely = warm browser +
+VPS + caching, not account rotation.
 
 ---
 
 ## Recently shipped (Jul 2026)
 
-- **FOMO storage fix** — console persists tracked users via Supabase RLS; backend
-  accepts `SUPABASE_SERVICE_ROLE_KEY` alias; resolve + track REST routes with
-  shared-account follow sync.
-- **Per-tracked-user Pushover toggle** — bell control on each FOMO row.
-- **Signal convergence v1** — in-app alert when a contract call and a tracked
-  FOMO buy hit the same token within 30 minutes; convergence badge on Radar rows;
-  optional Pushover via `/api/pushover/signal-convergence`.
-- **FOMO leaderboard** — top traders (24h / all-time) on the Wallets → FOMO tab;
-  one-click track from a row.
+### FOMO tracking (v1 — fan-out)
+- **Core client** — `FomoClient` + Playwright stealth Chromium; Privy refresh →
+  JWT; auto-persist rotated token to `fomo_poll_state`.
+- **Auth model:** Option A — single shared service account (`FOMO_*` env + DB).
+- **Architecture:** fan-out-on-write — one global poll of `/feed/tradingActivity`
+  → route trades to OCT users who track that FOMO user.
+- **UI:** Wallets → FOMO tab — track list, live trade feed, leaderboard, Pushover
+  bell per row.
+- **Storage fix** — console persists tracked users via Supabase RLS; backend
+  `/api/fomo/resolve` + `/api/fomo/tracked` for handle lookup + follow sync.
+- **Leaderboard** — top traders (24h / all-time); one-click track; parsing fix for
+  `responseObject.leaderboard` envelope.
 - **Holder overlap** — Radar shows how many tracked FOMO traders hold each contract.
-- **Console code-splitting** — lazy-loaded routes, lazy `GlobalSettings`, vendor
-  manualChunks in Vite (main chunk ~150 kB).
-- **Railway Playwright** — nixpacks installs Chromium system deps + browser for
-  FOMO client at deploy time.
+- **Signal convergence v1** — in-app alert when contract call + FOMO buy hit same
+  token within configurable window; badge on Feed + Radar; optional Pushover.
+- **Railway Playwright** — nixpacks Chromium + system deps; Ubuntu Noble
+  `libasound2t64` fix.
+
+### Console & landing
+- **Radar sorting** — sortable column headers (red active state); `sort: latest`
+  toolbar preset; Latest column (last mention time).
+- **Code-splitting** — lazy routes, lazy `GlobalSettings`, vendor manualChunks
+  (~150 kB main chunk).
+- **Contract feed** — 30s Rick wait queue; Dex/catalog fallbacks; client-gateway
+  persistence; ticker in feed rows.
+- **Landing** — stope-style reskin; `/dashboard` split routing; Updates changelog
+  section; footer/nav polish.
+
+### Infra & auth
+- **Hosted mode** — Supabase auth, RLS, Railway backend + Vercel frontend split.
+- **Browser-side Discord gateway** — client-gateway mode; OAuth callback fix.
+- **OCT rebrand** — neobrutalist cockpit theme across console.
 
 ---
 
@@ -108,5 +146,12 @@ reusable backend service; the Discord layer is future work.
 ---
 
 ## Known gaps / tech debt
+- **FOMO prod** — leaderboard/holders fail on Railway (CF datacenter block);
+  `FOMO_PRIVY_TOKEN` synced to Railway; CF cookies still manual. See Planned next.
+- **Vercel** — confirm `VITE_API_URL` → Railway, `VITE_SUPABASE_ANON_KEY` set
+  (cannot auto-update sensitive vars).
+- **Express** — `trust proxy` not set in hosted mode (rate-limit warnings in Railway logs).
 - Prod Supabase (`vmlxyqzjdaegkfylxfka`) migrations status vs dev — verify before
   relying on prod schema.
+- Confirm whether `/feed/tradingActivity` is global firehose or following-only
+  (auto-follow via `FOMO_ENSURE_FOLLOWS` mitigates if following-scoped).
