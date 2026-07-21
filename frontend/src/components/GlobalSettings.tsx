@@ -1762,105 +1762,6 @@ export default function GlobalSettings() {
                         </div>
 
                         <div className="p-3 sm:p-4 bg-discord-sidebar rounded-lg space-y-3">
-                          <h4 className="text-sm font-semibold text-white">Missed runner alerts</h4>
-                          <p className="text-xs text-discord-text-muted">
-                            Notify when a scanned token hits your multiplier vs MC@call and none of your My Wallets hold it.
-                          </p>
-                          <Toggle
-                            value={missedRunnerEnabled}
-                            onChange={setMissedRunnerEnabled}
-                            label="Enable missed-runner monitoring"
-                          />
-                          {missedRunnerEnabled && (
-                            <div className="space-y-3 pt-1">
-                              <div>
-                                <label className="text-[11px] text-discord-text-muted mb-2 block">Deliver via</label>
-                                <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
-                                  {MISSED_RUNNER_NOTIFY_OPTIONS.map(({ value, label, hint }) => (
-                                    <button
-                                      key={value}
-                                      type="button"
-                                      onClick={() => setMissedRunnerNotifyVia(value)}
-                                      className={`px-2 py-2 rounded text-left border transition-colors ${
-                                        missedRunnerNotifyVia === value
-                                          ? 'bg-discord-blurple/20 border-discord-blurple text-white'
-                                          : 'bg-discord-dark border-discord-input text-discord-text-muted hover:text-discord-text'
-                                      }`}
-                                    >
-                                      <span className="block text-xs font-semibold">{label}</span>
-                                      <span className="block text-[10px] opacity-80 mt-0.5">{hint}</span>
-                                    </button>
-                                  ))}
-                                </div>
-                                {(missedRunnerNotifyVia === 'pushover' || missedRunnerNotifyVia === 'both') && !pushoverEnabled && (
-                                  <p className="text-[11px] text-orange-400 mt-2">
-                                    Pushover must be enabled above with app token and user key.
-                                  </p>
-                                )}
-                                {(missedRunnerNotifyVia === 'toast' || missedRunnerNotifyVia === 'both') && (
-                                  <p className="text-[10px] text-discord-text-muted mt-2">
-                                    Toast position is set under Sounds &amp; Notifications → On-site toast alerts.
-                                  </p>
-                                )}
-                              </div>
-                              <div className="px-2 sm:px-3 py-2 bg-discord-dark rounded">
-                                <label className="text-[11px] text-discord-text-muted mb-1 block">
-                                  Multiplier threshold: {missedRunnerMultiplier.toFixed(2)}× vs MC@call
-                                </label>
-                                <input
-                                  type="range"
-                                  min={1.25}
-                                  max={5}
-                                  step={0.05}
-                                  value={missedRunnerMultiplier}
-                                  onChange={(e) => setMissedRunnerMultiplier(Number(e.target.value))}
-                                  className="w-full accent-discord-blurple"
-                                />
-                              </div>
-                              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                                <div className="px-2 sm:px-3 py-2 bg-discord-dark rounded">
-                                  <label className="text-[11px] text-discord-text-muted mb-1 block">Lookback (hours)</label>
-                                  <input
-                                    type="number"
-                                    min={1}
-                                    max={168}
-                                    value={missedRunnerLookbackHours}
-                                    onChange={(e) => setMissedRunnerLookbackHours(Math.max(1, Number(e.target.value) || 24))}
-                                    className="w-full bg-discord-sidebar border-none rounded px-2 py-1.5 text-sm text-discord-text outline-none focus:ring-1 focus:ring-discord-blurple"
-                                  />
-                                </div>
-                                <div className="px-2 sm:px-3 py-2 bg-discord-dark rounded">
-                                  <label className="text-[11px] text-discord-text-muted mb-1 block">Cooldown per token (hours)</label>
-                                  <input
-                                    type="number"
-                                    min={1}
-                                    max={168}
-                                    value={missedRunnerCooldownHours}
-                                    onChange={(e) => setMissedRunnerCooldownHours(Math.max(1, Number(e.target.value) || 24))}
-                                    className="w-full bg-discord-sidebar border-none rounded px-2 py-1.5 text-sm text-discord-text outline-none focus:ring-1 focus:ring-discord-blurple"
-                                  />
-                                </div>
-                              </div>
-                              <div className="px-2 sm:px-3 py-2 bg-discord-dark rounded">
-                                <label className="text-[11px] text-discord-text-muted mb-1 block">Min MC@call (optional, USD)</label>
-                                <input
-                                  type="number"
-                                  min={0}
-                                  placeholder="e.g. 50000 — skip lower MC scans"
-                                  value={missedRunnerMinMcAtCall}
-                                  onChange={(e) => setMissedRunnerMinMcAtCall(e.target.value)}
-                                  className="w-full bg-discord-sidebar border-none rounded px-2 py-1.5 text-sm text-discord-text outline-none focus:ring-1 focus:ring-discord-blurple"
-                                />
-                              </div>
-                              <p className="text-[11px] text-discord-text-muted">
-                                Balance checks use addresses on Wallets → My Wallets. Solana needs HELIUS_API_KEY on the backend;
-                                EVM chains use Alchemy or public RPC. Robinhood-chain tokens are skipped until on-chain checks exist.
-                              </p>
-                            </div>
-                          )}
-                        </div>
-
-                        <div className="p-3 sm:p-4 bg-discord-sidebar rounded-lg space-y-3">
                           <h4 className="text-sm font-semibold text-white">Filters</h4>
                           <p className="text-xs text-discord-text-muted">Narrow down which messages trigger notifications. Empty = no filter (all match).</p>
 
@@ -2030,6 +1931,104 @@ export default function GlobalSettings() {
                         </div>
                       </div>
                     )}
+
+                    <div className="p-3 sm:p-4 bg-discord-sidebar rounded-lg space-y-3 border border-discord-blurple/30">
+                      <h4 className="text-sm font-semibold text-white">Missed runner alerts</h4>
+                      <p className="text-xs text-discord-text-muted">
+                        Notify when a scanned token hits your multiplier vs MC@call and none of your My Wallets hold it.
+                      </p>
+                      <Toggle
+                        value={missedRunnerEnabled}
+                        onChange={setMissedRunnerEnabled}
+                        label="Enable missed-runner monitoring"
+                      />
+                      {missedRunnerEnabled && (
+                        <div className="space-y-3 pt-1">
+                          <div>
+                            <label className="text-[11px] text-discord-text-muted mb-2 block">Deliver via</label>
+                            <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+                              {MISSED_RUNNER_NOTIFY_OPTIONS.map(({ value, label, hint }) => (
+                                <button
+                                  key={value}
+                                  type="button"
+                                  onClick={() => setMissedRunnerNotifyVia(value)}
+                                  className={`px-2 py-2 rounded text-left border transition-colors ${
+                                    missedRunnerNotifyVia === value
+                                      ? 'bg-discord-blurple/20 border-discord-blurple text-white'
+                                      : 'bg-discord-dark border-discord-input text-discord-text-muted hover:text-discord-text'
+                                  }`}
+                                >
+                                  <span className="block text-xs font-semibold">{label}</span>
+                                  <span className="block text-[10px] opacity-80 mt-0.5">{hint}</span>
+                                </button>
+                              ))}
+                            </div>
+                            {(missedRunnerNotifyVia === 'pushover' || missedRunnerNotifyVia === 'both') && !pushoverEnabled && (
+                              <p className="text-[11px] text-orange-400 mt-2">
+                                Enable Pushover above and add credentials for phone pushes.
+                              </p>
+                            )}
+                            {(missedRunnerNotifyVia === 'toast' || missedRunnerNotifyVia === 'both') && (
+                              <p className="text-[10px] text-discord-text-muted mt-2">
+                                Toast position: Settings → Sounds &amp; Notifications → On-site toast alerts.
+                              </p>
+                            )}
+                          </div>
+                          <div className="px-2 sm:px-3 py-2 bg-discord-dark rounded">
+                            <label className="text-[11px] text-discord-text-muted mb-1 block">
+                              Multiplier threshold: {missedRunnerMultiplier.toFixed(2)}× vs MC@call
+                            </label>
+                            <input
+                              type="range"
+                              min={1.25}
+                              max={5}
+                              step={0.05}
+                              value={missedRunnerMultiplier}
+                              onChange={(e) => setMissedRunnerMultiplier(Number(e.target.value))}
+                              className="w-full accent-discord-blurple"
+                            />
+                          </div>
+                          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                            <div className="px-2 sm:px-3 py-2 bg-discord-dark rounded">
+                              <label className="text-[11px] text-discord-text-muted mb-1 block">Lookback (hours)</label>
+                              <input
+                                type="number"
+                                min={1}
+                                max={168}
+                                value={missedRunnerLookbackHours}
+                                onChange={(e) => setMissedRunnerLookbackHours(Math.max(1, Number(e.target.value) || 24))}
+                                className="w-full bg-discord-sidebar border-none rounded px-2 py-1.5 text-sm text-discord-text outline-none focus:ring-1 focus:ring-discord-blurple"
+                              />
+                            </div>
+                            <div className="px-2 sm:px-3 py-2 bg-discord-dark rounded">
+                              <label className="text-[11px] text-discord-text-muted mb-1 block">Cooldown per token (hours)</label>
+                              <input
+                                type="number"
+                                min={1}
+                                max={168}
+                                value={missedRunnerCooldownHours}
+                                onChange={(e) => setMissedRunnerCooldownHours(Math.max(1, Number(e.target.value) || 24))}
+                                className="w-full bg-discord-sidebar border-none rounded px-2 py-1.5 text-sm text-discord-text outline-none focus:ring-1 focus:ring-discord-blurple"
+                              />
+                            </div>
+                          </div>
+                          <div className="px-2 sm:px-3 py-2 bg-discord-dark rounded">
+                            <label className="text-[11px] text-discord-text-muted mb-1 block">Min MC@call (optional, USD)</label>
+                            <input
+                              type="number"
+                              min={0}
+                              placeholder="e.g. 50000 — skip lower MC scans"
+                              value={missedRunnerMinMcAtCall}
+                              onChange={(e) => setMissedRunnerMinMcAtCall(e.target.value)}
+                              className="w-full bg-discord-sidebar border-none rounded px-2 py-1.5 text-sm text-discord-text outline-none focus:ring-1 focus:ring-discord-blurple"
+                            />
+                          </div>
+                          <p className="text-[11px] text-discord-text-muted">
+                            Balance checks use Wallets → My Wallets. Keep the site open for toast delivery.
+                          </p>
+                        </div>
+                      )}
+                    </div>
                   </div>
                 </div>
               </>
