@@ -1,4 +1,4 @@
-import { Trophy, Radio, Zap, LayoutGrid, Rocket, Wifi } from 'lucide-react';
+import { Trophy, Radio, Zap, LayoutGrid, Rocket, Wifi, PieChart } from 'lucide-react';
 import type { UpdateSlide, UpdateSlideVariant } from '../../data/updates';
 
 function RadarMock() {
@@ -54,6 +54,30 @@ function ConvergenceMock() {
   );
 }
 
+function PortfolioMock() {
+  return (
+    <div className="w-full max-w-[280px] mx-auto space-y-2">
+      <div className="grid grid-cols-3 gap-1.5">
+        {[
+          { label: 'Realized', val: '+$4.2K' },
+          { label: 'Win rate', val: '62%' },
+          { label: 'Holdings', val: '$18K' },
+        ].map(({ label, val }) => (
+          <div key={label} className="px-2 py-1.5 rounded border border-oct-border/50 bg-oct-surface/60 text-center">
+            <div className="text-[8px] font-mono uppercase text-oct-muted">{label}</div>
+            <div className="text-[10px] font-mono font-bold text-oct-text">{val}</div>
+          </div>
+        ))}
+      </div>
+      <div className="flex gap-1 text-[8px] font-mono text-oct-muted justify-center">
+        <span className="px-1 border border-black/40 text-oct-accent">ETH</span>
+        <span className="px-1 border border-black/40">BASE</span>
+        <span className="px-1 border border-black/40">BSC</span>
+      </div>
+    </div>
+  );
+}
+
 function FeedMock() {
   return (
     <div className="w-full max-w-[280px] mx-auto px-3 py-2 rounded border border-oct-border/50 bg-oct-surface/60">
@@ -73,6 +97,7 @@ const VARIANT_ICON: Record<UpdateSlideVariant, typeof Rocket> = {
   feed: Radio,
   landing: Rocket,
   gateway: Wifi,
+  portfolio: PieChart,
   default: Rocket,
 };
 
@@ -103,6 +128,7 @@ export function SlideHero({ slide }: { slide: UpdateSlide }) {
         {slide.variant === 'fomo' && <FomoMock />}
         {slide.variant === 'convergence' && <ConvergenceMock />}
         {slide.variant === 'feed' && <FeedMock />}
+        {slide.variant === 'portfolio' && <PortfolioMock />}
         {(slide.variant === 'landing' || slide.variant === 'gateway' || slide.variant === 'default' || !slide.variant) && (
           <Icon size={48} className="mx-auto text-oct-accent/80" strokeWidth={1.25} />
         )}

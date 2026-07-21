@@ -15,6 +15,7 @@ import { TelegramClient } from 'teleproto';
 import { StringSession } from 'teleproto/sessions/index.js';
 import type { TelegramClientManager } from '../telegram/clientManager.js';
 import { createFomoRouter } from '../fomo/routes.js';
+import { createPortfolioRouter } from '../portfolio/routes.js';
 import { tryParseTokenEnrichment, buildRickReplyContext } from '../utils/rickEmbedParser.js';
 import { needsMetadataFallback, metadataOnlyEnrichmentPatch } from '../utils/enrichmentMerge.js';
 import { enrichToken, getTokenSnapshot, persistEnrichment } from '../utils/tokenSnapshot.js';
@@ -1492,6 +1493,7 @@ export function createRouter(wsServer: WsServer): Router {
   });
 
   router.use('/fomo', createFomoRouter());
+  router.use('/portfolio', createPortfolioRouter());
 
   return router;
 }

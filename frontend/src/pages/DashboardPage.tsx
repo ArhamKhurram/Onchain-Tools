@@ -1,4 +1,4 @@
-import { MessageSquare, Wallet, TrendingUp, Radio, ArrowRight } from 'lucide-react';
+import { MessageSquare, Wallet, TrendingUp, PieChart, Radio, ArrowRight } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { useAuthSession } from '../hooks/useAuthSession';
 import { useAppStore } from '../stores/appStore';
@@ -23,6 +23,14 @@ const modules = [
   },
   {
     num: '03',
+    title: 'PORTFOLIO',
+    desc: 'GMGN wallet dashboard for My Wallets — PnL, holdings, activity, chart and calendar.',
+    to: routes.portfolio,
+    icon: PieChart,
+    liveKey: 'auth' as const,
+  },
+  {
+    num: '04',
     title: 'CALL',
     desc: 'Contract radar — Solana & EVM addresses the moment they drop. One-click trade links.',
     to: routes.callers,
@@ -58,7 +66,7 @@ export default function DashboardPage() {
         <div className="max-w-6xl mx-auto">
           <p className="font-mono text-xs tracking-[0.2em] text-oct-muted mb-6">[ MODULES ]</p>
 
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-8 md:gap-6">
+          <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-8 md:gap-6">
             {modules.map((m) => {
               const Icon = m.icon;
               const isLive =

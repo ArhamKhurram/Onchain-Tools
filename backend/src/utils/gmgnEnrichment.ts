@@ -1,5 +1,5 @@
 import type { TokenEnrichment } from './rickEmbedParser.js';
-import { gmgnGet } from './gmgnClient.js';
+import { gmgnGetLegacy } from './gmgnClient.js';
 
 function formatCompact(n: number): string {
   if (n >= 1e9) return `${(n / 1e9).toFixed(1)}B`;
@@ -42,7 +42,7 @@ export function resolveGmgnChain(evmChain?: string): string | null {
 }
 
 export async function enrichFromGmgn(chain: string, address: string): Promise<TokenEnrichment | null> {
-  const data = await gmgnGet<GmgnTokenInfo>('/v1/token/info', { chain, address });
+  const data = await gmgnGetLegacy<GmgnTokenInfo>('/v1/token/info', { chain, address });
   if (!data?.address) return null;
 
   const priceRaw = data.price?.price;

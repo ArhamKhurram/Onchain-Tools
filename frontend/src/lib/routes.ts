@@ -3,6 +3,7 @@ export const routes = {
   home: '/',
   feed: '/feed',
   wallets: '/wallets',
+  portfolio: '/portfolio',
   callers: '/callers',
   workspace: '/workspace',
   settings: '/settings',

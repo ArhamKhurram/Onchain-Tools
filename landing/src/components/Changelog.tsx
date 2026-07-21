@@ -9,6 +9,12 @@ interface ChangelogEntry {
 
 const CHANGELOG: ChangelogEntry[] = [
   {
+    date: '2026-07-22',
+    added: [
+      '**Portfolio tab** — GMGN wallet dashboard for My Wallets: realized/unrealized PnL, win rate, holdings, recent trades, plus PnL chart and calendar modals. EVM `0x` wallets aggregate across Ethereum, Base, and BSC in one view; Solana and Robinhood (HOOD) stay single-chain',
+    ],
+  },
+  {
     date: '2026-07-14',
     added: [
       '**Pop-out chat windows** — detach any room, DM, or your Mentions feed into its own native window that keeps streaming live, so you can watch a caller channel on a second monitor while you trade. Click the pop-out icon in a chat header; the chat re-docks automatically when you close the window (desktop app)',

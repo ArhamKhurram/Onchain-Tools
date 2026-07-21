@@ -5,6 +5,7 @@ export type UpdateSlideVariant =
   | 'feed'
   | 'landing'
   | 'gateway'
+  | 'portfolio'
   | 'default';
 
 export interface UpdateSlide {
@@ -22,6 +23,13 @@ export interface UpdateSlide {
  * Add slides here when shipping; users only auto-see ids they haven't dismissed.
  */
 export const UPDATE_SLIDES: UpdateSlide[] = [
+  {
+    id: 'slide-2026-07-22-portfolio',
+    title: 'Portfolio Tab',
+    description:
+      'GMGN wallet dashboard for My Wallets — stats, holdings, activity, PnL chart & calendar. EVM wallets aggregate across ETH, Base, and BSC automatically.',
+    variant: 'portfolio',
+  },
   {
     id: 'slide-2026-07-21-radar-sort',
     title: 'Sortable Radar',
