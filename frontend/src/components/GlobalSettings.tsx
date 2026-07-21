@@ -140,6 +140,7 @@ export default function GlobalSettings() {
   const [proxyUrl, setProxyUrl] = useState('');
   const [proxySaving, setProxySaving] = useState(false);
   const [proxySaved, setProxySaved] = useState(false);
+  const [saveError, setSaveError] = useState<string | null>(null);
   const [showTelegramSetup, setShowTelegramSetup] = useState(false);
 
   useEffect(() => {
@@ -222,6 +223,10 @@ export default function GlobalSettings() {
       return aKeys.length === bKeys.length && aKeys.every((k) => a[k] === b[k]);
     };
 
+    const savedMissedRunner = { ...defaultMissedRunner, ...config.missedRunner };
+    const savedPushoverTriggers = { ...defaultTriggers, ...(config.pushover?.triggers ?? {}) };
+    const savedPushoverFilters = { ...defaultFilters, ...(config.pushover?.filters ?? {}) };
+
     return (
       !arraysEqual(globalUsers, config.globalHighlightedUsers) ||
       contractDetection !== config.contractDetection ||
@@ -245,14 +250,14 @@ export default function GlobalSettings() {
       pushoverUserKey !== (config.pushover?.userKey ?? '') ||
       pushoverPriority !== (config.pushover?.priority ?? 1) ||
       pushoverSound !== (config.pushover?.sound ?? 'siren') ||
-      JSON.stringify(pushoverTriggers) !== JSON.stringify(config.pushover?.triggers ?? defaultTriggers) ||
-      JSON.stringify(pushoverFilters) !== JSON.stringify(config.pushover?.filters ?? defaultFilters) ||
-      missedRunnerEnabled !== (config.missedRunner?.enabled ?? defaultMissedRunner.enabled) ||
-      missedRunnerMultiplier !== (config.missedRunner?.minMultiplier ?? defaultMissedRunner.minMultiplier) ||
-      missedRunnerLookbackHours !== (config.missedRunner?.lookbackHours ?? defaultMissedRunner.lookbackHours) ||
-      missedRunnerCooldownHours !== (config.missedRunner?.cooldownHours ?? defaultMissedRunner.cooldownHours) ||
-      missedRunnerMinMcAtCall !== (config.missedRunner?.minMcAtCall != null ? String(config.missedRunner.minMcAtCall) : '') ||
-      missedRunnerNotifyVia !== (config.missedRunner?.notifyVia ?? (config.pushover?.triggers?.missedRunner ? 'pushover' : 'toast')) ||
+      JSON.stringify(pushoverTriggers) !== JSON.stringify(savedPushoverTriggers) ||
+      JSON.stringify(pushoverFilters) !== JSON.stringify(savedPushoverFilters) ||
+      missedRunnerEnabled !== savedMissedRunner.enabled ||
+      missedRunnerMultiplier !== savedMissedRunner.minMultiplier ||
+      missedRunnerLookbackHours !== savedMissedRunner.lookbackHours ||
+      missedRunnerCooldownHours !== savedMissedRunner.cooldownHours ||
+      missedRunnerMinMcAtCall !== (savedMissedRunner.minMcAtCall != null ? String(savedMissedRunner.minMcAtCall) : '') ||
+      missedRunnerNotifyVia !== savedMissedRunner.notifyVia ||
       solPlatform !== (config.contractLinkTemplates?.solPlatform ?? 'axiom') ||
       evmPlatform !== (config.contractLinkTemplates?.evmPlatform ?? 'gmgn') ||
       customSolUrl !== (config.contractLinkTemplates?.sol ?? '') ||
@@ -303,6 +308,10 @@ export default function GlobalSettings() {
 
   const handleSave = async () => {
     setSaving(true);
+    setSaveError(null);
+    // #region agent log
+    fetch('http://127.0.0.1:7280/ingest/fb0ec303-d32c-4569-a0f8-cf88d8b908bc',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'8c6103'},body:JSON.stringify({sessionId:'8c6103',location:'GlobalSettings.tsx:handleSave:start',message:'save clicked',data:{missedRunnerEnabled,missedRunnerNotifyVia,hasUnsavedChanges},timestamp:Date.now(),hypothesisId:'B'})}).catch(()=>{});
+    // #endregion
     try {
       await updateConfig({
         globalHighlightedUsers: globalUsers,
@@ -349,6 +358,15 @@ export default function GlobalSettings() {
         mobileZoomScale,
         splitLayout,
       });
+      // #region agent log
+      fetch('http://127.0.0.1:7280/ingest/fb0ec303-d32c-4569-a0f8-cf88d8b908bc',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'8c6103'},body:JSON.stringify({sessionId:'8c6103',location:'GlobalSettings.tsx:handleSave:success',message:'save completed',data:{missedRunnerEnabled,missedRunnerNotifyVia},timestamp:Date.now(),hypothesisId:'B',runId:'post-fix'})}).catch(()=>{});
+      // #endregion
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : 'Failed to save settings';
+      setSaveError(message);
+      // #region agent log
+      fetch('http://127.0.0.1:7280/ingest/fb0ec303-d32c-4569-a0f8-cf88d8b908bc',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'8c6103'},body:JSON.stringify({sessionId:'8c6103',location:'GlobalSettings.tsx:handleSave:error',message:'save failed',data:{error:message},timestamp:Date.now(),hypothesisId:'A'})}).catch(()=>{});
+      // #endregion
     } finally {
       setSaving(false);
     }
@@ -2744,6 +2762,11 @@ export default function GlobalSettings() {
             <span className={`text-[11px] sm:text-sm transition-opacity ${hasUnsavedChanges ? 'opacity-100 text-discord-yellow' : 'opacity-0'}`}>
               Unsaved changes
             </span>
+            {saveError && (
+              <span className="text-[11px] sm:text-sm text-red-400 truncate" title={saveError}>
+                {saveError}
+              </span>
+            )}
           </div>
           <div className="flex items-center gap-2 sm:gap-3">
             {hasUnsavedChanges && (

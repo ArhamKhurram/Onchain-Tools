@@ -298,7 +298,26 @@ export class SupabaseStorageProvider implements StorageProvider {
     delete settings.telegramSessions;
     delete settings.globalHighlightedUsers;
     delete settings.globalKeywordPatterns;
-    const merged = { ...DEFAULT_SETTINGS, ...settings };
+    const merged = {
+      ...DEFAULT_SETTINGS,
+      ...settings,
+      pushover: {
+        ...DEFAULT_SETTINGS.pushover,
+        ...(settings.pushover ?? {}),
+        triggers: {
+          ...DEFAULT_SETTINGS.pushover.triggers,
+          ...(settings.pushover?.triggers ?? {}),
+        },
+        filters: {
+          ...DEFAULT_SETTINGS.pushover.filters,
+          ...(settings.pushover?.filters ?? {}),
+        },
+      },
+      missedRunner: {
+        ...DEFAULT_SETTINGS.missedRunner,
+        ...(settings.missedRunner ?? {}),
+      },
+    };
 
     const tokens = await this.getTokens(userId);
     const rooms = await this.getRooms(userId);

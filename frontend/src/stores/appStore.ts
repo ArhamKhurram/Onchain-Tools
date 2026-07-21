@@ -1121,12 +1121,20 @@ export const useAppStore = create<AppState>((set, get) => {
 
   updateConfig: async (data) => {
     if (demo) return demo.updateConfig(data);
-    await apiFetch(`${API_BASE}/config`, {
+    const res = await apiFetch(`${API_BASE}/config`, {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(data),
     });
-    await get().fetchConfig();
+    // #region agent log
+    fetch('http://127.0.0.1:7280/ingest/fb0ec303-d32c-4569-a0f8-cf88d8b908bc',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'8c6103'},body:JSON.stringify({sessionId:'8c6103',location:'appStore.ts:updateConfig',message:'PUT /config response',data:{ok:res.ok,status:res.status,keys:Object.keys(data)},timestamp:Date.now(),hypothesisId:'A'})}).catch(()=>{});
+    // #endregion
+    if (!res.ok) {
+      const errBody = await res.text().catch(() => '');
+      throw new Error(errBody || `Failed to save settings (${res.status})`);
+    }
+    const config: AppConfig = await res.json();
+    set((state) => (state._layoutHydrated ? { config } : { config, _layoutHydrated: true }));
   },
 
   sendMessage: async (channelId, content, files, source) => {
