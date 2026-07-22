@@ -5,7 +5,10 @@ import AnnouncementModal from './components/AnnouncementModal';
 import UpdatesModal from './components/UpdatesModal';
 import PopoutView from './components/PopoutView';
 import { IS_POPOUT } from './stores/appStore';
+import { initTheme } from './stores/themeStore';
 import './index.css';
+
+initTheme();
 
 ReactDOM.createRoot(document.getElementById('root')!).render(
   <React.StrictMode>

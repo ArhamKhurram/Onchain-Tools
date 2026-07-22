@@ -1,3 +1,4 @@
+import { useEffect } from 'react';
 import { NavLink, Outlet, useNavigate } from 'react-router-dom';
 import { Rocket } from 'lucide-react';
 import { useAuthSession } from '../hooks/useAuthSession';
@@ -7,6 +8,8 @@ import { useAppStore } from '../stores/appStore';
 import { useUpdatesUiStore } from '../stores/updatesUiStore';
 import { UPDATE_SLIDES } from '../data/updates';
 import { getSeenIds } from '../utils/announcements';
+import { useThemeStore } from '../stores/themeStore';
+import ThemeToggle from '../components/ThemeToggle';
 
 const NAV: { to: string; label: string; end?: boolean }[] = [
   { to: routes.home, label: 'Home', end: true },
@@ -30,6 +33,11 @@ export default function AppShell() {
   const navigate = useNavigate();
   const config = useAppStore((s) => s.config);
   const openChangelog = useUpdatesUiStore((s) => s.openChangelog);
+  const hydrateTheme = useThemeStore((s) => s.hydrate);
+
+  useEffect(() => {
+    hydrateTheme();
+  }, [hydrateTheme]);
 
   const unseenCount = UPDATE_SLIDES.filter((s) => {
     const seen = new Set([...getSeenIds(), ...(config?.seenAnnouncements ?? [])]);
@@ -45,10 +53,10 @@ export default function AppShell() {
 
   return (
     <div className="flex flex-col h-full w-full bg-oct-bg font-sans">
-      <header className="relative shrink-0 h-12 px-4 sm:px-6 flex items-center gap-4 border-b-2 border-black bg-black">
+      <header className="relative shrink-0 h-12 px-4 sm:px-6 flex items-center gap-4 border-b-2 border-oct-border bg-oct-panel">
         <a
           href={LANDING_URL}
-          className="font-display text-lg sm:text-xl tracking-tight text-white hover:opacity-90 transition-opacity shrink-0"
+          className="font-display text-lg sm:text-xl tracking-tight text-oct-text hover:opacity-90 transition-opacity shrink-0"
           title="Back to landing page"
         >
           OCT
@@ -67,6 +75,7 @@ export default function AppShell() {
         </nav>
 
         <div className="flex items-center gap-2 shrink-0">
+          <ThemeToggle />
           <button
             type="button"
             onClick={openChangelog}
@@ -76,14 +85,14 @@ export default function AppShell() {
           >
             <Rocket size={16} strokeWidth={2} />
             {unseenCount > 0 && (
-              <span className="absolute -top-0.5 -right-0.5 w-2 h-2 rounded-full bg-oct-accent border border-black" />
+              <span className="absolute -top-0.5 -right-0.5 w-2 h-2 rounded-full bg-oct-accent border border-oct-bg" />
             )}
           </button>
           {isHostedMode && !isAuthenticated ? (
             <button
               type="button"
               onClick={() => navigate(routes.login)}
-              className="font-mono text-[10px] sm:text-xs uppercase tracking-[0.12em] text-white border-2 border-white/40 px-2.5 py-1 hover:bg-white hover:text-black transition-colors"
+              className="font-mono text-[10px] sm:text-xs uppercase tracking-[0.12em] text-oct-text border-2 border-oct-border-bright px-2.5 py-1 hover:bg-oct-accent hover:text-white hover:border-oct-accent transition-colors"
             >
               [ SIGN IN ]
             </button>
@@ -99,7 +108,7 @@ export default function AppShell() {
               <button
                 type="button"
                 onClick={handleSignOut}
-                className="font-mono text-[10px] text-oct-muted hover:text-white transition-colors uppercase"
+                className="font-mono text-[10px] text-oct-muted hover:text-oct-text transition-colors uppercase"
               >
                 Out
               </button>

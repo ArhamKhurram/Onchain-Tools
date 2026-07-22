@@ -4,6 +4,53 @@
 @tailwind components;
 @tailwind utilities;
 
+/* ── Agentic Capital–inspired themes ───────────────────────────────────── */
+
+:root,
+[data-theme='dark'] {
+  color-scheme: dark;
+  --oct-bg: #0c0e0b;
+  --oct-panel: #121412;
+  --oct-surface: #141714;
+  --oct-surface-raised: #1c2019;
+  --oct-border: #2a2f28;
+  --oct-border-bright: #3d4538;
+  --oct-text: #eceae4;
+  --oct-muted: #8a9184;
+  --oct-accent: #6d9b4d;
+  --oct-accent-hover: #5a8340;
+  --oct-flame: #c45c4a;
+  --oct-accent-dim: rgba(109, 155, 77, 0.14);
+  --oct-live: #7cb358;
+  --oct-live-dim: rgba(124, 179, 88, 0.16);
+  --oct-live-pulse: rgba(124, 179, 88, 0.55);
+  --oct-green: #6d9b4d;
+  --oct-yellow: #c9a227;
+  --oct-shadow: #000000;
+}
+
+[data-theme='light'] {
+  color-scheme: light;
+  --oct-bg: #f4f2ec;
+  --oct-panel: #ebe8e0;
+  --oct-surface: #e4e1d8;
+  --oct-surface-raised: #faf9f6;
+  --oct-border: #cfcabf;
+  --oct-border-bright: #b5b0a4;
+  --oct-text: #1a1c18;
+  --oct-muted: #6b6f66;
+  --oct-accent: #5a8340;
+  --oct-accent-hover: #4a6d34;
+  --oct-flame: #b84a3a;
+  --oct-accent-dim: rgba(90, 131, 64, 0.12);
+  --oct-live: #5a8340;
+  --oct-live-dim: rgba(90, 131, 64, 0.14);
+  --oct-live-pulse: rgba(90, 131, 64, 0.45);
+  --oct-green: #4d7a36;
+  --oct-yellow: #a8841a;
+  --oct-shadow: #1a1c18;
+}
+
 * {
   margin: 0;
   padding: 0;
@@ -27,13 +74,13 @@ body {
   font-family: 'Space Grotesk', system-ui, sans-serif;
   font-size: 14px;
   line-height: 1.5;
-  color: #f5f5f5;
-  background-color: #0a0a0a;
+  color: var(--oct-text);
+  background-color: var(--oct-bg);
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
+  transition: background-color 0.2s ease, color 0.2s ease;
 }
 
-/* Neobrutalist headings: tight, heavy, slightly condensed feel. */
 h1,
 h2,
 h3 {
@@ -46,20 +93,20 @@ h3 {
 }
 
 ::-webkit-scrollbar-track {
-  background: #0a0a0a;
+  background: var(--oct-bg);
 }
 
 ::-webkit-scrollbar-thumb {
-  background: #2e2e2e;
+  background: var(--oct-border);
   border-radius: 0;
 }
 
 ::-webkit-scrollbar-thumb:hover {
-  background: #ff2a2a;
+  background: var(--oct-accent);
 }
 
 ::selection {
-  background: #ff2a2a;
+  background: var(--oct-accent);
   color: #ffffff;
 }
 
@@ -70,14 +117,12 @@ h3 {
     font-variation-settings: 'SOFT' 0, 'WONK' 1;
   }
 
-  /* Chunky, flat panel with a thick black border. */
   .brutal-card {
-    @apply bg-oct-surface border-2 border-black rounded-cockpit shadow-oct-hard;
+    @apply bg-oct-surface border-2 border-oct-border rounded-cockpit shadow-oct-hard;
   }
 
-  /* Solid red action button that "presses" into its hard shadow on click. */
   .brutal-btn {
-    @apply inline-flex items-center justify-center gap-1.5 rounded-cockpit border-2 border-black
+    @apply inline-flex items-center justify-center gap-1.5 rounded-cockpit border-2 border-oct-border
       bg-oct-accent text-white font-bold uppercase tracking-wide
       shadow-oct-hard-sm transition-all duration-100
       hover:-translate-x-[1px] hover:-translate-y-[1px] hover:shadow-oct-hard
@@ -86,7 +131,6 @@ h3 {
       disabled:hover:translate-x-0 disabled:hover:translate-y-0 disabled:hover:shadow-oct-hard-sm;
   }
 
-  /* Neutral/secondary chunky button. */
   .brutal-btn-ghost {
     @apply inline-flex items-center justify-center gap-1.5 rounded-cockpit border-2 border-oct-border-bright
       bg-oct-surface-raised text-oct-text font-bold uppercase tracking-wide
@@ -104,7 +148,6 @@ h3 {
   }
 }
 
-/* Signature livery stripe — structural, used once on nav */
 .cockpit-nav-stripe {
   position: absolute;
   left: 0;
@@ -113,7 +156,5 @@ h3 {
   height: 3px;
   overflow: hidden;
   pointer-events: none;
-  background: #ff2a2a;
+  background: var(--oct-accent);
 }
-
-/* Workspace column resize handles */
