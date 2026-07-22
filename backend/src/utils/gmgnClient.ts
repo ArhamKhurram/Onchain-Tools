@@ -45,7 +45,7 @@ function normalizePrivateKeyPem(raw: string | undefined): string | null {
 function missingKeyResult<T>(): GmgnResult<T> {
   return {
     ok: false,
-    error: 'Portfolio requires GMGN_API_KEY on server.',
+    error: 'GMGN_API_KEY not configured on server.',
     gmgnConfigured: false,
   };
 }

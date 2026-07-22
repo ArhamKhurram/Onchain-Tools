@@ -24,7 +24,7 @@ const modules = [
   {
     num: '03',
     title: 'PORTFOLIO',
-    desc: 'GMGN wallet dashboard for My Wallets — PnL, holdings, activity, chart and calendar.',
+    desc: 'Birdeye wallet dashboard for My Wallets — PnL, holdings, activity, chart and calendar.',
     to: routes.portfolio,
     icon: PieChart,
     liveKey: 'auth' as const,

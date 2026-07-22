@@ -1,5 +1,5 @@
 import { birdeyeGet, birdeyePost, isBirdeyeConfigured, type BirdeyeChain, type BirdeyeResult } from '../utils/birdeyeClient.js';
-import { mapSequential } from '../utils/gmgnLimiter.js';
+import { mapSequential } from '../utils/sequential.js';
 import type { DailyPnlResult } from './pnlAggregator.js';
 import {
   EVM_GMGN_CHAINS,

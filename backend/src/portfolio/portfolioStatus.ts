@@ -1,15 +1,25 @@
-import { isBirdeyeConfigured } from '../utils/birdeyeClient.js';
+import { isBirdeyeConfigured, type BirdeyeResult } from '../utils/birdeyeClient.js';
 import { fetchWalletHoldingsBirdeye, gmgnChainsToBirdeye } from './birdeyeWallet.js';
-import { probeResult } from './status.js';
-import { fetchWalletHoldings, resolvePortfolioChains, type GmgnChain } from './gmgnWallet.js';
 import { getGmgnEnvStatus } from './status.js';
 import { getPortfolioProvider } from './provider.js';
+import { resolvePortfolioChains, type GmgnChain } from './gmgnWallet.js';
 
 export function getPortfolioEnvStatus() {
   return {
     provider: getPortfolioProvider(),
     birdeyeConfigured: isBirdeyeConfigured(),
+    /** GMGN status for missed-runner / token enrichment — not used by Portfolio routes. */
     gmgn: getGmgnEnvStatus(),
+  };
+}
+
+function birdeyeProbeResult<T>(result: BirdeyeResult<T>) {
+  if (result.ok) return { ok: true as const };
+  return {
+    ok: false as const,
+    error: result.error,
+    code: result.code,
+    birdeyeConfigured: result.birdeyeConfigured,
   };
 }
 
@@ -19,14 +29,12 @@ export async function probePortfolio(opts: {
 }): Promise<{
   env: ReturnType<typeof getPortfolioEnvStatus>;
   probes: {
-    pnlSummary?: ReturnType<typeof probeResult>;
-    holdings?: ReturnType<typeof probeResult> & { chains?: GmgnChain[] };
+    holdings?: ReturnType<typeof birdeyeProbeResult> & { chains?: GmgnChain[] };
   };
 }> {
   const env = getPortfolioEnvStatus();
   const probes: {
-    pnlSummary?: ReturnType<typeof probeResult>;
-    holdings?: ReturnType<typeof probeResult> & { chains?: GmgnChain[] };
+    holdings?: ReturnType<typeof birdeyeProbeResult> & { chains?: GmgnChain[] };
   } = {};
 
   const chainParam = opts.probeChain?.trim();
@@ -41,29 +49,27 @@ export async function probePortfolio(opts: {
       ok: false,
       error: `Unsupported probe chain: ${chainParam}`,
       code: undefined,
-      needsPrivateKey: undefined,
-      gmgnConfigured: undefined,
+      birdeyeConfigured: undefined,
     };
     return { env, probes };
   }
 
-  if (env.provider === 'birdeye') {
-    const beChain = gmgnChainsToBirdeye(chains)[0];
+  if (!isBirdeyeConfigured()) {
     probes.holdings = {
-      ...probeResult(await fetchWalletHoldingsBirdeye(beChain, address, 1)),
+      ok: false,
+      error: 'Portfolio requires BIRDEYE_API_KEY on server.',
+      code: undefined,
+      birdeyeConfigured: false,
       chains,
     };
-  } else if (chains.length === 1) {
-    probes.holdings = {
-      ...probeResult(await fetchWalletHoldings(chains[0], address, { limit: 1 })),
-      chains,
-    };
-  } else {
-    probes.holdings = {
-      ...probeResult(await fetchWalletHoldings(chains[0], address, { limit: 1 })),
-      chains,
-    };
+    return { env, probes };
   }
+
+  const beChain = gmgnChainsToBirdeye(chains)[0];
+  probes.holdings = {
+    ...birdeyeProbeResult(await fetchWalletHoldingsBirdeye(beChain, address, 1)),
+    chains,
+  };
 
   return { env, probes };
 }

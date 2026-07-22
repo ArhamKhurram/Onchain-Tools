@@ -87,7 +87,7 @@ export async function enrichFromDexScreener(address: string): Promise<TokenEnric
   }
 }
 
-/** Live market-cap snapshot for Radar / missed-runner (does not overwrite mc@call). */
+/** Live market-cap snapshot for Radar / missed-runner (does not overwrite mc@call). GMGN first — keep separate from Portfolio (Birdeye). */
 export async function fetchLiveMarketCap(
   address: string,
   chainSlug?: string,

@@ -4,7 +4,7 @@
  * Every few minutes, for each user with missedRunner enabled:
  * 1. Load recent contracts with MC@call
  * 2. Dedupe by token; keep earliest scan MC
- * 3. Fetch live MC via DexScreener
+ * 3. Fetch live MC via GMGN (then DexScreener fallback) — separate from Portfolio (Birdeye)
  * 4. If multiplier threshold met and user doesn't hold token → toast / Pushover / both
  * 5. Record dedupe row in missed_runner_alerts
  *

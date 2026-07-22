@@ -1,5 +1,5 @@
 import { gmgnGet, gmgnSignedGet, type GmgnResult } from '../utils/gmgnClient.js';
-import { mapSequential } from '../utils/gmgnLimiter.js';
+import { mapSequential } from '../utils/sequential.js';
 import { classifyActivitySide } from './activityUtils.js';
 
 export type OctWalletChain = 'bsc' | 'ethereum' | 'solana' | 'base' | 'robinhood';

@@ -70,7 +70,7 @@ export default function PnlChartModal({ open, onClose, data, loading, error }: P
               <p className="text-white/35">Chart uses trades from the activity feed below — wait for activity to load, or pick one wallet if rate limited.</p>
               {data?.skippedUnknownType ? (
                 <p className="text-oct-accent/80">
-                  {data.skippedUnknownType} trades could not be classified — GMGN may not label buy/sell on this chain.
+                  {data.skippedUnknownType} trades could not be classified as buy/sell on this chain.
                 </p>
               ) : null}
             </div>

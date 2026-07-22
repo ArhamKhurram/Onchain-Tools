@@ -53,11 +53,4 @@ export async function withGmgnLimit<T>(fn: () => Promise<T>): Promise<T> {
   }
 }
 
-/** Run async tasks one at a time (for multi-wallet / multi-chain fan-out). */
-export async function mapSequential<T, R>(items: T[], fn: (item: T) => Promise<R>): Promise<R[]> {
-  const out: R[] = [];
-  for (const item of items) {
-    out.push(await fn(item));
-  }
-  return out;
-}
+export { mapSequential } from './sequential.js';

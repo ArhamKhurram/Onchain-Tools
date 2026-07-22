@@ -120,9 +120,7 @@ export function usePortfolio(
   const [loading, setLoading] = useState(false);
   const [statsError, setStatsError] = useState<string | null>(null);
   const [holdingsError, setHoldingsError] = useState<string | null>(null);
-  const [holdingsNeedsKey, setHoldingsNeedsKey] = useState(false);
   const [activityError, setActivityError] = useState<string | null>(null);
-  const [gmgnMissing, setGmgnMissing] = useState(false);
   const [birdeyeMissing, setBirdeyeMissing] = useState(false);
 
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -135,8 +133,6 @@ export function usePortfolio(
       setStatsError(null);
       setHoldingsError(null);
       setActivityError(null);
-      setHoldingsNeedsKey(false);
-      setGmgnMissing(false);
       setBirdeyeMissing(false);
       return;
     }
@@ -145,8 +141,6 @@ export function usePortfolio(
     setStatsError(null);
     setHoldingsError(null);
     setActivityError(null);
-    setHoldingsNeedsKey(false);
-    setGmgnMissing(false);
     setBirdeyeMissing(false);
 
     const results = [];
@@ -164,7 +158,6 @@ export function usePortfolio(
       setStats(null);
       const fail = results.find((r) => !r.statsRes.ok);
       setStatsError(fail && !fail.statsRes.ok ? fail.statsRes.error : 'Failed to load stats.');
-      if (results.some((r) => !r.statsRes.ok && r.statsRes.gmgnConfigured === false)) setGmgnMissing(true);
       if (results.some((r) => !r.statsRes.ok && r.statsRes.birdeyeConfigured === false)) setBirdeyeMissing(true);
     }
 
@@ -175,11 +168,7 @@ export function usePortfolio(
     if (holdingsFails.length === results.length) {
       const first = holdingsFails[0];
       setHoldingsError(first && !first.holdingsRes.ok ? first.holdingsRes.error : 'Failed to load holdings.');
-      setHoldingsNeedsKey(holdingsFails.some((r) => !r.holdingsRes.ok && r.holdingsRes.needsPrivateKey));
-    } else if (holdingsFails.some((r) => !r.holdingsRes.ok && r.holdingsRes.needsPrivateKey)) {
-      setHoldingsNeedsKey(true);
     }
-    if (holdingsFails.some((r) => !r.holdingsRes.ok && r.holdingsRes.gmgnConfigured === false)) setGmgnMissing(true);
     if (holdingsFails.some((r) => !r.holdingsRes.ok && r.holdingsRes.birdeyeConfigured === false)) setBirdeyeMissing(true);
 
     const allActivity = results
@@ -192,7 +181,6 @@ export function usePortfolio(
     if (activityFails.length === results.length) {
       const first = activityFails[0];
       setActivityError(first && !first.activityRes.ok ? first.activityRes.error : 'Failed to load activity.');
-      if (activityFails.some((r) => !r.activityRes.ok && r.activityRes.gmgnConfigured === false)) setGmgnMissing(true);
       if (activityFails.some((r) => !r.activityRes.ok && r.activityRes.birdeyeConfigured === false)) setBirdeyeMissing(true);
     }
 
@@ -219,11 +207,9 @@ export function usePortfolio(
     loading,
     statsError,
     holdingsError,
-    holdingsNeedsKey,
     activityError,
-    gmgnMissing,
     birdeyeMissing,
-    portfolioApiMissing: gmgnMissing || birdeyeMissing,
+    portfolioApiMissing: birdeyeMissing,
     totalHoldingsUsd,
     isAllWallets,
     refresh,

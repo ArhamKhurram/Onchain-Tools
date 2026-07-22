@@ -38,9 +38,7 @@ export default function PortfolioPage() {
     loading,
     statsError,
     holdingsError,
-    holdingsNeedsKey,
     activityError,
-    gmgnMissing,
     birdeyeMissing,
     portfolioApiMissing,
     totalHoldingsUsd,
@@ -105,7 +103,7 @@ export default function PortfolioPage() {
         icon={PieChart}
         eyebrow="[ PORTFOLIO ]"
         title="Sign in to view portfolio"
-        description="Portfolio reads wallets from My Wallets and pulls Birdeye/GMGN stats, holdings, and trade history for your buy wallets."
+        description="Portfolio reads wallets from My Wallets and pulls Birdeye stats, holdings, and trade history for your buy wallets."
         actionLabel="SIGN IN"
         actionTo={routes.login}
         secondaryLabel="← Back to console home"
@@ -143,7 +141,10 @@ export default function PortfolioPage() {
         <div className="flex flex-wrap items-end gap-4 justify-between">
           <div>
             <p className="font-mono text-[10px] tracking-[0.2em] text-oct-accent mb-1">[ PORTFOLIO ]</p>
-            <h1 className="font-display text-2xl sm:text-3xl text-white tracking-tight">GMGN Wallet Dashboard</h1>
+            <h1 className="font-display text-2xl sm:text-3xl text-white tracking-tight">Wallet Dashboard</h1>
+            <p className="font-mono text-[10px] text-white/40 mt-1 max-w-xl">
+              Powered by Birdeye. GMGN is reserved for missed-runner alerts — Portfolio does not call GMGN.
+            </p>
           </div>
 
           <div className="flex flex-wrap items-end gap-3">
@@ -205,8 +206,15 @@ export default function PortfolioPage() {
       <div className="flex-1 min-h-0 overflow-y-auto px-4 sm:px-6 py-5 space-y-5">
         {portfolioApiMissing && (
           <div className="border-2 border-amber-500/50 bg-amber-950/30 px-4 py-3 font-mono text-xs text-amber-200">
-            Portfolio requires <code className="text-amber-100">BIRDEYE_API_KEY</code> or{' '}
-            <code className="text-amber-100">GMGN_API_KEY</code> on the backend server (Railway).
+            Portfolio requires <code className="text-amber-100">BIRDEYE_API_KEY</code> on the backend server (Railway).
+          </div>
+        )}
+
+        {!portfolioApiMissing && (
+          <div className="border border-oct-accent/25 bg-oct-accent/[0.04] px-4 py-2.5 font-mono text-[10px] text-white/45 leading-relaxed">
+            <span className="text-oct-accent/80 uppercase tracking-wider">Rate limits:</span>{' '}
+            Birdeye Standard tier caps wallet API traffic (~5 req/s). All Wallets loads many requests — pick one wallet
+            if data is slow or errors. Missed-runner alerts use GMGN separately and are unaffected.
           </div>
         )}
 
@@ -246,7 +254,7 @@ export default function PortfolioPage() {
             chain={selectedWallet?.chain ?? 'robinhood'}
             loading={loading}
             error={holdingsError}
-            needsPrivateKey={holdingsNeedsKey}
+            needsPrivateKey={false}
             showChainTag={isEvmAggregated || isAllWallets}
             showWalletTag={isAllWallets}
           />

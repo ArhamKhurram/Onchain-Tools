@@ -1,6 +1,8 @@
 import type { TokenEnrichment } from './rickEmbedParser.js';
 import { gmgnGetLegacy } from './gmgnClient.js';
 
+/** GMGN token info for missed-runner MC and Robinhood snapshots — not used by Portfolio (Birdeye). */
+
 function formatCompact(n: number): string {
   if (n >= 1e9) return `${(n / 1e9).toFixed(1)}B`;
   if (n >= 1e6) return `${(n / 1e6).toFixed(1)}M`;

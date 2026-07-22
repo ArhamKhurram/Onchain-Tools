@@ -39,18 +39,12 @@ export default function PortfolioHoldingsTable({
         {loading && <span className="font-mono text-[10px] text-oct-accent/70">Loading…</span>}
       </div>
 
-      {needsPrivateKey && (
-        <p className="px-4 py-2 font-mono text-xs text-amber-300 border-b border-oct-accent/20 bg-amber-950/20">
-          Holdings need <code className="text-amber-200">GMGN_PRIVATE_KEY</code> on the backend. Stats, activity, and PnL still work without it.
-        </p>
-      )}
-
-      {error && !needsPrivateKey && (
+      {error && (
         <p className="px-4 py-3 font-mono text-xs text-red-300">{formatPortfolioError(error)}</p>
       )}
 
       {!error && holdings.length === 0 && !loading && (
-        <p className="px-4 py-8 font-mono text-sm text-white/50 text-center">No open positions reported by GMGN.</p>
+        <p className="px-4 py-8 font-mono text-sm text-white/50 text-center">No open positions reported by Birdeye.</p>
       )}
 
       {holdings.length > 0 && (
