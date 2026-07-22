@@ -4,7 +4,7 @@ export default {
   theme: {
     extend: {
       colors: {
-        // Agentic-inspired palette — values from CSS vars (see index.css themes).
+        // Theme palette via CSS vars — dark: black/red, light: cream/blue (index.css).
         oct: {
           bg: 'var(--oct-bg)',
           panel: 'var(--oct-panel)',

@@ -4,28 +4,28 @@
 @tailwind components;
 @tailwind utilities;
 
-/* ── Agentic Capital–inspired themes ───────────────────────────────────── */
+/* ── Dark: black + red (OCT classic) · Light: cream + blue (Agentic-inspired) ─ */
 
 :root,
 [data-theme='dark'] {
   color-scheme: dark;
-  --oct-bg: #0c0e0b;
-  --oct-panel: #121412;
-  --oct-surface: #141714;
-  --oct-surface-raised: #1c2019;
-  --oct-border: #2a2f28;
-  --oct-border-bright: #3d4538;
-  --oct-text: #eceae4;
-  --oct-muted: #8a9184;
-  --oct-accent: #6d9b4d;
-  --oct-accent-hover: #5a8340;
-  --oct-flame: #c45c4a;
-  --oct-accent-dim: rgba(109, 155, 77, 0.14);
-  --oct-live: #7cb358;
-  --oct-live-dim: rgba(124, 179, 88, 0.16);
-  --oct-live-pulse: rgba(124, 179, 88, 0.55);
-  --oct-green: #6d9b4d;
-  --oct-yellow: #c9a227;
+  --oct-bg: #0a0a0a;
+  --oct-panel: #0a0a0a;
+  --oct-surface: #141414;
+  --oct-surface-raised: #1e1e1e;
+  --oct-border: #2e2e2e;
+  --oct-border-bright: #4d4d4d;
+  --oct-text: #f5f5f5;
+  --oct-muted: #9a9a9a;
+  --oct-accent: #ff2a2a;
+  --oct-accent-hover: #e10600;
+  --oct-flame: #ff1744;
+  --oct-accent-dim: rgba(255, 42, 42, 0.14);
+  --oct-live: #ff2a2a;
+  --oct-live-dim: rgba(255, 42, 42, 0.16);
+  --oct-live-pulse: rgba(255, 42, 42, 0.55);
+  --oct-green: #22c55e;
+  --oct-yellow: #fbbf24;
   --oct-shadow: #000000;
 }
 
@@ -39,14 +39,14 @@
   --oct-border-bright: #b5b0a4;
   --oct-text: #1a1c18;
   --oct-muted: #6b6f66;
-  --oct-accent: #5a8340;
-  --oct-accent-hover: #4a6d34;
-  --oct-flame: #b84a3a;
-  --oct-accent-dim: rgba(90, 131, 64, 0.12);
-  --oct-live: #5a8340;
-  --oct-live-dim: rgba(90, 131, 64, 0.14);
-  --oct-live-pulse: rgba(90, 131, 64, 0.45);
-  --oct-green: #4d7a36;
+  --oct-accent: #3d6b9e;
+  --oct-accent-hover: #2f5580;
+  --oct-flame: #c45c4a;
+  --oct-accent-dim: rgba(61, 107, 158, 0.12);
+  --oct-live: #3d6b9e;
+  --oct-live-dim: rgba(61, 107, 158, 0.14);
+  --oct-live-pulse: rgba(61, 107, 158, 0.45);
+  --oct-green: #2d7a4a;
   --oct-yellow: #a8841a;
   --oct-shadow: #1a1c18;
 }
