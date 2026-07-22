@@ -91,39 +91,6 @@ function platformMeta(chain: 'evm' | 'sol', evmChain?: string): { label: string;
   return { label, dot };
 }
 
-function Sparkline({ timestamps, firstSeenAt }: { timestamps: number[]; firstSeenAt: number }) {
-  const points = useMemo(() => {
-    const BUCKETS = 14;
-    const now = Date.now();
-    const span = Math.max(now - firstSeenAt, 60_000);
-    const bins = new Array(BUCKETS).fill(0);
-    for (const t of timestamps) {
-      const idx = Math.min(BUCKETS - 1, Math.max(0, Math.floor(((t - firstSeenAt) / span) * BUCKETS)));
-      bins[idx]++;
-    }
-    const max = Math.max(1, ...bins);
-    const w = 52;
-    const h = 16;
-    const step = w / (BUCKETS - 1);
-    return bins
-      .map((v, i) => `${(i * step).toFixed(1)},${(h - (v / max) * h).toFixed(1)}`)
-      .join(' ');
-  }, [timestamps, firstSeenAt]);
-
-  return (
-    <svg width={52} height={16} className="overflow-visible">
-      <polyline
-        points={points}
-        fill="none"
-        stroke="currentColor"
-        strokeWidth={1.25}
-        strokeLinejoin="round"
-        strokeLinecap="round"
-      />
-    </svg>
-  );
-}
-
 function buildRadar(contracts: ContractEntry[]): RadarRow[] {
   const map = new Map<string, RadarRow>();
   for (const c of contracts) {
@@ -579,7 +546,6 @@ export default function RadarTable({ embedded: _embedded = false }: { embedded?:
               <SortHeader label="15m" sortKey="m15" activeKey={sortKey} dir={sortDir} onSort={handleSort} align="right" />
               <SortHeader label="1h" sortKey="h1" activeKey={sortKey} dir={sortDir} onSort={handleSort} align="right" />
               <SortHeader label="4h" sortKey="h4" activeKey={sortKey} dir={sortDir} onSort={handleSort} align="right" />
-              <th className="px-3 py-2 font-medium">Spark</th>
               <SortHeader label="Latest" sortKey="recent" activeKey={sortKey} dir={sortDir} onSort={handleSort} align="right" />
               <SortHeader label="First caller" sortKey="firstCaller" activeKey={sortKey} dir={sortDir} onSort={handleSort} />
               <SortHeader label="MC@call" sortKey="mcAtCall" activeKey={sortKey} dir={sortDir} onSort={handleSort} align="right" />
@@ -690,9 +656,6 @@ export default function RadarTable({ embedded: _embedded = false }: { embedded?:
                   </td>
                   <td className="px-3 py-2 text-right font-mono text-sm text-oct-text tabular-nums">
                     {countWithin(r.timestamps, 14_400_000) || '·'}
-                  </td>
-                  <td className="px-3 py-2 text-oct-live">
-                    <Sparkline timestamps={r.timestamps} firstSeenAt={r.firstSeenAt} />
                   </td>
                   <td className="px-3 py-2 text-right font-mono text-xs text-oct-muted tabular-nums whitespace-nowrap">
                     {timeAgoShort(r.lastMentionAt)}
