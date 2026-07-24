@@ -1,5 +1,6 @@
 import { useEffect, useRef, useCallback, useState, useMemo } from 'react';
 import { useAppStore } from '../stores/appStore';
+import { useThemeStore } from '../stores/themeStore';
 import Message from './Message';
 import ChatInput from './ChatInput';
 import { Hash, MessageCircle, Settings, ArrowDown, Filter, EyeOff, X, Trash2, Eye, Search, ChevronUp, ChevronDown, Send, AtSign, GripVertical, Plus, Rows2, Columns2, ArrowLeft, ArrowRight, Lock, Unlock, ExternalLink } from 'lucide-react';
@@ -22,7 +23,7 @@ function Tip({ label, children }: { label: string; children: React.ReactNode }) 
   return (
     <div className="relative group/tip flex items-center">
       {children}
-      <span className="pointer-events-none absolute top-full right-0 mt-1.5 z-50 whitespace-nowrap rounded bg-discord-dark px-2 py-1 text-[11px] font-medium text-discord-text shadow-lg border border-black/30 opacity-0 group-hover/tip:opacity-100 transition-opacity duration-100">
+      <span className="pointer-events-none absolute top-full right-0 mt-1.5 z-50 whitespace-nowrap rounded bg-discord-dark px-2 py-1 text-[11px] font-medium text-discord-text shadow-lg border border-oct-border/60 opacity-0 group-hover/tip:opacity-100 transition-opacity duration-100">
         {label}
       </span>
     </div>
@@ -501,11 +502,14 @@ export default function ChatPane({ roomId, paneIndex, paneCount, editMode, varia
   const unknownPane = !activeRoom && !activeDM && !isTgDMView && !isMentionsView;
 
   const ringClass = editMode ? 'ring-1 ring-inset ring-discord-blurple/30' : '';
+  const theme = useThemeStore((s) => s.theme);
+  const paneBg =
+    theme === 'light' ? 'var(--oct-feed-bg)' : activeRoom?.color || 'var(--oct-feed-bg)';
 
   return (
     <div
       className={`flex-1 flex flex-col min-w-0 h-full relative ${ringClass}`}
-      style={{ backgroundColor: activeRoom?.color || '#0B0E1A' }}
+      style={{ backgroundColor: paneBg }}
       onMouseDownCapture={() => setActivePane(paneIndex)}
       onDragOver={(e) => { if (editMode && !locked) { e.preventDefault(); setDragOver(true); } }}
       onDragLeave={(e) => { if (editMode && !e.currentTarget.contains(e.relatedTarget as Node)) setDragOver(false); }}
@@ -742,14 +746,14 @@ export default function ChatPane({ roomId, paneIndex, paneCount, editMode, varia
                 <>
                   <button
                     onClick={() => jumpToMatch(activeMatchIndex - 1)}
-                    className="p-0.5 text-discord-text-muted hover:text-white transition-colors"
+                    className="p-0.5 text-discord-text-muted hover:text-discord-header-primary transition-colors"
                     title="Previous match (Shift+Enter)"
                   >
                     <ChevronUp size={16} />
                   </button>
                   <button
                     onClick={() => jumpToMatch(activeMatchIndex + 1)}
-                    className="p-0.5 text-discord-text-muted hover:text-white transition-colors"
+                    className="p-0.5 text-discord-text-muted hover:text-discord-header-primary transition-colors"
                     title="Next match (Enter)"
                   >
                     <ChevronDown size={16} />
@@ -760,7 +764,7 @@ export default function ChatPane({ roomId, paneIndex, paneCount, editMode, varia
           )}
           <button
             onClick={closeSearch}
-            className="p-0.5 text-discord-text-muted hover:text-white transition-colors shrink-0"
+            className="p-0.5 text-discord-text-muted hover:text-discord-header-primary transition-colors shrink-0"
             title="Close search (Esc)"
           >
             <X size={16} />
@@ -777,7 +781,7 @@ export default function ChatPane({ roomId, paneIndex, paneCount, editMode, varia
             </span>
             <button
               onClick={() => setHiddenPanelOpen(false)}
-              className="text-discord-text-muted hover:text-white transition-colors"
+              className="text-discord-text-muted hover:text-discord-header-primary transition-colors"
             >
               <X size={14} />
             </button>

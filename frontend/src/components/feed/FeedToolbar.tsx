@@ -30,7 +30,7 @@ export default function FeedToolbar() {
     ) : null;
 
   return (
-    <div className="shrink-0 h-10 px-3 flex items-center gap-2 border-b-2 border-black bg-black">
+    <div className="shrink-0 h-10 px-3 flex items-center gap-2 border-b-2 border-oct-border bg-oct-panel">
       {/* Room tabs */}
       <div className="flex items-center gap-1 min-w-0 flex-1 overflow-x-auto scrollbar-none">
         <button
