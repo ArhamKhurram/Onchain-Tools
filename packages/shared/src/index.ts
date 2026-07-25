@@ -13,6 +13,8 @@ export {
   buildContractUrl,
 } from './contract.js';
 export type { ContractDetectionResult } from './contract.js';
+export { processDiscordMessage } from './message.js';
+export type { MessageProcessorContext, MessageGateway } from './message.js';
 
 // Runtime consts (values) from the shared type module.
 export { PUSHOVER_SOUNDS, GatewayOpcodes } from './types.js';
