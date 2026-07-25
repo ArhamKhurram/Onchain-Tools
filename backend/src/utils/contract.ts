@@ -1,7 +1,22 @@
-import type { ContractLinkTemplates } from '../discord/types.js';
+// Contract address detection + trade-link building now live in @oct/shared
+// (moved verbatim from the previously-duplicated backend + frontend copies).
+// They are re-exported here so backend importers of this module are unchanged.
+import {
+  detectContractAddresses,
+  buildContractUrl,
+  REFERRALS,
+  getPresetTemplate,
+  injectReferralIntoCustomTemplate,
+} from '@oct/shared';
 
-const SOL_ADDRESS_REGEX = /(?<![1-9A-HJ-NP-Za-km-z])[1-9A-HJ-NP-Za-km-z]{32,48}(?![1-9A-HJ-NP-Za-km-z])/g;
-const EVM_ADDRESS_REGEX = /\b0x[a-fA-F0-9]{40}\b/g;
+export {
+  detectContractAddresses,
+  buildContractUrl,
+  getPresetTemplate,
+  injectReferralIntoCustomTemplate,
+};
+export { REFERRALS };
+export type { ContractDetectionResult } from '@oct/shared';
 
 const GMGN_EVM_CHAINS = new Set([
   'eth', 'bsc', 'base', 'arb', 'blast', 'polygon', 'avax',
@@ -39,43 +54,6 @@ export const EVM_CHAIN_LABELS: Record<string, string> = {
   pulsechain: 'PLS', tron: 'TRON', hyperliquid: 'HL',
   robinhood: 'HOOD',
 };
-
-export interface ContractDetectionResult {
-  hasContract: boolean;
-  addresses: string[];
-}
-
-export function detectContractAddresses(content: string): ContractDetectionResult {
-  const addresses: string[] = [];
-
-  // Strip URLs so we don't match addresses embedded in links
-  const stripped = content
-    .replace(/https?:\/\/[^\s<>)]+/g, ' ')
-    .replace(/\[([^\]]+)\]\([^)]+\)/g, '$1');
-
-  const evmMatches = stripped.match(EVM_ADDRESS_REGEX);
-  if (evmMatches) {
-    addresses.push(...evmMatches);
-  }
-
-  const solMatches = stripped.match(SOL_ADDRESS_REGEX);
-  if (solMatches) {
-    for (const match of solMatches) {
-      if (match.length >= 32 && !addresses.includes(match)) {
-        const hasNumbers = /\d/.test(match);
-        const hasMixedCase = /[a-z]/.test(match) && /[A-Z]/.test(match);
-        if (hasNumbers && hasMixedCase && match.length >= 40) {
-          addresses.push(match);
-        }
-      }
-    }
-  }
-
-  return {
-    hasContract: addresses.length > 0,
-    addresses,
-  };
-}
 
 type EmbedLike = { description?: string; fields?: { name: string; value: string }[] };
 
@@ -262,8 +240,6 @@ export async function resolveEvmChainFromApi(address: string): Promise<string | 
   return slug;
 }
 
-const REFERRALS = { axiom: 'danielref', padre: 'daniel_dev', gmgn: 'danieldev', bloom: 'daniel' };
-
 // Rewrite gmgn/axiom referral codes in third-party links (e.g. Rick bot's
 // per-terminal buy links) so they carry our referral instead of the sender's.
 // Address and chain are preserved; only the referral portion is swapped.
@@ -281,68 +257,4 @@ export function rewriteReferralLinks(url: string): string {
     return `${axiom[1]}${REFERRALS.axiom}${axiom[2]}`;
   }
   return url;
-}
-
-function getPresetTemplate(platform: string, chain: 'sol' | 'evm', evmChain?: string): string {
-  const evmSlug = evmChain || 'base';
-  switch (platform) {
-    case 'axiom':
-      return `https://axiom.trade/t/{address}/@${REFERRALS.axiom}?chain=sol`;
-    case 'padre':
-      return `https://trade.padre.gg/trade/solana/{address}?rk=${REFERRALS.padre}`;
-    case 'bloom':
-      return chain === 'sol'
-        ? `https://t.me/BloomSolana_bot?start=ref_${REFERRALS.bloom}_ca_{address}`
-        : `https://t.me/BloomEVMbot?start=ref_${REFERRALS.bloom}_ca_{address}`;
-    case 'gmgn':
-      return chain === 'sol'
-        ? `https://gmgn.ai/sol/token/${REFERRALS.gmgn}_{address}`
-        : `https://gmgn.ai/${evmSlug}/token/${REFERRALS.gmgn}_{address}`;
-    default:
-      return chain === 'sol'
-        ? 'https://axiom.trade/t/{address}?chain=sol'
-        : `https://gmgn.ai/${evmSlug}/token/{address}`;
-  }
-}
-
-function injectReferralIntoCustomTemplate(template: string): string {
-  if (template.includes('axiom.trade')) {
-    return template.replace('{address}', `{address}/@${REFERRALS.axiom}`);
-  }
-  if (template.includes('padre.gg')) {
-    const sep = template.includes('?') ? '&' : '?';
-    return `${template}${sep}rk=${REFERRALS.padre}`;
-  }
-  if (template.includes('gmgn.ai')) {
-    return template.replace('{address}', `${REFERRALS.gmgn}_{address}`);
-  }
-  if (template.includes('BloomSolana_bot') || template.includes('BloomEVMbot')) {
-    return template.replace('ref__ca_', `ref_${REFERRALS.bloom}_ca_`);
-  }
-  return template;
-}
-
-export function buildContractUrl(
-  addr: string,
-  config: ContractLinkTemplates,
-  evmChain?: string,
-): string {
-  const isEvm = addr.startsWith('0x');
-  const chain: 'sol' | 'evm' = isEvm ? 'evm' : 'sol';
-  const platform = isEvm
-    ? (config.evmPlatform ?? 'gmgn')
-    : (config.solPlatform ?? 'axiom');
-
-  let template: string;
-  if (platform === 'custom') {
-    let customTpl = isEvm ? config.evm : config.sol;
-    if (isEvm && evmChain) {
-      customTpl = customTpl.replace(/gmgn\.ai\/\w+\/token/, `gmgn.ai/${evmChain}/token`);
-    }
-    template = injectReferralIntoCustomTemplate(customTpl);
-  } else {
-    template = getPresetTemplate(platform, chain, evmChain);
-  }
-
-  return template.replace('{address}', addr);
 }
