@@ -342,6 +342,7 @@ export interface ContractEntry {
   roomIds: string[];
   messageId: string;
   timestamp: string;
+  source?: 'discord' | 'telegram';
   firstSeen?: boolean;
   tokenName?: string;
   tokenSymbol?: string;

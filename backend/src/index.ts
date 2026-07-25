@@ -262,18 +262,20 @@ function wireGatewayEvents(gw: GatewayManager, wsServer: WsServer, userId: strin
           roomIds,
           messageId: frontendMsg.id,
           timestamp: frontendMsg.timestamp,
+          source: 'discord' as const,
         };
         try {
-          await storage.logContract(userId, entry);
+          const logged = await storage.logContract(userId, entry);
           if (isEvm && evmChainHint) {
             await storage.updateEvmChain(userId, addr, evmChainHint);
           }
+          wsServer.broadcastContract(logged, userId);
+          scheduleDexFallback(wsServer, userId, addr, logged.channelId, logged.messageId);
         } catch (err) {
           console.error('[App] Failed to persist contract:', (err as Error).message);
+          wsServer.broadcastContract(entry, userId);
+          scheduleDexFallback(wsServer, userId, addr, frontendMsg.channelId, frontendMsg.id);
         }
-        // Always broadcast so the live feed updates even if DB write fails
-        wsServer.broadcastContract(entry, userId);
-        scheduleDexFallback(wsServer, userId, addr, frontendMsg.channelId, frontendMsg.id);
       }
       backfillEvmChainsFromApi(wsServer, userId, frontendMsg.contractAddresses, evmChainHint);
     }
@@ -476,16 +478,20 @@ function wireTelegramEvents(tg: TelegramClientManager, wsServer: WsServer, userI
           roomIds,
           messageId: frontendMsg.id,
           timestamp: frontendMsg.timestamp,
+          source: 'telegram' as const,
         };
         try {
-          await storage.logContract(userId, entry);
+          const logged = await storage.logContract(userId, entry);
           if (isEvm && evmChainHint) {
             await storage.updateEvmChain(userId, addr, evmChainHint);
           }
+          wsServer.broadcastContract(logged, userId);
+          scheduleDexFallback(wsServer, userId, addr, logged.channelId, logged.messageId);
         } catch (err) {
           console.error('[App] Failed to persist Telegram contract:', (err as Error).message);
+          wsServer.broadcastContract(entry, userId);
+          scheduleDexFallback(wsServer, userId, addr, frontendMsg.channelId, frontendMsg.id);
         }
-        wsServer.broadcastContract(entry, userId);
       }
       backfillEvmChainsFromApi(wsServer, userId, frontendMsg.contractAddresses, evmChainHint);
     }

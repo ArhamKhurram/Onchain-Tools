@@ -24,6 +24,13 @@ export interface UpdateSlide {
  */
 export const UPDATE_SLIDES: UpdateSlide[] = [
   {
+    id: 'slide-2026-07-25-tg-contract-feed',
+    title: 'Telegram Contract Feed',
+    description:
+      'TG scans now land in the contract feed with DexScreener enrichment, correct RESCAN/NEW badges, TG attribution, and an Open in Telegram link.',
+    variant: 'feed',
+  },
+  {
     id: 'slide-2026-07-25-radar-columns',
     title: 'Radar Column Picker',
     description:

@@ -1,6 +1,7 @@
 import type { ContractEntry } from '../types';
 import { useAppStore } from '../stores/appStore';
 import { hasContractMetadata, hydrateContractFromCatalog, mergeEnrichmentIntoEntry } from '../utils/contractMetadata';
+import { isTelegramContract } from '../utils/contractSource';
 import { isHostedMode, getAccessToken } from '../lib/supabase';
 
 const API_BASE = import.meta.env.VITE_API_URL
@@ -96,11 +97,17 @@ async function finalizeAfterTimeout(key: string): Promise<void> {
   flushPending(key);
 }
 
-/** Hold every live scan until Rick enriches it or the wait window + fallbacks run. */
+/** Hold live scans until Rick enriches (Discord) or run Dex fallback immediately (Telegram). */
 export function queueContractDetection(entry: ContractEntry): void {
   const key = pendingKey(entry);
   const existing = pending.get(key);
   if (existing) clearTimeout(existing.timer);
+
+  if (isTelegramContract(entry)) {
+    pending.set(key, { entry, timer: setTimeout(() => {}, 0) });
+    void finalizeAfterTimeout(key);
+    return;
+  }
 
   const timer = setTimeout(() => {
     void finalizeAfterTimeout(key);

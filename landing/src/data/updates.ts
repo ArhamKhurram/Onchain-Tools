@@ -24,6 +24,7 @@ export const UPDATES: UpdateEntry[] = [
       '**Telegram media in hosted mode** — images, video, and audio load via authenticated fetch instead of broken proxy URLs',
       '**Workspace room settings** — gear icon opens room config from Workspace panels, not just Feed',
       '**Telegram disconnects** — stale sessions auto-reconnect on API and status checks',
+      '**Telegram contract feed** — TG scans enrich via DexScreener, show correct attribution, and link back to the Telegram message',
     ],
   },
   {

@@ -73,7 +73,7 @@ export function processTelegramMessage(
     channelId: raw.chatId,
     guildId: null,
     channelName: raw.chatTitle,
-    guildName: raw.chatType === 'user' ? null : raw.chatTitle,
+    guildName: null,
     source: 'telegram',
     platformUrl,
     author: {

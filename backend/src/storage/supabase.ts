@@ -690,7 +690,7 @@ export class SupabaseStorageProvider implements StorageProvider {
     return data.map((row) => this.mapContractRow(row));
   }
 
-  async logContract(userId: string, entry: ContractEntry): Promise<void> {
+  async logContract(userId: string, entry: ContractEntry): Promise<ContractEntry> {
     const isFirstSeen = !(await this.hasAddress(userId, entry.address));
     let toInsert = entry;
 
@@ -756,6 +756,7 @@ export class SupabaseStorageProvider implements StorageProvider {
       enriched_at: toInsert.enrichedAt ?? null,
     });
     throwIfError(result, 'Failed to log contract');
+    return { ...toInsert, firstSeen: isFirstSeen };
   }
 
   async deleteContract(userId: string, messageId: string, address: string): Promise<boolean> {

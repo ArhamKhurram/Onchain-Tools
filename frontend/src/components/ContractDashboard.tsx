@@ -1,7 +1,8 @@
 import { useEffect, useState, useMemo } from 'react';
-import { Search, ExternalLink, Copy, Check, Trash2, LayoutGrid, List, X, MessageSquare, PanelLeftOpen } from 'lucide-react';
+import { Search, ExternalLink, Copy, Check, Trash2, LayoutGrid, List, X, MessageSquare, PanelLeftOpen, Send } from 'lucide-react';
 import { useAppStore } from '../stores/appStore';
 import { buildContractUrl } from '../utils/contractUrl';
+import { contractAttribution, isTelegramContract, openContractSource } from '../utils/contractSource';
 import ConfirmModal from './ConfirmModal';
 import SignalConvergenceBadge from './SignalConvergenceBadge';
 import { useConvergenceForContract } from '../hooks/useSignalConvergence';
@@ -95,10 +96,7 @@ export default function ContractDashboard({ embedded = false }: ContractDashboar
   };
 
   const handleOpenDiscord = (entry: ContractEntry) => {
-    const path = `discord.com/channels/${entry.guildId ?? '@me'}/${entry.channelId}/${entry.messageId}`;
-    const useApp = config?.openInDiscordApp ?? false;
-    const url = useApp ? `discord://${path}` : `https://${path}`;
-    window.open(url, useApp ? '_self' : '_blank');
+    openContractSource(entry, config);
   };
 
   const handleDelete = (entry: ContractEntry) => {
@@ -341,9 +339,9 @@ function ContractRow({
             <button
               onClick={() => onOpenDiscord(entry)}
               className="p-1 rounded hover:bg-oct-surface text-oct-muted hover:text-oct-text transition-colors hidden sm:block"
-              title="Open in Discord"
+              title={isTelegramContract(entry) ? 'Open in Telegram' : 'Open in Discord'}
             >
-              <MessageSquare size={13} />
+              {isTelegramContract(entry) ? <Send size={13} className="text-[#2AABEE]" /> : <MessageSquare size={13} />}
             </button>
           </div>
         </div>
@@ -380,7 +378,7 @@ function ContractRow({
               </span>
             )}
           </div>
-          {(entry.description || entry.guildName) && (
+          {(entry.description || (!isTelegramContract(entry) && entry.guildName)) && (
             <div className="text-xs text-oct-muted truncate mt-0.5">
               {entry.description ?? `${entry.guildName ?? ''} / #${entry.channelName}`}
             </div>
@@ -390,9 +388,7 @@ function ContractRow({
 
       {!subtitle && !entry.fdvAtCallDisplay && !entry.liquidityDisplay && !entry.description && (
         <div className="pl-[4.5rem] sm:pl-24 text-xs text-oct-muted truncate">
-          <span className="text-oct-text/80 font-medium">{entry.authorName}</span>
-          {' · '}
-          {entry.guildName ? `${entry.guildName} / ` : ''}#{entry.channelName}
+          {contractAttribution(entry)}
         </div>
       )}
     </div>
@@ -494,18 +490,15 @@ function ContractCard({
         <button
           onClick={() => onOpenDiscord(entry)}
           className="flex items-center gap-1 px-2 py-1 rounded-cockpit text-xs bg-oct-bg hover:bg-oct-surface-raised transition-colors text-oct-muted hover:text-oct-text border border-oct-border"
-          title="Open in Discord"
+          title={isTelegramContract(entry) ? 'Open in Telegram' : 'Open in Discord'}
         >
-          <MessageSquare size={11} />
-          <span>Discord</span>
+          {isTelegramContract(entry) ? <Send size={11} className="text-[#2AABEE]" /> : <MessageSquare size={11} />}
+          <span>{isTelegramContract(entry) ? 'Telegram' : 'Discord'}</span>
         </button>
       </div>
 
-      <div className="flex items-center gap-2 text-xs">
-        <span className="text-oct-text truncate">{entry.authorName}</span>
-        <span className="text-oct-muted truncate">
-          {entry.guildName ? `${entry.guildName} / ` : ''}#{entry.channelName}
-        </span>
+      <div className="flex items-center gap-2 text-xs text-oct-muted truncate">
+        {contractAttribution(entry)}
       </div>
     </div>
   );

@@ -1249,8 +1249,8 @@ export function createRouter(wsServer: WsServer): Router {
       if (!entry?.address || !entry?.messageId || !entry?.channelId || !entry?.timestamp) {
         return res.status(400).json({ error: 'Invalid contract entry.' });
       }
-      await storage.logContract(userId, entry);
-      wsServer.broadcastContract(entry, userId);
+      const logged = await storage.logContract(userId, entry);
+      wsServer.broadcastContract(logged, userId);
 
       const address: string = entry.address;
       const channelId: string = entry.channelId;

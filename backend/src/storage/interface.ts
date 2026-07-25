@@ -19,7 +19,7 @@ export interface StorageProvider {
   isUserHighlighted(userId: string, discordUserId: string, roomId?: string, username?: string | null): Promise<boolean>;
 
   getContracts(userId: string, limit?: number, since?: string): Promise<ContractEntry[]>;
-  logContract(userId: string, entry: ContractEntry): Promise<void>;
+  logContract(userId: string, entry: ContractEntry): Promise<ContractEntry>;
   deleteContract(userId: string, messageId: string, address: string): Promise<boolean>;
   deleteAllContracts(userId: string): Promise<void>;
   updateEvmChain(userId: string, address: string, evmChain: string): Promise<boolean>;

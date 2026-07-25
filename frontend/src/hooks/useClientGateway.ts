@@ -158,6 +158,7 @@ function handleLiveMessage(gw: GatewayManager, rawMsg: DiscordMessage & { _chann
         messageId: frontend.id,
         timestamp: frontend.timestamp,
         firstSeen: !seenBefore,
+        source: frontend.source === 'telegram' ? 'telegram' : 'discord',
       };
       queueContractDetection(entry);
     }

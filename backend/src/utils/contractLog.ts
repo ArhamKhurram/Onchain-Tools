@@ -21,6 +21,7 @@ export interface ContractEntry {
   roomIds: string[];
   messageId: string;
   timestamp: string;
+  source?: 'discord' | 'telegram';
   firstSeen?: boolean;
   // Enrichment (Rick embed / DexScreener)
   tokenName?: string;
@@ -95,13 +96,14 @@ class ContractLog {
     return this.entries.some((e) => e.address === address);
   }
 
-  logContract(entry: ContractEntry): void {
+  logContract(entry: ContractEntry): ContractEntry {
     entry.firstSeen = !this.hasAddress(entry.address);
     this.entries.unshift(entry);
     if (this.entries.length > MAX_ENTRIES) {
       this.entries.length = MAX_ENTRIES;
     }
     this.save();
+    return entry;
   }
 
   getContracts(limit = 100, since?: string): ContractEntry[] {
