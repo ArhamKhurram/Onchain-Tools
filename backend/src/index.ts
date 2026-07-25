@@ -20,6 +20,8 @@ import type { TelegramRawMessage } from './telegram/types.js';
 import type { TelegramMessageProcessorContext } from './telegram/messageProcessor.js';
 import { WsServer } from './ws/server.js';
 import { createRouter } from './api/routes.js';
+import { createBotRouter } from './api/routes/bot.js';
+import { requireBotAuth } from './auth/botAuth.js';
 import { getStorageProvider, isHostedMode } from './storage/index.js';
 import { authMiddleware } from './auth/middleware.js';
 import { getGateway, setGateway } from './gateway/state.js';
@@ -645,6 +647,11 @@ if (isHostedMode()) {
     (userId) => gatewayPool.markClientDisconnected(userId),
   );
 }
+
+// Machine-auth bot API (DISCORD_BOT_PLAN.md). Mounted BEFORE the user-auth /api
+// router so bot traffic authenticates via OCT_BOT_API_KEY, not Supabase JWTs.
+// The hosted-mode /api rate limiter above still covers this prefix.
+app.use('/api/v1/bot', requireBotAuth, createBotRouter());
 
 app.use('/api', authMiddleware, createRouter(wsServer));
 
