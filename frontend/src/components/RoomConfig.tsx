@@ -56,9 +56,6 @@ export default function RoomConfig() {
   const [roomKeywordPatterns, setRoomKeywordPatterns] = useState<KeywordPattern[]>([]);
   const [highlightMode, setHighlightMode] = useState<HighlightMode>('background');
   const [highlightedUserColors, setHighlightedUserColors] = useState<Record<string, string>>({});
-  const [newKeywordPattern, setNewKeywordPattern] = useState('');
-  const [newKeywordMatchMode, setNewKeywordMatchMode] = useState<KeywordMatchMode>('includes');
-  const [newKeywordLabel, setNewKeywordLabel] = useState('');
   const [saving, setSaving] = useState(false);
 
   useEffect(() => {
@@ -317,12 +314,6 @@ export default function RoomConfig() {
             <KeywordsTab
               config={config}
               updateConfig={updateConfig}
-              newKeywordPattern={newKeywordPattern}
-              setNewKeywordPattern={setNewKeywordPattern}
-              newKeywordMatchMode={newKeywordMatchMode}
-              setNewKeywordMatchMode={setNewKeywordMatchMode}
-              newKeywordLabel={newKeywordLabel}
-              setNewKeywordLabel={setNewKeywordLabel}
               roomKeywordPatterns={roomKeywordPatterns}
               setRoomKeywordPatterns={setRoomKeywordPatterns}
             />
