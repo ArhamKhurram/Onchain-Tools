@@ -6,6 +6,7 @@ import {
   getBotHolders,
   getBotLeaderboard,
   getBotSnapshot,
+  getBotTracked,
   resolveNetworkId,
 } from '../../bot/service.js';
 
@@ -17,6 +18,7 @@ function statusFor(err: BotServiceError): number {
   switch (err.code) {
     case 'not_configured': return 503;
     case 'not_found': return 404;
+    case 'not_linked': return 403;
     case 'upstream': return 502;
   }
 }
@@ -68,6 +70,20 @@ export function createBotRouter(): Router {
     }
   });
 
+  // GET /api/v1/bot/fomo/tracked — user-scoped. The caller identifies the
+  // Discord user; OCT resolves it to an account via the stored OAuth identity.
+  router.get('/fomo/tracked', async (req, res) => {
+    const discordUserId = String(req.header('X-Discord-User-Id') ?? '').trim();
+    if (!discordUserId) {
+      return res.status(400).json({ error: 'X-Discord-User-Id header is required.' });
+    }
+    try {
+      res.json(await getBotTracked(discordUserId));
+    } catch (err) {
+      handleError(res, err, 'Failed to fetch tracked traders');
+    }
+  });
+
   // GET /api/v1/bot/tokens/:chain/:address/snapshot — chain is an OCT slug.
   router.get('/tokens/:chain/:address/snapshot', async (req, res) => {
     const { chain, address } = req.params;
@@ -91,6 +107,7 @@ export function createBotRouter(): Router {
         'GET /tokens/:network/:address/holders',
         'GET /fomo/leaderboard?window=24h|all&limit=25',
         'GET /tokens/:chain/:address/snapshot',
+        'GET /fomo/tracked  (requires X-Discord-User-Id)',
       ],
     });
   });

@@ -44,8 +44,14 @@ describe('components v2 builders', () => {
 });
 
 describe('command registry', () => {
-  it('registers the Phase 2a global commands', () => {
-    expect(commands.map((c) => c.data.name).sort()).toEqual(['holders', 'leaderboard', 'ping', 'token']);
+  it('registers the shipped commands', () => {
+    expect(commands.map((c) => c.data.name).sort()).toEqual([
+      'holders',
+      'leaderboard',
+      'ping',
+      'token',
+      'wallets',
+    ]);
   });
 
   it('maps every command by name and exposes an execute fn', () => {

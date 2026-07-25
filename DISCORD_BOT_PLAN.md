@@ -170,9 +170,17 @@ gateway, room/channel subscription logic, the Rick-wait / contract-pending queue
 - Commands are a **static registry** (`bot/commands/index.ts`) — the standalone bot's
   runtime folder scan doesn't survive the backend's tsc→ESM build.
 
-**Phase 2b — user-scoped command (Discord identity)**
-- `identity.ts` resolver (Discord id → OCT account) + gatekeep unknown ids.
-- `getTracked` + `/wallets` (ephemeral reply). HTTP variant reads `X-Discord-User-Id`.
+**Phase 2b — user-scoped command (Discord identity)** — ✅ **shipped**
+- Migration `20260726120000_bot_discord_identity.sql`: `oct_user_id_by_discord_id()`
+  SECURITY DEFINER function (service-role only) — PostgREST can't read `auth`, so this
+  is the narrow read that maps a Discord id → OCT user id from the stored OAuth identity.
+  **Must be applied to dev + prod Supabase.**
+- `bot/identity.ts`: `resolveOctUserByDiscordId()` with memoisation; never throws
+  (infra failure reads as "not linked" → gatekeep message).
+- `getBotTracked(discordUserId)` + `/wallets` (**ephemeral** reply) + HTTP
+  `GET /api/v1/bot/fomo/tracked` reading `X-Discord-User-Id` (400 without it,
+  403 `not_linked`).
+- Non-Discord-OAuth users are gatekept with instructions to link Discord.
 
 **Phase 3 — alert DMs (push)** *(deferred)*
 - `bot_prefs(user_id, dm_enabled, alert_types)` + Settings toggles (opt-in).
