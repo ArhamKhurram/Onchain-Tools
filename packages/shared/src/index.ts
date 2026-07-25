@@ -68,6 +68,8 @@ export type {
   ToastPosition,
   PushoverFilters,
   PushoverConfig,
+  DiscordBotTriggers,
+  DiscordBotDmConfig,
   ContractClickAction,
   BadgeClickAction,
   SoundType,

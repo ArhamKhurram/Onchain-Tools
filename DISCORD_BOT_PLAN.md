@@ -182,11 +182,20 @@ gateway, room/channel subscription logic, the Rick-wait / contract-pending queue
   403 `not_linked`).
 - Non-Discord-OAuth users are gatekept with instructions to link Discord.
 
-**Phase 3 — alert DMs (push)** *(deferred)*
-- `bot_prefs(user_id, dm_enabled, alert_types)` + Settings toggles (opt-in).
-- OCT emits on `broadcastContract` / `broadcastFrontendAlerts` → bot DMs the user's
-  Discord id; dedupe by `messageId`+`address`. Handle the shared-server DM rule (a light
-  "join the Outpost server" onboarding). Slash commands are unaffected by that rule.
+**Phase 3 — alert DMs (push)** — ✅ **shipped**
+- `AppConfig.discordBotDm` ({ enabled, triggers }) — prefs live in the existing user
+  config (like `pushover`), so no new table/RLS. **Off by default.**
+- `WsServer.onAlert()` — every alert in the app funnels through `broadcastAlert`, so DM
+  delivery subscribes to that ONE seam instead of touching the 6 emission sites.
+- `bot/alerts.ts` — trigger mapping (incl. the highlighted-user-with-contract split),
+  `shouldDmAlert` gating, Components V2 DM rendering, and graceful handling of Discord
+  error 50007 (bot may only DM users who share a server with it).
+- `bot/identity.ts` — `resolveDiscordIdByOctUser()` reverse lookup via the admin API
+  (same call `/auth/profile` uses), so no extra SQL surface.
+- Settings → **Discord Bot** section: master toggle + 5 per-type triggers.
+- Signal-convergence is NOT deliverable: those alerts are raised client-side and never
+  reach the backend broadcast. Documented in the UI; would need a frontend endpoint
+  like the existing Pushover convergence route.
 
 **Phase 4** *(optional):* buttons linking back to the OCT dashboard, rate limits, audit log.
 

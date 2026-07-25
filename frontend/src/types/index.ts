@@ -31,6 +31,8 @@ export type {
   ToastPosition,
   PushoverFilters,
   PushoverConfig,
+  DiscordBotTriggers,
+  DiscordBotDmConfig,
   SolPlatform,
   EvmPlatform,
   ContractClickAction,

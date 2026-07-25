@@ -20,6 +20,7 @@ const cache = new Map<string, { userId: string | null; expiresAt: number }>();
 /** Test seam. */
 export function clearIdentityCache(): void {
   cache.clear();
+  reverseCache.clear();
 }
 
 function readCache(discordUserId: string): { userId: string | null } | null {
@@ -41,6 +42,57 @@ function writeCache(discordUserId: string, userId: string | null): void {
     userId,
     expiresAt: Date.now() + (userId ? TTL_MS : NEGATIVE_TTL_MS),
   });
+}
+
+const reverseCache = new Map<string, { discordId: string | null; expiresAt: number }>();
+
+/**
+ * The reverse direction: OCT user id → their Discord user id, used to DM alerts.
+ * Reads the identities on the auth user via the admin API (the same call
+ * /auth/profile already uses), so no extra SQL surface is needed.
+ *
+ * Returns null when the account has no Discord identity. Never throws.
+ */
+export async function resolveDiscordIdByOctUser(octUserId: string): Promise<string | null> {
+  const id = octUserId?.trim();
+  if (!id || id === 'local') return null;
+
+  const hit = reverseCache.get(id);
+  if (hit && Date.now() <= hit.expiresAt) return hit.discordId;
+
+  const db = getFomoServiceClient();
+  if (!db) return null;
+
+  try {
+    const { data, error } = await db.auth.admin.getUserById(id);
+    if (error || !data?.user) return null;
+
+    const identities = (data.user.identities ?? []) as Array<{
+      provider?: string;
+      provider_id?: string;
+      identity_data?: Record<string, unknown> | null;
+    }>;
+    const discord = identities.find((i) => i.provider === 'discord');
+    const raw =
+      discord?.provider_id ??
+      (discord?.identity_data?.provider_id as string | undefined) ??
+      (discord?.identity_data?.sub as string | undefined) ??
+      null;
+    const discordId = typeof raw === 'string' && raw.length > 0 ? raw : null;
+
+    if (reverseCache.size >= MAX_ENTRIES) {
+      const oldest = reverseCache.keys().next().value;
+      if (oldest !== undefined) reverseCache.delete(oldest);
+    }
+    reverseCache.set(id, {
+      discordId,
+      expiresAt: Date.now() + (discordId ? TTL_MS : NEGATIVE_TTL_MS),
+    });
+    return discordId;
+  } catch (err) {
+    console.error('[BotIdentity] Reverse lookup failed:', (err as Error)?.message ?? err);
+    return null;
+  }
 }
 
 /**

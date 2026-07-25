@@ -183,6 +183,28 @@ export type ToastPosition =
   | 'bottom-right'
   | 'center';
 
+/**
+ * Outpost bot DM alerts. Personal DMs only (DISCORD_BOT_PLAN.md §2c) — the bot
+ * sends to the Discord account linked to this OCT account, so no channel config.
+ *
+ * NOTE: signal-convergence is intentionally absent. Those alerts are generated
+ * client-side (useSignalConvergence) and never pass through the backend alert
+ * broadcast, so they cannot be delivered from here yet.
+ */
+export interface DiscordBotTriggers {
+  highlightedUser: boolean;
+  highlightedUserContract: boolean;
+  contract: boolean;
+  keyword: boolean;
+  missedRunner: boolean;
+}
+
+export interface DiscordBotDmConfig {
+  /** Master switch. Off by default — nobody gets DMed until they opt in. */
+  enabled: boolean;
+  triggers: DiscordBotTriggers;
+}
+
 export interface PushoverFilters {
   userIds: string[];
   channelIds: string[];
@@ -288,6 +310,8 @@ export interface AppConfig {
   channelSounds: Record<string, SoundConfig>;
   pushover: PushoverConfig;
   missedRunner: MissedRunnerConfig;
+  /** Outpost Discord bot DM alerts (opt-in). */
+  discordBotDm?: DiscordBotDmConfig;
   contractLinkTemplates: ContractLinkTemplates;
   contractClickAction: ContractClickAction;
   showFullContractAddress: boolean;

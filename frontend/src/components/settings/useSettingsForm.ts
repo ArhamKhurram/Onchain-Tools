@@ -1,9 +1,9 @@
 import { useState, useEffect, useMemo, useRef, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAppStore } from '../../stores/appStore';
-import type { SolPlatform, EvmPlatform, ContractClickAction, BadgeClickAction, KeywordPattern, KeywordMatchMode, SoundSettings, SoundType, SoundConfig, PushoverPriority, PushoverSound, PushoverTriggers, PushoverFilters, MessageDisplay, SplitLayout, MissedRunnerConfig, MissedRunnerNotifyVia, ToastPosition } from '../../types';
+import type { SolPlatform, EvmPlatform, ContractClickAction, BadgeClickAction, KeywordPattern, KeywordMatchMode, SoundSettings, SoundType, SoundConfig, PushoverPriority, PushoverSound, PushoverTriggers, PushoverFilters, MessageDisplay, SplitLayout, MissedRunnerConfig, MissedRunnerNotifyVia, ToastPosition, DiscordBotDmConfig } from '../../types';
 import type { Section } from './constants';
-import { defaultSoundConfig, defaultTriggers, defaultFilters, defaultMissedRunner } from './constants';
+import { defaultSoundConfig, defaultTriggers, defaultFilters, defaultMissedRunner, defaultDiscordBotDm } from './constants';
 import { apiBase, authedFetch } from './fields';
 
 export function useSettingsForm() {
@@ -74,6 +74,7 @@ export function useSettingsForm() {
   const [pushoverSound, setPushoverSound] = useState<PushoverSound>('siren');
   const [pushoverTriggers, setPushoverTriggers] = useState<PushoverTriggers>({ ...defaultTriggers });
   const [pushoverFilters, setPushoverFilters] = useState<PushoverFilters>({ ...defaultFilters });
+  const [discordBotDm, setDiscordBotDm] = useState<DiscordBotDmConfig>({ ...defaultDiscordBotDm, triggers: { ...defaultDiscordBotDm.triggers } });
   const [missedRunnerEnabled, setMissedRunnerEnabled] = useState(false);
   const [missedRunnerMultiplier, setMissedRunnerMultiplier] = useState(1.5);
   const [missedRunnerLookbackHours, setMissedRunnerLookbackHours] = useState(24);
@@ -168,6 +169,10 @@ export function useSettingsForm() {
       setPushoverPriority(config.pushover?.priority ?? 1);
       setPushoverSound(config.pushover?.sound ?? 'siren');
       setPushoverTriggers({ ...defaultTriggers, ...config.pushover?.triggers });
+      setDiscordBotDm({
+        enabled: config.discordBotDm?.enabled ?? defaultDiscordBotDm.enabled,
+        triggers: { ...defaultDiscordBotDm.triggers, ...config.discordBotDm?.triggers },
+      });
       setPushoverFilters(config.pushover?.filters ?? { ...defaultFilters });
       const mr = { ...defaultMissedRunner, ...config.missedRunner };
       setMissedRunnerEnabled(mr.enabled);
@@ -216,6 +221,10 @@ export function useSettingsForm() {
 
     const savedMissedRunner = { ...defaultMissedRunner, ...config.missedRunner };
     const savedPushoverTriggers = { ...defaultTriggers, ...(config.pushover?.triggers ?? {}) };
+    const savedDiscordBotDm = {
+      enabled: config.discordBotDm?.enabled ?? defaultDiscordBotDm.enabled,
+      triggers: { ...defaultDiscordBotDm.triggers, ...(config.discordBotDm?.triggers ?? {}) },
+    };
     const savedPushoverFilters = { ...defaultFilters, ...(config.pushover?.filters ?? {}) };
 
     return (
@@ -243,6 +252,7 @@ export function useSettingsForm() {
       pushoverSound !== (config.pushover?.sound ?? 'siren') ||
       JSON.stringify(pushoverTriggers) !== JSON.stringify(savedPushoverTriggers) ||
       JSON.stringify(pushoverFilters) !== JSON.stringify(savedPushoverFilters) ||
+      JSON.stringify(discordBotDm) !== JSON.stringify(savedDiscordBotDm) ||
       missedRunnerEnabled !== savedMissedRunner.enabled ||
       missedRunnerMultiplier !== savedMissedRunner.minMultiplier ||
       missedRunnerLookbackHours !== savedMissedRunner.lookbackHours ||
@@ -275,7 +285,7 @@ export function useSettingsForm() {
       splitLayout !== (config.splitLayout === 'grid' ? 'grid' : 'row')
     );
   }, [config, globalUsers, contractDetection, guildColors, dmColors, telegramColors, enabledGuilds, evmAddressColor, solAddressColor,
-    openInDiscordApp, openInTelegramApp, messageSounds, soundSettings, channelSounds, pushoverEnabled, pushoverAppToken, pushoverUserKey, pushoverPriority, pushoverSound, pushoverTriggers, pushoverFilters,
+    openInDiscordApp, openInTelegramApp, messageSounds, soundSettings, channelSounds, pushoverEnabled, pushoverAppToken, pushoverUserKey, pushoverPriority, pushoverSound, pushoverTriggers, pushoverFilters, discordBotDm,
     missedRunnerEnabled, missedRunnerMultiplier, missedRunnerLookbackHours, missedRunnerCooldownHours, missedRunnerMinMcAtCall, missedRunnerNotifyVia,
     solPlatform, evmPlatform, customSolUrl, customEvmUrl, contractClickAction, showFullContractAddress, autoOpenHighlightedContracts, signalConvergenceWindowMinutes,
     globalKeywordPatterns, keywordAlertsEnabled, desktopNotifications, toastAlertsEnabled, toastPosition, mentionsUserEnabled, mentionsRoleEnabled, mentionsHereEnabled, mentionsEveryoneEnabled, badgeClickAction, chattingEnabled, messageDisplay, compactModeAvatars, roleColors, mobileZoomScale, splitLayout]);
@@ -316,6 +326,7 @@ export function useSettingsForm() {
         soundSettings,
         channelSounds,
         pushover: { enabled: pushoverEnabled, appToken: pushoverAppToken, userKey: pushoverUserKey, priority: pushoverPriority, sound: pushoverSound, triggers: pushoverTriggers, filters: pushoverFilters },
+        discordBotDm,
         missedRunner: {
           enabled: missedRunnerEnabled,
           minMultiplier: missedRunnerMultiplier,
@@ -485,6 +496,7 @@ export function useSettingsForm() {
     setUploadingSoundType, uploadingChannelId, setUploadingChannelId, fileInputRef, channelFileInputRef, pushoverEnabled,
     setPushoverEnabled, pushoverAppToken, setPushoverAppToken, pushoverUserKey, setPushoverUserKey, pushoverPriority,
     setPushoverPriority, pushoverSound, setPushoverSound, pushoverTriggers, setPushoverTriggers, pushoverFilters,
+    discordBotDm, setDiscordBotDm,
     setPushoverFilters, missedRunnerEnabled, setMissedRunnerEnabled, missedRunnerMultiplier, setMissedRunnerMultiplier, missedRunnerLookbackHours,
     setMissedRunnerLookbackHours, missedRunnerCooldownHours, setMissedRunnerCooldownHours, missedRunnerMinMcAtCall, setMissedRunnerMinMcAtCall, missedRunnerNotifyVia,
     setMissedRunnerNotifyVia, missedRunnerTestAddress, setMissedRunnerTestAddress, missedRunnerTestForce, setMissedRunnerTestForce, missedRunnerTestLoading,

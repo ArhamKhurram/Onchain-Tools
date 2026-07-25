@@ -675,7 +675,7 @@ httpServer.listen(PORT, async () => {
 
   // In-process Outpost Discord bot. Self-gates on DISCORD_BOT_TOKEN and swallows
   // its own failures, so it can never take the backend down.
-  startBot();
+  startBot(wsServer);
 
   if (!isHostedMode()) {
     const storage = getStorageProvider();

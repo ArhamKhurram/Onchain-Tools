@@ -20,9 +20,16 @@ interface ClientState {
   userId: string | null;
 }
 
+/** Observer for outgoing alerts; see WsServer.onAlert. */
+export type AlertListener = (
+  alert: { type: string; message: FrontendMessage; reason: string },
+  userId?: string,
+) => void | Promise<void>;
+
 export class WsServer {
   private wss: WebSocketServer;
   private clients: Map<WebSocket, ClientState> = new Map();
+  private alertListeners: AlertListener[] = [];
   private onUserConnect?: (userId: string) => void;
   private onUserDisconnect?: (userId: string) => void;
 
@@ -145,12 +152,32 @@ export class WsServer {
     }
   }
 
+  /**
+   * Side-channel observers for alerts (the Outpost bot's DM delivery uses this).
+   * Every alert in the app funnels through broadcastAlert, so this is the one
+   * seam an extra delivery channel needs — no changes at the call sites.
+   * Observers are best-effort: they must never block or break the WS broadcast.
+   */
+  onAlert(listener: AlertListener): void {
+    this.alertListeners.push(listener);
+  }
+
   broadcastAlert(alert: { type: string; message: FrontendMessage; reason: string }, userId?: string): void {
     const payload = JSON.stringify({ type: 'alert', data: alert });
     for (const [ws, state] of this.clients) {
       if (ws.readyState !== WebSocket.OPEN) continue;
       if (isHostedMode() && userId && state.userId !== userId) continue;
       ws.send(payload);
+    }
+
+    for (const listener of this.alertListeners) {
+      try {
+        void Promise.resolve(listener(alert, userId)).catch((err) =>
+          console.error('[WsServer] Alert listener failed:', err?.message ?? err),
+        );
+      } catch (err) {
+        console.error('[WsServer] Alert listener threw:', (err as Error)?.message ?? err);
+      }
     }
   }
 
