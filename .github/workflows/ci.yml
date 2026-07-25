@@ -37,6 +37,12 @@ jobs:
       - name: Install (workspaces)
         run: npm ci
 
+      # Build the shared package first — backend/frontend resolve @oct/shared
+      # from its built dist. (The root `prepare` script also builds it on
+      # install; this is an explicit belt-and-suspenders step.)
+      - name: Build @oct/shared
+        run: npm run build -w @oct/shared
+
       # --- Typecheck every workspace (no emit) ---
       - name: Typecheck backend
         run: npm run typecheck -w backend

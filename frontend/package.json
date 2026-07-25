@@ -12,6 +12,7 @@
     "test:watch": "vitest"
   },
   "dependencies": {
+    "@oct/shared": "*",
     "@supabase/supabase-js": "^2.98.0",
     "lucide-react": "^0.474.0",
     "react": "^19.0.0",
