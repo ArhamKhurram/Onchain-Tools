@@ -1,0 +1,22 @@
+import { Key, Settings2, Zap, Volume2, Bell, Tag, AtSign, Users, Shield, HelpCircle } from 'lucide-react';
+import type { SoundConfig, PushoverTriggers, PushoverFilters, MissedRunnerConfig } from '../../types';
+
+export type Section = 'tokens' | 'general' | 'contracts' | 'sounds' | 'pushover' | 'keywords' | 'mentions' | 'users' | 'guilds' | 'help';
+
+export const SECTIONS: { id: Section; label: string; icon: typeof Key }[] = [
+  { id: 'tokens', label: 'Tokens', icon: Key },
+  { id: 'general', label: 'General', icon: Settings2 },
+  { id: 'contracts', label: 'Contracts', icon: Zap },
+  { id: 'sounds', label: 'Sounds & Notifications', icon: Volume2 },
+  { id: 'pushover', label: 'Pushover', icon: Bell },
+  { id: 'keywords', label: 'Keywords', icon: Tag },
+  { id: 'mentions', label: 'Mentions', icon: AtSign },
+  { id: 'users', label: 'Highlighted Users', icon: Users },
+  { id: 'guilds', label: 'Guilds', icon: Shield },
+  { id: 'help', label: 'Help & Features', icon: HelpCircle },
+];
+
+export const defaultSoundConfig: SoundConfig = { enabled: true, volume: 80, useCustom: false };
+export const defaultTriggers: PushoverTriggers = { highlightedUser: false, highlightedUserContract: true, contract: false, keyword: false, signalConvergence: false, missedRunner: false };
+export const defaultFilters: PushoverFilters = { userIds: [], channelIds: [], guildIds: [] };
+export const defaultMissedRunner: MissedRunnerConfig = { enabled: false, minMultiplier: 1.5, lookbackHours: 24, cooldownHours: 24, notifyVia: 'toast' };
