@@ -3,14 +3,7 @@
 // backend/src/utils/keywordMatcher.ts and frontend/src/discord/keywordMatch.ts,
 // which were byte-identical.
 
-export type KeywordMatchMode = 'includes' | 'exact' | 'regex';
-
-export interface KeywordPattern {
-  pattern: string;
-  matchMode: KeywordMatchMode;
-  isRegex?: boolean;
-  label?: string;
-}
+import type { KeywordMatchMode, KeywordPattern } from './types.js';
 
 const regexCache = new Map<string, RegExp>();
 
