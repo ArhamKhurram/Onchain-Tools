@@ -113,3 +113,29 @@ export function buildContractUrl(
 
   return template.replace('{address}', addr);
 }
+
+// --- FOMO network id ↔ OCT chain mapping ----------------------------------
+// FOMO identifies chains by numeric network id; OCT uses slugs ('sol', 'eth', …).
+// Shared so the backend can resolve token metadata from a trade and the frontend
+// can build explorer/chart links for the same trade.
+
+export const FOMO_NETWORK_CHAIN_SLUGS: Record<number, string> = {
+  1: 'eth',
+  56: 'bsc',
+  143: 'robinhood',
+  8453: 'base',
+  1399811149: 'sol',
+};
+
+/** OCT chain slug for a FOMO network id, or null when unsupported. */
+export function chainSlugFromNetworkId(networkId: number | null | undefined): string | null {
+  if (networkId == null) return null;
+  return FOMO_NETWORK_CHAIN_SLUGS[networkId] ?? null;
+}
+
+/** 'sol' | 'evm' bucket for a FOMO network id (what buildContractUrl expects). */
+export function chainKindFromNetworkId(networkId: number | null | undefined): 'sol' | 'evm' | null {
+  const slug = chainSlugFromNetworkId(networkId);
+  if (!slug) return null;
+  return slug === 'sol' ? 'sol' : 'evm';
+}

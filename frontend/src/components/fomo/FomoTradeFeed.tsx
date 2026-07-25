@@ -1,5 +1,6 @@
 import { Activity, ArrowDownRight, ArrowUpRight, Radio } from 'lucide-react';
 import { useAppStore } from '../../stores/appStore';
+import { fomoTradeDisplay } from '../../utils/fomoTradeDisplay';
 import type { FomoTrade } from '../../types/fomo';
 
 function formatUsd(value: number | null): string {
@@ -77,12 +78,19 @@ export default function FomoTradeFeed({ embedded = false }: { embedded?: boolean
 }
 
 function FomoTradeRow({ trade }: { trade: FomoTrade }) {
+  const config = useAppStore((s) => s.config);
   const isBuy = trade.side === 'buy';
   const isSell = trade.side === 'sell';
   const sideColor = isBuy ? 'text-oct-green' : isSell ? 'text-oct-accent' : 'text-oct-muted';
   const SideIcon = isSell ? ArrowDownRight : ArrowUpRight;
   const sideLabel = trade.side ? trade.side.toUpperCase() : 'TRADE';
-  const token = trade.tokenSymbol || (trade.tokenAddress ? `${trade.tokenAddress.slice(0, 6)}…` : 'token');
+
+  // Symbol is the headline; the address stays visible as secondary context so a
+  // token is always identifiable even before enrichment resolves a symbol.
+  const { tokenLabel, shortAddress, address, chainSlug, chartUrl, hasSymbol } = fomoTradeDisplay(
+    trade,
+    config?.contractLinkTemplates,
+  );
 
   return (
     <li className="flex items-center gap-3 px-4 py-2.5 hover:bg-oct-surface-raised/60 transition-colors">
@@ -92,8 +100,31 @@ function FomoTradeRow({ trade }: { trade: FomoTrade }) {
       </span>
       <div className="min-w-0 flex-1">
         <div className="font-bold text-oct-text truncate">{traderLabel(trade)}</div>
-        <div className="text-xs text-oct-muted truncate">
-          <span className="font-mono uppercase">{token}</span>
+        <div className="flex items-center gap-1.5 text-xs text-oct-muted min-w-0">
+          {chartUrl ? (
+            <a
+              href={chartUrl}
+              target="_blank"
+              rel="noopener noreferrer"
+              onClick={(e) => e.stopPropagation()}
+              title={address ?? undefined}
+              className="font-mono font-bold text-oct-text hover:text-oct-accent hover:underline truncate"
+            >
+              {tokenLabel}
+            </a>
+          ) : (
+            <span className="font-mono font-bold text-oct-text truncate" title={address ?? undefined}>
+              {tokenLabel}
+            </span>
+          )}
+          {hasSymbol && shortAddress && (
+            <span className="font-mono text-oct-muted/70 shrink-0" title={address ?? undefined}>
+              {shortAddress}
+            </span>
+          )}
+          {chainSlug && (
+            <span className="uppercase font-bold text-[10px] text-oct-muted/70 shrink-0">{chainSlug}</span>
+          )}
         </div>
       </div>
       <div className="text-right shrink-0">

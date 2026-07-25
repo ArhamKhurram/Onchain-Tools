@@ -11,6 +11,9 @@ export {
   getPresetTemplate,
   injectReferralIntoCustomTemplate,
   buildContractUrl,
+  FOMO_NETWORK_CHAIN_SLUGS,
+  chainSlugFromNetworkId,
+  chainKindFromNetworkId,
 } from './contract.js';
 export type { ContractDetectionResult } from './contract.js';
 export { processDiscordMessage } from './message.js';
