@@ -47,6 +47,12 @@ jobs:
       - name: Typecheck fomo-worker
         run: npm run typecheck -w fomo-worker
 
+      # --- Unit tests (pure functions: contract/keyword detection, convergence) ---
+      - name: Test backend
+        run: npm run test -w backend
+      - name: Test frontend
+        run: npm run test -w frontend
+
       # --- Build the three deploy targets (backend→Railway, frontend+landing→Vercel) ---
       - name: Build backend
         run: npm run build -w backend

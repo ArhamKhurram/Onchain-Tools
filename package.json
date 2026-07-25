@@ -17,6 +17,7 @@
     "build:vercel": "npm run build -w landing && npm run build -w frontend && node scripts/merge-vercel-output.mjs",
     "start": "npm run build && npm run start -w backend",
     "typecheck": "npm run typecheck -w backend && npm run typecheck -w frontend",
+    "test": "npm run test -w backend && npm run test -w frontend",
     "dev:desktop": "npm --prefix desktop run start",
     "pack:desktop": "npm run build:backend && npm run build:frontend && npm --prefix desktop run pack",
     "build:desktop": "npm run build:backend && npm run build:frontend && npm --prefix desktop run dist"
