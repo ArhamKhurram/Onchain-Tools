@@ -9,6 +9,7 @@ import type { WsServer } from '../ws/server.js';
 import { getStorageProvider } from '../storage/index.js';
 import { sendPushover } from '../utils/pushover.js';
 import type { NormalizedTrade } from './store.js';
+import { resolveTradeTokenSymbol } from './tokenSymbol.js';
 
 export interface ActivityCursorRow {
   fomo_user_id: string;
@@ -226,7 +227,11 @@ export async function deliverRecentTradesToUser(
       continue;
     }
 
-    wsServer.sendToUser(octUserId, buildFomoTradePayload(trade));
+    // Rows stored before symbol resolution existed (or whose lookup failed then)
+    // still carry a null symbol — resolve on the way out so replayed trades read
+    // the same as live ones.
+    const enriched = await resolveTradeTokenSymbol(trade);
+    wsServer.sendToUser(octUserId, buildFomoTradePayload(enriched));
     delivered++;
   }
 

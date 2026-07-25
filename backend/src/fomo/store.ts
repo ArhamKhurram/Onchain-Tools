@@ -179,20 +179,26 @@ export function normalizeUserActivity(
   let side: string | null = null;
   let tokenAddress: string | null = null;
   let networkId: number | null = null;
+  // Which leg of the swap is the "subject" token — used to pick the right
+  // symbol field out of the raw payload below.
+  let subject: 'in' | 'out';
 
   if (inIsQuote && !outIsQuote) {
     side = 'buy';
     tokenAddress = outToken;
     networkId = outNetworkId ?? inNetworkId;
+    subject = 'out';
   } else if (!inIsQuote && outIsQuote) {
     side = 'sell';
     tokenAddress = inToken;
     networkId = inNetworkId ?? outNetworkId;
+    subject = 'in';
   } else if (!inIsQuote && !outIsQuote) {
     // Token ↔ token — still surface it; default to out side as the subject.
     side = 'swap';
     tokenAddress = outToken;
     networkId = outNetworkId ?? inNetworkId;
+    subject = 'out';
   } else {
     // Quote ↔ quote (rare) — skip.
     return null;
@@ -205,11 +211,32 @@ export function normalizeUserActivity(
     displayName: trader.displayName,
     side,
     tokenAddress,
-    tokenSymbol: null,
+    // Best-effort from the payload; when FOMO omits it the poller backfills the
+    // symbol from OCT's token catalog (see resolveTradeTokenSymbol).
+    tokenSymbol: pickActivitySymbol(r, subject),
     networkId,
     usdValue: firstNumber(r.humanUsdAmountIn, r.humanUsdAmountOut),
     raw,
   };
+}
+
+/**
+ * Pull the subject token's symbol out of a raw user-activity row. FOMO's swap
+ * payload is in/out shaped, so prefer the leg we selected as the subject and
+ * fall back through the aliases we've seen. Returns null when absent — callers
+ * then resolve it from the token catalog by address.
+ */
+function pickActivitySymbol(r: any, subject: 'in' | 'out'): string | null {
+  const side = subject === 'in' ? r.inToken : r.outToken;
+  return firstString(
+    subject === 'in' ? r.inTokenSymbol : r.outTokenSymbol,
+    subject === 'in' ? r.inTokenTicker : r.outTokenTicker,
+    side?.symbol,
+    side?.ticker,
+    side?.info?.symbol,
+    r.tokenSymbol,
+    r.ticker,
+  );
 }
 
 /** Pull swap activities from `/v2/users/{id}/activity`. */
