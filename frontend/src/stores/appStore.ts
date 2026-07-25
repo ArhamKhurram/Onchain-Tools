@@ -25,12 +25,60 @@ const API_BASE = import.meta.env.VITE_API_URL
   : '/api';
 const MAX_MESSAGES_PER_ROOM = 1000;
 const MAX_ALERTS = 50;
+const MAX_NOTIFICATION_HISTORY = 10;
+const NOTIFICATION_HISTORY_KEY = 'oct.notificationHistory';
+const NOTIFICATIONS_LAST_READ_KEY = 'oct.notificationsLastReadAt';
 const MAX_CONTRACTS = 2000;
 const MAX_PANES = 4;
 
 function contractKey(c: ContractEntry): string {
   return `${c.messageId}:${c.address.toLowerCase()}`;
 }
+
+function loadNotificationHistory(): Alert[] {
+  try {
+    const raw = localStorage.getItem(NOTIFICATION_HISTORY_KEY);
+    if (!raw) return [];
+    const parsed = JSON.parse(raw);
+    return Array.isArray(parsed) ? parsed.slice(0, MAX_NOTIFICATION_HISTORY) : [];
+  } catch {
+    return [];
+  }
+}
+
+function persistNotificationHistory(history: Alert[]): void {
+  try {
+    localStorage.setItem(NOTIFICATION_HISTORY_KEY, JSON.stringify(history.slice(0, MAX_NOTIFICATION_HISTORY)));
+  } catch {
+    // ignore quota errors
+  }
+}
+
+function loadNotificationsLastReadAt(): number {
+  try {
+    const raw = localStorage.getItem(NOTIFICATIONS_LAST_READ_KEY);
+    if (!raw) return 0;
+    const n = Number(raw);
+    return Number.isFinite(n) ? n : 0;
+  } catch {
+    return 0;
+  }
+}
+
+function persistNotificationsLastReadAt(ts: number): void {
+  try {
+    localStorage.setItem(NOTIFICATIONS_LAST_READ_KEY, String(ts));
+  } catch {
+    // ignore
+  }
+}
+
+function countUnreadNotifications(history: Alert[], lastReadAt: number): number {
+  return history.filter((a) => a.timestamp > lastReadAt).length;
+}
+
+const _initialNotificationHistory = loadNotificationHistory();
+const _initialNotificationsLastReadAt = loadNotificationsLastReadAt();
 
 /** Keep in-memory detections when a refetch returns fewer rows (client gateway mode). */
 function mergeContractLists(local: ContractEntry[], server: ContractEntry[]): ContractEntry[] {
@@ -139,6 +187,9 @@ interface AppState {
   settingsSection: string | null;
   messages: Record<string, FrontendMessage[]>;
   alerts: Alert[];
+  notificationHistory: Alert[];
+  notificationsLastReadAt: number;
+  unreadNotificationCount: number;
   guilds: GuildInfo[];
   dmChannels: DMChannel[];
   config: AppConfig | null;
@@ -189,6 +240,8 @@ interface AppState {
   markMessageDeleted: (data: { messageId: string; channelId: string }) => void;
   addAlert: (alert: Alert) => void;
   dismissAlert: (alertId: string) => void;
+  markNotificationsRead: () => void;
+  clearNotificationHistory: () => void;
   updateReaction: (channelId: string, messageId: string, emoji: FrontendReaction['emoji'], delta: number) => void;
   addContract: (entry: ContractEntry, opts?: { skipCatalogHydrate?: boolean }) => void;
   persistContract: (entry: ContractEntry) => Promise<void>;
@@ -249,6 +302,9 @@ export const useAppStore = create<AppState>((set, get) => {
   settingsSection: null,
   messages: {},
   alerts: [],
+  notificationHistory: _initialNotificationHistory,
+  notificationsLastReadAt: _initialNotificationsLastReadAt,
+  unreadNotificationCount: countUnreadNotifications(_initialNotificationHistory, _initialNotificationsLastReadAt),
   guilds: [],
   dmChannels: [],
   config: null,
@@ -789,7 +845,16 @@ export const useAppStore = create<AppState>((set, get) => {
     set((state) => {
       const updated = [alert, ...state.alerts];
       if (updated.length > MAX_ALERTS) updated.length = MAX_ALERTS;
-      return { alerts: updated };
+      const history = [
+        alert,
+        ...state.notificationHistory.filter((a) => a.id !== alert.id),
+      ].slice(0, MAX_NOTIFICATION_HISTORY);
+      persistNotificationHistory(history);
+      return {
+        alerts: updated,
+        notificationHistory: history,
+        unreadNotificationCount: countUnreadNotifications(history, state.notificationsLastReadAt),
+      };
     });
   },
 
@@ -797,6 +862,25 @@ export const useAppStore = create<AppState>((set, get) => {
     set((state) => ({
       alerts: state.alerts.filter((a) => a.id !== alertId),
     }));
+  },
+
+  markNotificationsRead: () => {
+    set((state) => {
+      const now = Date.now();
+      persistNotificationsLastReadAt(now);
+      return { notificationsLastReadAt: now, unreadNotificationCount: 0 };
+    });
+  },
+
+  clearNotificationHistory: () => {
+    persistNotificationHistory([]);
+    const now = Date.now();
+    persistNotificationsLastReadAt(now);
+    set({
+      notificationHistory: [],
+      notificationsLastReadAt: now,
+      unreadNotificationCount: 0,
+    });
   },
 
   updateReaction: (channelId, messageId, emoji, delta) => {

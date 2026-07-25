@@ -24,6 +24,13 @@ export interface UpdateSlide {
  */
 export const UPDATE_SLIDES: UpdateSlide[] = [
   {
+    id: 'slide-2026-07-25-notification-history',
+    title: 'Notification History',
+    description:
+      'Bell icon in the header keeps your last 10 alerts — contract scans, highlights, keywords, and missed runners — so nothing disappears when toasts auto-dismiss.',
+    variant: 'feed',
+  },
+  {
     id: 'slide-2026-07-25-tg-contract-feed',
     title: 'Telegram Contract Feed',
     description:

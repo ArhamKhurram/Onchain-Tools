@@ -10,6 +10,7 @@ import { UPDATE_SLIDES } from '../data/updates';
 import { getSeenIds } from '../utils/announcements';
 import { useThemeStore } from '../stores/themeStore';
 import ThemeToggle from '../components/ThemeToggle';
+import NotificationPanel from '../components/NotificationPanel';
 
 const NAV: { to: string; label: string; end?: boolean }[] = [
   { to: routes.home, label: 'Home', end: true },
@@ -76,6 +77,7 @@ export default function AppShell() {
 
         <div className="flex items-center gap-2 shrink-0">
           <ThemeToggle />
+          <NotificationPanel />
           <button
             type="button"
             onClick={openChangelog}

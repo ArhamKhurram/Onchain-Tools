@@ -15,6 +15,7 @@ export const UPDATES: UpdateEntry[] = [
       '**Robinhood Chain on FOMO** — HOOD swaps classify correctly for cross-chain and same-chain trades (USDG/WETH quote tokens)',
       '**Radar mention window toggle** — 15m, 1h, and 4h mention counts combined into one sortable column; window and visible columns configurable from Radar settings',
       '**Radar column picker** — choose which columns show (mentions, callers, MC@call, first caller, FOMO, etc.); platform shown as a dot on the token row',
+      '**Notification history** — header bell keeps the last 10 alerts with unread badge, clear-all, and links back to the source message',
       '**Home session status** — console home shows Telegram connected/disconnected alongside Discord and room count',
       '**Dark and light theme** — header toggle switches between the black/red console and a cream/blue light mode with improved Feed contrast',
     ],
