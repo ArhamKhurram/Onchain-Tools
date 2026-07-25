@@ -11,8 +11,11 @@ import type {
   BotNetworkId,
   BotSnapshotResponse,
   BotTokenInfo,
+  BotTrackedResponse,
 } from '@oct/shared';
 import { ensureSharedFomoClientReady } from '../fomo/client.js';
+import { getFomoServiceClient } from '../fomo/store.js';
+import { resolveOctUserByDiscordId } from './identity.js';
 import { extractLeaderboardEntries, networkIdFromContract } from '../fomo/store.js';
 import { EXPLORER_BASE, type FomoClientLike } from '../fomo/types.js';
 import {
@@ -25,7 +28,7 @@ import {
 } from '../fomo/cache.js';
 import { getTokenSnapshot } from '../utils/tokenSnapshot.js';
 
-export type BotServiceErrorCode = 'not_configured' | 'upstream' | 'not_found';
+export type BotServiceErrorCode = 'not_configured' | 'upstream' | 'not_found' | 'not_linked';
 
 export class BotServiceError extends Error {
   constructor(public code: BotServiceErrorCode, message: string) {
@@ -241,6 +244,39 @@ export async function getBotLeaderboard(window: '24h' | 'all', limit = 25): Prom
       displayName: e.displayName,
       pnlUsd: e.pnl ?? null,
       volumeUsd: e.volume ?? null,
+    })),
+  };
+}
+
+/**
+ * The tracked FOMO traders of the OCT account linked to this Discord user.
+ * Throws BotServiceError('not_linked') when the Discord account has no OCT
+ * account — callers turn that into the "link Discord on OCT" message.
+ */
+export async function getBotTracked(discordUserId: string): Promise<BotTrackedResponse> {
+  const db = getFomoServiceClient();
+  if (!db) throw new BotServiceError('not_configured', 'FOMO tracking is not available (storage not configured).');
+
+  const octUserId = await resolveOctUserByDiscordId(discordUserId);
+  if (!octUserId) {
+    throw new BotServiceError(
+      'not_linked',
+      'This Discord account is not linked to an OCT account.',
+    );
+  }
+
+  const { data, error } = await db
+    .from('fomo_tracked_users')
+    .select('fomo_handle, display_name, created_at')
+    .eq('user_id', octUserId)
+    .order('created_at', { ascending: false });
+  if (error) throw new BotServiceError('upstream', 'Could not load your tracked traders.');
+
+  return {
+    traders: (data ?? []).map((row: any) => ({
+      handle: row.fomo_handle ?? null,
+      displayName: row.display_name ?? null,
+      trackedAt: row.created_at,
     })),
   };
 }

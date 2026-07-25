@@ -12,6 +12,13 @@ export function describeServiceError(err: unknown, action: string): string {
         return '⚠️ FOMO data is not configured on this OCT instance yet.';
       case 'not_found':
         return `🔍 ${err.message}`;
+      case 'not_linked':
+        // Gatekeep for accounts with no Discord identity on OCT (email/Google
+        // sign-ups). They can link Discord to their existing OCT account.
+        return [
+          '🔗 **This Discord account isn\'t linked to an OCT account.**',
+          'Sign in to OCT with Discord (or link Discord to your existing account) and run this again.',
+        ].join('\n');
       case 'upstream':
         return '⚠️ FOMO is not responding right now. Try again in a minute.';
     }
