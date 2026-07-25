@@ -1,5 +1,7 @@
 import { Client, Events, GatewayIntentBits } from 'discord.js';
+import type { WsServer } from '../ws/server.js';
 import { commands } from './commands/index.js';
+import { createAlertDmListener } from './alerts.js';
 import { handleInteraction } from './interactions.js';
 
 // In-process Outpost bot (DISCORD_BOT_PLAN.md §1). Runs inside the OCT backend
@@ -20,7 +22,7 @@ export function isBotEnabled(): boolean {
   return !!process.env.DISCORD_BOT_TOKEN?.trim();
 }
 
-export function startBot(): void {
+export function startBot(wsServer?: WsServer): void {
   const token = process.env.DISCORD_BOT_TOKEN?.trim();
   if (!token) {
     console.log('[Bot] DISCORD_BOT_TOKEN not set; Outpost bot disabled.');
@@ -49,6 +51,12 @@ export function startBot(): void {
     bot.on(Events.Warn, (msg) => console.warn('[Bot] Warning:', msg));
 
     client = bot;
+
+    // Alert DMs (opt-in per user). Subscribing to the WS alert seam means no
+    // changes at any of the alert emission sites.
+    if (wsServer) {
+      wsServer.onAlert(createAlertDmListener(getBotClient));
+    }
 
     void bot.login(token).catch((err) => {
       console.error('[Bot] Discord login failed; bot disabled for this process:', err?.message ?? err);

@@ -17,7 +17,7 @@ export function createConfigRoutes(ctx: RouterContext): Router {
 
   router.put('/config', async (req, res) => {
     const userId = getUserId(req);
-    const { globalHighlightedUsers, contractDetection, guildColors, dmColors, telegramColors, enabledGuilds, hiddenUsers, evmAddressColor, solAddressColor, openInDiscordApp, openInTelegramApp, messageSounds, soundSettings, channelSounds, pushover, missedRunner, contractLinkTemplates, contractClickAction, showFullContractAddress, autoOpenHighlightedContracts, signalConvergenceWindowMinutes, globalKeywordPatterns, keywordAlertsEnabled, desktopNotifications, toastAlertsEnabled, toastPosition, mentionsUserEnabled, mentionsRoleEnabled, mentionsHereEnabled, mentionsEveryoneEnabled, badgeClickAction, chattingEnabled, messageDisplay, compactModeAvatars, roleColors, mobileZoomScale, splitLayout, paneRoomIds, paneLocks, gridMirror, seenAnnouncements, discordProxyUrl, workspaceLayout } = req.body;
+    const { globalHighlightedUsers, contractDetection, guildColors, dmColors, telegramColors, enabledGuilds, hiddenUsers, evmAddressColor, solAddressColor, openInDiscordApp, openInTelegramApp, messageSounds, soundSettings, channelSounds, pushover, missedRunner, contractLinkTemplates, contractClickAction, showFullContractAddress, autoOpenHighlightedContracts, signalConvergenceWindowMinutes, globalKeywordPatterns, keywordAlertsEnabled, desktopNotifications, toastAlertsEnabled, toastPosition, mentionsUserEnabled, mentionsRoleEnabled, mentionsHereEnabled, mentionsEveryoneEnabled, badgeClickAction, chattingEnabled, messageDisplay, compactModeAvatars, roleColors, mobileZoomScale, splitLayout, paneRoomIds, paneLocks, gridMirror, seenAnnouncements, discordProxyUrl, workspaceLayout, discordBotDm } = req.body;
 
     // The Discord proxy only makes sense in local mode (the connection leaves the
     // user's own machine). In hosted mode the server IP is fixed, and honouring a
@@ -47,6 +47,18 @@ export function createConfigRoutes(ctx: RouterContext): Router {
       ...(soundSettings !== undefined && { soundSettings }),
       ...(channelSounds !== undefined && { channelSounds }),
       ...(pushover !== undefined && { pushover }),
+      ...(discordBotDm !== undefined && {
+        discordBotDm: {
+          enabled: Boolean(discordBotDm.enabled),
+          triggers: {
+            highlightedUser: Boolean(discordBotDm.triggers?.highlightedUser),
+            highlightedUserContract: Boolean(discordBotDm.triggers?.highlightedUserContract),
+            contract: Boolean(discordBotDm.triggers?.contract),
+            keyword: Boolean(discordBotDm.triggers?.keyword),
+            missedRunner: Boolean(discordBotDm.triggers?.missedRunner),
+          },
+        },
+      }),
       ...(missedRunner !== undefined && {
         missedRunner: {
           enabled: Boolean(missedRunner.enabled),
