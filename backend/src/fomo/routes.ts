@@ -3,9 +3,18 @@
 
 import { Router } from 'express';
 import { isHostedMode } from '../storage/index.js';
-import { ensureSharedFomoClient, resolveFomoRefreshToken } from './client.js';
+import { ensureSharedFomoClientReady, resolveFomoRefreshToken } from './client.js';
 import { ensureSharedAccountFollows } from './follows.js';
 import { getFomoPollerStatus } from './poller.js';
+import {
+  getCached,
+  setCached,
+  leaderboardCacheKey,
+  hodlersCacheKey,
+  LEADERBOARD_TTL_MS,
+  HODLERS_TTL_MS,
+} from './cache.js';
+import { fetchWorkerHealth, isFomoProxyMode } from './proxy-client.js';
 import {
   getFomoServiceClient,
   extractLeaderboardEntries,
@@ -13,7 +22,9 @@ import {
   networkIdFromContract,
   type FomoTrackedUserRow,
 } from './store.js';
-import type { FomoClient } from './client.js';
+import type { FomoClientLike } from './types.js';
+import type { WsServer } from '../ws/server.js';
+import { deliverRecentTradesToUser } from './dispatch.js';
 
 function getUserId(req: any): string {
   return req.userId ?? 'local';
@@ -47,7 +58,7 @@ function pickFomoUser(obj: any): ResolvedFomoUser | null {
 
 // Resolve a free-text query to a real FOMO user via handle lookup first, then
 // fuzzy search. Returns null when nothing matches.
-async function resolveFomoUser(client: FomoClient, query: string): Promise<ResolvedFomoUser | null> {
+async function resolveFomoUser(client: FomoClientLike, query: string): Promise<ResolvedFomoUser | null> {
   const handle = query.trim().replace(/^@/, '');
 
   // 1. Exact handle lookup.
@@ -83,17 +94,25 @@ async function resolveFomoUser(client: FomoClient, query: string): Promise<Resol
   return null;
 }
 
-export function createFomoRouter(): Router {
+export function createFomoRouter(wsServer: WsServer): Router {
   const router = Router();
 
   // GET /api/fomo/status — whether the shared FOMO account is configured.
   router.get('/status', async (_req, res) => {
     const refreshToken = await resolveFomoRefreshToken();
     const poller = getFomoPollerStatus();
+    const worker = await fetchWorkerHealth();
     res.json({
       configured: !!refreshToken,
+      proxyMode: isFomoProxyMode(),
+      worker: worker ?? null,
       pollerActive: poller.active,
       pollerReason: poller.reason ?? null,
+      pollIntervalMs: poller.pollIntervalMs ?? null,
+      trackedUserCount: poller.trackedUserCount ?? null,
+      lastPollAt: poller.lastPollAt ?? null,
+      lastPollError: poller.lastPollError ?? null,
+      lastSuccessfulPollAt: poller.lastSuccessfulPollAt ?? null,
       ensureFollows: process.env.FOMO_ENSURE_FOLLOWS !== 'false',
     });
   });
@@ -105,15 +124,20 @@ export function createFomoRouter(): Router {
     const limitRaw = Number.parseInt(String(req.query.limit ?? '50'), 10);
     const limit = Number.isFinite(limitRaw) ? Math.min(Math.max(limitRaw, 1), 100) : 50;
 
-    const client = await ensureSharedFomoClient();
+    const client = await ensureSharedFomoClientReady();
     if (!client) {
       return res.status(503).json({
         error: 'FOMO service account is not configured. Seed fomo_poll_state.refresh_token or set FOMO_REFRESH_TOKEN.',
       });
     }
 
+    const cacheKey = leaderboardCacheKey(window, limit);
+    const cached = getCached<{ entries: ReturnType<typeof extractLeaderboardEntries> }>(cacheKey);
+    if (cached) {
+      return res.json(cached);
+    }
+
     try {
-      await client.init();
       const result = await client.getLeaderboard(limit, window);
       if (!result.status || result.status < 200 || result.status >= 300) {
         console.error(
@@ -126,7 +150,9 @@ export function createFomoRouter(): Router {
       if (entries.length === 0) {
         console.warn('[FomoAPI] Leaderboard returned 0 parsed entries; envelope may have changed.');
       }
-      res.json({ entries });
+      const payload = { entries };
+      setCached(cacheKey, payload, LEADERBOARD_TTL_MS);
+      res.json(payload);
     } catch (err: any) {
       console.error('[FomoAPI] Leaderboard error:', err?.message ?? err);
       res.status(500).json({ error: safeError(err, 'Failed to fetch FOMO leaderboard') });
@@ -159,7 +185,7 @@ export function createFomoRouter(): Router {
       return res.json({ overlaps: {} });
     }
 
-    const client = await ensureSharedFomoClient();
+    const client = await ensureSharedFomoClientReady();
     if (!client) {
       return res.status(503).json({
         error: 'FOMO service account is not configured. Seed fomo_poll_state.refresh_token or set FOMO_REFRESH_TOKEN.',
@@ -180,14 +206,19 @@ export function createFomoRouter(): Router {
         if (row.fomo_handle) trackedHandles.add(row.fomo_handle.toLowerCase());
       }
 
-      await client.init();
-      const holdersQuery = encodeURIComponent(
-        JSON.stringify(tokens.map((t) => ({ address: t.address, networkId: t.networkId }))),
-      );
-      const batchResult = await client.call(`/hodlers/top?tokens=${holdersQuery}`);
+      const cacheKey = hodlersCacheKey(tokens);
+      let batchJson = getCached<any>(cacheKey);
+      if (!batchJson) {
+        const holdersQuery = encodeURIComponent(
+          JSON.stringify(tokens.map((t) => ({ address: t.address, networkId: t.networkId }))),
+        );
+        const batchResult = await client.call(`/hodlers/top?tokens=${holdersQuery}`);
 
-      if (!batchResult.status || batchResult.status < 200 || batchResult.status >= 300) {
-        return res.status(502).json({ error: 'Failed to fetch FOMO holder data.' });
+        if (!batchResult.status || batchResult.status < 200 || batchResult.status >= 300) {
+          return res.status(502).json({ error: 'Failed to fetch FOMO holder data.' });
+        }
+        batchJson = batchResult.json;
+        setCached(cacheKey, batchJson, HODLERS_TTL_MS);
       }
 
       const overlaps: Record<string, { trackedCount: number; trackedHandles: string[] }> = {};
@@ -195,7 +226,7 @@ export function createFomoRouter(): Router {
         const match = matchHoldersToTracked(
           token.address,
           token.networkId,
-          batchResult.json,
+          batchJson,
           trackedById,
           trackedHandles,
         );
@@ -218,7 +249,7 @@ export function createFomoRouter(): Router {
     const query = typeof req.body?.query === 'string' ? req.body.query.trim() : '';
     if (!query) return res.status(400).json({ error: 'A search query is required.' });
 
-    const client = await ensureSharedFomoClient();
+    const client = await ensureSharedFomoClientReady();
     if (!client) {
       return res.status(503).json({
         error: 'FOMO service account is not configured. Seed fomo_poll_state.refresh_token or set FOMO_REFRESH_TOKEN.',
@@ -264,7 +295,7 @@ export function createFomoRouter(): Router {
     const db = getFomoServiceClient();
     if (!db) return res.status(503).json({ error: 'FOMO tracking is not available (storage not configured).' });
 
-    const client = await ensureSharedFomoClient();
+    const client = await ensureSharedFomoClientReady();
     if (!client) {
       return res.status(503).json({
         error: 'FOMO service account is not configured. Seed fomo_poll_state.refresh_token or set FOMO_REFRESH_TOKEN.',
@@ -299,6 +330,10 @@ export function createFomoRouter(): Router {
       // If tradingActivity is following-scoped, make the shared account follow
       // this trader so their trades appear in the global poll feed.
       await ensureSharedAccountFollows(client, resolved.fomoUserId);
+
+      void deliverRecentTradesToUser(db, wsServer, resolved.fomoUserId, userId).catch((err) => {
+        console.warn('[FomoAPI] Recent trade backfill failed:', (err as Error)?.message);
+      });
 
       res.status(201).json(data as FomoTrackedUserRow);
     } catch (err: any) {

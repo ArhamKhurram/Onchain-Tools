@@ -220,4 +220,13 @@ export class WsServer {
     }
     return false;
   }
+
+  /** Count WS clients authenticated in hosted mode (used for adaptive FOMO polling). */
+  getAuthenticatedClientCount(): number {
+    let count = 0;
+    for (const [ws, state] of this.clients) {
+      if (ws.readyState === WebSocket.OPEN && state.userId) count++;
+    }
+    return count;
+  }
 }

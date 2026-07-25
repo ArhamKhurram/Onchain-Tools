@@ -13,8 +13,9 @@
 import { chromium } from 'playwright-extra';
 import type { Browser, Page } from 'playwright';
 import stealth from 'puppeteer-extra-plugin-stealth';
-import type { FomoCredentials, FomoCallResult, FomoTokenMetadata } from './types.js';
+import type { FomoCredentials, FomoCallResult, FomoTokenMetadata, FomoClientLike } from './types.js';
 import { getFomoServiceClient, loadPersistedFomoRefreshToken } from './store.js';
+import { FomoProxyClient, isFomoProxyMode } from './proxy-client.js';
 
 chromium.use(stealth());
 
@@ -44,7 +45,7 @@ async function retry<T>(fn: () => Promise<T>, attempts = 3, delayMs = 1000): Pro
   throw lastErr;
 }
 
-export class FomoClient {
+export class FomoClient implements FomoClientLike {
   private creds: FomoCredentials;
   private browser: Browser | null = null;
   private page: Page | null = null;
@@ -339,6 +340,10 @@ export class FomoClient {
     return this.call(`/feed/tradingActivity?limit=${limit}`);
   }
 
+  getUserActivity(userId: string, limit = 20) {
+    return this.call(`/v2/users/${encodeURIComponent(userId)}/activity?limit=${limit}`);
+  }
+
   getTokenAllowList() {
     return this.call('/tokenAllowList/detailed');
   }
@@ -373,10 +378,11 @@ export async function resolveFomoRefreshToken(): Promise<string | null> {
   return process.env.FOMO_REFRESH_TOKEN || null;
 }
 
-let sharedClient: FomoClient | null = null;
-let sharedClientInit: Promise<FomoClient | null> | null = null;
+let sharedClient: FomoClientLike | null = null;
+let sharedClientInit: Promise<FomoClientLike | null> | null = null;
+let sharedClientReady = false;
 
-function wireRefreshTokenPersistence(client: FomoClient): void {
+function wireRefreshTokenPersistence(client: FomoClientLike): void {
   const db = getFomoServiceClient();
   if (!db) return;
   client.onRefreshTokenRotated = async (newToken: string) => {
@@ -394,14 +400,21 @@ function wireRefreshTokenPersistence(client: FomoClient): void {
  * token persisted in fomo_poll_state so prod can run DB-only after a one-time
  * seed; falls back to FOMO_REFRESH_TOKEN for first boot.
  */
-export async function ensureSharedFomoClient(): Promise<FomoClient | null> {
+export async function ensureSharedFomoClient(): Promise<FomoClientLike | null> {
   if (sharedClient) return sharedClient;
   if (sharedClientInit) return sharedClientInit;
 
   sharedClientInit = (async () => {
     const refreshToken = await resolveFomoRefreshToken();
     if (!refreshToken) return null;
-    const client = new FomoClient(fomoCredentialsWithRefresh(refreshToken));
+
+    let client: FomoClientLike;
+    if (isFomoProxyMode()) {
+      client = new FomoProxyClient(fomoCredentialsWithRefresh(refreshToken));
+    } else {
+      client = new FomoClient(fomoCredentialsWithRefresh(refreshToken));
+    }
+
     wireRefreshTokenPersistence(client);
     sharedClient = client;
     return client;
@@ -414,7 +427,16 @@ export async function ensureSharedFomoClient(): Promise<FomoClient | null> {
   }
 }
 
+/** Boot-time init: warm browser/JWT once. Safe to call multiple times. */
+export async function ensureSharedFomoClientReady(): Promise<FomoClientLike | null> {
+  const client = await ensureSharedFomoClient();
+  if (!client || sharedClientReady) return client;
+  await client.init();
+  sharedClientReady = true;
+  return client;
+}
+
 /** Returns the shared client if already initialized (sync). */
-export function getSharedFomoClient(): FomoClient | null {
+export function getSharedFomoClient(): FomoClientLike | null {
   return sharedClient;
 }

@@ -57,26 +57,64 @@ export async function loadPersistedFomoRefreshToken(): Promise<string | null> {
 }
 
 /**
- * A single trade from FOMO's trading-activity feed, normalized into the shape
- * the fan-out poller and fomo_trade_events table expect.
- *
- * !! FIELD NAMES ARE UNVERIFIED !! The exact JSON shape/scope of
- * `/feed/tradingActivity` has not been confirmed against a live response. Every
- * field extracted in `normalizeTrade` below is marked with a TODO so it can be
- * checked against a real payload (logged behind DEBUG on first poll). Treat the
- * current key guesses as best-effort until verified.
+ * A single swap from a tracked user's `/v2/users/{id}/activity` feed.
  */
 export interface NormalizedTrade {
-  tradeId: string | null;        // TODO(verify): FOMO's stable id for the trade (dedup key)
-  fomoUserId: string | null;     // TODO(verify): stable id of the trader
-  fomoHandle: string | null;     // TODO(verify): trader's @handle
-  displayName: string | null;    // TODO(verify): trader's display name
-  side: string | null;           // TODO(verify): 'buy' | 'sell'
-  tokenAddress: string | null;   // TODO(verify): traded token contract address
-  tokenSymbol: string | null;    // TODO(verify): traded token ticker/symbol
-  networkId: number | null;      // TODO(verify): chain/network id
-  usdValue: number | null;       // TODO(verify): USD notional of the trade
-  raw: unknown;                  // full raw object, persisted for later verification
+  tradeId: string | null;
+  fomoUserId: string | null;
+  fomoHandle: string | null;
+  displayName: string | null;
+  side: string | null;
+  tokenAddress: string | null;
+  tokenSymbol: string | null;
+  networkId: number | null;
+  usdValue: number | null;
+  raw: unknown;
+}
+
+export interface TrackedFomoUserRef {
+  fomoUserId: string;
+  fomoHandle: string | null;
+  displayName: string | null;
+}
+
+/** Quote / settlement tokens used to infer buy vs sell (any supported chain). */
+const QUOTE_TOKEN_ADDRESSES = new Set(
+  [
+    // Solana
+    'EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v', // USDC
+    'Es9vMFrzaCERmJfrF4H2FYD4KCoNkY11McCe8BenwNYB', // USDT
+    'So11111111111111111111111111111111111111112', // SOL (wrapped)
+    // Ethereum (1)
+    '0xa0b86991c6218b36c1d19d4a2e9eb0ce3606eb48', // USDC
+    '0xdac17f958d2ee523a2206206994597c13d831ec7', // USDT
+    '0x6b175474e89094c44da98b954eedeac495271d0f', // DAI
+    '0xc02aaa39b223fe8d0a0e5c4f27ead9083c756cc2', // WETH
+    '0xeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee', // native ETH placeholder
+    // Base (8453)
+    '0x833589fcd6edb6e08f4c7c32d4f71b54bda02913', // USDC
+    '0x4200000000000000000000000000000000000006', // WETH
+    '0x50c5725949a6f0c72e6c0a4849bb420bc9f0e9bb', // DAI
+    // BSC (56)
+    '0x8ac76a51cc950d9822d68b83fe1ad97b32cd580d', // USDC
+    '0x55d398326f99059ff775485246999027b3197955', // USDT
+    '0xbb4cdb9cbd36b01bd1cbaebf2de08d9173bc095c', // WBNB
+    '0xe9e7cea3dedca5984780bafc599bd69add087d56', // BUSD
+    // Robinhood Chain (FOMO networkId 143)
+    '0x0bd7d308f8e1639faeb988df18a8011f41eacad73', // WETH
+    '0x5fc5360d0400a0fd4f2af552add042d716f1d168', // USDG (Robinhood stable)
+  ].map(normalizeTokenAddress),
+);
+
+function normalizeTokenAddress(address: string): string {
+  const trimmed = address.trim();
+  if (trimmed.startsWith('0x')) return trimmed.toLowerCase();
+  return trimmed;
+}
+
+function isQuoteToken(address: string | null | undefined): boolean {
+  if (!address) return false;
+  return QUOTE_TOKEN_ADDRESSES.has(normalizeTokenAddress(address));
 }
 
 function firstString(...vals: unknown[]): string | null {
@@ -106,32 +144,90 @@ function firstNumber(...vals: unknown[]): number | null {
  */
 export function normalizeTrade(raw: any): NormalizedTrade {
   const r = raw ?? {};
-  // Trader may be nested under `user`, `trader`, `account`, or flattened.
   const user = r.user ?? r.trader ?? r.account ?? r.profile ?? {};
-  // Token may be nested under `token`, or flattened onto the trade.
   const token = r.token ?? r.asset ?? {};
 
   return {
-    // TODO(verify): dedup id. Aliases guessed: id / tradeId / txHash / transactionHash / signature.
-    tradeId: firstString(r.id, r.tradeId, r.trade_id, r.txHash, r.transactionHash, r.signature),
-    // TODO(verify): trader stable id. Aliases: user.id / userId / user.userId / traderId.
+    tradeId: firstString(r.id, r.tradeId, r.trade_id, r.txHash, r.transactionHash, r.signature, r.inTradeId),
     fomoUserId: firstString(user.id, user.userId, r.userId, r.user_id, r.traderId, user.userHandle),
-    // TODO(verify): trader handle. Aliases: user.userHandle / user.handle / user.username.
     fomoHandle: firstString(user.userHandle, user.handle, user.username, r.userHandle),
-    // TODO(verify): trader display name. Aliases: user.displayName / user.name.
     displayName: firstString(user.displayName, user.name, r.displayName),
-    // TODO(verify): buy/sell direction. Aliases: side / type / action / direction (may be 'BUY'/'SELL').
-    side: (firstString(r.side, r.type, r.action, r.direction) ?? '').toLowerCase() || null,
-    // TODO(verify): token contract address. Aliases: token.address / tokenAddress / contractAddress.
-    tokenAddress: firstString(token.address, r.tokenAddress, r.token_address, r.contractAddress),
-    // TODO(verify): token symbol. Aliases: token.symbol / tokenSymbol / ticker.
+    side: (firstString(r.side, r.type, r.action, r.direction, r.activityType) ?? '').toLowerCase() || null,
+    tokenAddress: firstString(token.address, r.tokenAddress, r.token_address, r.contractAddress, r.inTokenAddress, r.outTokenAddress),
     tokenSymbol: firstString(token.symbol, token.ticker, r.tokenSymbol, r.ticker),
-    // TODO(verify): network/chain id. Aliases: token.networkId / networkId / chainId.
-    networkId: firstNumber(token.networkId, r.networkId, r.network_id, r.chainId),
-    // TODO(verify): USD notional. Aliases: usdValue / valueUsd / amountUsd / usdAmount.
-    usdValue: firstNumber(r.usdValue, r.valueUsd, r.value_usd, r.amountUsd, r.usdAmount),
+    networkId: firstNumber(token.networkId, r.networkId, r.network_id, r.chainId, r.inNetworkId, r.outNetworkId),
+    usdValue: firstNumber(r.usdValue, r.valueUsd, r.value_usd, r.amountUsd, r.usdAmount, r.humanUsdAmountIn, r.humanUsdAmountOut),
     raw,
   };
+}
+
+/**
+ * Normalize a `/v2/users/{id}/activity` swap row into a tracked-user trade.
+ * Buy = quote → token; sell = token → quote. Works for Solana, EVM (ETH/Base/BSC),
+ * Robinhood Chain (FOMO networkId 143), and cross-chain swaps (e.g. SOL USDC → HOOD token).
+ */
+export function normalizeUserActivity(
+  raw: any,
+  trader: TrackedFomoUserRef,
+): NormalizedTrade | null {
+  const r = raw ?? {};
+  if (r.activityType && r.activityType !== 'swap') return null;
+
+  const inToken = firstString(r.inTokenAddress);
+  const outToken = firstString(r.outTokenAddress);
+  if (!inToken || !outToken) return null;
+
+  const inIsQuote = isQuoteToken(inToken);
+  const outIsQuote = isQuoteToken(outToken);
+  const inNetworkId = firstNumber(r.inNetworkId, r.networkId);
+  const outNetworkId = firstNumber(r.outNetworkId, r.networkId);
+
+  let side: string | null = null;
+  let tokenAddress: string | null = null;
+  let networkId: number | null = null;
+
+  if (inIsQuote && !outIsQuote) {
+    side = 'buy';
+    tokenAddress = outToken;
+    networkId = outNetworkId ?? inNetworkId;
+  } else if (!inIsQuote && outIsQuote) {
+    side = 'sell';
+    tokenAddress = inToken;
+    networkId = inNetworkId ?? outNetworkId;
+  } else if (!inIsQuote && !outIsQuote) {
+    // Token ↔ token — still surface it; default to out side as the subject.
+    side = 'swap';
+    tokenAddress = outToken;
+    networkId = outNetworkId ?? inNetworkId;
+  } else {
+    // Quote ↔ quote (rare) — skip.
+    return null;
+  }
+
+  return {
+    tradeId: firstString(r.id, r.inTradeId, r.outTradeId),
+    fomoUserId: trader.fomoUserId,
+    fomoHandle: trader.fomoHandle,
+    displayName: trader.displayName,
+    side,
+    tokenAddress,
+    tokenSymbol: null,
+    networkId,
+    usdValue: firstNumber(r.humanUsdAmountIn, r.humanUsdAmountOut),
+    raw,
+  };
+}
+
+/** Pull swap activities from `/v2/users/{id}/activity`. */
+export function extractUserActivitiesArray(json: any): any[] {
+  if (Array.isArray(json)) return json;
+  if (!json || typeof json !== 'object') return [];
+  const obj = json.responseObject;
+  if (obj && typeof obj === 'object') {
+    if (Array.isArray(obj.activities)) return obj.activities;
+    if (Array.isArray(obj.activity)) return obj.activity;
+  }
+  return extractTradesArray(json);
 }
 
 /**
@@ -144,6 +240,12 @@ export function normalizeTrade(raw: any): NormalizedTrade {
 export function extractTradesArray(json: any): any[] {
   if (Array.isArray(json)) return json;
   if (!json || typeof json !== 'object') return [];
+  const obj = json.responseObject;
+  if (obj && typeof obj === 'object') {
+    if (Array.isArray(obj.items)) return obj.items;
+    if (Array.isArray(obj.activities)) return obj.activities;
+    if (Array.isArray(obj.leaderboard)) return obj.leaderboard;
+  }
   const candidates = [
     json.responseObject,
     json.data,
@@ -179,6 +281,9 @@ export function networkIdFromContract(chain: 'evm' | 'sol', evmChain?: string | 
       return 56;
     case 'base':
       return 8453;
+    case 'robinhood':
+    case 'hood':
+      return 143;
     default:
       return null;
   }

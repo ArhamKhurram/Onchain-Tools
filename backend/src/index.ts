@@ -566,6 +566,11 @@ export function getUserTelegram(userId: string): TelegramClientManager | null {
 
 const app = express();
 
+// Railway/Vercel sit behind a reverse proxy — required for express-rate-limit client IP.
+if (isHostedMode()) {
+  app.set('trust proxy', 1);
+}
+
 // CORS: restrict origins in hosted mode, allow all in local mode
 if (isHostedMode()) {
   const allowedOrigins = process.env.ALLOWED_ORIGINS

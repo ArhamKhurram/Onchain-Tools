@@ -144,6 +144,14 @@ function buildRadar(contracts: ContractEntry[]): RadarRow[] {
   return [...map.values()];
 }
 
+type MentionWindow = '15m' | '1h' | '4h';
+
+const MENTION_WINDOW_MS: Record<MentionWindow, number> = {
+  '15m': 900_000,
+  '1h': 3_600_000,
+  '4h': 14_400_000,
+};
+
 type SortKey =
   | 'token'
   | 'mentions'
@@ -151,9 +159,7 @@ type SortKey =
   | 'fomo'
   | 'groups'
   | 'plat'
-  | 'm15'
-  | 'h1'
-  | 'h4'
+  | 'windowMentions'
   | 'firstCaller'
   | 'mcAtCall'
   | 'mcNow'
@@ -161,6 +167,65 @@ type SortKey =
   | 'recent';
 
 type SortDir = 'asc' | 'desc';
+
+function WindowMentionsHeader({
+  window: mentionWindow,
+  onWindowChange,
+  sortKey,
+  sortDir,
+  onSort,
+}: {
+  window: MentionWindow;
+  onWindowChange: (window: MentionWindow) => void;
+  sortKey: SortKey;
+  sortDir: SortDir;
+  onSort: (key: SortKey) => void;
+}) {
+  const active = sortKey === 'windowMentions';
+  return (
+    <th className="px-3 py-2 font-medium text-right">
+      <div className="inline-flex flex-col items-end gap-1">
+        <button
+          type="button"
+          onClick={() => onSort('windowMentions')}
+          className={`inline-flex items-center gap-1 uppercase tracking-wider transition-colors flex-row-reverse ${
+            active ? 'text-oct-accent' : 'text-oct-muted hover:text-oct-text'
+          }`}
+        >
+          <span>{mentionWindow}</span>
+          <span className={`inline-flex flex-col -space-y-1 shrink-0 ${active ? 'text-oct-accent' : 'text-oct-muted/60'}`}>
+            <ChevronUp
+              size={10}
+              strokeWidth={2.5}
+              className={active && sortDir === 'asc' ? 'opacity-100' : 'opacity-35'}
+            />
+            <ChevronDown
+              size={10}
+              strokeWidth={2.5}
+              className={active && sortDir === 'desc' ? 'opacity-100' : 'opacity-35'}
+            />
+          </span>
+        </button>
+        <div className="inline-flex rounded-cockpit border border-oct-border-bright overflow-hidden">
+          {(['15m', '1h', '4h'] as const).map((w) => (
+            <button
+              key={w}
+              type="button"
+              onClick={() => onWindowChange(w)}
+              className={`px-1.5 py-0.5 font-mono text-[9px] font-bold uppercase transition-colors ${
+                mentionWindow === w
+                  ? 'bg-oct-accent text-white'
+                  : 'text-oct-muted hover:text-oct-text hover:bg-oct-surface-raised'
+              }`}
+            >
+              {w}
+            </button>
+          ))}
+        </div>
+      </div>
+    </th>
+  );
+}
 
 function SortHeader({
   label,
@@ -299,6 +364,7 @@ export default function RadarTable({ embedded: _embedded = false }: { embedded?:
   const [refreshing, setRefreshing] = useState(false);
   const [refreshingRow, setRefreshingRow] = useState<string | null>(null);
   const [windowFilter, setWindowFilter] = useState<'1h' | '4h' | '24h' | 'all'>('24h');
+  const [mentionWindow, setMentionWindow] = useState<MentionWindow>('15m');
   const [sortKey, setSortKey] = useState<SortKey>('recent');
   const [sortDir, setSortDir] = useState<SortDir>('desc');
   const [copiedAddr, setCopiedAddr] = useState<string | null>(null);
@@ -396,14 +462,11 @@ export default function RadarTable({ embedded: _embedded = false }: { embedded?:
             platformMeta(b.chain, b.evmChain).label,
           );
           break;
-        case 'm15':
-          result = cmpNum(countWithin(a.timestamps, 900_000), countWithin(b.timestamps, 900_000));
-          break;
-        case 'h1':
-          result = cmpNum(countWithin(a.timestamps, 3_600_000), countWithin(b.timestamps, 3_600_000));
-          break;
-        case 'h4':
-          result = cmpNum(countWithin(a.timestamps, 14_400_000), countWithin(b.timestamps, 14_400_000));
+        case 'windowMentions':
+          result = cmpNum(
+            countWithin(a.timestamps, MENTION_WINDOW_MS[mentionWindow]),
+            countWithin(b.timestamps, MENTION_WINDOW_MS[mentionWindow]),
+          );
           break;
         case 'firstCaller':
           result = cmpStr(a.firstCaller, b.firstCaller);
@@ -423,7 +486,7 @@ export default function RadarTable({ embedded: _embedded = false }: { embedded?:
       if (result !== 0) return result;
       return b.lastMentionAt - a.lastMentionAt;
     });
-  }, [contracts, windowFilter, sortKey, sortDir, liveMc, overlaps]);
+  }, [contracts, windowFilter, mentionWindow, sortKey, sortDir, liveMc, overlaps]);
 
   const refreshOne = async (address: string, evmChain?: string) => {
     setRefreshingRow(address.toLowerCase());
@@ -533,7 +596,7 @@ export default function RadarTable({ embedded: _embedded = false }: { embedded?:
       </div>
 
       <div className="flex-1 min-h-0 overflow-auto overscroll-contain" style={{ overflowAnchor: 'none' }}>
-        <table className="w-full text-left border-collapse min-w-[1100px]">
+        <table className="w-full text-left border-collapse min-w-[980px]">
           <thead className="sticky top-0 bg-oct-surface border-b-2 border-black z-10">
             <tr className="font-mono text-[10px] font-bold uppercase tracking-wider text-oct-muted">
               <th className="px-3 py-2 font-medium w-8" />
@@ -543,9 +606,13 @@ export default function RadarTable({ embedded: _embedded = false }: { embedded?:
               <SortHeader label="FOMO" sortKey="fomo" activeKey={sortKey} dir={sortDir} onSort={handleSort} align="right" />
               <SortHeader label="Groups" sortKey="groups" activeKey={sortKey} dir={sortDir} onSort={handleSort} align="right" />
               <SortHeader label="Plat" sortKey="plat" activeKey={sortKey} dir={sortDir} onSort={handleSort} />
-              <SortHeader label="15m" sortKey="m15" activeKey={sortKey} dir={sortDir} onSort={handleSort} align="right" />
-              <SortHeader label="1h" sortKey="h1" activeKey={sortKey} dir={sortDir} onSort={handleSort} align="right" />
-              <SortHeader label="4h" sortKey="h4" activeKey={sortKey} dir={sortDir} onSort={handleSort} align="right" />
+              <WindowMentionsHeader
+                window={mentionWindow}
+                onWindowChange={setMentionWindow}
+                sortKey={sortKey}
+                sortDir={sortDir}
+                onSort={handleSort}
+              />
               <SortHeader label="Latest" sortKey="recent" activeKey={sortKey} dir={sortDir} onSort={handleSort} align="right" />
               <SortHeader label="First caller" sortKey="firstCaller" activeKey={sortKey} dir={sortDir} onSort={handleSort} />
               <SortHeader label="MC@call" sortKey="mcAtCall" activeKey={sortKey} dir={sortDir} onSort={handleSort} align="right" />
@@ -649,13 +716,7 @@ export default function RadarTable({ embedded: _embedded = false }: { embedded?:
                     </span>
                   </td>
                   <td className="px-3 py-2 text-right font-mono text-sm text-oct-text tabular-nums">
-                    {countWithin(r.timestamps, 900_000) || '·'}
-                  </td>
-                  <td className="px-3 py-2 text-right font-mono text-sm text-oct-text tabular-nums">
-                    {countWithin(r.timestamps, 3_600_000) || '·'}
-                  </td>
-                  <td className="px-3 py-2 text-right font-mono text-sm text-oct-text tabular-nums">
-                    {countWithin(r.timestamps, 14_400_000) || '·'}
+                    {countWithin(r.timestamps, MENTION_WINDOW_MS[mentionWindow]) || '·'}
                   </td>
                   <td className="px-3 py-2 text-right font-mono text-xs text-oct-muted tabular-nums whitespace-nowrap">
                     {timeAgoShort(r.lastMentionAt)}
@@ -695,7 +756,7 @@ export default function RadarTable({ embedded: _embedded = false }: { embedded?:
             })}
             {rows.length === 0 && (
               <tr>
-                <td colSpan={17} className="px-4 py-16 text-center text-sm text-oct-muted">
+                <td colSpan={15} className="px-4 py-16 text-center text-sm text-oct-muted">
                   No tokens in this window. Contracts from Feed will aggregate here.
                 </td>
               </tr>

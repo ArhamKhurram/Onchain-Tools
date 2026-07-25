@@ -1,0 +1,15 @@
+[Unit]
+Description=OCT FOMO Chromium Worker
+After=network.target
+
+[Service]
+Type=simple
+User=root
+WorkingDirectory=/opt/onchain-tools/fomo-worker
+EnvironmentFile=/etc/fomo-worker.env
+ExecStart=/usr/bin/node /opt/onchain-tools/fomo-worker/dist/index.js
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target

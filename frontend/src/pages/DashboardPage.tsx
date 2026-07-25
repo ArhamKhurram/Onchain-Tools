@@ -46,6 +46,8 @@ export default function DashboardPage() {
   const rooms = useAppStore((s) => s.rooms);
 
   const discordConfigured = authStatus?.configured ?? false;
+  const telegramConfigured = authStatus?.telegramConfigured ?? false;
+  const telegramConnected = authStatus?.telegramConnected ?? false;
 
   return (
     <div className="h-full overflow-y-auto bg-oct-bg">
@@ -117,6 +119,24 @@ export default function DashboardPage() {
                   <span>DISCORD</span>
                   <span className={discordConfigured ? 'text-oct-accent' : 'text-oct-muted'}>
                     {discordConfigured ? (connected ? 'CONNECTED' : 'CONNECTING') : 'NOT_LINKED'}
+                  </span>
+                </li>
+                <li className="flex justify-between gap-4">
+                  <span>TELEGRAM</span>
+                  <span
+                    className={
+                      telegramConnected
+                        ? 'text-[#2AABEE]'
+                        : telegramConfigured
+                          ? 'text-oct-yellow'
+                          : 'text-oct-muted'
+                    }
+                  >
+                    {telegramConfigured
+                      ? telegramConnected
+                        ? 'CONNECTED'
+                        : 'DISCONNECTED'
+                      : 'NOT_LINKED'}
                   </span>
                 </li>
                 <li className="flex justify-between gap-4">

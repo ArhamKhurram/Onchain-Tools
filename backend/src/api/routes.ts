@@ -1492,7 +1492,7 @@ export function createRouter(wsServer: WsServer): Router {
     res.json({ sent: true });
   });
 
-  router.use('/fomo', createFomoRouter());
+  router.use('/fomo', createFomoRouter(wsServer));
   router.use('/portfolio', createPortfolioRouter());
 
   return router;

@@ -8,7 +8,7 @@
 // verified against Outpost's fomo-test usage patterns. Failures are logged and
 // never block tracking — the poller still runs for globally-visible trades.
 
-import type { FomoClient } from './client.js';
+import type { FomoClientLike } from './types.js';
 
 function ensureFollowsEnabled(): boolean {
   return process.env.FOMO_ENSURE_FOLLOWS !== 'false';
@@ -23,7 +23,7 @@ function isFollowSuccess(status: number): boolean {
  * Make the shared FOMO account follow `fomoUserId` so its trades surface in
  * following-scoped feeds. No-op when FOMO_ENSURE_FOLLOWS=false.
  */
-export async function ensureSharedAccountFollows(client: FomoClient, fomoUserId: string): Promise<void> {
+export async function ensureSharedAccountFollows(client: FomoClientLike, fomoUserId: string): Promise<void> {
   if (!ensureFollowsEnabled() || !fomoUserId) return;
 
   const encoded = encodeURIComponent(fomoUserId);
@@ -50,7 +50,7 @@ export async function ensureSharedAccountFollows(client: FomoClient, fomoUserId:
 
 /** Follow every distinct FOMO user currently tracked by any OCT user. */
 export async function syncAllTrackedFollows(
-  client: FomoClient,
+  client: FomoClientLike,
   fomoUserIds: Iterable<string>,
 ): Promise<void> {
   if (!ensureFollowsEnabled()) return;
