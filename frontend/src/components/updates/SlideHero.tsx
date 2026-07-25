@@ -4,6 +4,11 @@ import type { UpdateSlide, UpdateSlideVariant } from '../../data/updates';
 function RadarMock() {
   return (
     <div className="w-full max-w-[280px] mx-auto space-y-1.5 opacity-90">
+      <div className="flex items-center justify-end gap-1 text-[8px] font-mono uppercase">
+        <span className="px-1.5 py-0.5 rounded bg-oct-accent text-white">15m</span>
+        <span className="px-1.5 py-0.5 rounded text-oct-muted">1h</span>
+        <span className="px-1.5 py-0.5 rounded text-oct-muted">4h</span>
+      </div>
       <div className="flex gap-1 text-[8px] font-mono uppercase text-oct-muted">
         <span className="text-oct-accent">Latest ↓</span>
         <span>Mentions</span>

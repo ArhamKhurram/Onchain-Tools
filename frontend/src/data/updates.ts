@@ -24,10 +24,31 @@ export interface UpdateSlide {
  */
 export const UPDATE_SLIDES: UpdateSlide[] = [
   {
+    id: 'slide-2026-07-25-fomo-live-feed',
+    title: 'FOMO Live Trades',
+    description:
+      'Individual buy/sell swaps from traders you track now stream to the live feed. Each wallet is polled once — stored once — then fanned out to everyone tracking them, including Robinhood Chain.',
+    variant: 'fomo',
+  },
+  {
+    id: 'slide-2026-07-25-radar-mentions',
+    title: 'Radar Mention Window',
+    description:
+      '15m, 1h, and 4h mention counts are now one column. Toggle the window in the header and sort by whichever timeframe you care about.',
+    variant: 'radar',
+  },
+  {
+    id: 'slide-2026-07-24-theme',
+    title: 'Dark & Light Theme',
+    description:
+      'Toggle theme from the header. Light mode uses cream and blue accents; Feed and panes are fully themed in both modes.',
+    variant: 'landing',
+  },
+  {
     id: 'slide-2026-07-22-portfolio',
     title: 'Portfolio Tab',
     description:
-      'GMGN wallet dashboard for My Wallets — stats, holdings, activity, PnL chart & calendar. EVM wallets aggregate across ETH, Base, and BSC automatically.',
+      'Birdeye wallet dashboard for My Wallets — stats, holdings, activity, PnL chart & calendar. EVM wallets aggregate across ETH, Base, and BSC automatically.',
     variant: 'portfolio',
   },
   {

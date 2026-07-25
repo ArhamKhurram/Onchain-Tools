@@ -7,6 +7,31 @@ export interface UpdateEntry {
 /** Public update log — newest first. */
 export const UPDATES: UpdateEntry[] = [
   {
+    date: '2026-07-25',
+    added: [
+      '**FOMO live trade feed** — individual buy/sell swaps from traders you track stream to the live feed over WebSocket; the backend polls each FOMO wallet once and fans out to every subscriber',
+      '**FOMO store-and-fan-out** — swaps are stored once in the database, then delivered to all OCT users tracking that trader — no duplicate API polling when multiple people follow the same wallet',
+      '**FOMO VPS worker** — optional always-on Chromium worker (`fomo-worker/`) proxies FOMO API calls from a VPS so Railway does not need Playwright in production',
+      '**Robinhood Chain on FOMO** — HOOD swaps classify correctly for cross-chain and same-chain trades (USDG/WETH quote tokens)',
+      '**Radar mention window toggle** — 15m, 1h, and 4h mention counts combined into one sortable column with an inline toggle',
+      '**Home session status** — console home shows Telegram connected/disconnected alongside Discord and room count',
+      '**Dark and light theme** — header toggle switches between the black/red console and a cream/blue light mode with improved Feed contrast',
+    ],
+    fixed: [
+      '**FOMO live feed empty** — switched from the aggregate trading-activity feed to per-user activity API so individual swaps appear for tracked traders',
+    ],
+  },
+  {
+    date: '2026-07-22',
+    added: [
+      '**Portfolio tab** — Birdeye wallet dashboard for My Wallets: realized/unrealized PnL, win rate, holdings, recent trades, plus PnL chart and calendar modals',
+      '**Sortable Radar** — click any column header to sort tokens; active sort highlights in red with default latest mention first',
+    ],
+    fixed: [
+      '**Portfolio rate limits** — Birdeye activity feed backs chart and calendar when deep PnL history is rate-limited',
+    ],
+  },
+  {
     date: '2026-07-20',
     added: [
       '**Rick wait on contract scans** — every live contract detection now waits up to 30 seconds for a Rick embed before the row appears in the feed, so ticker, FDV, and liquidity land together instead of flashing a bare address first',
