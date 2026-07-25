@@ -155,16 +155,20 @@ gateway, room/channel subscription logic, the Rick-wait / contract-pending queue
 
 ## 6. Phased plan
 
-**Phase 1 — service layer + contract + HTTP API (backend)**
+**Phase 1 — service layer + contract + HTTP API (backend)** — ✅ **shipped (PR #14)**
 - `@oct/shared/src/bot.ts` DTOs.
-- `backend/src/bot/service.ts`: `getHolders`, `getLeaderboard`, `getSnapshot` (global).
+- `backend/src/bot/service.ts`: `getBotHolders`, `getBotLeaderboard`, `getBotSnapshot`.
 - `auth/botAuth.ts` + `api/routes/bot.ts` mounted at `/api/v1/bot` (before `/api`).
-- No Discord client yet — verify the HTTP endpoints return correct DTOs.
 
-**Phase 2a — in-process bot, global commands**
-- `bot/index.ts` + `client.ts` (self-gated), port `layout.ts`, `events/`.
-- `/ping`, `/holders`, `/leaderboard` (global; public replies). `deployCommands` (dev guild).
-- Runs inside the backend; test against a dev bot.
+**Phase 2a — in-process bot, global commands** — ✅ **shipped**
+- `bot/index.ts` `startBot()` (self-gated on `DISCORD_BOT_TOKEN`, all failures swallowed),
+  `bot/interactions.ts`, ported `bot/layout.ts`.
+- `/ping`, `/holders`, `/leaderboard`, `/token` — all global, public replies, usable in
+  guilds **and** DMs (`anywhere()` sets contexts + integration types).
+- `bot/deployCommands.ts` + `npm run bot:deploy -w backend` (guild deploy when
+  `DISCORD_DEV_GUILD_ID` is set, else global with `-- --global`).
+- Commands are a **static registry** (`bot/commands/index.ts`) — the standalone bot's
+  runtime folder scan doesn't survive the backend's tsc→ESM build.
 
 **Phase 2b — user-scoped command (Discord identity)**
 - `identity.ts` resolver (Discord id → OCT account) + gatekeep unknown ids.
@@ -201,13 +205,21 @@ HTTP layer · DM-only alerts (opt-in) · commands in guild + DM (user-scoped eph
 tenancy via Discord OAuth identity · gatekeep non-Discord users · command order:
 `/holders` + `/leaderboard` first, then `/wallets`.
 
-**Still open (not blocking Phase 1):**
-1. **Network/chain in `/holders`** — numeric `network_id` (old bot, Solana default) vs
-   OCT chain slugs. Lean: accept both; default Solana.
-2. **Extra commands** — port `/thesis` from the old bot? add `/token <addr>` snapshot,
-   `/convergence`, `/missedrunners`? (Decide before Phase 2a command list is final.)
-3. **Bot install type** — user-installable app (DMs + anywhere) vs classic guild bot;
-   the guild+DM requirement favors enabling both contexts. Confirm when scaffolding.
+**Resolved during build:**
+1. **Network/chain in `/holders`** — accepts **both** a numeric FOMO network id and an
+   OCT chain slug (`sol`/`eth`/`bsc`/`base`/`hood`), defaulting to Solana
+   (`resolveNetworkId` in `bot/service.ts`).
+2. **Extra commands** — shipped `/token <address> [chain]` (free: reuses `getBotSnapshot`).
+   Still unported from the old bot: `/thesis`. Not built: `/convergence`, `/missedrunners`.
+3. **Bot install type** — **both** enabled (GuildInstall + UserInstall) with contexts
+   Guild/BotDM/PrivateChannel, which is what makes guild+DM work.
+4. **`deferReply` flags** — `IsComponentsV2` is a *message* flag and is rejected on
+   `deferReply` (the standalone bot got away with it by typing `interaction` as `any`).
+   Defer plain; set the flag on the `editReply` that carries components.
+
+**Still open:**
+- Whether to port `/thesis`, and whether OCT-native commands (`/convergence`,
+  `/missedrunners`) are worth adding once Phase 2b lands.
 
 ---
 

@@ -22,6 +22,7 @@ import { WsServer } from './ws/server.js';
 import { createRouter } from './api/routes.js';
 import { createBotRouter } from './api/routes/bot.js';
 import { requireBotAuth } from './auth/botAuth.js';
+import { startBot } from './bot/index.js';
 import { getStorageProvider, isHostedMode } from './storage/index.js';
 import { authMiddleware } from './auth/middleware.js';
 import { getGateway, setGateway } from './gateway/state.js';
@@ -671,6 +672,10 @@ httpServer.listen(PORT, async () => {
   // account (FOMO_REFRESH_TOKEN) or Supabase, so this never crashes the server.
   startFomoPoller(wsServer);
   startMissedRunnerPoller(wsServer);
+
+  // In-process Outpost Discord bot. Self-gates on DISCORD_BOT_TOKEN and swallows
+  // its own failures, so it can never take the backend down.
+  startBot();
 
   if (!isHostedMode()) {
     const storage = getStorageProvider();
