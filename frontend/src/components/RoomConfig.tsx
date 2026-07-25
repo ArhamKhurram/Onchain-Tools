@@ -1,8 +1,11 @@
 import { useState, useEffect, useMemo } from 'react';
 import { useAppStore } from '../stores/appStore';
 import type { ChannelRef, KeywordPattern, KeywordMatchMode, HighlightMode } from '../types';
-import { X, Search, Plus, Trash2, Hash, MessageCircle, Users, Filter, AlertTriangle, Palette, Send } from 'lucide-react';
-import ColorPickerWithAlpha from './ColorPickerWithAlpha';
+import { X } from 'lucide-react';
+import ChannelsTab from './room-config/ChannelsTab';
+import UsersTab from './room-config/UsersTab';
+import FilterTab from './room-config/FilterTab';
+import KeywordsTab from './room-config/KeywordsTab';
 
 export default function RoomConfig() {
   const configModalOpen = useAppStore((s) => s.configModalOpen);
@@ -255,754 +258,74 @@ export default function RoomConfig() {
         {/* Content */}
         <div className="flex-1 overflow-y-auto px-4 sm:px-6 py-4" data-form-type="other" data-lpignore="true" data-1p-ignore>
           {tab === 'channels' && (
-            <>
-              {/* Room name */}
-              <div className="mb-4">
-                <label className="block text-[11px] font-semibold uppercase tracking-wide text-discord-text-muted mb-2">
-                  Room Name
-                </label>
-                <input
-                  type="text"
-                  value={name}
-                  onChange={(e) => setName(e.target.value)}
-                  placeholder="my-room"
-                  className="w-full bg-discord-dark border-none rounded px-3 py-2 text-sm text-discord-text outline-none focus:ring-2 focus:ring-discord-blurple"
-                />
-              </div>
-
-              {/* Room background color */}
-              <div className="mb-4">
-                <label className="block text-[11px] font-semibold uppercase tracking-wide text-discord-text-muted mb-2">
-                  Room Background Color
-                </label>
-                <div className="flex items-center gap-3">
-                  <ColorPickerWithAlpha
-                    value={roomColor || '#0B0E1A'}
-                    onChange={(c) => setRoomColor(c)}
-                    defaultColor="#0B0E1A"
-                    size="md"
-                    showTextInput
-                  />
-                  {roomColor && (
-                    <button
-                      onClick={() => setRoomColor('')}
-                      className="text-[11px] text-discord-text-muted hover:text-white"
-                    >
-                      Reset
-                    </button>
-                  )}
-                </div>
-              </div>
-
-              {/* Hotkey */}
-              <div className="mb-4">
-                <label className="block text-[11px] font-semibold uppercase tracking-wide text-discord-text-muted mb-2">
-                  Hotkey
-                </label>
-                <div className="flex items-center gap-3">
-                  <input
-                    type="text"
-                    readOnly
-                    value={hotkey ? hotkey.toUpperCase() : ''}
-                    onKeyDown={(e) => {
-                      e.preventDefault();
-                      if (['Backspace', 'Delete', 'Escape'].includes(e.key)) { setHotkey(''); return; }
-                      if (e.key.length === 1 && !e.ctrlKey && !e.metaKey && !e.altKey) setHotkey(e.key.toLowerCase());
-                    }}
-                    placeholder="Press a key"
-                    className="w-24 bg-discord-dark border-none rounded px-3 py-2 text-sm text-discord-text outline-none focus:ring-2 focus:ring-discord-blurple text-center cursor-pointer caret-transparent"
-                  />
-                  {hotkey && (
-                    <button
-                      onClick={() => setHotkey('')}
-                      className="text-[11px] text-discord-text-muted hover:text-white"
-                    >
-                      Clear
-                    </button>
-                  )}
-                </div>
-                <p className="text-[11px] text-discord-text-muted mt-1.5">
-                  Press this key anywhere (outside a text field) to jump to this room.
-                </p>
-              </div>
-
-              {/* Selected count */}
-              <div className="text-[11px] text-discord-text-muted mb-3">
-                {selectedChannels.length} channel{selectedChannels.length !== 1 ? 's' : ''} selected
-              </div>
-
-              {/* Per-channel embed settings */}
-              {selectedChannels.length > 0 && (
-                <div className="mb-4 border border-discord-divider rounded p-3">
-                  <div className="text-[11px] font-semibold uppercase tracking-wide text-discord-text-muted mb-2">
-                    Embeds per channel
-                  </div>
-                  <div className="space-y-1.5">
-                    {selectedChannels.map((ch) => (
-                      <div key={ch.channelId} className="flex items-center justify-between gap-2 px-2 py-1.5 rounded bg-discord-dark/50">
-                        <div className="flex items-center gap-1.5 min-w-0">
-                          {ch.source === 'telegram'
-                            ? <Send size={12} className="shrink-0 text-[#2AABEE]" />
-                            : ch.guildId
-                              ? <Hash size={12} className="shrink-0 text-discord-channel-icon" />
-                              : <MessageCircle size={12} className="shrink-0 text-discord-channel-icon" />
-                          }
-                          <span className="text-sm text-discord-text truncate">
-                            {ch.guildName ? `${ch.guildName} / ` : ''}{ch.channelName ?? ch.channelId}
-                          </span>
-                        </div>
-                        <button
-                          onClick={() => toggleChannelEmbeds(ch.channelId)}
-                          className={`shrink-0 text-[10px] font-semibold px-2 py-0.5 rounded transition-colors ${
-                            ch.disableEmbeds
-                              ? 'bg-discord-red/20 text-discord-red'
-                              : 'bg-discord-green/20 text-discord-green'
-                          }`}
-                        >
-                          {ch.disableEmbeds ? 'EMBEDS OFF' : 'EMBEDS ON'}
-                        </button>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              )}
-
-              {/* Guild message colors */}
-              {(() => {
-                const roomGuildIds = [...new Set(selectedChannels.map((c) => c.guildId).filter(Boolean))] as string[];
-                if (roomGuildIds.length === 0) return null;
-                const guildColors = config?.guildColors ?? {};
-                return (
-                  <div className="mb-4 border border-discord-divider rounded p-3">
-                    <div className="text-[11px] font-semibold uppercase tracking-wide text-discord-text-muted mb-2 flex items-center gap-1.5">
-                      <Palette size={12} />
-                      Guild Message Colors
-                    </div>
-                    <p className="text-xs text-discord-text-muted mb-2">
-                      Color-code messages by server. Changes apply globally.
-                    </p>
-                    <div className="space-y-1.5">
-                      {roomGuildIds.map((guildId) => {
-                        const guildName = selectedChannels.find((c) => c.guildId === guildId)?.guildName
-                          ?? guilds.find((g) => g.id === guildId)?.name
-                          ?? guildId;
-                        return (
-                          <div key={guildId} className="flex items-center gap-2.5 px-2 py-1.5 rounded bg-discord-dark/50">
-                            <ColorPickerWithAlpha
-                              value={guildColors[guildId] || '#0B0E1A'}
-                              onChange={(c) => updateConfig({ guildColors: { ...guildColors, [guildId]: c } })}
-                              defaultColor="#0B0E1A"
-                            />
-                            <span className="text-sm text-discord-text flex-1 truncate">{guildName}</span>
-                            {guildColors[guildId] && (
-                              <button
-                                onClick={() => {
-                                  const { [guildId]: _, ...rest } = guildColors;
-                                  updateConfig({ guildColors: rest });
-                                }}
-                                className="text-discord-text-muted hover:text-white shrink-0"
-                              >
-                                <Trash2 size={12} />
-                              </button>
-                            )}
-                          </div>
-                        );
-                      })}
-                    </div>
-                  </div>
-                );
-              })()}
-
-              {/* DM message colors */}
-              {(() => {
-                const roomDmChannelIds = selectedChannels.filter((c) => !c.guildId && c.source !== 'telegram').map((c) => c.channelId);
-                if (roomDmChannelIds.length === 0) return null;
-                const dmColors = config?.dmColors ?? {};
-                return (
-                  <div className="mb-4 border border-discord-divider rounded p-3">
-                    <div className="text-[11px] font-semibold uppercase tracking-wide text-discord-text-muted mb-2 flex items-center gap-1.5">
-                      <Palette size={12} />
-                      DM Message Colors
-                    </div>
-                    <p className="text-xs text-discord-text-muted mb-2">
-                      Color-code messages by DM. Changes apply globally.
-                    </p>
-                    <div className="space-y-1.5">
-                      {roomDmChannelIds.map((channelId) => {
-                        const dm = dmChannels.find((d) => d.id === channelId);
-                        const dmName = dm
-                          ? dm.recipients.map((r) => r.global_name || r.username).join(', ')
-                          : selectedChannels.find((c) => c.channelId === channelId)?.channelName ?? channelId;
-                        return (
-                          <div key={channelId} className="flex items-center gap-2.5 px-2 py-1.5 rounded bg-discord-dark/50">
-                            <ColorPickerWithAlpha
-                              value={dmColors[channelId] || '#0B0E1A'}
-                              onChange={(c) => updateConfig({ dmColors: { ...dmColors, [channelId]: c } })}
-                              defaultColor="#0B0E1A"
-                            />
-                            <span className="text-sm text-discord-text flex-1 truncate">{dmName}</span>
-                            {dmColors[channelId] && (
-                              <button
-                                onClick={() => {
-                                  const { [channelId]: _, ...rest } = dmColors;
-                                  updateConfig({ dmColors: rest });
-                                }}
-                                className="text-discord-text-muted hover:text-white shrink-0"
-                              >
-                                <Trash2 size={12} />
-                              </button>
-                            )}
-                          </div>
-                        );
-                      })}
-                    </div>
-                  </div>
-                );
-              })()}
-
-              {/* Telegram chat colors */}
-              {(() => {
-                const roomTgChannelIds = [...new Set(
-                  selectedChannels.filter((c) => c.source === 'telegram').map((c) => c.channelId)
-                )];
-                if (roomTgChannelIds.length === 0) return null;
-                const telegramColors = config?.telegramColors ?? {};
-                return (
-                  <div className="mb-4 border border-discord-divider rounded p-3">
-                    <div className="text-[11px] font-semibold uppercase tracking-wide text-discord-text-muted mb-2 flex items-center gap-1.5">
-                      <Send size={12} className="text-[#2AABEE]" />
-                      Telegram Chat Colors
-                    </div>
-                    <p className="text-xs text-discord-text-muted mb-2">
-                      Color-code messages by Telegram chat. Changes apply globally.
-                    </p>
-                    <div className="space-y-1.5">
-                      {roomTgChannelIds.map((channelId) => {
-                        const chatName = selectedChannels.find((c) => c.channelId === channelId)?.channelName ?? channelId;
-                        return (
-                          <div key={channelId} className="flex items-center gap-2.5 px-2 py-1.5 rounded bg-discord-dark/50">
-                            <ColorPickerWithAlpha
-                              value={telegramColors[channelId] || '#0B0E1A'}
-                              onChange={(c) => updateConfig({ telegramColors: { ...telegramColors, [channelId]: c } })}
-                              defaultColor="#0B0E1A"
-                            />
-                            <span className="text-sm text-discord-text flex-1 truncate">{chatName}</span>
-                            {telegramColors[channelId] && (
-                              <button
-                                onClick={() => {
-                                  const { [channelId]: _, ...rest } = telegramColors;
-                                  updateConfig({ telegramColors: rest });
-                                }}
-                                className="text-discord-text-muted hover:text-white shrink-0"
-                              >
-                                <Trash2 size={12} />
-                              </button>
-                            )}
-                          </div>
-                        );
-                      })}
-                    </div>
-                  </div>
-                );
-              })()}
-
-              {/* Platform toggle */}
-              {(authStatus?.telegramConnected || authStatus?.telegramConfigured || telegramChats.length > 0) && (
-                <div className="flex rounded-lg bg-discord-dark p-0.5 mb-3">
-                  <button
-                    onClick={() => setPlatformTab('discord')}
-                    className={`flex-1 flex items-center justify-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-semibold transition-colors ${
-                      platformTab === 'discord'
-                        ? 'bg-discord-blurple text-white'
-                        : 'text-discord-text-muted hover:text-discord-text'
-                    }`}
-                  >
-                    <Hash size={12} />
-                    Discord
-                  </button>
-                  <button
-                    onClick={() => setPlatformTab('telegram')}
-                    className={`flex-1 flex items-center justify-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-semibold transition-colors ${
-                      platformTab === 'telegram'
-                        ? 'bg-[#2AABEE] text-white'
-                        : 'text-discord-text-muted hover:text-discord-text'
-                    }`}
-                  >
-                    <Send size={12} />
-                    Telegram
-                  </button>
-                </div>
-              )}
-
-              {/* Search */}
-              <div className="relative mb-4">
-                <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-discord-text-muted" />
-                <input
-                  type="text"
-                  value={search}
-                  onChange={(e) => setSearch(e.target.value)}
-                  placeholder={platformTab === 'telegram' ? 'Search Telegram chats...' : 'Search Discord channels...'}
-                  className="w-full bg-discord-dark border-none rounded px-3 py-2 pl-9 text-sm text-discord-text outline-none focus:ring-2 focus:ring-discord-blurple"
-                />
-              </div>
-
-              <div className="space-y-3 max-h-[300px] overflow-y-auto">
-                {/* Discord section */}
-                {platformTab === 'discord' && (
-                  <>
-                    {(filteredGuilds.length > 0 || filteredDMs.length > 0) ? (
-                      <div className="space-y-3">
-                        {filteredGuilds.map((guild) => (
-                          <div key={guild.id}>
-                            <div className="text-[11px] font-semibold uppercase tracking-wide text-discord-text-muted mb-1 flex items-center gap-1.5">
-                              <Users size={12} />
-                              {guild.name}
-                            </div>
-                            <div className="space-y-0.5 ml-2">
-                              {guild.channels.map((ch) => {
-                                const selected = isChannelSelected(ch.id);
-                                return (
-                                  <button
-                                    key={ch.id}
-                                    onClick={() =>
-                                      toggleChannel({
-                                        guildId: guild.id,
-                                        channelId: ch.id,
-                                        guildName: guild.name,
-                                        channelName: ch.name,
-                                      })
-                                    }
-                                    className={`w-full flex items-center gap-2 px-2 py-1 rounded text-sm text-left transition-colors ${
-                                      selected
-                                        ? 'bg-discord-blurple/20 text-discord-blurple'
-                                        : 'text-discord-channel-icon hover:bg-discord-hover/50 hover:text-discord-text'
-                                    }`}
-                                  >
-                                    <Hash size={14} />
-                                    <span className="truncate">{ch.name}</span>
-                                    {selected && <span className="ml-auto text-[10px]">ADDED</span>}
-                                  </button>
-                                );
-                              })}
-                            </div>
-                          </div>
-                        ))}
-
-                        {filteredDMs.length > 0 && (
-                          <div>
-                            <div className="text-[11px] font-semibold uppercase tracking-wide text-discord-text-muted mb-1 flex items-center gap-1.5">
-                              <MessageCircle size={12} />
-                              Direct Messages
-                            </div>
-                            <div className="space-y-0.5 ml-2">
-                              {filteredDMs.map((dm) => {
-                                const selected = isChannelSelected(dm.id);
-                                const recipientNames = dm.recipients
-                                  .map((r) => r.global_name || r.username)
-                                  .join(', ');
-                                return (
-                                  <button
-                                    key={dm.id}
-                                    onClick={() =>
-                                      toggleChannel({
-                                        guildId: null,
-                                        channelId: dm.id,
-                                        channelName: recipientNames,
-                                      })
-                                    }
-                                    className={`w-full flex items-center gap-2 px-2 py-1 rounded text-sm text-left transition-colors ${
-                                      selected
-                                        ? 'bg-discord-blurple/20 text-discord-blurple'
-                                        : 'text-discord-channel-icon hover:bg-discord-hover/50 hover:text-discord-text'
-                                    }`}
-                                  >
-                                    <MessageCircle size={14} />
-                                    <span className="truncate">{recipientNames}</span>
-                                    {selected && <span className="ml-auto text-[10px]">ADDED</span>}
-                                  </button>
-                                );
-                              })}
-                            </div>
-                          </div>
-                        )}
-                      </div>
-                    ) : (
-                      <p className="text-sm text-discord-text-muted text-center py-4">
-                        {guilds.length === 0 ? 'Loading Discord channels...' : 'No Discord channels match your search.'}
-                      </p>
-                    )}
-                  </>
-                )}
-
-                {/* Telegram section */}
-                {platformTab === 'telegram' && (
-                  <>
-                    {filteredTelegramChats.length > 0 ? (
-                      <div className="space-y-0.5">
-                        {filteredTelegramChats.map((chat) => {
-                          const selected = isChannelSelected(chat.id);
-                          const typeLabel = chat.type === 'channel' ? 'CH' : chat.type === 'supergroup' ? 'SG' : chat.type === 'group' ? 'GP' : '';
-                          return (
-                            <button
-                              key={chat.id}
-                              onClick={() =>
-                                toggleChannel({
-                                  source: 'telegram',
-                                  guildId: null,
-                                  channelId: chat.id,
-                                  guildName: chat.type !== 'user' ? chat.title : undefined,
-                                  channelName: chat.title,
-                                })
-                              }
-                              className={`w-full flex items-center gap-2 px-2 py-1 rounded text-sm text-left transition-colors ${
-                                selected
-                                  ? 'bg-[#2AABEE]/20 text-[#2AABEE]'
-                                  : 'text-discord-channel-icon hover:bg-discord-hover/50 hover:text-discord-text'
-                              }`}
-                            >
-                              <Send size={14} />
-                              <span className="truncate">{chat.title}</span>
-                              {typeLabel && (
-                                <span className="text-[9px] px-1 py-0.5 rounded bg-discord-dark/50 text-discord-text-muted shrink-0">{typeLabel}</span>
-                              )}
-                              {selected && <span className="ml-auto text-[10px]">ADDED</span>}
-                            </button>
-                          );
-                        })}
-                      </div>
-                    ) : (
-                      <p className="text-sm text-discord-text-muted text-center py-4">
-                        {telegramChats.length === 0 ? 'No Telegram chats available. Connect Telegram in Settings.' : 'No Telegram chats match your search.'}
-                      </p>
-                    )}
-                  </>
-                )}
-              </div>
-            </>
+            <ChannelsTab
+              name={name}
+              setName={setName}
+              roomColor={roomColor}
+              setRoomColor={setRoomColor}
+              hotkey={hotkey}
+              setHotkey={setHotkey}
+              selectedChannels={selectedChannels}
+              toggleChannel={toggleChannel}
+              toggleChannelEmbeds={toggleChannelEmbeds}
+              isChannelSelected={isChannelSelected}
+              config={config}
+              updateConfig={updateConfig}
+              guilds={guilds}
+              dmChannels={dmChannels}
+              telegramChats={telegramChats}
+              authStatus={authStatus}
+              platformTab={platformTab}
+              setPlatformTab={setPlatformTab}
+              search={search}
+              setSearch={setSearch}
+              filteredGuilds={filteredGuilds}
+              filteredDMs={filteredDMs}
+              filteredTelegramChats={filteredTelegramChats}
+            />
           )}
 
           {tab === 'users' && (
-            <>
-              <p className="text-sm text-discord-text-muted mb-4">
-                Add user IDs or Telegram @usernames to highlight in this room. Their messages will be
-                visually highlighted and you'll get alerts when they send messages.
-              </p>
-
-              <div className="mb-4">
-                <label className="block text-[11px] font-semibold uppercase tracking-wide text-discord-text-muted mb-2">
-                  Highlight Style
-                </label>
-                <div className="flex rounded overflow-hidden border border-discord-divider">
-                  <button
-                    onClick={() => setHighlightMode('background')}
-                    className={`flex-1 px-3 py-2 text-sm font-medium transition-colors ${
-                      highlightMode === 'background'
-                        ? 'bg-discord-blurple text-white'
-                        : 'bg-discord-dark text-discord-text-muted hover:text-discord-text'
-                    }`}
-                  >
-                    Background
-                  </button>
-                  <button
-                    onClick={() => setHighlightMode('username')}
-                    className={`flex-1 px-3 py-2 text-sm font-medium transition-colors ${
-                      highlightMode === 'username'
-                        ? 'bg-discord-blurple text-white'
-                        : 'bg-discord-dark text-discord-text-muted hover:text-discord-text'
-                    }`}
-                  >
-                    Username Color
-                  </button>
-                </div>
-                <p className="text-xs text-discord-text-muted mt-1.5">
-                  {highlightMode === 'background'
-                    ? 'Highlighted messages get a colored background and left border.'
-                    : 'Only the username is colored (like a Discord role) — no background change.'}
-                </p>
-              </div>
-
-              <div className="flex gap-2 mb-4">
-                <input
-                  type="text"
-                  value={newUserId}
-                  onChange={(e) => setNewUserId(e.target.value)}
-                  onKeyDown={(e) => e.key === 'Enter' && addHighlightedUser()}
-                  placeholder="Discord User ID or @telegram_username"
-                  className="flex-1 bg-discord-dark border-none rounded px-3 py-2 text-sm text-discord-text outline-none focus:ring-2 focus:ring-discord-blurple"
-                  autoComplete="off"
-                  data-1p-ignore
-                  data-lpignore="true"
-                  data-form-type="other"
-                />
-                <button
-                  onClick={addHighlightedUser}
-                  className="px-3 py-2 bg-discord-blurple hover:bg-discord-blurple-hover rounded text-sm text-white transition-colors"
-                >
-                  <Plus size={16} />
-                </button>
-              </div>
-              <div className="space-y-1">
-                {highlightedUsers.length === 0 && (
-                  <p className="text-sm text-discord-text-muted text-center py-4">
-                    No highlighted users for this room.
-                  </p>
-                )}
-                {highlightedUsers.map((uid) => {
-                  const isTgUser = uid.startsWith('@');
-                  return (
-                  <div
-                    key={uid}
-                    className="flex items-center justify-between px-3 py-2 bg-discord-dark rounded"
-                  >
-                    <div className="flex items-center gap-2 min-w-0">
-                      {isTgUser && <Send size={12} className="text-[#2AABEE] shrink-0" />}
-                      <span className={`text-sm ${isTgUser ? 'text-[#2AABEE]' : 'font-mono'}`} style={isTgUser ? undefined : { color: highlightedUserColors[uid] || '#f2f3f5' }}>{uid}</span>
-                      {!isTgUser && userNameMap.has(uid) && (
-                        <span className="text-[11px] text-discord-text-muted">{userNameMap.get(uid)}</span>
-                      )}
-                    </div>
-                    <div className="flex items-center gap-2 shrink-0">
-                      <ColorPickerWithAlpha
-                        value={highlightedUserColors[uid] || '#5865f2'}
-                        onChange={(c) => setHighlightedUserColors((prev) => ({ ...prev, [uid]: c }))}
-                        defaultColor="#5865f2"
-                      />
-                      {highlightedUserColors[uid] && (
-                        <button
-                          onClick={() => setHighlightedUserColors((prev) => { const next = { ...prev }; delete next[uid]; return next; })}
-                          className="text-[10px] text-discord-text-muted hover:text-discord-text"
-                          title="Reset to default"
-                        >
-                          Reset
-                        </button>
-                      )}
-                      <button
-                        onClick={() => removeHighlightedUser(uid)}
-                        className="text-discord-text-muted hover:text-discord-red shrink-0"
-                      >
-                        <Trash2 size={14} />
-                      </button>
-                    </div>
-                  </div>
-                  );
-                })}
-              </div>
-            </>
+            <UsersTab
+              highlightMode={highlightMode}
+              setHighlightMode={setHighlightMode}
+              newUserId={newUserId}
+              setNewUserId={setNewUserId}
+              addHighlightedUser={addHighlightedUser}
+              highlightedUsers={highlightedUsers}
+              removeHighlightedUser={removeHighlightedUser}
+              highlightedUserColors={highlightedUserColors}
+              setHighlightedUserColors={setHighlightedUserColors}
+              userNameMap={userNameMap}
+            />
           )}
 
           {tab === 'filter' && (
-            <>
-              <p className="text-sm text-discord-text-muted mb-4">
-                When enabled, only messages from these users will be shown in this room.
-                You can add Discord user IDs or usernames. Tip: click a username in chat to copy their ID.
-              </p>
-
-              <label className="flex items-center gap-3 cursor-pointer mb-4">
-                <div
-                  className={`w-10 h-5 rounded-full transition-colors relative ${
-                    filterEnabled ? 'bg-discord-green' : 'bg-discord-input'
-                  }`}
-                  onClick={() => setFilterEnabled(!filterEnabled)}
-                >
-                  <div
-                    className={`absolute top-0.5 w-4 h-4 bg-white rounded-full transition-transform ${
-                      filterEnabled ? 'translate-x-5' : 'translate-x-0.5'
-                    }`}
-                  />
-                </div>
-                <span className="text-sm text-discord-text">
-                  {filterEnabled ? 'Filter active' : 'Filter disabled'}
-                  {filterEnabled && filteredUsers.length === 0 && (
-                    <span className="text-discord-yellow ml-2">(add users below)</span>
-                  )}
-                </span>
-              </label>
-
-              <div className="flex gap-2 mb-4">
-                <input
-                  type="text"
-                  value={newFilterUser}
-                  onChange={(e) => setNewFilterUser(e.target.value)}
-                  onKeyDown={(e) => e.key === 'Enter' && addFilteredUser()}
-                  placeholder="User ID or username"
-                  className="flex-1 bg-discord-dark border-none rounded px-3 py-2 text-sm text-discord-text outline-none focus:ring-2 focus:ring-discord-blurple"
-                  autoComplete="off"
-                  data-1p-ignore
-                  data-lpignore="true"
-                  data-form-type="other"
-                />
-                <button
-                  onClick={addFilteredUser}
-                  className="px-3 py-2 bg-discord-blurple hover:bg-discord-blurple-hover rounded text-sm text-white transition-colors"
-                >
-                  <Plus size={16} />
-                </button>
-              </div>
-              <div className="space-y-1">
-                {filteredUsers.length === 0 && (
-                  <p className="text-sm text-discord-text-muted text-center py-4">
-                    No filtered users for this room.
-                  </p>
-                )}
-                {filteredUsers.map((uid) => (
-                  <div
-                    key={uid}
-                    className="flex items-center justify-between px-3 py-2 bg-discord-dark rounded"
-                  >
-                    <div className="flex items-center gap-2 min-w-0">
-                      <Filter size={12} className="shrink-0 text-discord-green" />
-                      <span className="text-sm text-discord-text font-mono truncate">{uid}</span>
-                      {userNameMap.has(uid) && (
-                        <span className="text-[11px] text-discord-text-muted">{userNameMap.get(uid)}</span>
-                      )}
-                    </div>
-                    <button
-                      onClick={() => removeFilteredUser(uid)}
-                      className="text-discord-text-muted hover:text-discord-red shrink-0"
-                    >
-                      <Trash2 size={14} />
-                    </button>
-                  </div>
-                ))}
-              </div>
-            </>
+            <FilterTab
+              filterEnabled={filterEnabled}
+              setFilterEnabled={setFilterEnabled}
+              filteredUsers={filteredUsers}
+              newFilterUser={newFilterUser}
+              setNewFilterUser={setNewFilterUser}
+              addFilteredUser={addFilteredUser}
+              removeFilteredUser={removeFilteredUser}
+              userNameMap={userNameMap}
+            />
           )}
 
           {tab === 'keywords' && (
-            <>
-              {/* Global keyword alerts toggle */}
-              <div className={`mb-4 rounded-lg p-3 ${config?.keywordAlertsEnabled ? 'bg-discord-dark/50' : 'bg-discord-red/10 border border-discord-red/20'}`}>
-                <label className="flex items-center gap-3 cursor-pointer">
-                  <div
-                    className={`w-10 h-5 rounded-full transition-colors relative shrink-0 ${
-                      config?.keywordAlertsEnabled ? 'bg-discord-green' : 'bg-discord-input'
-                    }`}
-                    onClick={async () => {
-                      await updateConfig({ keywordAlertsEnabled: !(config?.keywordAlertsEnabled ?? true) });
-                    }}
-                  >
-                    <div
-                      className={`absolute top-0.5 w-4 h-4 bg-white rounded-full transition-transform ${
-                        config?.keywordAlertsEnabled ? 'translate-x-5' : 'translate-x-0.5'
-                      }`}
-                    />
-                  </div>
-                  <span className="text-sm text-discord-text">
-                    Keyword alerts {config?.keywordAlertsEnabled ? 'enabled' : 'disabled'}
-                  </span>
-                </label>
-                {!config?.keywordAlertsEnabled && (
-                  <div className="flex items-center gap-1.5 mt-2 text-xs text-discord-red">
-                    <AlertTriangle size={12} />
-                    <span>Keyword matching is disabled globally. Room keywords won't trigger until enabled.</span>
-                  </div>
-                )}
-              </div>
-
-              <p className="text-sm text-discord-text-muted mb-2">
-                Add patterns to match against messages in this room. Use <strong className="text-discord-text">Contains</strong> for substring matches, <strong className="text-discord-text">Exact</strong> for whole-word matches, or <strong className="text-discord-text">Regex</strong> for advanced patterns. Matches trigger an orange highlight and alert.
-              </p>
-              <div className="text-xs text-discord-text-muted bg-discord-dark rounded px-3 py-2 mb-4 space-y-1">
-                <p className="font-semibold text-discord-text-muted/80">Regex examples:</p>
-                <p><code className="text-orange-400/80 font-mono">stealth\s*(launch|drop)</code> — stealth launch, stealthdrop</p>
-                <p><code className="text-orange-400/80 font-mono">\b(airdrop|air\s*drop)\b</code> — airdrop, air drop (whole word)</p>
-                <p><code className="text-orange-400/80 font-mono">deploy(ed|ing)?</code> — deploy, deployed, deploying</p>
-                <p><code className="text-orange-400/80 font-mono">ca\s*[:=]\s*0x[a-f0-9]+</code> — ca: 0xABC..., CA=0x...</p>
-                <p className="pt-1">Build & test patterns at <a href="https://regex101.com" target="_blank" rel="noopener noreferrer" className="text-discord-blurple hover:underline">regex101.com</a></p>
-              </div>
-
-              <div className="space-y-3 mb-4">
-                <div className="flex gap-2">
-                  <input
-                    type="text"
-                    value={newKeywordPattern}
-                    onChange={(e) => setNewKeywordPattern(e.target.value)}
-                    onKeyDown={(e) => {
-                      if (e.key === 'Enter' && newKeywordPattern.trim()) {
-                        setRoomKeywordPatterns((prev) => [...prev, { pattern: newKeywordPattern.trim(), matchMode: newKeywordMatchMode, label: newKeywordLabel.trim() || undefined }]);
-                        setNewKeywordPattern('');
-                        setNewKeywordLabel('');
-                      }
-                    }}
-                    placeholder={
-                      newKeywordMatchMode === 'regex' ? 'Regex pattern (e.g. launch|stealth)'
-                      : newKeywordMatchMode === 'exact' ? 'Exact word (e.g. launch)'
-                      : 'Keyword (e.g. stealth launch)'
-                    }
-                    className="flex-1 bg-discord-dark border-none rounded px-3 py-2 text-sm text-discord-text outline-none focus:ring-2 focus:ring-discord-blurple font-mono"
-                  />
-                  <button
-                    onClick={() => {
-                      if (!newKeywordPattern.trim()) return;
-                      setRoomKeywordPatterns((prev) => [...prev, { pattern: newKeywordPattern.trim(), matchMode: newKeywordMatchMode, label: newKeywordLabel.trim() || undefined }]);
-                      setNewKeywordPattern('');
-                      setNewKeywordLabel('');
-                    }}
-                    className="px-3 py-2 bg-discord-blurple hover:bg-discord-blurple-hover rounded text-sm text-white transition-colors"
-                  >
-                    <Plus size={16} />
-                  </button>
-                </div>
-                <div className="flex items-center gap-4">
-                  <div className="flex rounded overflow-hidden border border-discord-divider">
-                    {(['includes', 'exact', 'regex'] as KeywordMatchMode[]).map((mode) => (
-                      <button
-                        key={mode}
-                        onClick={() => setNewKeywordMatchMode(mode)}
-                        className={`px-2.5 py-1 text-[11px] font-medium transition-colors ${
-                          newKeywordMatchMode === mode
-                            ? 'bg-discord-blurple text-white'
-                            : 'bg-discord-dark text-discord-text-muted hover:text-discord-text'
-                        }`}
-                      >
-                        {mode === 'includes' ? 'Contains' : mode === 'exact' ? 'Exact' : 'Regex'}
-                      </button>
-                    ))}
-                  </div>
-                  <input
-                    type="text"
-                    value={newKeywordLabel}
-                    onChange={(e) => setNewKeywordLabel(e.target.value)}
-                    placeholder="Label (optional)"
-                    className="flex-1 bg-discord-dark border-none rounded px-3 py-1.5 text-xs text-discord-text outline-none focus:ring-1 focus:ring-discord-blurple"
-                  />
-                </div>
-              </div>
-
-              <div className="space-y-1">
-                {roomKeywordPatterns.length === 0 && (
-                  <p className="text-sm text-discord-text-muted text-center py-4">
-                    No keyword patterns configured.
-                  </p>
-                )}
-                {roomKeywordPatterns.map((kw, idx) => (
-                  <div key={idx} className="flex items-center justify-between px-3 py-2 bg-discord-dark rounded">
-                    <div className="flex items-center gap-2 min-w-0">
-                      {(kw.matchMode === 'regex' || (!kw.matchMode && kw.isRegex)) && (
-                        <span className="text-[10px] px-1.5 py-0.5 rounded bg-orange-400/20 text-orange-400 font-semibold shrink-0">
-                          REGEX
-                        </span>
-                      )}
-                      {kw.matchMode === 'exact' && (
-                        <span className="text-[10px] px-1.5 py-0.5 rounded bg-discord-blurple/20 text-discord-blurple font-semibold shrink-0">
-                          EXACT
-                        </span>
-                      )}
-                      <span className="text-sm text-discord-text font-mono truncate">{kw.pattern}</span>
-                      {kw.label && (
-                        <span className="text-[11px] text-discord-text-muted">({kw.label})</span>
-                      )}
-                    </div>
-                    <button
-                      onClick={() => setRoomKeywordPatterns((prev) => prev.filter((_, i) => i !== idx))}
-                      className="text-discord-text-muted hover:text-discord-red shrink-0"
-                    >
-                      <Trash2 size={14} />
-                    </button>
-                  </div>
-                ))}
-              </div>
-            </>
+            <KeywordsTab
+              config={config}
+              updateConfig={updateConfig}
+              newKeywordPattern={newKeywordPattern}
+              setNewKeywordPattern={setNewKeywordPattern}
+              newKeywordMatchMode={newKeywordMatchMode}
+              setNewKeywordMatchMode={setNewKeywordMatchMode}
+              newKeywordLabel={newKeywordLabel}
+              setNewKeywordLabel={setNewKeywordLabel}
+              roomKeywordPatterns={roomKeywordPatterns}
+              setRoomKeywordPatterns={setRoomKeywordPatterns}
+            />
           )}
 
         </div>
