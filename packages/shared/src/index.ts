@@ -16,6 +16,19 @@ export type { ContractDetectionResult } from './contract.js';
 export { processDiscordMessage } from './message.js';
 export type { MessageProcessorContext, MessageGateway } from './message.js';
 
+// Bot API contract (DISCORD_BOT_PLAN.md).
+export type {
+  BotNetworkId,
+  BotTokenInfo,
+  BotHolder,
+  BotHoldersResponse,
+  BotLeaderboardEntry,
+  BotLeaderboardResponse,
+  BotSnapshotResponse,
+  BotTrackedTrader,
+  BotTrackedResponse,
+} from './bot.js';
+
 // Runtime consts (values) from the shared type module.
 export { PUSHOVER_SOUNDS, GatewayOpcodes } from './types.js';
 
