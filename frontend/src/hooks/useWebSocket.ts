@@ -173,6 +173,8 @@ export function useWebSocket() {
                   else playHighlightSound(ss?.highlight);
                 } else if (alert.type === 'keyword_match') {
                   playKeywordAlertSound(ss?.keywordAlert);
+                } else if (alert.type === 'missed_runner') {
+                  playContractAlertSound(ss?.contractAlert);
                 }
               }
             }
