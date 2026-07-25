@@ -2,43 +2,16 @@ import { readFileSync, writeFileSync, existsSync } from 'fs';
 import { join, dirname } from 'path';
 import { fileURLToPath } from 'url';
 import { mergeEnrichmentPatch } from './enrichmentMerge.js';
+import type { ContractEntry } from '@oct/shared';
+
+// ContractEntry is now canonical in @oct/shared; re-export it so existing
+// `../utils/contractLog.js` importers keep working.
+export type { ContractEntry } from '@oct/shared';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const DATA_DIR = process.env.OCT_DATA_DIR || process.env.TRENCHCORD_DATA_DIR || join(__dirname, '../../data');
 const LOG_PATH = join(DATA_DIR, 'contracts.json');
 const MAX_ENTRIES = 2000;
-
-export interface ContractEntry {
-  address: string;
-  chain: 'evm' | 'sol';
-  evmChain?: string;
-  authorId: string;
-  authorName: string;
-  channelId: string;
-  channelName: string;
-  guildId: string | null;
-  guildName: string | null;
-  roomIds: string[];
-  messageId: string;
-  timestamp: string;
-  source?: 'discord' | 'telegram';
-  firstSeen?: boolean;
-  // Enrichment (Rick embed / DexScreener)
-  tokenName?: string;
-  tokenSymbol?: string;
-  tokenPair?: string;
-  description?: string;
-  fdvAtCall?: number;
-  fdvAtCallDisplay?: string;
-  liquidityUsd?: number;
-  liquidityDisplay?: string;
-  volumeUsd?: number;
-  volumeDisplay?: string;
-  priceUsd?: number;
-  tokenAge?: string;
-  enrichmentSource?: 'rick' | 'dexscreener' | 'gmgn';
-  enrichedAt?: string;
-}
 
 export type ContractEnrichmentPatch = Partial<
   Pick<

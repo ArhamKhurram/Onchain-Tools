@@ -1,91 +1,67 @@
-import type { WorkspaceLayout, WorkspaceLayoutPersisted } from './workspace';
+// Canonical shared app types now live in @oct/shared. This module re-exports
+// them (isolatedModules is on → every type re-export MUST use `export type`) and
+// keeps the frontend-only types + const option lists that never existed on the
+// backend.
+import type { FrontendMessage, MissedRunnerNotifyVia, ToastPosition } from '@oct/shared';
 
-export type { WorkspaceLayout, WorkspaceLayoutPersisted, WorkspacePanelSlot, WorkspacePanelType, WorkspaceColumn } from './workspace';
+// Workspace layout types (from @oct/shared, surfaced via ./workspace).
+export type {
+  WorkspaceLayout,
+  WorkspaceLayoutPersisted,
+  WorkspacePanelSlot,
+  WorkspacePanelType,
+  WorkspaceColumn,
+} from './workspace';
 
-export type MessageSource = 'discord' | 'telegram';
+// Shared type definitions.
+export type {
+  MessageSource,
+  ChannelRef,
+  HighlightMode,
+  MessageDisplay,
+  SplitLayout,
+  KeywordMatchMode,
+  KeywordPattern,
+  Room,
+  PushoverPriority,
+  PushoverSound,
+  PushoverTriggers,
+  MissedRunnerConfig,
+  MissedRunnerNotifyVia,
+  ToastPosition,
+  PushoverFilters,
+  PushoverConfig,
+  SolPlatform,
+  EvmPlatform,
+  ContractClickAction,
+  BadgeClickAction,
+  ContractLinkTemplates,
+  SoundType,
+  SoundConfig,
+  SoundSettings,
+  AppConfig,
+  GuildInfo,
+  DMChannel,
+  FrontendReaction,
+  TelegramSticker,
+  TelegramPoll,
+  TelegramForward,
+  TelegramButton,
+  FrontendMessage,
+  TelegramChatInfo,
+  ContractEntry,
+} from '@oct/shared';
 
-export interface ChannelRef {
-  source?: MessageSource;
-  guildId: string | null;
-  channelId: string;
-  guildName?: string;
-  channelName?: string;
-  disableEmbeds?: boolean;
-}
+// Shared runtime value.
+export { PUSHOVER_SOUNDS } from '@oct/shared';
 
-export type HighlightMode = 'background' | 'username';
-export type MessageDisplay = 'default' | 'compact';
-export type SplitLayout = 'row' | 'grid';
-
-export type KeywordMatchMode = 'includes' | 'exact' | 'regex';
-
-export interface KeywordPattern {
-  pattern: string;
-  matchMode: KeywordMatchMode;
-  isRegex?: boolean;
-  label?: string;
-}
-
-export interface Room {
-  id: string;
-  name: string;
-  channels: ChannelRef[];
-  highlightedUsers: string[];
-  filteredUsers: string[];
-  filterEnabled: boolean;
-  color?: string | null;
-  keywordPatterns?: KeywordPattern[];
-  highlightMode?: HighlightMode;
-  highlightedUserColors?: Record<string, string>;
-  hotkey?: string | null;
-}
-
-export type PushoverPriority = -2 | -1 | 0 | 1 | 2;
-
-export const PUSHOVER_SOUNDS = [
-  'pushover', 'bike', 'bugle', 'cashregister', 'classical', 'cosmic',
-  'falling', 'gamelan', 'incoming', 'intermission', 'magic', 'mechanical',
-  'pianobar', 'siren', 'spacealarm', 'tugboat', 'alien', 'climb',
-  'persistent', 'echo', 'updown', 'vibrate', 'none',
-] as const;
-
-export type PushoverSound = (typeof PUSHOVER_SOUNDS)[number];
-
-export interface PushoverTriggers {
-  highlightedUser: boolean;
-  highlightedUserContract: boolean;
-  contract: boolean;
-  keyword: boolean;
-  signalConvergence: boolean;
-  missedRunner: boolean;
-}
-
-export interface MissedRunnerConfig {
-  enabled: boolean;
-  minMultiplier: number;
-  lookbackHours: number;
-  cooldownHours: number;
-  minMcAtCall?: number;
-  /** How to deliver missed-runner alerts. Legacy: omit + Pushover trigger → pushover only. */
-  notifyVia?: MissedRunnerNotifyVia;
-}
-
-export type MissedRunnerNotifyVia = 'toast' | 'pushover' | 'both';
+// --- Frontend-only const option lists ---
 
 export const MISSED_RUNNER_NOTIFY_OPTIONS: { value: MissedRunnerNotifyVia; label: string; hint: string }[] = [
   { value: 'toast', label: 'Toast', hint: 'In-app popup only' },
   { value: 'pushover', label: 'Pushover', hint: 'Phone push only' },
   { value: 'both', label: 'Both', hint: 'Toast + Pushover' },
 ];
-
-export type ToastPosition =
-  | 'top-left'
-  | 'top-center'
-  | 'top-right'
-  | 'bottom-left'
-  | 'bottom-center'
-  | 'bottom-right'
-  | 'center';
 
 export const TOAST_POSITIONS: { value: ToastPosition; label: string }[] = [
   { value: 'top-left', label: 'Top left' },
@@ -97,99 +73,7 @@ export const TOAST_POSITIONS: { value: ToastPosition; label: string }[] = [
   { value: 'center', label: 'Center' },
 ];
 
-export interface PushoverFilters {
-  userIds: string[];
-  channelIds: string[];
-  guildIds: string[];
-}
-
-export interface PushoverConfig {
-  enabled: boolean;
-  appToken: string;
-  userKey: string;
-  priority: PushoverPriority;
-  sound: PushoverSound;
-  triggers: PushoverTriggers;
-  filters: PushoverFilters;
-}
-
-export type SolPlatform = 'axiom' | 'padre' | 'bloom' | 'gmgn' | 'custom';
-export type EvmPlatform = 'gmgn' | 'bloom' | 'custom';
-export type ContractClickAction = 'copy' | 'copy_open' | 'open';
-export type BadgeClickAction = 'discord' | 'platform' | 'both';
-
-export interface ContractLinkTemplates {
-  evm: string;
-  sol: string;
-  solPlatform: SolPlatform;
-  evmPlatform: EvmPlatform;
-}
-
-export type SoundType = 'highlight' | 'contractAlert' | 'keywordAlert';
-
-export interface SoundConfig {
-  enabled: boolean;
-  volume: number;
-  useCustom: boolean;
-  customSoundUrl?: string;
-  presetSound?: string;
-}
-
-export type SoundSettings = Record<SoundType, SoundConfig>;
-
-export interface AppConfig {
-  discordTokens: string[];
-  rooms: Room[];
-  globalHighlightedUsers: string[];
-  contractDetection: boolean;
-  guildColors: Record<string, string>;
-  dmColors: Record<string, string>;
-  telegramColors: Record<string, string>;
-  enabledGuilds: string[];
-  evmAddressColor: string;
-  solAddressColor: string;
-  openInDiscordApp: boolean;
-  openInTelegramApp: boolean;
-  hiddenUsers: Record<string, { userId: string; displayName: string }[]>;
-  messageSounds: boolean;
-  soundSettings: SoundSettings;
-  channelSounds: Record<string, SoundConfig>;
-  pushover: PushoverConfig;
-  missedRunner: MissedRunnerConfig;
-  contractLinkTemplates: ContractLinkTemplates;
-  contractClickAction: ContractClickAction;
-  showFullContractAddress: boolean;
-  autoOpenHighlightedContracts: boolean;
-  /** Minutes within which a FOMO buy + contract call count as signal convergence. */
-  signalConvergenceWindowMinutes: number;
-  globalKeywordPatterns: KeywordPattern[];
-  keywordAlertsEnabled: boolean;
-  desktopNotifications: boolean;
-  toastAlertsEnabled: boolean;
-  toastPosition: ToastPosition;
-  mentionsUserEnabled: boolean;
-  mentionsRoleEnabled: boolean;
-  mentionsHereEnabled: boolean;
-  mentionsEveryoneEnabled: boolean;
-  badgeClickAction: BadgeClickAction;
-  userNameCache: Record<string, string>;
-  chattingEnabled: boolean;
-  messageDisplay: MessageDisplay;
-  compactModeAvatars: boolean;
-  roleColors: boolean;
-  mobileZoomScale: number;
-  splitLayout: SplitLayout;
-  paneRoomIds: string[];
-  paneLocks: boolean[];
-  gridMirror: boolean;
-  /** Custom workspace tab layout (column stacks, persisted per user). */
-  workspaceLayout?: WorkspaceLayoutPersisted;
-  seenAnnouncements: string[];
-  telegramApiId?: string;
-  telegramApiHash?: string;
-  telegramSessions?: string[];
-  discordProxyUrl?: string;
-}
+// --- Frontend-only types ---
 
 export interface AuthStatus {
   configured: boolean;
@@ -210,154 +94,12 @@ export interface MaskedTokensResponse {
   count: number;
 }
 
-export interface GuildInfo {
-  id: string;
-  name: string;
-  icon: string | null;
-  channels: { id: string; name: string; type: number }[];
-}
-
-export interface DMChannel {
-  id: string;
-  recipients: {
-    id: string;
-    username: string;
-    global_name?: string | null;
-    avatar: string | null;
-  }[];
-}
-
-export interface FrontendReaction {
-  emoji: { id: string | null; name: string; animated?: boolean };
-  count: number;
-}
-
 export interface ReactionUser {
   id: string;
   username: string;
   displayName: string;
   avatar: string | null;
   discriminator: string;
-}
-
-export interface TelegramSticker {
-  url: string;
-  emoji?: string;
-  isAnimated?: boolean;
-}
-
-export interface TelegramPoll {
-  question: string;
-  options: { text: string; voters: number }[];
-}
-
-export interface TelegramForward {
-  name: string;
-  chatTitle?: string;
-}
-
-export interface TelegramButton {
-  text: string;
-  url: string;
-}
-
-export interface FrontendMessage {
-  id: string;
-  channelId: string;
-  guildId: string | null;
-  channelName: string;
-  guildName: string | null;
-  source?: MessageSource;
-  author: {
-    id: string;
-    username: string;
-    displayName: string;
-    avatar: string | null;
-    roleColor?: string | null;
-  };
-  content: string;
-  timestamp: string;
-  attachments: {
-    id: string;
-    filename: string;
-    url: string;
-    proxy_url: string;
-    size: number;
-    content_type?: string;
-    width?: number;
-    height?: number;
-  }[];
-  embeds: {
-    title?: string;
-    description?: string;
-    url?: string;
-    color?: number;
-    thumbnail?: { url: string };
-    image?: { url: string };
-    author?: { name?: string; url?: string; icon_url?: string };
-    fields?: { name: string; value: string; inline?: boolean }[];
-    footer?: { text: string; icon_url?: string };
-  }[];
-  isHighlighted: boolean;
-  hasContractAddress: boolean;
-  contractAddresses: string[];
-  mentions: Record<string, string>;
-  mentionTypes?: ('user' | 'role' | 'here' | 'everyone')[];
-  referencedMessage?: {
-    id: string;
-    author: string;
-    content: string;
-    mentions: Record<string, string>;
-  } | null;
-  reactions?: FrontendReaction[];
-  matchedKeywords?: string[];
-  platformUrl?: string;
-  sticker?: TelegramSticker;
-  poll?: TelegramPoll;
-  forwardFrom?: TelegramForward;
-  buttons?: TelegramButton[];
-  isEdited?: boolean;
-  originalContent?: string;
-  editedTimestamp?: string | null;
-  isDeleted?: boolean;
-}
-
-export interface TelegramChatInfo {
-  id: string;
-  title: string;
-  type: 'user' | 'group' | 'supergroup' | 'channel';
-  photo?: string | null;
-}
-
-export interface ContractEntry {
-  address: string;
-  chain: 'evm' | 'sol';
-  evmChain?: string;
-  authorId: string;
-  authorName: string;
-  channelId: string;
-  channelName: string;
-  guildId: string | null;
-  guildName: string | null;
-  roomIds: string[];
-  messageId: string;
-  timestamp: string;
-  source?: 'discord' | 'telegram';
-  firstSeen?: boolean;
-  tokenName?: string;
-  tokenSymbol?: string;
-  tokenPair?: string;
-  description?: string;
-  fdvAtCall?: number;
-  fdvAtCallDisplay?: string;
-  liquidityUsd?: number;
-  liquidityDisplay?: string;
-  volumeUsd?: number;
-  volumeDisplay?: string;
-  priceUsd?: number;
-  tokenAge?: string;
-  enrichmentSource?: 'rick' | 'dexscreener' | 'gmgn';
-  enrichedAt?: string;
 }
 
 export interface Alert {

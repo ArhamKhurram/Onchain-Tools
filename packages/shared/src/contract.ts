@@ -6,15 +6,7 @@
 // are local shared copies of the ones in backend/src/discord/types.ts and
 // frontend/src/types/index.ts (identical). See REFACTOR.md / IDEAS.md.
 
-export type SolPlatform = 'axiom' | 'padre' | 'bloom' | 'gmgn' | 'custom';
-export type EvmPlatform = 'gmgn' | 'bloom' | 'custom';
-
-export interface ContractLinkTemplates {
-  evm: string;
-  sol: string;
-  solPlatform: SolPlatform;
-  evmPlatform: EvmPlatform;
-}
+import type { ContractLinkTemplates } from './types.js';
 
 export const SOL_ADDRESS_REGEX = /(?<![1-9A-HJ-NP-Za-km-z])[1-9A-HJ-NP-Za-km-z]{32,48}(?![1-9A-HJ-NP-Za-km-z])/g;
 export const EVM_ADDRESS_REGEX = /\b0x[a-fA-F0-9]{40}\b/g;

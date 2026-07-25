@@ -7,15 +7,9 @@
 
 import { createClient, type SupabaseClient } from '@supabase/supabase-js';
 
-export interface FomoTrackedUserRow {
-  id: string;
-  user_id: string;
-  fomo_user_id: string;
-  fomo_handle: string | null;
-  display_name: string | null;
-  notify_pushover: boolean;
-  created_at: string;
-}
+// FomoTrackedUserRow is now canonical in @oct/shared as FomoTrackedUser;
+// re-export under the backend's historical name so importers keep working.
+export type { FomoTrackedUser as FomoTrackedUserRow } from '@oct/shared';
 
 let _client: SupabaseClient | null = null;
 

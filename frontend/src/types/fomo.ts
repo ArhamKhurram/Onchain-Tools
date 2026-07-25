@@ -4,15 +4,9 @@
 // - FomoTradeEvent matches the `data` payload of the poller's `fomo_trade` WS
 //   message (backend/src/fomo/poller.ts -> sendToUser).
 
-export interface FomoTrackedUser {
-  id: string;
-  user_id: string;
-  fomo_user_id: string;
-  fomo_handle: string | null;
-  display_name: string | null;
-  notify_pushover: boolean;
-  created_at: string;
-}
+// FomoTrackedUser is now canonical in @oct/shared (matches backend
+// FomoTrackedUserRow). isolatedModules → re-export as a type.
+export type { FomoTrackedUser } from '@oct/shared';
 
 export interface FomoTradeEvent {
   fomoUserId: string | null;
