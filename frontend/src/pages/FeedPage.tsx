@@ -3,7 +3,6 @@ import { MessageSquare, KeyRound } from 'lucide-react';
 import { useAuthSession } from '../hooks/useAuthSession';
 import { useAppStore } from '../stores/appStore';
 import ChatView from '../components/ChatView';
-import RoomConfig from '../components/RoomConfig';
 import TokenSetup from '../components/TokenSetup';
 import GatewayAuthBanner from '../components/GatewayAuthBanner';
 import FeedToolbar from '../components/feed/FeedToolbar';
@@ -77,7 +76,6 @@ export default function FeedPage() {
       <FeedToolbar />
       <div className="flex flex-1 min-h-0 w-full">
         <ChatView standalone />
-        <RoomConfig />
         <GatewayAuthBanner />
       </div>
     </div>

@@ -140,7 +140,7 @@ function handleLiveMessage(gw: GatewayManager, rawMsg: DiscordMessage & { _chann
     if (chSound?.enabled) playHighlightSound(chSound);
   }
 
-  if (frontend.hasContractAddress) {
+  if (frontend.hasContractAddress && cfg.contractDetection) {
     for (const address of frontend.contractAddresses) {
       const seenBefore = state.contracts.some(
         (c) => c.address.toLowerCase() === address.toLowerCase(),
@@ -161,6 +161,31 @@ function handleLiveMessage(gw: GatewayManager, rawMsg: DiscordMessage & { _chann
       };
       queueContractDetection(entry);
     }
+
+    if (!frontend.isHighlighted && !(frontend.matchedKeywords?.length && cfg.keywordAlertsEnabled)) {
+      const addr = frontend.contractAddresses[0] ?? 'address';
+      const short = addr.length > 12 ? `${addr.slice(0, 6)}…${addr.slice(-4)}` : addr;
+      state.addAlert({
+        id: `alert-cg-${frontend.id}-${Date.now()}`,
+        type: 'contract_address',
+        message: frontend,
+        reason: `Contract scan: ${short} · ${frontend.channelName}`,
+        timestamp: Date.now(),
+      });
+      if (cfg.messageSounds) playContractAlertSound(ss?.contractAlert);
+    }
+  }
+
+  if (frontend.isHighlighted && !(frontend.matchedKeywords?.length && cfg.keywordAlertsEnabled)) {
+    state.addAlert({
+      id: `alert-cg-hl-${frontend.id}-${Date.now()}`,
+      type: 'highlighted_user',
+      message: frontend,
+      reason: frontend.hasContractAddress
+        ? `Contract from ${frontend.author.displayName}`
+        : `Highlighted user: ${frontend.author.displayName}`,
+      timestamp: Date.now(),
+    });
   }
 }
 

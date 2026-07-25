@@ -24,6 +24,27 @@ export interface UpdateSlide {
  */
 export const UPDATE_SLIDES: UpdateSlide[] = [
   {
+    id: 'slide-2026-07-25-radar-columns',
+    title: 'Radar Column Picker',
+    description:
+      'Token Radar is slimmer — pick which columns you want (mentions, callers, MC@call, first caller, etc.) from the columns settings. 15m / 1h / 4h window lives there too.',
+    variant: 'radar',
+  },
+  {
+    id: 'slide-2026-07-25-contract-alerts',
+    title: 'Contract Scan Alerts',
+    description:
+      'Contract detections now trigger in-app toasts and alert sounds again — not just keyword and highlighted-user alerts.',
+    variant: 'feed',
+  },
+  {
+    id: 'slide-2026-07-25-telegram-fixes',
+    title: 'Telegram & Workspace Fixes',
+    description:
+      'TG images and audio load in hosted mode. Room settings work from Workspace panels. Stale Telegram sessions auto-reconnect on status checks.',
+    variant: 'feed',
+  },
+  {
     id: 'slide-2026-07-25-fomo-live-feed',
     title: 'FOMO Live Trades',
     description:
@@ -34,7 +55,7 @@ export const UPDATE_SLIDES: UpdateSlide[] = [
     id: 'slide-2026-07-25-radar-mentions',
     title: 'Radar Mention Window',
     description:
-      '15m, 1h, and 4h mention counts are now one column. Toggle the window in the header and sort by whichever timeframe you care about.',
+      'Platform shown as a dot on the token row. Mention counts use a single window column — toggle 15m, 1h, or 4h from Radar settings.',
     variant: 'radar',
   },
   {

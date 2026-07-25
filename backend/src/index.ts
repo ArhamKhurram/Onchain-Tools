@@ -33,6 +33,7 @@ import type { TokenEnrichment } from './utils/rickEmbedParser.js';
 import { processDiscordMessage } from './utils/messageProcessor.js';
 import type { MessageProcessorContext } from './utils/messageProcessor.js';
 import { sendPushover } from './utils/pushover.js';
+import { broadcastFrontendAlerts } from './utils/frontendAlerts.js';
 import { startFomoPoller } from './fomo/poller.js';
 import { startMissedRunnerPoller } from './alerts/missedRunnerPoller.js';
 import type { DiscordMessage, PushoverConfig, FrontendMessage, ContractLinkTemplates } from './discord/types.js';
@@ -308,6 +309,8 @@ function wireGatewayEvents(gw: GatewayManager, wsServer: WsServer, userId: strin
       }, userId);
     }
 
+    broadcastFrontendAlerts(wsServer, userId, frontendMsg, config);
+
     wsServer.broadcastMessage(frontendMsg, roomIds, userId);
   });
 
@@ -494,6 +497,8 @@ function wireTelegramEvents(tg: TelegramClientManager, wsServer: WsServer, userI
         reason: `Keyword match: ${frontendMsg.matchedKeywords.join(', ')}`,
       }, userId);
     }
+
+    broadcastFrontendAlerts(wsServer, userId, frontendMsg, config);
 
     wsServer.broadcastMessage(frontendMsg, roomIds, userId);
   });

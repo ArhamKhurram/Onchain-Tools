@@ -7,6 +7,7 @@ import { isHostedMode } from './lib/supabase';
 import { useAuthSession } from './hooks/useAuthSession';
 import { setTokenStateUserId } from './utils/tokenState';
 import AlertToast from './components/AlertToast';
+import RoomConfig from './components/RoomConfig';
 
 const MOBILE_BREAKPOINT = 768;
 
@@ -107,6 +108,7 @@ export default function AppProviders({ children }: { children: React.ReactNode }
     <>
       {children}
       <AlertToast />
+      <RoomConfig />
     </>
   );
 }

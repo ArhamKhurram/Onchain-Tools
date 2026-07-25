@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { RefreshCw, Star, Copy, Check, Users, ChevronUp, ChevronDown } from 'lucide-react';
+import { RefreshCw, Copy, Check, Users, ChevronUp, ChevronDown } from 'lucide-react';
 import { useAppStore } from '../../stores/appStore';
 import { useFomoHolderOverlap } from '../../hooks/useFomoHolderOverlap';
 import SignalConvergenceBadge from '../SignalConvergenceBadge';
@@ -7,8 +7,16 @@ import {
   findConvergenceForAddress,
   getSignalConvergenceWindowMs,
 } from '../../utils/signalConvergence';
-import type { ContractEntry } from '../../types';
+import RadarSettings from './RadarSettings';
+import {
+  RADAR_COLUMN_LABELS,
+  RADAR_COLUMN_ORDER,
+  loadVisibleRadarColumns,
+  saveVisibleRadarColumns,
+  type RadarColumnId,
+} from './radarColumns';
 import { isHostedMode, getAccessToken } from '../../lib/supabase';
+import type { ContractEntry } from '../../types';
 
 const API_BASE = import.meta.env.VITE_API_URL
   ? `${import.meta.env.VITE_API_URL}/api`
@@ -158,7 +166,6 @@ type SortKey =
   | 'callers'
   | 'fomo'
   | 'groups'
-  | 'plat'
   | 'windowMentions'
   | 'firstCaller'
   | 'mcAtCall'
@@ -170,60 +177,24 @@ type SortDir = 'asc' | 'desc';
 
 function WindowMentionsHeader({
   window: mentionWindow,
-  onWindowChange,
   sortKey,
   sortDir,
   onSort,
 }: {
   window: MentionWindow;
-  onWindowChange: (window: MentionWindow) => void;
   sortKey: SortKey;
   sortDir: SortDir;
   onSort: (key: SortKey) => void;
 }) {
-  const active = sortKey === 'windowMentions';
   return (
-    <th className="px-3 py-2 font-medium text-right">
-      <div className="inline-flex flex-col items-end gap-1">
-        <button
-          type="button"
-          onClick={() => onSort('windowMentions')}
-          className={`inline-flex items-center gap-1 uppercase tracking-wider transition-colors flex-row-reverse ${
-            active ? 'text-oct-accent' : 'text-oct-muted hover:text-oct-text'
-          }`}
-        >
-          <span>{mentionWindow}</span>
-          <span className={`inline-flex flex-col -space-y-1 shrink-0 ${active ? 'text-oct-accent' : 'text-oct-muted/60'}`}>
-            <ChevronUp
-              size={10}
-              strokeWidth={2.5}
-              className={active && sortDir === 'asc' ? 'opacity-100' : 'opacity-35'}
-            />
-            <ChevronDown
-              size={10}
-              strokeWidth={2.5}
-              className={active && sortDir === 'desc' ? 'opacity-100' : 'opacity-35'}
-            />
-          </span>
-        </button>
-        <div className="inline-flex rounded-cockpit border border-oct-border-bright overflow-hidden">
-          {(['15m', '1h', '4h'] as const).map((w) => (
-            <button
-              key={w}
-              type="button"
-              onClick={() => onWindowChange(w)}
-              className={`px-1.5 py-0.5 font-mono text-[9px] font-bold uppercase transition-colors ${
-                mentionWindow === w
-                  ? 'bg-oct-accent text-white'
-                  : 'text-oct-muted hover:text-oct-text hover:bg-oct-surface-raised'
-              }`}
-            >
-              {w}
-            </button>
-          ))}
-        </div>
-      </div>
-    </th>
+    <SortHeader
+      label={mentionWindow}
+      sortKey="windowMentions"
+      activeKey={sortKey}
+      dir={sortDir}
+      onSort={onSort}
+      align="right"
+    />
   );
 }
 
@@ -368,23 +339,25 @@ export default function RadarTable({ embedded: _embedded = false }: { embedded?:
   const [sortKey, setSortKey] = useState<SortKey>('recent');
   const [sortDir, setSortDir] = useState<SortDir>('desc');
   const [copiedAddr, setCopiedAddr] = useState<string | null>(null);
+  const [visibleColumns, setVisibleColumns] = useState<Set<RadarColumnId>>(() => loadVisibleRadarColumns());
+
+  const activeColumns = useMemo(
+    () => RADAR_COLUMN_ORDER.filter((col) => visibleColumns.has(col)),
+    [visibleColumns],
+  );
+
+  const handleVisibleColumnsChange = (cols: Set<RadarColumnId>) => {
+    setVisibleColumns(cols);
+    saveVisibleRadarColumns(cols);
+  };
 
   const handleSort = (key: SortKey) => {
     if (sortKey === key) {
       setSortDir((d) => (d === 'asc' ? 'desc' : 'asc'));
     } else {
       setSortKey(key);
-      const ascFirst: SortKey[] = ['token', 'firstCaller', 'plat'];
+      const ascFirst: SortKey[] = ['token', 'firstCaller'];
       setSortDir(ascFirst.includes(key) ? 'asc' : 'desc');
-    }
-  };
-
-  const applyLatestSort = () => {
-    if (sortKey === 'recent') {
-      setSortDir((d) => (d === 'desc' ? 'asc' : 'desc'));
-    } else {
-      setSortKey('recent');
-      setSortDir('desc');
     }
   };
 
@@ -455,12 +428,6 @@ export default function RadarTable({ embedded: _embedded = false }: { embedded?:
           break;
         case 'groups':
           result = cmpNum(a.groups.size, b.groups.size);
-          break;
-        case 'plat':
-          result = cmpStr(
-            platformMeta(a.chain, a.evmChain).label,
-            platformMeta(b.chain, b.evmChain).label,
-          );
           break;
         case 'windowMentions':
           result = cmpNum(
@@ -566,20 +533,12 @@ export default function RadarTable({ embedded: _embedded = false }: { embedded?:
             {w}
           </button>
         ))}
-        <span className="w-px h-4 bg-oct-border-bright mx-0.5" aria-hidden />
-        <span className="font-mono text-[10px] font-bold uppercase tracking-widest text-oct-muted">sort:</span>
-        <button
-          type="button"
-          onClick={applyLatestSort}
-          title={sortKey === 'recent' && sortDir === 'asc' ? 'Oldest mention first' : 'Newest mention first'}
-          className={`px-2 py-1 rounded-cockpit text-xs font-mono font-bold border-2 transition-all duration-100 ${
-            sortKey === 'recent'
-              ? 'bg-oct-accent text-white border-black shadow-oct-hard-sm'
-              : 'text-oct-muted border-transparent hover:text-oct-text hover:border-oct-border-bright'
-          }`}
-        >
-          latest{sortKey === 'recent' ? (sortDir === 'desc' ? ' ↓' : ' ↑') : ''}
-        </button>
+        <RadarSettings
+          mentionWindow={mentionWindow}
+          onMentionWindowChange={setMentionWindow}
+          visibleColumns={visibleColumns}
+          onVisibleColumnsChange={handleVisibleColumnsChange}
+        />
         <div className="flex-1" />
         <span className="font-mono text-[11px] text-oct-muted">
           {rows.length} tokens
@@ -596,28 +555,31 @@ export default function RadarTable({ embedded: _embedded = false }: { embedded?:
       </div>
 
       <div className="flex-1 min-h-0 overflow-auto overscroll-contain" style={{ overflowAnchor: 'none' }}>
-        <table className="w-full text-left border-collapse min-w-[980px]">
+        <table className="w-full text-left border-collapse min-w-[900px]">
           <thead className="sticky top-0 bg-oct-surface border-b-2 border-black z-10">
             <tr className="font-mono text-[10px] font-bold uppercase tracking-wider text-oct-muted">
-              <th className="px-3 py-2 font-medium w-8" />
               <SortHeader label="Token" sortKey="token" activeKey={sortKey} dir={sortDir} onSort={handleSort} />
-              <SortHeader label="Mentions" sortKey="mentions" activeKey={sortKey} dir={sortDir} onSort={handleSort} align="right" />
-              <SortHeader label="Callers" sortKey="callers" activeKey={sortKey} dir={sortDir} onSort={handleSort} align="right" />
-              <SortHeader label="FOMO" sortKey="fomo" activeKey={sortKey} dir={sortDir} onSort={handleSort} align="right" />
-              <SortHeader label="Groups" sortKey="groups" activeKey={sortKey} dir={sortDir} onSort={handleSort} align="right" />
-              <SortHeader label="Plat" sortKey="plat" activeKey={sortKey} dir={sortDir} onSort={handleSort} />
-              <WindowMentionsHeader
-                window={mentionWindow}
-                onWindowChange={setMentionWindow}
-                sortKey={sortKey}
-                sortDir={sortDir}
-                onSort={handleSort}
-              />
-              <SortHeader label="Latest" sortKey="recent" activeKey={sortKey} dir={sortDir} onSort={handleSort} align="right" />
-              <SortHeader label="First caller" sortKey="firstCaller" activeKey={sortKey} dir={sortDir} onSort={handleSort} />
-              <SortHeader label="MC@call" sortKey="mcAtCall" activeKey={sortKey} dir={sortDir} onSort={handleSort} align="right" />
-              <SortHeader label="MC now" sortKey="mcNow" activeKey={sortKey} dir={sortDir} onSort={handleSort} align="right" />
-              <SortHeader label="x" sortKey="mult" activeKey={sortKey} dir={sortDir} onSort={handleSort} align="right" />
+              {activeColumns.map((col) =>
+                col === 'windowMentions' ? (
+                  <WindowMentionsHeader
+                    key={col}
+                    window={mentionWindow}
+                    sortKey={sortKey}
+                    sortDir={sortDir}
+                    onSort={handleSort}
+                  />
+                ) : (
+                  <SortHeader
+                    key={col}
+                    label={RADAR_COLUMN_LABELS[col]}
+                    sortKey={col}
+                    activeKey={sortKey}
+                    dir={sortDir}
+                    onSort={handleSort}
+                    align={col === 'firstCaller' ? 'left' : 'right'}
+                  />
+                ),
+              )}
               <th className="px-3 py-2 font-medium w-8" />
             </tr>
           </thead>
@@ -649,11 +611,14 @@ export default function RadarTable({ embedded: _embedded = false }: { embedded?:
                   key={r.address}
                   className="border-b border-oct-border/50 hover:bg-oct-surface-raised/50 transition-colors"
                 >
-                  <td className="px-3 py-2 text-oct-muted">
-                    <Star size={12} strokeWidth={1.5} />
-                  </td>
                   <td className="px-3 py-2">
-                    <div className="flex items-center gap-2 min-w-0 max-w-[240px]">
+                    <div className="flex items-center gap-2 min-w-0 max-w-[260px]">
+                      <span
+                        className="w-2.5 h-2.5 rounded-full shrink-0 ring-1 ring-black/20"
+                        style={{ backgroundColor: plat.dot }}
+                        title={plat.label}
+                        aria-label={plat.label}
+                      />
                       <div className="flex-1 min-w-0">
                         <div className="flex items-center gap-2 min-w-0">
                           <span
@@ -693,53 +658,91 @@ export default function RadarTable({ embedded: _embedded = false }: { embedded?:
                       </button>
                     </div>
                   </td>
-                  <td className="px-3 py-2 text-right font-mono text-sm text-oct-text tabular-nums">{r.mentions}</td>
-                  <td className="px-3 py-2 text-right font-mono text-sm text-oct-text tabular-nums">{r.callers.size}</td>
-                  <td className="px-3 py-2 text-right">
-                    {fomoHold > 0 ? (
-                      <span
-                        className="inline-flex items-center gap-1 font-mono text-xs font-bold text-oct-accent"
-                        title={overlap?.trackedHandles?.map((h) => `@${h}`).join(', ') ?? ''}
-                      >
-                        <Users size={12} />
-                        {fomoHold}
-                      </span>
-                    ) : (
-                      <span className="text-oct-muted">·</span>
-                    )}
-                  </td>
-                  <td className="px-3 py-2 text-right font-mono text-sm text-oct-text tabular-nums">{r.groups.size}</td>
-                  <td className="px-3 py-2">
-                    <span className="flex items-center gap-1.5 font-mono text-xs text-oct-muted" title={plat.label}>
-                      <span className="w-2 h-2 rounded-full shrink-0" style={{ backgroundColor: plat.dot }} />
-                      {plat.label}
-                    </span>
-                  </td>
-                  <td className="px-3 py-2 text-right font-mono text-sm text-oct-text tabular-nums">
-                    {countWithin(r.timestamps, MENTION_WINDOW_MS[mentionWindow]) || '·'}
-                  </td>
-                  <td className="px-3 py-2 text-right font-mono text-xs text-oct-muted tabular-nums whitespace-nowrap">
-                    {timeAgoShort(r.lastMentionAt)}
-                  </td>
-                  <td className="px-3 py-2 text-sm text-oct-muted truncate max-w-[120px]">{r.firstCaller}</td>
-                  <td className="px-3 py-2 text-right font-mono text-sm text-oct-muted tabular-nums">
-                    {r.mcAtCallDisplay ?? '—'}
-                  </td>
-                  <td className="px-3 py-2 text-right font-mono text-sm text-oct-live tabular-nums whitespace-nowrap">
-                    {mcNowDisplay ?? '—'}
-                    {live && (
-                      <span className="ml-1 text-[10px] text-oct-muted">{timeAgoShort(live.at)}</span>
-                    )}
-                  </td>
-                  <td className="px-3 py-2 text-right font-mono text-sm tabular-nums">
-                    {mult != null ? (
-                      <span className={mult >= 1 ? 'text-green-400' : 'text-oct-accent'}>
-                        {mult.toFixed(1)}x
-                      </span>
-                    ) : (
-                      <span className="text-oct-muted">—</span>
-                    )}
-                  </td>
+                  {activeColumns.map((col) => {
+                    switch (col) {
+                      case 'mentions':
+                        return (
+                          <td key={col} className="px-3 py-2 text-right font-mono text-sm text-oct-text tabular-nums">
+                            {r.mentions}
+                          </td>
+                        );
+                      case 'callers':
+                        return (
+                          <td key={col} className="px-3 py-2 text-right font-mono text-sm text-oct-text tabular-nums">
+                            {r.callers.size}
+                          </td>
+                        );
+                      case 'fomo':
+                        return (
+                          <td key={col} className="px-3 py-2 text-right">
+                            {fomoHold > 0 ? (
+                              <span
+                                className="inline-flex items-center gap-1 font-mono text-xs font-bold text-oct-accent"
+                                title={overlap?.trackedHandles?.map((h) => `@${h}`).join(', ') ?? ''}
+                              >
+                                <Users size={12} />
+                                {fomoHold}
+                              </span>
+                            ) : (
+                              <span className="text-oct-muted">·</span>
+                            )}
+                          </td>
+                        );
+                      case 'groups':
+                        return (
+                          <td key={col} className="px-3 py-2 text-right font-mono text-sm text-oct-text tabular-nums">
+                            {r.groups.size}
+                          </td>
+                        );
+                      case 'windowMentions':
+                        return (
+                          <td key={col} className="px-3 py-2 text-right font-mono text-sm text-oct-text tabular-nums">
+                            {countWithin(r.timestamps, MENTION_WINDOW_MS[mentionWindow]) || '·'}
+                          </td>
+                        );
+                      case 'recent':
+                        return (
+                          <td key={col} className="px-3 py-2 text-right font-mono text-xs text-oct-muted tabular-nums whitespace-nowrap">
+                            {timeAgoShort(r.lastMentionAt)}
+                          </td>
+                        );
+                      case 'firstCaller':
+                        return (
+                          <td key={col} className="px-3 py-2 text-sm text-oct-muted truncate max-w-[120px]">
+                            {r.firstCaller}
+                          </td>
+                        );
+                      case 'mcAtCall':
+                        return (
+                          <td key={col} className="px-3 py-2 text-right font-mono text-sm text-oct-muted tabular-nums">
+                            {r.mcAtCallDisplay ?? '—'}
+                          </td>
+                        );
+                      case 'mcNow':
+                        return (
+                          <td key={col} className="px-3 py-2 text-right font-mono text-sm text-oct-live tabular-nums whitespace-nowrap">
+                            {mcNowDisplay ?? '—'}
+                            {live && (
+                              <span className="ml-1 text-[10px] text-oct-muted">{timeAgoShort(live.at)}</span>
+                            )}
+                          </td>
+                        );
+                      case 'mult':
+                        return (
+                          <td key={col} className="px-3 py-2 text-right font-mono text-sm tabular-nums">
+                            {mult != null ? (
+                              <span className={mult >= 1 ? 'text-green-400' : 'text-oct-accent'}>
+                                {mult.toFixed(1)}x
+                              </span>
+                            ) : (
+                              <span className="text-oct-muted">—</span>
+                            )}
+                          </td>
+                        );
+                      default:
+                        return null;
+                    }
+                  })}
                   <td className="px-3 py-2">
                     <button
                       type="button"
@@ -756,7 +759,7 @@ export default function RadarTable({ embedded: _embedded = false }: { embedded?:
             })}
             {rows.length === 0 && (
               <tr>
-                <td colSpan={15} className="px-4 py-16 text-center text-sm text-oct-muted">
+                <td colSpan={2 + activeColumns.length} className="px-4 py-16 text-center text-sm text-oct-muted">
                   No tokens in this window. Contracts from Feed will aggregate here.
                 </td>
               </tr>

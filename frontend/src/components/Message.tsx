@@ -2,6 +2,7 @@ import { type ReactNode, Fragment, useState, useEffect, useRef, memo } from 'rea
 import { Eye, MessageSquareReply } from 'lucide-react';
 import type { FrontendMessage, FrontendReaction, ContractLinkTemplates, ContractClickAction, BadgeClickAction, HighlightMode, MessageDisplay, ReactionUser } from '../types';
 import { useAppStore } from '../stores/appStore';
+import { AuthImage, AuthVideo, AuthAudio } from './AuthMedia';
 import ImageLightbox from './ImageLightbox';
 import UserContextMenu from './UserContextMenu';
 import { buildContractUrl, DEFAULT_LINK_TEMPLATES } from '../utils/contractUrl';
@@ -838,11 +839,9 @@ function Message({ message, isCompact, messageDisplay = 'default', compactModeAv
 
           <div className="text-[0.9375rem] text-discord-text-normal leading-[1.375rem] break-words">
             {!isCompact && compactModeAvatars && (
-              <img
+              <AuthImage
                 src={getAvatarUrl(message.author.id, message.author.avatar)}
                 alt=""
-                loading="lazy"
-                decoding="async"
                 className="inline-block w-5 h-5 rounded-full mr-1 align-text-bottom"
               />
             )}
@@ -921,28 +920,22 @@ function Message({ message, isCompact, messageDisplay = 'default', compactModeAv
             <div className="flex flex-wrap gap-2 mt-1">
               {message.attachments.map((att) =>
                 att.content_type?.startsWith('image/') ? (
-                  <img
+                  <AuthImage
                     key={att.id}
                     src={att.proxy_url}
                     alt={att.filename}
-                    loading="lazy"
-                    decoding="async"
                     className="max-w-full sm:max-w-[400px] max-h-[300px] rounded-lg cursor-pointer hover:opacity-90 transition-opacity"
                     onClick={() => setLightboxSrc(att.proxy_url)}
                   />
                 ) : att.content_type?.startsWith('audio/') ? (
                   <div key={att.id} className="flex flex-col gap-1 max-w-full sm:max-w-[400px]">
-                    <audio controls preload="none" className="h-8 max-w-full">
-                      <source src={att.proxy_url} type={att.content_type} />
-                    </audio>
+                    <AuthAudio src={att.proxy_url} type={att.content_type} className="h-8 max-w-full" />
                     <span className="text-[11px] text-discord-text-muted truncate">{att.filename}</span>
                   </div>
                 ) : att.content_type?.startsWith('video/') ? (
-                  <video
+                  <AuthVideo
                     key={att.id}
                     src={att.proxy_url}
-                    controls
-                    preload="none"
                     className="max-w-full sm:max-w-[400px] max-h-[300px] rounded-lg"
                   />
                 ) : (
@@ -1115,28 +1108,22 @@ function Message({ message, isCompact, messageDisplay = 'default', compactModeAv
             <div className="flex flex-wrap gap-2 mt-1">
               {message.attachments.map((att) =>
                 att.content_type?.startsWith('image/') ? (
-                  <img
+                  <AuthImage
                     key={att.id}
                     src={att.proxy_url}
                     alt={att.filename}
-                    loading="lazy"
-                    decoding="async"
                     className="max-w-full sm:max-w-[400px] max-h-[300px] rounded-lg cursor-pointer hover:opacity-90 transition-opacity"
                     onClick={() => setLightboxSrc(att.proxy_url)}
                   />
                 ) : att.content_type?.startsWith('audio/') ? (
                   <div key={att.id} className="flex flex-col gap-1 max-w-full sm:max-w-[400px]">
-                    <audio controls preload="none" className="h-8 max-w-full">
-                      <source src={att.proxy_url} type={att.content_type} />
-                    </audio>
+                    <AuthAudio src={att.proxy_url} type={att.content_type} className="h-8 max-w-full" />
                     <span className="text-[11px] text-discord-text-muted truncate">{att.filename}</span>
                   </div>
                 ) : att.content_type?.startsWith('video/') ? (
-                  <video
+                  <AuthVideo
                     key={att.id}
                     src={att.proxy_url}
-                    controls
-                    preload="none"
                     className="max-w-full sm:max-w-[400px] max-h-[300px] rounded-lg"
                   />
                 ) : (
@@ -1274,11 +1261,9 @@ function Message({ message, isCompact, messageDisplay = 'default', compactModeAv
           </button>
         )}
       </div>
-      <img
+      <AuthImage
         src={getAvatarUrl(message.author.id, message.author.avatar)}
         alt=""
-        loading="lazy"
-        decoding="async"
         className="absolute left-2 sm:left-4 top-[1.1875rem] w-8 h-8 sm:w-10 sm:h-10 rounded-full"
       />
       <div className="min-w-0">
@@ -1375,28 +1360,22 @@ function Message({ message, isCompact, messageDisplay = 'default', compactModeAv
           <div className="flex flex-wrap gap-2 mt-1">
             {message.attachments.map((att) =>
               att.content_type?.startsWith('image/') ? (
-                <img
+                <AuthImage
                   key={att.id}
                   src={att.proxy_url}
                   alt={att.filename}
-                  loading="lazy"
-                  decoding="async"
                   className="max-w-full sm:max-w-[400px] max-h-[300px] rounded-lg cursor-pointer hover:opacity-90 transition-opacity"
                   onClick={() => setLightboxSrc(att.proxy_url)}
                 />
               ) : att.content_type?.startsWith('audio/') ? (
                 <div key={att.id} className="flex flex-col gap-1 max-w-full sm:max-w-[400px]">
-                  <audio controls preload="none" className="h-8 max-w-full">
-                    <source src={att.proxy_url} type={att.content_type} />
-                  </audio>
+                  <AuthAudio src={att.proxy_url} type={att.content_type} className="h-8 max-w-full" />
                   <span className="text-[11px] text-discord-text-muted truncate">{att.filename}</span>
                 </div>
               ) : att.content_type?.startsWith('video/') ? (
-                <video
+                <AuthVideo
                   key={att.id}
                   src={att.proxy_url}
-                  controls
-                  preload="none"
                   className="max-w-full sm:max-w-[400px] max-h-[300px] rounded-lg"
                 />
               ) : (

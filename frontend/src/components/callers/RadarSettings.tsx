@@ -1,0 +1,130 @@
+import { useEffect, useRef, useState } from 'react';
+import { Settings2, X } from 'lucide-react';
+import {
+  RADAR_COLUMN_LABELS,
+  RADAR_COLUMN_ORDER,
+  DEFAULT_VISIBLE_COLUMNS,
+  saveVisibleRadarColumns,
+  type RadarColumnId,
+} from './radarColumns';
+
+export type MentionWindow = '15m' | '1h' | '4h';
+
+interface RadarSettingsProps {
+  mentionWindow: MentionWindow;
+  onMentionWindowChange: (w: MentionWindow) => void;
+  visibleColumns: Set<RadarColumnId>;
+  onVisibleColumnsChange: (cols: Set<RadarColumnId>) => void;
+}
+
+export default function RadarSettings({
+  mentionWindow,
+  onMentionWindowChange,
+  visibleColumns,
+  onVisibleColumnsChange,
+}: RadarSettingsProps) {
+  const [open, setOpen] = useState(false);
+  const rootRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!open) return;
+    const onDoc = (e: MouseEvent) => {
+      if (rootRef.current && !rootRef.current.contains(e.target as Node)) setOpen(false);
+    };
+    document.addEventListener('mousedown', onDoc);
+    return () => document.removeEventListener('mousedown', onDoc);
+  }, [open]);
+
+  const toggleColumn = (id: RadarColumnId) => {
+    const next = new Set(visibleColumns);
+    if (next.has(id)) next.delete(id);
+    else next.add(id);
+    onVisibleColumnsChange(next);
+    saveVisibleRadarColumns(next);
+  };
+
+  const resetColumns = () => {
+    const next = new Set(DEFAULT_VISIBLE_COLUMNS);
+    onVisibleColumnsChange(next);
+    saveVisibleRadarColumns(next);
+  };
+
+  return (
+    <div className="relative" ref={rootRef}>
+      <button
+        type="button"
+        onClick={() => setOpen((v) => !v)}
+        className={`flex items-center gap-1.5 px-2 py-1 rounded-cockpit text-xs font-mono font-bold border-2 transition-all duration-100 ${
+          open
+            ? 'bg-oct-accent text-white border-black shadow-oct-hard-sm'
+            : 'text-oct-muted border-transparent hover:text-oct-text hover:border-oct-border-bright'
+        }`}
+        title="Radar columns & window"
+      >
+        <Settings2 size={12} />
+        columns
+      </button>
+
+      {open && (
+        <div className="absolute left-0 top-full mt-1 z-50 w-64 rounded-cockpit border-2 border-black bg-oct-surface shadow-oct-hard p-3">
+          <div className="flex items-center justify-between mb-3">
+            <span className="font-mono text-[10px] font-bold uppercase tracking-widest text-oct-text">
+              Radar display
+            </span>
+            <button
+              type="button"
+              onClick={() => setOpen(false)}
+              className="p-0.5 text-oct-muted hover:text-oct-text"
+              aria-label="Close"
+            >
+              <X size={14} />
+            </button>
+          </div>
+
+          <p className="font-mono text-[10px] uppercase tracking-wide text-oct-muted mb-2">Mention window</p>
+          <div className="flex gap-1 mb-4">
+            {(['15m', '1h', '4h'] as const).map((w) => (
+              <button
+                key={w}
+                type="button"
+                onClick={() => onMentionWindowChange(w)}
+                className={`flex-1 px-2 py-1 rounded-cockpit text-xs font-mono font-bold border-2 transition-colors ${
+                  mentionWindow === w
+                    ? 'bg-oct-accent text-white border-black'
+                    : 'text-oct-muted border-oct-border-bright hover:text-oct-text'
+                }`}
+              >
+                {w}
+              </button>
+            ))}
+          </div>
+
+          <p className="font-mono text-[10px] uppercase tracking-wide text-oct-muted mb-2">Columns</p>
+          <ul className="space-y-1.5 max-h-48 overflow-y-auto">
+            {RADAR_COLUMN_ORDER.map((id) => (
+              <li key={id}>
+                <label className="flex items-center gap-2 cursor-pointer font-mono text-xs text-oct-text">
+                  <input
+                    type="checkbox"
+                    checked={visibleColumns.has(id)}
+                    onChange={() => toggleColumn(id)}
+                    className="accent-oct-accent"
+                  />
+                  {RADAR_COLUMN_LABELS[id]}
+                </label>
+              </li>
+            ))}
+          </ul>
+
+          <button
+            type="button"
+            onClick={resetColumns}
+            className="mt-3 w-full text-[10px] font-mono uppercase text-oct-muted hover:text-oct-accent"
+          >
+            Reset to defaults
+          </button>
+        </div>
+      )}
+    </div>
+  );
+}

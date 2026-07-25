@@ -102,23 +102,7 @@ export function createRouter(wsServer: WsServer): Router {
   const pendingTelegramAuth = new Map<string, { client: TelegramClient; phoneCodeHash: string; phone: string }>();
 
   async function requireTelegramManager(req: any, res: any): Promise<TelegramClientManager | null> {
-    const { getUserTelegram, connectTelegram } = await import('../index.js');
-    const userId = getUserId(req);
-    let tg = getUserTelegram(userId);
-
-    if (!tg) {
-      const config = await storage.getConfig(userId);
-      if (config.telegramSessions?.length && config.telegramApiId && config.telegramApiHash) {
-        tg = await connectTelegram(
-          parseInt(config.telegramApiId),
-          config.telegramApiHash,
-          config.telegramSessions,
-          wsServer,
-          userId,
-        );
-      }
-    }
-
+    const tg = await ensureTelegramManager(getUserId(req));
     if (!tg) {
       res.status(503).json({ error: 'Telegram not connected. Please configure Telegram first.' });
       return null;
@@ -126,13 +110,42 @@ export function createRouter(wsServer: WsServer): Router {
     return tg;
   }
 
+  async function ensureTelegramManager(userId: string): Promise<TelegramClientManager | null> {
+    const { getUserTelegram, connectTelegram, disconnectTelegram } = await import('../index.js');
+    let tg = getUserTelegram(userId);
+
+    if (tg && !tg.isConnected()) {
+      disconnectTelegram(userId);
+      tg = null;
+    }
+
+    if (!tg) {
+      const config = await storage.getConfig(userId);
+      if (config.telegramSessions?.length && config.telegramApiId && config.telegramApiHash) {
+        try {
+          tg = await connectTelegram(
+            parseInt(config.telegramApiId),
+            config.telegramApiHash,
+            config.telegramSessions,
+            wsServer,
+            userId,
+          );
+        } catch (err) {
+          console.error('[API] Telegram reconnect failed:', (err as Error).message);
+        }
+      }
+    }
+
+    return tg;
+  }
+
   // --- Auth / Token Management ---
 
   router.get('/auth/status', async (req, res) => {
     const userId = getUserId(req);
-    const { getUserGateway, getUserTelegram } = await import('../index.js');
+    const { getUserGateway } = await import('../index.js');
     const config = await storage.getConfig(userId);
-    const tg = getUserTelegram(userId);
+    const tg = await ensureTelegramManager(userId);
 
     if (isHostedMode()) {
       return res.json({

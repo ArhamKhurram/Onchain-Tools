@@ -161,6 +161,21 @@ export function useWebSocket() {
               timestamp: Date.now(),
             };
             addAlert(alert);
+
+            if (!IS_POPOUT) {
+              const cfg = useAppStore.getState().config;
+              const ss = cfg?.soundSettings;
+              if (cfg?.messageSounds) {
+                if (alert.type === 'contract_address') {
+                  playContractAlertSound(ss?.contractAlert);
+                } else if (alert.type === 'highlighted_user') {
+                  if (alert.message.hasContractAddress) playContractAlertSound(ss?.contractAlert);
+                  else playHighlightSound(ss?.highlight);
+                } else if (alert.type === 'keyword_match') {
+                  playKeywordAlertSound(ss?.keywordAlert);
+                }
+              }
+            }
           } else if (incoming.type === 'message_update') {
             if (skipDiscordWs) return;
             updateMessage(incoming.data);

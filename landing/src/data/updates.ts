@@ -13,12 +13,17 @@ export const UPDATES: UpdateEntry[] = [
       '**FOMO store-and-fan-out** — swaps are stored once in the database, then delivered to all OCT users tracking that trader — no duplicate API polling when multiple people follow the same wallet',
       '**FOMO VPS worker** — optional always-on Chromium worker (`fomo-worker/`) proxies FOMO API calls from a VPS so Railway does not need Playwright in production',
       '**Robinhood Chain on FOMO** — HOOD swaps classify correctly for cross-chain and same-chain trades (USDG/WETH quote tokens)',
-      '**Radar mention window toggle** — 15m, 1h, and 4h mention counts combined into one sortable column with an inline toggle',
+      '**Radar mention window toggle** — 15m, 1h, and 4h mention counts combined into one sortable column; window and visible columns configurable from Radar settings',
+      '**Radar column picker** — choose which columns show (mentions, callers, MC@call, first caller, FOMO, etc.); platform shown as a dot on the token row',
       '**Home session status** — console home shows Telegram connected/disconnected alongside Discord and room count',
       '**Dark and light theme** — header toggle switches between the black/red console and a cream/blue light mode with improved Feed contrast',
     ],
     fixed: [
       '**FOMO live feed empty** — switched from the aggregate trading-activity feed to per-user activity API so individual swaps appear for tracked traders',
+      '**Contract scan alerts** — contract detections broadcast in-app toasts and alert sounds again (Discord and Telegram)',
+      '**Telegram media in hosted mode** — images, video, and audio load via authenticated fetch instead of broken proxy URLs',
+      '**Workspace room settings** — gear icon opens room config from Workspace panels, not just Feed',
+      '**Telegram disconnects** — stale sessions auto-reconnect on API and status checks',
     ],
   },
   {
