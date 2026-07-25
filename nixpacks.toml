@@ -26,6 +26,7 @@ cmds = ["npm ci --include=dev"]
 
 [phases.build]
 cmds = [
+  "npm run build -w @oct/shared",
   "npm run build -w backend",
   "npx playwright install chromium"
 ]
