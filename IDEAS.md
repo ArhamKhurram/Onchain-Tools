@@ -139,6 +139,16 @@ One place for every trigger — Discord highlight, contract detected, FOMO
 tracked-user buy, (future) wallet movement — with per-source rules. Pushover is
 already wired; this unifies routing/config.
 
+> **Design principle — keep the signals separate.** Convergence, FOMO buys, and
+> missed-runner are intentionally *distinct* signals and must stay that way at the
+> source. Each carries independent information; collapsing them into one merged
+> "score" or event would destroy the very independence that makes convergence
+> meaningful (two independent signals agreeing ≫ one blended signal). A unified
+> alerts center should **route and display** them side by side under one roof —
+> shared config, one inbox — **not fuse** the underlying detections. Combine the
+> *surface*, never the *substance*. (Discussed Jul 2026 — revisit here before any
+> refactor that touches signal generation.)
+
 ### Per-tracked-user notification rules (beyond Pushover on/off)
 Filters per tracked FOMO user: buys only, min $ size threshold, specific chains,
 custom sound. Routes through existing Pushover triggers.

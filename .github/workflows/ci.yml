@@ -1,0 +1,56 @@
+name: CI
+
+# Verifies every workspace typechecks and builds before code can merge.
+# Wire this to branch protection on `main` (and ideally `dev`) so a red run
+# blocks the merge — this is the gate that stops a broken commit reaching
+# Railway/Vercel.
+
+on:
+  pull_request:
+    branches: [main, dev]
+  push:
+    branches: [main, dev]
+
+# A newer push to the same branch/PR cancels the in-flight run.
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  verify:
+    name: Typecheck & build
+    runs-on: ubuntu-latest
+    env:
+      # Backend + fomo-worker depend on Playwright, whose postinstall downloads
+      # Chromium. CI only needs to compile, so skip the ~150 MB download.
+      PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD: '1'
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: npm
+
+      - name: Install (workspaces)
+        run: npm ci
+
+      # --- Typecheck every workspace (no emit) ---
+      - name: Typecheck backend
+        run: npm run typecheck -w backend
+      - name: Typecheck frontend
+        run: npm run typecheck -w frontend
+      - name: Typecheck landing
+        run: npm run typecheck -w landing
+      - name: Typecheck fomo-worker
+        run: npm run typecheck -w fomo-worker
+
+      # --- Build the three deploy targets (backend→Railway, frontend+landing→Vercel) ---
+      - name: Build backend
+        run: npm run build -w backend
+      - name: Build frontend
+        run: npm run build -w frontend
+      - name: Build landing
+        run: npm run build -w landing
