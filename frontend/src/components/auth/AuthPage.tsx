@@ -27,7 +27,7 @@ export default function AuthPage({ onAuth }: { onAuth: () => void }) {
     try {
       if (view === 'forgot') {
         const { error } = await supabase.auth.resetPasswordForEmail(email.trim(), {
-          redirectTo: `${window.location.origin}/`,
+          redirectTo: `${window.location.origin}${consoleOriginPath('/')}`,
         });
         if (error) throw error;
         setMessage('Password reset link sent. Check your email.');
