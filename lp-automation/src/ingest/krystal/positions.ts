@@ -37,7 +37,7 @@ import type { Address, LpPosition, PoolCandidate, PositionStatus, TokenRef } fro
 import { getKrystalClient, type KrystalClient } from './client.js';
 import {
   KrystalFieldError,
-  percentToBps,
+  feePercentToUnits,
   percentToFraction,
   prop,
   requireAddress,
@@ -218,7 +218,7 @@ function mapEmbeddedPool(
     address,
     chainId,
     platform,
-    feeTierBps: percentToBps(feeTierPercent),
+    feeTierBps: feePercentToUnits(feeTierPercent),
     token0,
     token1,
     tvlUsd,

@@ -130,10 +130,11 @@ describe('mapLpPositionView', () => {
         context(),
       ).feeTierBps;
 
-    expect(feeOf([1, 0])).toBe(100);
-    expect(feeOf([0.3, 0])).toBe(30);
-    expect(feeOf([0.05, 0])).toBe(5);
-    expect(feeOf([0.01, 0])).toBe(1);
+    // Uniswap on-chain fee units (pool.fee()), not basis points.
+    expect(feeOf([1, 0])).toBe(10000);
+    expect(feeOf([0.3, 0])).toBe(3000);
+    expect(feeOf([0.05, 0])).toBe(500);
+    expect(feeOf([0.01, 0])).toBe(100);
   });
 
   it('lowercases addresses so allowlist comparison is plain equality', () => {

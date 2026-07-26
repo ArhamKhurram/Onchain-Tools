@@ -27,7 +27,7 @@ import type { Address, PoolCandidate, PoolSelectionCriteria, TokenRef } from '..
 import { getKrystalClient, type KrystalClient } from './client.js';
 import {
   KrystalFieldError,
-  percentToBps,
+  feePercentToUnits,
   percentToFraction,
   prop,
   requireAddress,
@@ -133,7 +133,7 @@ export function mapPoolCandidate(raw: unknown, path = 'pool'): PoolCandidate {
     address,
     chainId,
     platform,
-    feeTierBps: percentToBps(feeTierPercent),
+    feeTierBps: feePercentToUnits(feeTierPercent),
     token0: mapTokenRef(prop(row, 'token0', path), `${path}.token0`),
     token1: mapTokenRef(prop(row, 'token1', path), `${path}.token1`),
     tvlUsd,

@@ -39,6 +39,7 @@ import {
   validateLpTxnResponse,
 } from '../src/calldata/validate.js';
 import { slippageFraction } from '../src/calldata/lpTxn.js';
+import { TICK_SPACING_BY_FEE_BPS } from '../src/lifecycle/range.js';
 import { dryRun, type EthCallCapableClient } from '../src/calldata/dryRun.js';
 import type { CalldataPolicy, PreparedTransaction } from '../src/calldata/types.js';
 
@@ -251,7 +252,7 @@ describe('mapPoolCandidate', () => {
       address: '0x69bfaf19c9f377bb306a89aed9f6b07e2c1a8d9a',
       chainId: 4663,
       platform: 'uniswapv3',
-      feeTierBps: 5,
+      feeTierBps: 500, // 0.05% pool -> on-chain fee unit 500
       token0: {
         address: '0x0bd7d308f8e1639fab988df18a8011f41eacad73',
         symbol: 'WETH',
@@ -270,15 +271,17 @@ describe('mapPoolCandidate', () => {
     expect(pool.feeApr).toBeCloseTo(0.20364889497742254, 12);
   });
 
-  it('converts Krystal percent fee tiers to the on-chain bps we verified', () => {
-    // Cross-checked against fee() on the real 4663 pools:
-    //   1% -> 10000, 0.3% -> 3000, 0.05% -> 500, 0.01% -> 100.
-    const bps = (feeTier: number): number =>
+  it('converts Krystal percent fee tiers to the on-chain fee unit we verified', () => {
+    // Cross-checked against fee() on the real 4663 pools. These are the Uniswap
+    // on-chain fee units, NOT basis points — the unit TICK_SPACING_BY_FEE_BPS
+    // is keyed by and the frontend divides by 10000. Getting this wrong made a
+    // 1% pool resolve to spacing 1 and rebalance build unaligned ticks.
+    const units = (feeTier: number): number =>
       mapPoolCandidate({ ...REAL_POOL_ROW, feeTier }).feeTierBps;
-    expect(bps(1)).toBe(100);
-    expect(bps(0.3)).toBe(30);
-    expect(bps(0.05)).toBe(5);
-    expect(bps(0.01)).toBe(1);
+    expect(units(1)).toBe(10000);
+    expect(units(0.3)).toBe(3000);
+    expect(units(0.05)).toBe(500);
+    expect(units(0.01)).toBe(100);
   });
 
   it('reads string-typed decimals without coercing through Number()', () => {
@@ -423,12 +426,24 @@ describe('mapLpPosition', () => {
     expect(position.lastCompoundedAt).toBeNull();
     expect(position.pool.address).toBe(POOL_ADDRESS_396426);
     expect(position.pool.platform).toBe('uniswapv3');
-    expect(position.pool.feeTierBps).toBe(100); // pool.fees[0] === 1 (percent)
+    expect(position.pool.feeTierBps).toBe(10000); // pool.fees[0] === 1 (percent) -> on-chain unit 10000
     expect(position.pool.token0.decimals).toBe(18);
     expect(position.pool.token1.decimals).toBe(6);
 
     // Volume/APR are genuinely absent from the position payload — reported, not faked.
     expect(missing).toEqual(['pool.volume24hUsd', 'pool.feeApr']);
+  });
+
+  it("a mapped 1% pool's fee unit resolves to tick spacing 200 (rebalance regression)", () => {
+    // The bug the tester hit end to end: a 1% Krystal pool mapped to fee unit
+    // 100, TICK_SPACING_BY_FEE_BPS[100] read that as the 0.01% tier (spacing 1),
+    // and rebalance built ticks unaligned to the pool's real spacing of 200 ->
+    // Krystal 400 "Invalid tick range". Guard the whole seam here.
+    const { position } = mapLpPosition(REAL_POSITION_ROW, {
+      chainId: ROBINHOOD_CHAIN_ID,
+      currentTicks: TICKS,
+    });
+    expect(TICK_SPACING_BY_FEE_BPS[position.pool.feeTierBps]).toBe(200);
   });
 
   it('is consistent: an out-of-range position really is outside its derived ticks', () => {

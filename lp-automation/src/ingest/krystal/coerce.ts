@@ -153,17 +153,26 @@ export function prop(source: Record<string, unknown>, key: string, path: string)
  * basis points, so the conversion happens once, here, rather than at each call
  * site where it could be forgotten.
  *
- * Verified on chain 4663 by reading `fee()` off the pool contracts directly:
- *   feeTier 1    -> on-chain fee 10000 (tickSpacing 200) -> 100 bps
- *   feeTier 0.3  -> on-chain fee  3000 (tickSpacing  60) ->  30 bps
- *   feeTier 0.05 -> on-chain fee   500 (tickSpacing  10) ->   5 bps
- *   feeTier 0.01 -> on-chain fee   100 (tickSpacing   1) ->   1 bps
+ * Converts Krystal's percent fee tier to the **Uniswap on-chain fee unit** —
+ * the value `pool.fee()` returns, and the unit EVERYTHING downstream expects:
+ * `TICK_SPACING_BY_FEE_BPS` is keyed by it, and the frontend's `formatFeeTier`
+ * divides by 10000 to display a percent.
+ *
+ *   feeTier 1    -> 10000  (tickSpacing 200)
+ *   feeTier 0.3  ->  3000  (tickSpacing  60)
+ *   feeTier 0.05 ->   500  (tickSpacing  10)
+ *   feeTier 0.01 ->   100  (tickSpacing   1)
+ *
+ * NOT "basis points". A 1% fee is 100 bps but on-chain fee unit 10000. The old
+ * name (`percentToBps`) and `* 100` math produced 100 for a 1% pool, which
+ * `TICK_SPACING_BY_FEE_BPS[100]` read as the 0.01% tier (spacing 1) — so
+ * rebalance built unaligned ticks and the UI showed "0.01%" for a 1% pool.
  */
-export function percentToBps(percent: number): number {
-  // Round through integer micro-percent so 0.05 * 100 does not land on
-  // 5.000000000000001. Uniswap V4 pools on 4663 do carry fractional tiers
-  // (e.g. 3.995%), so the result is not forced to a whole number.
-  return Math.round(percent * 1e6) / 1e4;
+export function feePercentToUnits(percent: number): number {
+  // Round through integer micro-percent so 0.05 * 10000 does not land on
+  // 500.0000001. Uniswap V4 pools on 4663 carry fractional tiers (e.g. 3.995%),
+  // so the result is not forced to a whole number.
+  return Math.round(percent * 1e8) / 1e4;
 }
 
 /** Percent (234.15) -> annualized fraction (2.3415), as `types.ts` specifies. */

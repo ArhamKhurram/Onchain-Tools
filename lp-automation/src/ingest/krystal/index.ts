@@ -23,7 +23,7 @@ export {
 export {
   KrystalFieldError,
   normalizeAddress,
-  percentToBps,
+  feePercentToUnits,
   percentToFraction,
 } from './coerce.js';
 

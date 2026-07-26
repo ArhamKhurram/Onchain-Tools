@@ -597,17 +597,17 @@ function prop(source: Record<string, unknown>, key: string, path: string): unkno
 }
 
 /**
- * Krystal expresses fee tiers as PERCENT (`feeTier: 0.05` for a 0.05% pool,
- * whose on-chain `fee()` is 500) and APRs as percent (`apr: 8806.02`). Verified
- * against the pool contracts on chain 4663:
- *   feeTier 1 -> fee 10000 -> 100 bps · 0.3 -> 3000 -> 30 bps
- *   feeTier 0.05 -> fee 500 -> 5 bps · 0.01 -> 100 -> 1 bps
+ * Krystal expresses fee tiers as PERCENT (`feeTier: 0.05` for a 0.05% pool).
+ * We store the **Uniswap on-chain fee unit** (`pool.fee()`), which is the unit
+ * the frontend's `formatFeeTier` divides by 10000 to show a percent:
+ *   feeTier 1 -> 10000 · 0.3 -> 3000 · 0.05 -> 500 · 0.01 -> 100
  *
- * Rounded through integer micro-percent so 0.05 * 100 does not land on
- * 5.000000000000001.
+ * NOT basis points — a 1% fee is 100 bps but on-chain unit 10000. The old
+ * `* 100` produced 100 for a 1% pool, which the UI then rendered as "0.01%".
+ * Rounded through integer micro-percent so 0.05 * 10000 stays exact.
  */
-export function percentToBps(percent: number): number {
-  return Math.round(percent * 1e6) / 1e4;
+export function feePercentToUnits(percent: number): number {
+  return Math.round(percent * 1e8) / 1e4;
 }
 
 /** Percent (234.15) -> annualized fraction (2.3415). */
@@ -702,7 +702,7 @@ export function mapPoolCandidate(raw: unknown, path = 'pool'): PoolCandidate {
     address,
     chainId,
     platform,
-    feeTierBps: percentToBps(feeTierPercent),
+    feeTierBps: feePercentToUnits(feeTierPercent),
     feeTierPercent,
     token0: mapTokenRef(prop(row, 'token0', path), `${path}.token0`),
     token1: mapTokenRef(prop(row, 'token1', path), `${path}.token1`),
@@ -1011,7 +1011,7 @@ function mapEmbeddedPoolView(
     address,
     platform,
     // Percent -> bps, same conversion as the discovery endpoint: 0.05 -> 5.
-    feeTierBps: percentToBps(feeTierPercent),
+    feeTierBps: feePercentToUnits(feeTierPercent),
     token0: mapEmbeddedTokenView(tokenAmounts[0], `${path}.tokenAmounts[0]`),
     token1: mapEmbeddedTokenView(tokenAmounts[1], `${path}.tokenAmounts[1]`),
     currentPrice: requireFiniteNumber(prop(pool, 'price', path), `${path}.price`),

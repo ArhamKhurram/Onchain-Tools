@@ -11,7 +11,7 @@ import {
   mapTopPools,
   nextPolicyVersion,
   normalizeAllowedPools,
-  percentToBps,
+  feePercentToUnits,
   policyToRpcPayload,
   readNumberParam,
   rowToStored,
@@ -355,11 +355,14 @@ describe('mapPoolCandidate', () => {
     expect(pool.token1.decimals).toBe(6);
   });
 
-  it('reads feeTier as a PERCENT: 0.05 is a fee-500 pool, i.e. 5 bps', () => {
-    expect(mapPoolCandidate(rawPool({ feeTier: 0.05 })).feeTierBps).toBe(5);
-    expect(mapPoolCandidate(rawPool({ feeTier: 0.01 })).feeTierBps).toBe(1);
-    expect(mapPoolCandidate(rawPool({ feeTier: 0.3 })).feeTierBps).toBe(30);
-    expect(mapPoolCandidate(rawPool({ feeTier: 1 })).feeTierBps).toBe(100);
+  it('reads feeTier as a PERCENT and stores the on-chain fee unit: 0.05% -> 500', () => {
+    // Uniswap on-chain fee units (what pool.fee() returns), not basis points —
+    // the frontend divides by 10000 to display, and a 1% pool must read 10000
+    // so its tick spacing resolves to 200 rather than the 0.01% tier's 1.
+    expect(mapPoolCandidate(rawPool({ feeTier: 0.05 })).feeTierBps).toBe(500);
+    expect(mapPoolCandidate(rawPool({ feeTier: 0.01 })).feeTierBps).toBe(100);
+    expect(mapPoolCandidate(rawPool({ feeTier: 0.3 })).feeTierBps).toBe(3000);
+    expect(mapPoolCandidate(rawPool({ feeTier: 1 })).feeTierBps).toBe(10000);
     // Krystal's own unit is kept alongside so the UI can show either.
     expect(mapPoolCandidate(rawPool({ feeTier: 0.05 })).feeTierPercent).toBe(0.05);
   });
@@ -534,14 +537,15 @@ describe('buildKrystalQuery', () => {
   });
 });
 
-describe('percentToBps', () => {
-  it('does not accumulate float error (0.05 must be exactly 5, not 5.000000000001)', () => {
-    expect(percentToBps(0.05)).toBe(5);
-    expect(percentToBps(0.3)).toBe(30);
+describe('feePercentToUnits', () => {
+  it('converts to on-chain fee units without float error (0.05% must be exactly 500)', () => {
+    expect(feePercentToUnits(0.05)).toBe(500);
+    expect(feePercentToUnits(0.3)).toBe(3000);
+    expect(feePercentToUnits(1)).toBe(10000);
   });
 
-  it('keeps fractional tiers fractional rather than rounding to a whole bp', () => {
-    expect(percentToBps(3.995)).toBeCloseTo(399.5, 6);
+  it('keeps fractional tiers fractional rather than rounding to a whole unit', () => {
+    expect(feePercentToUnits(3.995)).toBeCloseTo(39950, 6);
   });
 });
 
