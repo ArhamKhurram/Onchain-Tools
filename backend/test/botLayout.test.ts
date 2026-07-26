@@ -1,4 +1,5 @@
 import { describe, it, expect } from 'vitest';
+import { PermissionFlagsBits } from 'discord.js';
 import { compactUsd, pnlBadge, shortAddress, usd, makeContainer, makeText, noticeCard, BRAND } from '../src/bot/layout';
 import { commands, commandMap } from '../src/bot/commands/index';
 
@@ -46,6 +47,7 @@ describe('components v2 builders', () => {
 describe('command registry', () => {
   it('registers the shipped commands', () => {
     expect(commands.map((c) => c.data.name).sort()).toEqual([
+      'announce',
       'holders',
       'leaderboard',
       'ping',
@@ -62,13 +64,23 @@ describe('command registry', () => {
     }
   });
 
-  it('makes every command usable in guilds and DMs', () => {
+  it('makes every command usable in guilds and DMs, except the admin-only /announce', () => {
     for (const cmd of commands) {
       const json = cmd.data.toJSON() as any;
+      if (cmd.data.name === 'announce') continue; // asserted separately below
       // 0 = Guild, 1 = BotDM, 2 = PrivateChannel
       expect(json.contexts).toEqual(expect.arrayContaining([0, 1]));
       // 0 = GuildInstall, 1 = UserInstall
       expect(json.integration_types).toEqual(expect.arrayContaining([0, 1]));
     }
+  });
+
+  it('locks /announce to guild-only + ManageGuild members (no DM/UserInstall path)', () => {
+    const json = commandMap.get('announce')!.data.toJSON() as any;
+    // Deliberately NOT anywhere(): a UserInstall/DM invocation has no guild
+    // permission context for Discord to check, so it must opt out entirely.
+    expect(json.contexts).toBeUndefined();
+    expect(json.integration_types).toBeUndefined();
+    expect(json.default_member_permissions).toBe(String(PermissionFlagsBits.ManageGuild));
   });
 });
