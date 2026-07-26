@@ -9,6 +9,7 @@
     "start": "node dist/bootstrap.js",
     "typecheck": "tsc --noEmit",
     "bot:deploy": "tsx src/bot/deployCommands.ts",
+    "bot:announce": "node scripts/announce.mjs",
     "test": "vitest run",
     "test:watch": "vitest"
   },
