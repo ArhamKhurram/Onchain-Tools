@@ -12,6 +12,7 @@
     "test": "vitest run",
     "test:watch": "vitest",
 
+    "new:operator": "tsx scripts/newOperator.ts",
     "preflight": "tsx scripts/preflight.ts",
     "deploy:module": "tsx scripts/deployModule.ts",
     "tx:enable": "tsx scripts/enableModule.ts",
