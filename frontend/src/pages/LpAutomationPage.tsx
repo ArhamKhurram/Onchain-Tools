@@ -158,6 +158,42 @@ export default function LpAutomationPage() {
     [clientIssues, serverIssues],
   );
 
+  // MUST stay above the `!ready` / `!isAuthenticated` early returns below.
+  // Hooks after a conditional return are only called on some renders, so the
+  // hook count changes the moment auth resolves and React unmounts the tree —
+  // which is a blank page, not an error message. Everything this reads is
+  // derived inline here rather than from the consts defined after the guards.
+  const savedAllowlistSizeForTabs = status?.allowlistSize ?? baseline.allowedPools.length;
+  const totalIssuesForTabs = clientIssues.length + serverIssues.length;
+  const tabs = useMemo(
+    () => [
+      { id: 'positions' as const, label: 'Positions', badge: positions.positions.length || null, alert: false },
+      {
+        id: 'pools' as const,
+        label: 'Pools',
+        badge: savedAllowlistSizeForTabs || null,
+        alert: summary.pendingAdds > 0 || summary.pendingRemovals > 0,
+      },
+      {
+        id: 'policy' as const,
+        label: 'Policy',
+        badge: null,
+        // Field errors live only in the editor. Without this, hitting Save from
+        // the Positions tab would fail with the cause hidden behind a tab.
+        alert: totalIssuesForTabs > 0,
+      },
+      { id: 'history' as const, label: 'History', badge: versions.length || null, alert: false },
+    ],
+    [
+      positions.positions.length,
+      savedAllowlistSizeForTabs,
+      summary.pendingAdds,
+      summary.pendingRemovals,
+      totalIssuesForTabs,
+      versions.length,
+    ],
+  );
+
   const handleSave = async () => {
     const issues = validatePolicyDraft(draft);
     if (issues.length > 0) {
@@ -205,36 +241,6 @@ export default function LpAutomationPage() {
   const totalIssues = clientIssues.length + serverIssues.length;
   const nextVersion = Math.max(versions[0] ?? 0, activeVersion ?? 0) + 1;
 
-  // Badges are counts of what is DEPLOYED, not of what is on screen: the pools
-  // badge shows the saved allowlist size, so switching tabs never changes it.
-  // `alert` marks a tab holding something that blocks or changes a save, so it
-  // is visible from whichever tab you happen to be on.
-  const tabs = useMemo(
-    () => [
-      {
-        id: 'positions' as const,
-        label: 'Positions',
-        badge: positions.positions.length || null,
-        alert: false,
-      },
-      {
-        id: 'pools' as const,
-        label: 'Pools',
-        badge: savedAllowlistSize || null,
-        alert: summary.pendingAdds > 0 || summary.pendingRemovals > 0,
-      },
-      {
-        id: 'policy' as const,
-        label: 'Policy',
-        badge: null,
-        // Field errors live only in the editor. Without this, hitting Save from
-        // the Positions tab would fail with the cause hidden behind a tab.
-        alert: totalIssues > 0,
-      },
-      { id: 'history' as const, label: 'History', badge: versions.length || null, alert: false },
-    ],
-    [positions.positions.length, savedAllowlistSize, summary.pendingAdds, summary.pendingRemovals, totalIssues, versions.length],
-  );
 
   return (
     <div className="h-full min-h-0 flex flex-col bg-oct-bg overflow-hidden">
