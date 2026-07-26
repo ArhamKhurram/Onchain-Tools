@@ -18,7 +18,7 @@ import {
   validatePolicyDraft,
   type PolicyDraft,
 } from '../components/lp/policyDraft';
-import { addToAllowlist } from '../components/lp/positions';
+import { addToAllowlist, removeFromAllowlist } from '../components/lp/positions';
 import { summarizeAllowlist } from '../components/lp/selection';
 import { LP_BTN_GHOST, LP_BTN_PRIMARY, LP_EYEBROW } from '../components/lp/styles';
 import type { PolicyFieldIssue } from '../components/lp/types';
@@ -140,8 +140,16 @@ export default function LpAutomationPage() {
     return result.ok;
   };
 
-  const admitPool = (poolAddress: string) => {
-    updateDraft({ ...draft, allowedPools: addToAllowlist(draft.allowedPools, poolAddress) });
+  // Both directions of the positions panel's coverage switch land in the same
+  // `draft.allowedPools` the picker edits, so they inherit the same unsaved
+  // state and are committed by the same Save at the bottom of the page.
+  const setPoolCoverage = (poolAddress: string, covered: boolean) => {
+    updateDraft({
+      ...draft,
+      allowedPools: covered
+        ? addToAllowlist(draft.allowedPools, poolAddress)
+        : removeFromAllowlist(draft.allowedPools, poolAddress),
+    });
   };
 
   const savedAllowlist = useMemo(() => baseline.allowedPools, [baseline]);
@@ -317,7 +325,7 @@ export default function LpAutomationPage() {
           policyReadFailed={positions.policyReadFailed}
           fetchedAt={positions.fetchedAt}
           draftAllowlist={draft.allowedPools}
-          onAdmitPool={admitPool}
+          onSetPoolCoverage={setPoolCoverage}
           onRefresh={() => void positions.refresh()}
           disabled={unavailable}
           safeAddressField={{

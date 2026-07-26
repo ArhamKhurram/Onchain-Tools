@@ -97,6 +97,26 @@ export interface CalldataBuilder {
     tickLower: number;
     tickUpper: number;
   }): Promise<PreparedTransaction>;
+  /**
+   * Exit: withdraw the position and swap out to a single token.
+   *
+   * OPTIONAL, and deliberately unimplemented by `KrystalCalldataBuilder` today.
+   * Krystal's `withdraw_and_swap` requires a `targetToken` — WHICH token the
+   * operator wants to be left holding — and nothing in the policy schema (plan
+   * §5) expresses that. Token ordering in a pool is by address, not by role, so
+   * picking `token1` because it "looks like the quote token" would be a coin
+   * flip between exiting into a stable and exiting into the volatile side.
+   *
+   * A manual exit command therefore reaches the loop and is REFUSED with that
+   * reason recorded, rather than executed on a guess. The seam exists here so
+   * wiring it up later is an adapter change and a policy field, not a change to
+   * the execution path — and so the tests can exercise the full guard ladder
+   * for `exit` without a real builder.
+   */
+  exit?(request: {
+    position: LpPosition;
+    policy: AutomationPolicy;
+  }): Promise<PreparedTransaction>;
 }
 
 /**

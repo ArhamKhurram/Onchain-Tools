@@ -1190,6 +1190,157 @@ export function validateSettingsInput(input: unknown): SettingsValidationResult 
 }
 
 // ---------------------------------------------------------------------------
+// Manual command queue — the dashboard's only way to ASK for an action
+// ---------------------------------------------------------------------------
+//
+// See `supabase/migrations/20260726180000_lp_automation_commands.sql` for the
+// architectural reasoning. The short version, because it governs everything in
+// this section:
+//
+//   THIS ENDPOINT ENQUEUES AN INTENT. IT DOES NOT PERFORM AN ACTION.
+//
+// The backend holds no key and the signer process has no inbound surface, so a
+// manual compound is a row the worker polls for — and when the worker picks it
+// up it runs the identical `ActionExecutor` ladder an automatic action runs:
+// quarantine check, allowlist re-checked at execution time, dry run, audit
+// intent before broadcast, per-position lock, the on-chain module's caps, and
+// the `LP_ARMED` gate. A queued command is a TRIGGER, never a new authority.
+//
+// The validation below is therefore not a security boundary — the worker's is.
+// It exists so the operator gets an immediate, legible refusal instead of a row
+// that sits `pending` for a few seconds and then comes back `failed` for a
+// reason the dashboard could have told them straight away.
+
+export const LP_COMMAND_ACTIONS = ['compound', 'rebalance', 'exit'] as const;
+export type LpCommandAction = (typeof LP_COMMAND_ACTIONS)[number];
+
+/** pending -> claimed -> done | failed. Only the worker moves a command along. */
+export type LpCommandStatus = 'pending' | 'claimed' | 'done' | 'failed';
+
+/** A command is OPEN while it may still execute — it blocks a second one. */
+const OPEN_COMMAND_STATUSES: readonly LpCommandStatus[] = ['pending', 'claimed'];
+
+export interface LpCommand {
+  id: string;
+  tokenId: string;
+  poolAddress: string;
+  action: LpCommandAction;
+  status: LpCommandStatus;
+  requestedAt: string;
+  claimedAt: string | null;
+  completedAt: string | null;
+  txHash: string | null;
+  error: string | null;
+}
+
+export interface CommandRequest {
+  tokenId: string;
+  action: LpCommandAction;
+  /** Lowercased. Re-checked by the worker against the live position. */
+  poolAddress: string;
+}
+
+export interface CommandValidationResult {
+  valid: boolean;
+  issues: PolicyValidationIssue[];
+  /** Normalized request. Only meaningful when `valid`. */
+  request: CommandRequest | null;
+}
+
+/**
+ * Uniswap V3 position NFT ids are positive integers with no leading zero.
+ * Matched as text because that is what they are everywhere else in this system:
+ * an identifier that happens to look like a number, only ever compared for
+ * equality. Bounded at 78 digits — a uint256 cannot be longer — so a pathological
+ * path segment cannot become a pathological database write.
+ */
+const TOKEN_ID_PATTERN = /^[1-9][0-9]{0,77}$/;
+
+/**
+ * Validate a `POST /positions/:tokenId/actions` request. Never throws;
+ * accumulates issues like the other validators so the UI can mark every bad
+ * field at once.
+ *
+ * The pool address is normalized (trimmed, lowercased) rather than merely
+ * accepted, because the allowlist check immediately downstream — and the
+ * worker's re-check at execution time — are plain string equality against
+ * lowercase addresses. A checksummed address from a wallet UI must not read as
+ * "not allowlisted" purely because of its capitalisation.
+ */
+export function validateCommandInput(tokenId: unknown, input: unknown): CommandValidationResult {
+  const issues: PolicyValidationIssue[] = [];
+
+  if (typeof tokenId !== 'string' || !TOKEN_ID_PATTERN.test(tokenId)) {
+    issues.push({ field: 'tokenId', message: 'must be a positive integer position id' });
+  }
+
+  if (!isRecord(input)) {
+    return {
+      valid: false,
+      issues: [...issues, { field: '', message: 'the request body must be an object' }],
+      request: null,
+    };
+  }
+
+  const action = input.action;
+  if (typeof action !== 'string' || !(LP_COMMAND_ACTIONS as readonly string[]).includes(action)) {
+    issues.push({
+      field: 'action',
+      message: `must be one of ${LP_COMMAND_ACTIONS.join(', ')}`,
+    });
+  }
+
+  let poolAddress: string | null = null;
+  if (typeof input.poolAddress !== 'string') {
+    issues.push({ field: 'poolAddress', message: 'must be a 0x-prefixed 20-byte hex address' });
+  } else {
+    const trimmed = input.poolAddress.trim();
+    if (!ADDRESS_PATTERN.test(trimmed)) {
+      issues.push({ field: 'poolAddress', message: 'must be a 0x-prefixed 20-byte hex address' });
+    } else if (trimmed.toLowerCase() === ZERO_ADDRESS) {
+      // Same reasoning as the settings validator: never a real pool, and it
+      // poisons every Krystal call it reaches (plan §3).
+      issues.push({
+        field: 'poolAddress',
+        message: 'must not be the all-zero address',
+      });
+    } else {
+      poolAddress = trimmed.toLowerCase();
+    }
+  }
+
+  if (issues.length > 0) return { valid: false, issues, request: null };
+
+  return {
+    valid: true,
+    issues,
+    request: {
+      tokenId: tokenId as string,
+      action: action as LpCommandAction,
+      poolAddress: poolAddress as string,
+    },
+  };
+}
+
+/**
+ * Is this pool on the active policy's allowlist?
+ *
+ * Enqueuing a command for a pool the worker will refuse is work nobody asked
+ * for: it costs a round trip, a row, and — because at most one command may be
+ * open per position — the position's only queue slot until the worker gets to
+ * it and fails it. Refusing here turns that into an immediate, explicable "no".
+ *
+ * This is a convenience, NOT the gate. The gate is `checkGuards` in the worker's
+ * `ActionExecutor`, which re-reads the allowlist at the moment of execution — a
+ * pool removed from the policy between enqueue and execution must still stop the
+ * broadcast, and only a check at execution time can see that.
+ */
+export function isPoolOnAllowlist(policy: AutomationPolicy | null, poolAddress: string): boolean {
+  if (policy === null) return false;
+  return policy.allowedPools.includes(poolAddress.toLowerCase() as Address);
+}
+
+// ---------------------------------------------------------------------------
 // Persistence
 // ---------------------------------------------------------------------------
 //
@@ -1205,9 +1356,11 @@ const BUNDLED_DATA_DIR = join(__dirname, '../../../data');
 const DATA_DIR = process.env.OCT_DATA_DIR || process.env.TRENCHCORD_DATA_DIR || BUNDLED_DATA_DIR;
 const LOCAL_POLICY_PATH = join(DATA_DIR, 'lp-policies.json');
 const LOCAL_SETTINGS_PATH = join(DATA_DIR, 'lp-settings.json');
+const LOCAL_COMMANDS_PATH = join(DATA_DIR, 'lp-commands.json');
 
 const POLICY_TABLE = 'lp_automation_policies';
 const SETTINGS_TABLE = 'lp_automation_settings';
+const COMMANDS_TABLE = 'lp_automation_commands';
 
 let _client: SupabaseClient | null = null;
 
@@ -1465,6 +1618,169 @@ async function writeSettings(userId: string, patch: SettingsPatch): Promise<LpSe
   file[userId] = stored;
   writeLocalFile(LOCAL_SETTINGS_PATH, file);
   return stored;
+}
+
+// --- Commands --------------------------------------------------------------
+
+interface CommandRow {
+  id: string;
+  token_id: string;
+  pool_address: string;
+  action: string;
+  status: string;
+  requested_at: string;
+  claimed_at: string | null;
+  completed_at: string | null;
+  tx_hash: string | null;
+  error: string | null;
+}
+
+const COMMAND_COLUMNS =
+  'id, token_id, pool_address, action, status, requested_at, claimed_at, completed_at, tx_hash, error';
+
+/** Most recent commands returned to the dashboard. Enough for a history panel. */
+const COMMAND_HISTORY_LIMIT = 50;
+
+function rowToCommand(row: CommandRow): LpCommand {
+  return {
+    id: row.id,
+    tokenId: row.token_id,
+    poolAddress: row.pool_address,
+    action: row.action as LpCommandAction,
+    status: row.status as LpCommandStatus,
+    requestedAt: row.requested_at,
+    claimedAt: row.claimed_at,
+    completedAt: row.completed_at,
+    txHash: row.tx_hash,
+    error: row.error,
+  };
+}
+
+/**
+ * Raised when a position already has a command the worker has not finished
+ * with. Carried as a type rather than a string so the route can answer 409
+ * without pattern-matching an error message.
+ */
+export class DuplicateCommandError extends Error {
+  constructor(public readonly tokenId: string) {
+    super(
+      `position ${tokenId} already has a queued or running command; ` +
+        'wait for it to finish before requesting another',
+    );
+    this.name = 'DuplicateCommandError';
+  }
+}
+
+/** Postgres unique-violation. The partial index is the real duplicate check. */
+const PG_UNIQUE_VIOLATION = '23505';
+
+/**
+ * Queue one command.
+ *
+ * Hosted mode leans on the partial unique index for the duplicate rule rather
+ * than on the read below it: a read-then-write check loses to two clicks
+ * arriving at two server instances at once, and "at most one open command per
+ * position" is not a rule worth losing that race on. The pre-read exists only to
+ * produce the friendlier message in the common, uncontended case.
+ */
+async function insertCommand(userId: string, request: CommandRequest): Promise<LpCommand> {
+  if (isHostedMode()) {
+    const db = getServiceClient();
+    if (!db) throw new Error('Supabase is not configured.');
+
+    const { data, error } = await db
+      .from(COMMANDS_TABLE)
+      .insert({
+        user_id: userId,
+        token_id: request.tokenId,
+        pool_address: request.poolAddress,
+        action: request.action,
+      })
+      .select(COMMAND_COLUMNS)
+      .single();
+
+    if (error) {
+      if (error.code === PG_UNIQUE_VIOLATION) throw new DuplicateCommandError(request.tokenId);
+      throw new Error(`Failed to queue the LP command: ${error.message}`);
+    }
+    return rowToCommand(data as CommandRow);
+  }
+
+  const file = readLocalFile<LpCommand[]>(LOCAL_COMMANDS_PATH);
+  const existing = file[userId] ?? [];
+  if (
+    existing.some(
+      (command) =>
+        command.tokenId === request.tokenId && OPEN_COMMAND_STATUSES.includes(command.status),
+    )
+  ) {
+    throw new DuplicateCommandError(request.tokenId);
+  }
+
+  const command: LpCommand = {
+    id: globalThis.crypto.randomUUID(),
+    tokenId: request.tokenId,
+    poolAddress: request.poolAddress,
+    action: request.action,
+    status: 'pending',
+    requestedAt: new Date().toISOString(),
+    claimedAt: null,
+    completedAt: null,
+    txHash: null,
+    error: null,
+  };
+  file[userId] = [...existing, command];
+  writeLocalFile(LOCAL_COMMANDS_PATH, file);
+  return command;
+}
+
+/** Does this position already have a command in flight? Advisory — see above. */
+async function findOpenCommand(userId: string, tokenId: string): Promise<LpCommand | null> {
+  if (isHostedMode()) {
+    const db = getServiceClient();
+    if (!db) throw new Error('Supabase is not configured.');
+    const { data, error } = await db
+      .from(COMMANDS_TABLE)
+      .select(COMMAND_COLUMNS)
+      .eq('user_id', userId)
+      .eq('token_id', tokenId)
+      .in('status', OPEN_COMMAND_STATUSES as string[])
+      .limit(1);
+    if (error) throw new Error(`Failed to check for a queued LP command: ${error.message}`);
+    const rows = (data as CommandRow[] | null) ?? [];
+    return rows.length > 0 ? rowToCommand(rows[0]!) : null;
+  }
+
+  const stored = readLocalFile<LpCommand[]>(LOCAL_COMMANDS_PATH)[userId] ?? [];
+  return (
+    stored.find(
+      (command) => command.tokenId === tokenId && OPEN_COMMAND_STATUSES.includes(command.status),
+    ) ?? null
+  );
+}
+
+/** Recent commands, newest first, optionally narrowed to one position. */
+async function listCommands(userId: string, tokenId: string | null): Promise<LpCommand[]> {
+  if (isHostedMode()) {
+    const db = getServiceClient();
+    if (!db) throw new Error('Supabase is not configured.');
+    let query = db
+      .from(COMMANDS_TABLE)
+      .select(COMMAND_COLUMNS)
+      .eq('user_id', userId)
+      .order('requested_at', { ascending: false })
+      .limit(COMMAND_HISTORY_LIMIT);
+    if (tokenId !== null) query = query.eq('token_id', tokenId);
+    const { data, error } = await query;
+    if (error) throw new Error(`Failed to load LP commands: ${error.message}`);
+    return ((data as CommandRow[] | null) ?? []).map(rowToCommand);
+  }
+
+  const stored = readLocalFile<LpCommand[]>(LOCAL_COMMANDS_PATH)[userId] ?? [];
+  return stored
+    .filter((command) => tokenId === null || command.tokenId === tokenId)
+    .sort((a, b) => b.requestedAt.localeCompare(a.requestedAt))
+    .slice(0, COMMAND_HISTORY_LIMIT);
 }
 
 // ---------------------------------------------------------------------------
@@ -1732,6 +2048,116 @@ export function createLpRoutes(): Router {
         });
       }
       res.status(500).json({ error: safeError(err, 'Failed to load LP positions') });
+    }
+  });
+
+  // Queuing an action is a write, and at most one command may be open per
+  // position, so the realistic abuse here is churn rather than volume. Its own
+  // bucket, separate from the read-heavy position/candidate routes.
+  const commandsLimiter = rateLimit({
+    windowMs: 60_000,
+    max: 30,
+    standardHeaders: true,
+    legacyHeaders: false,
+    keyGenerator: (req) => req.userId ?? req.ip ?? 'unknown',
+    message: { error: 'Too many manual action requests — wait a minute and try again.' },
+  });
+
+  // POST /api/lp/positions/:tokenId/actions — body { action, poolAddress }.
+  //
+  // ENQUEUES AN INTENT. Nothing here signs, simulates, or contacts a chain: the
+  // backend holds no key and the signer process has no inbound surface (plan §9
+  // point 1). The row this writes is polled by `lp-automation`, which then runs
+  // the SAME `ActionExecutor` ladder an automatic action runs — quarantine
+  // check, allowlist re-checked at execution time, dry run, audit intent before
+  // broadcast, per-position lock, on-chain module caps, LP_ARMED gate.
+  //
+  // Two refusals happen here rather than being left to the worker:
+  //
+  //   * A pool that is not on the active policy's allowlist (409). The worker
+  //     would refuse it anyway; queuing it would burn the position's single
+  //     command slot to deliver that same answer several seconds later.
+  //   * A position that already has a command queued or running (409). The
+  //     database enforces this with a partial unique index — the check below is
+  //     only there to phrase it better in the uncontended case.
+  //
+  // Neither is a security boundary. `checkGuards` in the worker is.
+  router.post('/positions/:tokenId/actions', commandsLimiter, async (req, res) => {
+    try {
+      const userId = getUserId(req);
+      const result = validateCommandInput(req.params.tokenId, req.body);
+      if (!result.valid || result.request === null) {
+        return res.status(400).json({
+          error: 'The requested action is not valid.',
+          issues: result.issues,
+        });
+      }
+      const request = result.request;
+
+      // A policy read failure must NOT fall through to "not allowlisted" — that
+      // would report a temporary outage as a permission problem and send the
+      // operator off to edit an allowlist that is already correct.
+      let policies: StoredPolicy[];
+      try {
+        policies = await listPolicies(userId);
+      } catch (err) {
+        return res.status(503).json({
+          error: safeError(
+            err,
+            'Could not read the LP policy, so the pool allowlist could not be checked. Nothing was queued.',
+          ),
+        });
+      }
+
+      const current = currentDefaultPolicy(policies);
+      if (!isPoolOnAllowlist(current?.policy ?? null, request.poolAddress)) {
+        return res.status(409).json({
+          error:
+            current === null
+              ? 'No LP policy is configured yet, so no pool is approved. Save a policy with this pool allowlisted first.'
+              : `Pool ${request.poolAddress} is not on policy v${current.policy.version}'s allowlist ` +
+                `(${current.policy.allowedPools.length} pool(s)). The worker would refuse this action, so it was not queued.`,
+          poolAddress: request.poolAddress,
+          activeVersion: current?.policy.version ?? null,
+        });
+      }
+
+      const open = await findOpenCommand(userId, request.tokenId);
+      if (open !== null) {
+        return res.status(409).json({
+          error: new DuplicateCommandError(request.tokenId).message,
+          command: open,
+        });
+      }
+
+      const command = await insertCommand(userId, request);
+      res.status(201).json({ command });
+    } catch (err) {
+      if (err instanceof DuplicateCommandError) {
+        return res.status(409).json({ error: err.message });
+      }
+      res.status(500).json({ error: safeError(err, 'Failed to queue the requested action') });
+    }
+  });
+
+  // GET /api/lp/commands?tokenId= — recent commands, newest first.
+  //
+  // How the dashboard renders "queued / running / done / failed" without
+  // holding any state of its own. `tokenId` narrows it to one position;
+  // omitting it returns the account's recent commands across all positions.
+  router.get('/commands', async (req, res) => {
+    try {
+      const tokenId = typeof req.query.tokenId === 'string' ? req.query.tokenId.trim() : '';
+      if (tokenId.length > 0 && !TOKEN_ID_PATTERN.test(tokenId)) {
+        return res.status(400).json({
+          error: 'The tokenId filter is not valid.',
+          issues: [{ field: 'tokenId', message: 'must be a positive integer position id' }],
+        });
+      }
+      const commands = await listCommands(getUserId(req), tokenId.length > 0 ? tokenId : null);
+      res.json({ commands });
+    } catch (err) {
+      res.status(500).json({ error: safeError(err, 'Failed to load LP commands') });
     }
   });
 

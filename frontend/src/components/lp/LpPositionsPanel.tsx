@@ -1,10 +1,19 @@
-import { useMemo } from 'react';
+import { useMemo, useState } from 'react';
 import { Info, Layers, RefreshCw, ShieldCheck, TriangleAlert } from 'lucide-react';
-import LpPositionCard from './LpPositionCard';
+import LpPositionTile from './LpPositionTile';
+import LpPositionDetail from './LpPositionDetail';
 import LpSafeAddressField, { type LpSafeAddressFieldProps } from './LpSafeAddressField';
 import { formatUsdExact, shortAddress } from './format';
 import { LP_BTN_GHOST, LP_PANEL, LP_PANEL_HEADER, LP_PANEL_TITLE } from './styles';
-import { positionCoverage, sortPositions, summarizePositions, type LpPositionSkip, type LpPositionView } from './positions';
+import {
+  buildPositionGrid,
+  findTile,
+  summarizePositions,
+  type LpPositionSkip,
+  type LpPositionView,
+} from './positions';
+import { latestCommandFor, type LpCommandAction } from './commands';
+import { useLpCommands } from '../../hooks/useLpCommands';
 
 /**
  * What is actually open, and — the reason this panel exists — whether the
@@ -15,8 +24,14 @@ import { positionCoverage, sortPositions, summarizePositions, type LpPositionSki
  * position can predate the policy, or sit in a pool that never cleared the
  * TVL/volume filters and so never appeared in the picker at all. On a chain a
  * few weeks old that second case is the common one, not the exotic one — which
- * is why every uncovered position carries its own one-click admit rather than
- * sending the operator back to a table their pool may never show up in.
+ * is why every uncovered position can be admitted from its own detail panel
+ * rather than sending the operator back to a table their pool may never show up
+ * in.
+ *
+ * SHAPE: a dense grid of tiles, with a drawer for the one you click. The panel
+ * used to render a full stacked card per position, which read beautifully for
+ * one and became several screens of repeated prose at five. The grid is for
+ * seeing ten at once; the drawer is where the sentences live.
  */
 
 function formatFetchedAt(iso: string | null): string | null {
@@ -55,11 +70,14 @@ export interface LpPositionsPanelProps {
   fetchedAt: string | null;
   /** The allowlist being edited on the page, so unsaved ticks read as unsaved. */
   draftAllowlist: string[];
-  /** Adds a pool to the policy draft. Uses the page's existing save cycle. */
-  onAdmitPool: (poolAddress: string) => void;
+  /**
+   * Adds or removes a pool in the policy draft. Uses the page's existing save
+   * cycle — one draft, one Save, one meaning of "unsaved".
+   */
+  onSetPoolCoverage: (poolAddress: string, covered: boolean) => void;
   onRefresh: () => void;
   safeAddressField: LpSafeAddressFieldProps;
-  /** True when the policy draft cannot be edited — gates the admit buttons only. */
+  /** True when the policy draft cannot be edited — gates the coverage switch only. */
   disabled?: boolean;
   /**
    * The policy could not be read, so coverage is unknown rather than absent.
@@ -78,23 +96,56 @@ export default function LpPositionsPanel({
   skipped,
   fetchedAt,
   draftAllowlist,
-  onAdmitPool,
+  onSetPoolCoverage,
   onRefresh,
   safeAddressField,
   disabled = false,
   policyReadFailed = false,
 }: LpPositionsPanelProps) {
+  const [selectedKey, setSelectedKey] = useState<string | null>(null);
+
   const summary = useMemo(
     () => summarizePositions(positions, draftAllowlist, policyReadFailed),
     [positions, draftAllowlist, policyReadFailed],
   );
-  const rows = useMemo(
-    () => sortPositions(positions, draftAllowlist, policyReadFailed),
+
+  // Order, coverage, status and range geometry, resolved once. See
+  // `buildPositionGrid` for why status and coverage stay disjoint.
+  const tiles = useMemo(
+    () => buildPositionGrid(positions, draftAllowlist, policyReadFailed),
     [positions, draftAllowlist, policyReadFailed],
   );
-  const fetchedLabel = formatFetchedAt(fetchedAt);
 
-  const showList = configured && !unavailable && !error && positions.length > 0;
+  // Derived, not stored. A refresh that drops the selected position closes the
+  // drawer by itself rather than leaving a panel open over data that is gone.
+  const selected = useMemo(() => findTile(tiles, selectedKey), [tiles, selectedKey]);
+  const selectedTokenId = selected?.position.tokenId ?? null;
+
+  // Scoped to the open position when there is one — that is the request the
+  // action buttons depend on, and it is the documented shape. With nothing
+  // selected it reads the recent set so tiles can mark work already in flight.
+  const commands = useLpCommands(selectedTokenId, configured && !unavailable && !error);
+
+  const selectedCommands = useMemo(
+    () =>
+      selectedTokenId === null
+        ? []
+        : commands.commands.filter((command) => command.tokenId === selectedTokenId),
+    [commands.commands, selectedTokenId],
+  );
+
+  const fetchedLabel = formatFetchedAt(fetchedAt);
+  const showGrid = configured && !unavailable && !error && positions.length > 0;
+
+  const submitAction = (action: LpCommandAction) => {
+    if (!selected) return;
+    void commands.submit(selected.position.tokenId, action, selected.position.poolAddress);
+  };
+
+  const closeDetail = () => {
+    setSelectedKey(null);
+    commands.clearSubmitFeedback();
+  };
 
   return (
     <section className={LP_PANEL}>
@@ -181,7 +232,7 @@ export default function LpPositionsPanel({
                   {summary.admittablePools.length > 0
                     ? `${summary.admittablePools.length} pool${
                         summary.admittablePools.length === 1 ? '' : 's'
-                      } can be admitted directly from the cards below — a pool that never met the TVL and volume filters will never appear in the picker, so this is the only place to reach it.`
+                      } can be admitted by opening the position below and switching automation on — a pool that never met the TVL and volume filters will never appear in the picker, so this is the only place to reach it.`
                     : 'These pools are already allowlisted; the automation is not acting on the positions themselves.'}
                   {summary.pending > 0 &&
                     ` ${summary.pending} ticked but not yet saved — nothing changes until you save.`}
@@ -214,9 +265,9 @@ export default function LpPositionsPanel({
       {skipped.length > 0 && !unavailable && <SkippedNotice skipped={skipped} />}
 
       {loading && positions.length === 0 && !error && configured && (
-        <div className="px-4 py-6 space-y-3">
-          {Array.from({ length: 2 }).map((_, i) => (
-            <div key={i} className="h-28 border-2 border-oct-border bg-oct-surface-raised animate-pulse" />
+        <div className="px-4 py-4 grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-3">
+          {Array.from({ length: 3 }).map((_, i) => (
+            <div key={i} className="h-40 border-2 border-oct-border bg-oct-surface-raised animate-pulse" />
           ))}
         </div>
       )}
@@ -232,15 +283,15 @@ export default function LpPositionsPanel({
         </div>
       )}
 
-      {showList && (
-        <div className="px-4 py-4 grid grid-cols-1 2xl:grid-cols-2 gap-3">
-          {rows.map((position) => (
-            <LpPositionCard
-              key={`${position.poolAddress}:${position.tokenId}`}
-              position={position}
-              coverage={positionCoverage(position, draftAllowlist, policyReadFailed)}
-              onAdmitPool={onAdmitPool}
-              disabled={disabled}
+      {showGrid && (
+        <div className="px-4 py-4 grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-3 items-stretch">
+          {tiles.map((tile) => (
+            <LpPositionTile
+              key={tile.key}
+              tile={tile}
+              selected={tile.key === selectedKey}
+              onSelect={() => setSelectedKey(tile.key)}
+              command={latestCommandFor(commands.commands, tile.position.tokenId)}
             />
           ))}
         </div>
@@ -259,6 +310,23 @@ export default function LpPositionsPanel({
             {fetchedLabel && <span> Last read {fetchedLabel}.</span>}
           </p>
         </div>
+      )}
+
+      {selected && (
+        <LpPositionDetail
+          tile={selected}
+          draftAllowlist={draftAllowlist}
+          onSetCoverage={onSetPoolCoverage}
+          policyDisabled={disabled}
+          commands={selectedCommands}
+          submitting={commands.submitting}
+          submitError={commands.submitError}
+          conflict={commands.conflict}
+          commandsUnavailable={commands.unavailable}
+          commandsError={commands.error}
+          onSubmitAction={submitAction}
+          onClose={closeDetail}
+        />
       )}
     </section>
   );

@@ -191,6 +191,25 @@ export function addToAllowlist(allowlist: readonly string[], address: string): s
   return [...allowlist, needle];
 }
 
+/**
+ * Removes without toggling — the inverse of `addToAllowlist`, and the other half
+ * of the detail view's coverage switch.
+ *
+ * Still the same draft and the same Save: this writes into `draft.allowedPools`
+ * exactly as the pool picker does. There is deliberately no second persistence
+ * path, because a second one would mean a second meaning of "unsaved".
+ */
+export function removeFromAllowlist(allowlist: readonly string[], address: string): string[] {
+  const needle = normalizeAddress(address);
+  if (!needle) return [...allowlist];
+  return allowlist.filter((entry) => normalizeAddress(entry) !== needle);
+}
+
+/** True when a save would leave this pool on the allowlist. Drives the switch. */
+export function isPoolInDraft(draftAllowlist: readonly string[], address: string): boolean {
+  return isInAllowlist(draftAllowlist, address);
+}
+
 // --- Range geometry ---------------------------------------------------------
 
 export type RangePlacement = 'below' | 'inside' | 'above' | 'unknown';
@@ -415,6 +434,67 @@ export function sortPositions(
 
     return String(a.tokenId).localeCompare(String(b.tokenId));
   });
+}
+
+// --- Grid derivation --------------------------------------------------------
+
+/**
+ * A stable identity for a position across renders and refreshes.
+ *
+ * Pool + tokenId rather than tokenId alone: tokenId is the NFT id from a single
+ * position manager, and the console has no guarantee two platforms on the same
+ * chain will not both mint `#1`. Selection state keys off this, and a collision
+ * would open the wrong position's detail view.
+ */
+export function positionKey(position: Pick<LpPositionView, 'poolAddress' | 'tokenId'>): string {
+  return `${normalizeAddress(position.poolAddress ?? '')}:${String(position.tokenId ?? '')}`;
+}
+
+/**
+ * One tile's worth of derived state.
+ *
+ * `status` and `coverage` sit side by side here and are computed from disjoint
+ * inputs — `status` from `position.status` alone, `coverage` from the allowlists
+ * alone. Neither is allowed to be a function of the other, because they fail in
+ * opposite directions: an out-of-range MANAGED position gets rebalanced, and an
+ * in-range UNMANAGED one looks perfectly healthy while nothing tends it. The
+ * grid renders them in two separate visual channels for the same reason.
+ */
+export interface PositionTileModel {
+  key: string;
+  position: LpPositionView;
+  /** Policy fact. */
+  coverage: PositionCoverage;
+  /** Market fact. */
+  status: StatusPresentation;
+  geometry: RangeGeometry;
+}
+
+/**
+ * The whole grid in one pure call: ordered, with coverage, status and range
+ * geometry resolved once per position instead of three times per tile.
+ */
+export function buildPositionGrid(
+  positions: readonly LpPositionView[],
+  draftAllowlist: readonly string[],
+  policyReadFailed = false,
+): PositionTileModel[] {
+  return sortPositions(positions, draftAllowlist, policyReadFailed).map((position) => ({
+    key: positionKey(position),
+    position,
+    coverage: positionCoverage(position, draftAllowlist, policyReadFailed),
+    status: presentStatus(position.status),
+    geometry: rangeGeometry(position.minPrice, position.maxPrice, position.currentPrice),
+  }));
+}
+
+/** Finds the selected tile after a refresh reorders or drops rows. */
+export function findTile(
+  tiles: readonly PositionTileModel[],
+  key: string | null,
+): PositionTileModel | null {
+  if (!key) return null;
+  return tiles.find((tile) => tile.key === key) ?? null;
 }
 
 // --- Formatting -------------------------------------------------------------

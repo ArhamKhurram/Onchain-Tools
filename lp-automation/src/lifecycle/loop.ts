@@ -58,13 +58,15 @@ import type {
   ObservedCrossing,
   WatchedRange,
 } from '../ingest/rpc/types.js';
-import type { TransactionSigner } from '../signer/types.js';
+import type { SubmitOutcome, TransactionSigner } from '../signer/types.js';
 import type { AutomationPolicy, Decision, LpPosition } from '../types.js';
+import type { CommandResult, CommandSource, LpCommand } from './commandSource.js';
 import { ActionExecutor } from './executor.js';
 import { PositionLocks } from './locks.js';
 import { recenterRange } from './range.js';
 import { deriveLastCompounded, Quarantine } from './unresolved.js';
 import type {
+  ActionResult,
   AuditPort,
   CalldataBuilder,
   Clock,
@@ -82,6 +84,13 @@ import type {
 export interface LifecycleOptions {
   /** Krystal poll cadence — the slow lane. */
   positionPollIntervalMs?: number;
+  /**
+   * Manual-command poll cadence. Deliberately much shorter than the position
+   * tick: a human pressed a button and is watching a spinner. It is cheap —
+   * one indexed `status = 'pending'` read against our own database, not a
+   * third-party API call — so it does not belong on the 60s Krystal cadence.
+   */
+  commandPollIntervalMs?: number;
   /** Parked calldata older than this is rebuilt rather than submitted. */
   calldataMaxAgeMs?: number;
   /**
@@ -98,6 +107,13 @@ export interface LifecycleDeps {
   policySource: PolicySource;
   positions: PositionFeed;
   calldata: CalldataBuilder;
+  /**
+   * The dashboard's manual command queue. Absent means the feature is simply
+   * off — the loop never polls and the automation behaves exactly as it did
+   * before the queue existed. There is no inbound surface either way (plan §9
+   * point 1); this process always reaches out.
+   */
+  commands?: CommandSource;
   signer: TransactionSigner;
   audit: AuditPort;
   createWatcher: WatcherFactory;
@@ -115,6 +131,7 @@ interface WarmCalldata {
 
 const DEFAULTS = {
   positionPollIntervalMs: 60_000,
+  commandPollIntervalMs: 5_000,
   calldataMaxAgeMs: 30_000,
 } as const;
 
@@ -126,6 +143,7 @@ export class LifecycleLoop {
   private readonly locks = new PositionLocks();
   private readonly executor: ActionExecutor;
   private readonly positionPollIntervalMs: number;
+  private readonly commandPollIntervalMs: number;
   private readonly calldataMaxAgeMs: number;
   private readonly gasCostUsd: number | null;
 
@@ -138,6 +156,14 @@ export class LifecycleLoop {
 
   private watcher: PositionWatcher | null = null;
   private pollTimer: ReturnType<typeof setInterval> | null = null;
+  private commandTimer: ReturnType<typeof setInterval> | null = null;
+  /**
+   * One command at a time, process-wide. The command tick is short, and a slow
+   * action must not have a second tick claim another command underneath it —
+   * the per-position lock protects one position, this protects the ordering the
+   * operator sees.
+   */
+  private commandTickBusy = false;
   private running = false;
   private stopping = false;
 
@@ -148,6 +174,8 @@ export class LifecycleLoop {
     this.newId = deps.newId ?? defaultIdFactory;
     this.positionPollIntervalMs =
       deps.options?.positionPollIntervalMs ?? DEFAULTS.positionPollIntervalMs;
+    this.commandPollIntervalMs =
+      deps.options?.commandPollIntervalMs ?? DEFAULTS.commandPollIntervalMs;
     this.calldataMaxAgeMs = deps.options?.calldataMaxAgeMs ?? DEFAULTS.calldataMaxAgeMs;
     this.gasCostUsd = deps.options?.gasCostUsd ?? null;
 
@@ -215,10 +243,22 @@ export class LifecycleLoop {
       this.track(this.runPositionTick());
     }, this.positionPollIntervalMs);
 
+    // Started AFTER the first position tick on purpose: a command names a
+    // position, and `runCommand` refuses one it has no state for. Polling
+    // before the first tick would fail every command queued during startup for
+    // a reason that is about our timing, not about their request.
+    if (this.deps.commands !== undefined) {
+      this.commandTimer = setInterval(() => {
+        this.track(this.runCommandTick());
+      }, this.commandPollIntervalMs);
+    }
+
     this.logger.info('lp-lifecycle: running', {
       positionPollIntervalMs: this.positionPollIntervalMs,
       calldataMaxAgeMs: this.calldataMaxAgeMs,
       gasCostUsd: this.gasCostUsd,
+      manualCommands: this.deps.commands === undefined ? 'disabled' : 'enabled',
+      commandPollIntervalMs: this.deps.commands === undefined ? null : this.commandPollIntervalMs,
     });
   }
 
@@ -236,6 +276,10 @@ export class LifecycleLoop {
     if (this.pollTimer !== null) {
       clearInterval(this.pollTimer);
       this.pollTimer = null;
+    }
+    if (this.commandTimer !== null) {
+      clearInterval(this.commandTimer);
+      this.commandTimer = null;
     }
     this.watcher?.stop();
 
@@ -651,6 +695,194 @@ export class LifecycleLoop {
     return { position, policy: resolved.policy, decision: enriched };
   }
 
+  // --- manual lane: the dashboard's command queue ---------------------------
+  //
+  // A THIRD TRIGGER, NOT A THIRD PATH. The dashboard cannot sign and this
+  // process cannot be reached (plan §9 point 1), so a manual action arrives as
+  // a row we poll for. Once claimed it goes through `act()` — the same funnel
+  // the watcher and the Krystal poll use — so it inherits the lock, the
+  // quarantine check, the execution-time allowlist, the dry run and the
+  // intent-before-broadcast ordering without a single one of them being
+  // re-implemented here. Nothing below is allowed to reach `signer.submit`
+  // except through `act()`.
+
+  /**
+   * One manual-command tick: claim at most one command and run it.
+   *
+   * A claim that fails (database down) is logged and dropped — the command
+   * stays `pending` and the next tick will try again, which is the right
+   * degradation for a trigger. A command that IS claimed is always resolved,
+   * even if executing it throws, or the row sits on `claimed` forever and the
+   * position's single command slot is wedged until a human intervenes.
+   */
+  async runCommandTick(): Promise<void> {
+    const source = this.deps.commands;
+    if (source === undefined || this.stopping || this.commandTickBusy) return;
+
+    this.commandTickBusy = true;
+    try {
+      let command: LpCommand | null;
+      try {
+        command = await source.claimNext();
+      } catch (error) {
+        this.logger.error('lp-lifecycle: could not poll the manual command queue', {
+          error: describe(error),
+        });
+        return;
+      }
+      if (command === null) return;
+
+      this.logger.info('lp-lifecycle: manual command claimed', {
+        commandId: command.id,
+        tokenId: command.tokenId,
+        action: command.action,
+        requestedAt: new Date(command.requestedAt).toISOString(),
+      });
+
+      let result: CommandResult;
+      try {
+        result = await this.runCommand(command);
+      } catch (error) {
+        // Nothing below `act()` is expected to throw, but a claimed command
+        // that is never resolved is worse than a wrong reason, so this is a
+        // catch-all rather than a bug we let escape.
+        result = {
+          txHash: null,
+          error: `the worker threw while executing this command: ${describe(error)}`,
+        };
+      }
+
+      try {
+        await source.complete(command, result);
+      } catch (error) {
+        this.logger.error(
+          'lp-lifecycle: manual command outcome could not be recorded — the row is stuck on ' +
+            '"claimed"; the AUDIT LOG is authoritative for what actually happened',
+          { commandId: command.id, tokenId: command.tokenId, ...result, error: describe(error) },
+        );
+        return;
+      }
+
+      this.logger.info('lp-lifecycle: manual command resolved', {
+        commandId: command.id,
+        tokenId: command.tokenId,
+        action: command.action,
+        status: result.error === null ? 'done' : 'failed',
+        txHash: result.txHash,
+        error: result.error,
+      });
+    } finally {
+      this.commandTickBusy = false;
+    }
+  }
+
+  /**
+   * Execute one claimed command through the normal funnel.
+   *
+   * Every refusal below produces a `failed` result with the reason in it AND an
+   * audit entry (via `act`/`recordRefusal`), so the dashboard and the log tell
+   * the same story. A refusal is never reported as `done`.
+   */
+  private async runCommand(command: LpCommand): Promise<CommandResult> {
+    const position = this.positionsByToken.get(command.tokenId);
+    if (position === undefined) {
+      // Not tracked: closed, in a pool whose tick could not be read, or held by
+      // a different Safe. Guessing at any of those would mean acting on a
+      // position we have no state for.
+      return failure(
+        `position ${command.tokenId} is not currently tracked (it may be closed, or its pool's ` +
+          'current tick could not be read). Nothing was attempted.',
+      );
+    }
+
+    // The command carries the pool the requester was looking at. If the
+    // position has since moved, the request describes a world that no longer
+    // exists — and the allowlist decision the dashboard made was made about a
+    // different pool.
+    if (position.pool.address !== command.poolAddress) {
+      return failure(
+        `position ${command.tokenId} is in pool ${position.pool.address}, but the command was ` +
+          `queued for ${command.poolAddress}. Refusing to act on a stale request.`,
+      );
+    }
+
+    const resolved = this.resolvePolicy(command.tokenId);
+    if (!resolved.ok) {
+      await this.recordRefusal(unresolvedPolicyDecision(position, resolved.reason), {
+        rule: 'lifecycle.policy_unresolved',
+        reason: resolved.reason,
+      });
+      return failure(resolved.reason);
+    }
+    const policy = resolved.policy;
+
+    const decision = manualDecision(command, position, policy);
+
+    const build = this.commandBuilder(command, position, policy);
+    if (typeof build === 'string') {
+      await this.recordRefusal(decision, { rule: 'lifecycle.manual_unavailable', reason: build });
+      return failure(build);
+    }
+
+    const result = await this.act({
+      position,
+      policy,
+      decision,
+      action: command.action,
+      build,
+    });
+
+    return commandResult(result);
+  }
+
+  /**
+   * Pick the calldata builder for a manual action, or return the reason there
+   * isn't one. A string return is a refusal, not an error.
+   */
+  private commandBuilder(
+    command: LpCommand,
+    position: LpPosition,
+    policy: AutomationPolicy,
+  ): (() => Promise<PreparedTransaction>) | string {
+    switch (command.action) {
+      case 'compound':
+        return () => this.deps.calldata.compound({ position, policy });
+
+      case 'rebalance': {
+        // Same target range an automatic rebalance would use. The operator
+        // chose to rebalance, not where to rebalance to — that stays a
+        // property of the position and the policy.
+        const range = recenterRange(position);
+        if (!range.ok) {
+          return `rebalance requested but no target range could be derived: ${range.reason}`;
+        }
+        return () =>
+          this.deps.calldata.rebalance({
+            position,
+            policy,
+            tickLower: range.range.tickLower,
+            tickUpper: range.range.tickUpper,
+          });
+      }
+
+      case 'exit': {
+        const exit = this.deps.calldata.exit;
+        if (exit === undefined) {
+          // See the `exit?` doc comment in `types.ts`. Krystal's
+          // `withdraw_and_swap` needs a target token and the policy has no
+          // field for one; picking a side of the pair here would be a coin flip
+          // over real funds, so this refuses instead of guessing.
+          return (
+            'exit is not wired into the calldata builder yet: Krystal requires a target token to ' +
+            'swap out to, and the policy has no field naming one. Refusing to guess which side of ' +
+            'the pair to exit into. Withdraw manually through the Safe until this is configurable.'
+          );
+        }
+        return () => exit.call(this.deps.calldata, { position, policy });
+      }
+    }
+  }
+
   // --- the single execution funnel -----------------------------------------
 
   /**
@@ -659,6 +891,10 @@ export class LifecycleLoop {
    * Every path out of here leaves exactly one audit trace — an intent/outcome
    * pair when the signer was reached, or a single `action: 'none'` evaluation
    * entry when it was not.
+   *
+   * The return value exists for the manual lane, which has to tell the person
+   * who pressed the button what happened. The autonomous callers ignore it: the
+   * audit log is their record, and it is written here either way.
    */
   private async act(request: {
     position: LpPosition;
@@ -666,10 +902,10 @@ export class LifecycleLoop {
     decision: Decision;
     action: ExecutableAction;
     build: () => Promise<PreparedTransaction>;
-  }): Promise<void> {
+  }): Promise<ActionResult | { status: 'position_busy'; reason: string }> {
     const { position, policy, decision, action, build } = request;
 
-    const attempt = await this.locks.tryRun(position.tokenId, async () => {
+    const attempt = await this.locks.tryRun(position.tokenId, async (): Promise<ActionResult> => {
       // Guards first: refusing here avoids a Krystal round trip, and — more
       // importantly — refusing to build calldata for a quarantined position
       // means there is no parked transaction lying around for a later tick to
@@ -677,7 +913,7 @@ export class LifecycleLoop {
       const guard = this.executor.checkGuards(position, policy);
       if (guard !== null) {
         await this.recordRefusal(decision, guard);
-        return;
+        return { status: 'refused', refusal: guard };
       }
 
       let transaction: PreparedTransaction;
@@ -688,11 +924,12 @@ export class LifecycleLoop {
         try {
           transaction = await build();
         } catch (error) {
-          await this.recordRefusal(decision, {
+          const refusal: Refusal = {
             rule: 'lifecycle.calldata_failed',
             reason: `could not build calldata: ${describe(error)}`,
-          });
-          return;
+          };
+          await this.recordRefusal(decision, refusal);
+          return { status: 'refused', refusal };
         }
       }
 
@@ -711,34 +948,35 @@ export class LifecycleLoop {
             auditId: result.auditId,
             outcome: result.outcome.status,
           });
-          return;
+          return result;
         case 'refused':
         case 'simulation_failed':
           await this.recordRefusal(decision, result.refusal);
-          return;
+          return result;
         case 'intent_write_failed':
           // Already logged loudly by the executor. Nothing was submitted and
           // nothing is in flight; another audit write would very likely fail
           // the same way, so we do not attempt one.
-          return;
+          return result;
         case 'outcome_write_failed':
           this.logger.error('lp-lifecycle: action left UNRESOLVED in the audit log', {
             tokenId: position.tokenId,
             action,
             auditId: result.auditId,
           });
-          return;
+          return result;
       }
     });
 
     if (!attempt.ran) {
       // The other lane is mid-action on this position. Refuse, do not queue —
       // a queued action would execute against pre-transaction state.
-      await this.recordRefusal(decision, {
-        rule: 'lifecycle.position_busy',
-        reason: `another action is already in flight for position ${position.tokenId}; refusing to start a second`,
-      });
+      const reason = `another action is already in flight for position ${position.tokenId}; refusing to start a second`;
+      await this.recordRefusal(decision, { rule: 'lifecycle.position_busy', reason });
+      return { status: 'position_busy', reason };
     }
+
+    return attempt.value;
   }
 
   /** Parked calldata for this position, if it is the right action and fresh. */
@@ -813,6 +1051,100 @@ export class LifecycleLoop {
     void tracked.finally(() => {
       this.inflight.delete(tracked);
     });
+  }
+}
+
+/** A `failed` command result. Exists so no call site can forget the null hash. */
+function failure(reason: string): CommandResult {
+  return { txHash: null, error: reason };
+}
+
+/**
+ * The `Decision` a manual command is recorded under.
+ *
+ * `rule` is prefixed `manual.` so the audit log never confuses an action a
+ * human asked for with one a rule fired for — those are different claims about
+ * why money moved, and `summarize()` should not blur them. `snapshot.tokenId`
+ * is mandatory for the same reason it is everywhere else: `unresolved.ts`
+ * attributes a quarantined intent by that field, and an intent it cannot
+ * attribute blocks EVERY position, not just this one.
+ */
+function manualDecision(
+  command: LpCommand,
+  position: LpPosition,
+  policy: AutomationPolicy,
+): Decision {
+  return {
+    action: command.action,
+    rule: `manual.${command.action}`,
+    reason:
+      `manual ${command.action} requested from the dashboard (command ${command.id}); ` +
+      'running the same guard ladder as an automatic action',
+    snapshot: {
+      tokenId: position.tokenId,
+      pool: position.pool.address,
+      trigger: 'manual',
+      commandId: command.id,
+      requestedAt: command.requestedAt,
+      policyVersion: policy.version,
+      positionStatus: position.status,
+      valueUsd: position.valueUsd,
+      unclaimedFeesUsd: position.unclaimedFeesUsd,
+    },
+  };
+}
+
+/**
+ * Map what the funnel did onto what the dashboard is told.
+ *
+ * ONLY A GENUINE BROADCAST IS `done` (i.e. `error === null`). The distinction
+ * that matters most here is `skipped_disarmed`: the whole ladder ran — guards,
+ * calldata, dry run, audit intent — and the broadcast alone was skipped because
+ * the process is not armed. Reporting that as success would tell an operator
+ * their exit went through when nothing left this machine. Same rule the audit
+ * log applies in `summarizeOutcome`, restated here rather than shared because
+ * the two records are read by different audiences and must not drift silently.
+ */
+function commandResult(result: ActionResult | { status: 'position_busy'; reason: string }): CommandResult {
+  switch (result.status) {
+    case 'submitted':
+      return submitOutcomeToResult(result.outcome);
+    case 'position_busy':
+      return failure(result.reason);
+    case 'refused':
+    case 'simulation_failed':
+      return failure(`${result.refusal.rule}: ${result.refusal.reason}`);
+    case 'intent_write_failed':
+      return failure(
+        `the audit intent could not be written, so nothing was submitted: ${result.error}`,
+      );
+    case 'outcome_write_failed':
+      // Submitted, but the audit log is now unresolved and the next startup
+      // will quarantine this position. Say exactly that: the chain, not this
+      // row, is the authority on what happened.
+      return {
+        txHash: result.outcome.status === 'broadcast' ? result.outcome.txHash : null,
+        error:
+          'the transaction was submitted but its outcome could NOT be written to the audit log ' +
+          `(${result.error}). This position is now quarantined until a human resolves it; ` +
+          'check the chain — it is authoritative for what actually executed.',
+      };
+  }
+}
+
+function submitOutcomeToResult(outcome: SubmitOutcome): CommandResult {
+  switch (outcome.status) {
+    case 'broadcast':
+      return { txHash: outcome.txHash, error: null };
+    case 'skipped_disarmed':
+      return failure(
+        'skipped_disarmed: the signer is disarmed, so the action was evaluated, simulated and ' +
+          'audited but NOTHING WAS BROADCAST. Arm the worker (LP_ARMED) to execute it.',
+      );
+    case 'rejected':
+      return failure(`rejected at ${outcome.stage}: ${outcome.reason}`);
+    case 'failed':
+      return { txHash: outcome.txHash, error: `failed: ${outcome.reason}` };
   }
 }
 

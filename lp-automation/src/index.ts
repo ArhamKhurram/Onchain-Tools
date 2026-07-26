@@ -37,6 +37,7 @@ import {
   LifecycleLoop,
   type Logger,
 } from './lifecycle/index.js';
+import { createSupabaseCommandSource } from './lifecycle/commandSource.js';
 import { createSupabasePolicySource } from './lifecycle/supabasePolicySource.js';
 import type { Address } from './types.js';
 
@@ -167,6 +168,15 @@ export async function run(options: RunOptions = {}): Promise<LifecycleLoop> {
   const policySourceLabel = supabasePolicySource
     ? `Supabase (${config.policyUserId})`
     : (config.policyFilePath ?? 'DEFAULT_POLICY (no policy source configured)');
+  // The dashboard's manual action queue (plan §9 point 1). Same Supabase
+  // credentials as the policy source, and the same "configured or not at all"
+  // rule. Note the direction: this process POLLS the queue. It still has no
+  // inbound surface — do not add one.
+  //
+  // This is the only table this process writes to, and only its status/result
+  // columns. Policy and settings stay read-only, exactly as §9.1 requires.
+  const commandSource = createSupabaseCommandSource(process.env, config.policyUserId);
+
   const signer = options.signer ?? (await loadSigner());
 
   // --- the startup banner ---------------------------------------------------
@@ -214,6 +224,7 @@ export async function run(options: RunOptions = {}): Promise<LifecycleLoop> {
     allowlistedPools: resolved?.allowedPools.length ?? 0,
     pinnedPositions: Object.keys(bundle.bindings).length,
     source: policySourceLabel,
+    manualCommands: commandSource === null ? 'disabled (no Supabase)' : 'enabled (polled)',
   });
   if ((resolved?.allowedPools.length ?? 0) === 0) {
     logger.warn(
@@ -236,6 +247,7 @@ export async function run(options: RunOptions = {}): Promise<LifecycleLoop> {
       swapSlippage: config.swapSlippage,
       liquiditySlippage: config.liquiditySlippage,
     }),
+    ...(commandSource === null ? {} : { commands: commandSource }),
     signer,
     audit: new AuditLog(config.auditLogPath),
     createWatcher: (callbacks) => new PoolWatcher({ config: config.rpc, callbacks, logger }),
