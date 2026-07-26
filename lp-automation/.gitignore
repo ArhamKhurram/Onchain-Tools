@@ -6,3 +6,6 @@ contracts/out/
 contracts/cache/
 contracts/broadcast/
 contracts/lib/
+
+# Generated Safe Transaction Builder batches (public data, but regenerable)
+lp-safe-batch.json

@@ -306,7 +306,25 @@ export function mapLpPosition(
 /** Map a whole `/all/v1/lp/userPositions` payload. Pure. */
 export function mapUserPositions(raw: unknown, context: MapPositionsContext): MappedPositions {
   const envelope = requireObject(raw, 'userPositions');
-  const rows = requireArray(prop(envelope, 'positions', 'userPositions'), 'userPositions.positions');
+
+  // A wallet with no LP positions gets `positions` OMITTED ENTIRELY, not an
+  // empty array — verified live against a funded Safe holding zero positions,
+  // which returned `{ statsByChain: { "4663": { openPositionCount: 0, ... } } }`
+  // and no `positions` key at all.
+  //
+  // Treating that as a malformed payload made the slow lane throw on every
+  // tick, which would have meant compounding was never evaluated even after a
+  // position existed. But "absent" must not become a blanket "no positions"
+  // either — that would turn a genuinely broken response into a silent
+  // do-nothing. `statsByChain` is the discriminator: its presence proves we
+  // received a well-formed envelope that simply has nothing in it.
+  // Read both keys directly rather than via `prop`, which throws on absence —
+  // absence is exactly the case being distinguished here.
+  const rawRows = envelope['positions'];
+  const isEmptyButValid = rawRows === undefined && envelope['statsByChain'] !== undefined;
+  const rows = isEmptyButValid
+    ? []
+    : requireArray(prop(envelope, 'positions', 'userPositions'), 'userPositions.positions');
 
   const positions: LpPosition[] = [];
   const skipped: SkippedEntry[] = [];
