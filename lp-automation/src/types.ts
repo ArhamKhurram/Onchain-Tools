@@ -47,9 +47,35 @@ export interface CompoundTrigger {
   maxIntervalHours: number;
 }
 
+/**
+ * Where to place the new range when rebalancing — mirrors Krystal's
+ * narrow/wide/full choice. Narrow is the tightest band: it earns the most fees
+ * per dollar of liquidity and, for exactly that reason, leaves range most often
+ * and rebalances most. Full is a v2-style whole-range position that never needs
+ * rebalancing but earns the least. Default is narrow.
+ */
+export type RangeStrategy = 'narrow' | 'wide' | 'full';
+
+/**
+ * Half-width of the rebalanced range, as a fraction of the current price, per
+ * strategy. Shared so the worker (which converts these to ticks) and any UI
+ * describing them agree. `full` is a sentinel — the worker snaps it to the
+ * pool's usable tick bounds rather than a percentage band.
+ */
+export const RANGE_STRATEGY_HALF_WIDTH: Record<Exclude<RangeStrategy, 'full'>, number> = {
+  narrow: 0.05, // +/-5%
+  wide: 0.2, // +/-20%
+};
+
 export interface RebalanceTrigger {
   /** Rebalance once price has left the position's range by this percentage. */
   rangeExitPercent: number;
+  /**
+   * Where to put the new range on rebalance. Replaces the old "preserve the
+   * existing width" behaviour — the operator picks a strategy once and every
+   * automatic and manual rebalance uses it, no per-action dialog.
+   */
+  rangeStrategy: RangeStrategy;
 }
 
 /**

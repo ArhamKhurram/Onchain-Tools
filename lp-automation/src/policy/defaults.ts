@@ -71,6 +71,10 @@ export const DEFAULT_POLICY: AutomationPolicy = {
     // 5% outside the range before we move. Tighter than this and ordinary
     // volatility rebalances us repeatedly, paying gas each time to chase price.
     rangeExitPercent: 5,
+    // Narrow by default: the tightest band earns the most fees per dollar of
+    // liquidity, at the cost of leaving range often — which is exactly what the
+    // automation exists to handle quickly.
+    rangeStrategy: 'narrow',
   },
 
   switchingBuffer: {

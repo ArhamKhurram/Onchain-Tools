@@ -37,8 +37,21 @@ export interface CompoundTrigger {
   maxIntervalHours: number;
 }
 
+/**
+ * Where to place the new range on rebalance — mirrors Krystal's narrow/wide/full
+ * choice. Narrow is the tightest band: it earns the most fees per dollar and, for
+ * that reason, leaves range and rebalances most often. Full is a v2-style
+ * whole-range position that never rebalances but earns the least. Default narrow.
+ */
+export type RangeStrategy = 'narrow' | 'wide' | 'full';
+
 export interface RebalanceTrigger {
   rangeExitPercent: number;
+  /**
+   * Picked once in the policy; every automatic and manual rebalance uses it,
+   * with no per-action dialog.
+   */
+  rangeStrategy: RangeStrategy;
 }
 
 export interface SwitchingBuffer {

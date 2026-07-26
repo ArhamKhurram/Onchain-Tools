@@ -7,6 +7,7 @@
 
 import { describeDailyCapacity, formatHours, formatMinutes, formatRatio, formatUsdExact } from './format';
 import { toNumber, type PolicyDraft } from './policyDraft';
+import type { RangeStrategy } from './types';
 
 const UNSET = 'Set a value to see what this does.';
 
@@ -45,6 +46,24 @@ export function describeRebalance(draft: PolicyDraft): string {
   const exit = toNumber(draft.rebalanceTrigger.rangeExitPercent);
   if (!ok(exit)) return UNSET;
   return `Move the range once price has left it by ${exit}%. Below that, price drifting out of range is left alone.`;
+}
+
+/**
+ * What each range strategy means in practice. Widths track the worker's
+ * band mapping (narrow = ±5%, wide = ±20%, full = the pool's whole range); keep
+ * these in step if that mapping ever changes.
+ */
+export const RANGE_STRATEGY_COPY: Record<RangeStrategy, string> = {
+  narrow:
+    'Narrow — the tightest band, about ±5% around the current price. Earns the most fees per dollar of liquidity and, for exactly that reason, leaves range and rebalances the most.',
+  wide:
+    'Wide — a looser band, about ±20%. Earns less than narrow but drifts out of range less often, so it rebalances less.',
+  full:
+    'Full — the whole range, like a v2 position. Never leaves range and never rebalances, but earns the least.',
+};
+
+export function describeRangeStrategy(draft: PolicyDraft): string {
+  return RANGE_STRATEGY_COPY[draft.rebalanceTrigger.rangeStrategy] ?? UNSET;
 }
 
 export function describeSwitching(draft: PolicyDraft): string {

@@ -41,6 +41,19 @@ export const ROBINHOOD_CHAIN_ID = 4663;
 
 export type Address = `0x${string}`;
 
+/**
+ * Where a rebalance places the new range — mirrors `RangeStrategy` in
+ * lp-automation/src/types.ts. Narrow is the tightest band (most fees, most
+ * rebalances); full is a whole-range position that never rebalances. Default is
+ * 'narrow'. Kept in sync with the DB CHECK in the range-strategy migration.
+ */
+export type RangeStrategy = 'narrow' | 'wide' | 'full';
+
+export const RANGE_STRATEGIES = ['narrow', 'wide', 'full'] as const;
+
+/** Filled in for a client (older, or predating the field) that omits the value. */
+export const DEFAULT_RANGE_STRATEGY: RangeStrategy = 'narrow';
+
 export interface AutomationPolicy {
   version: number;
   chain: 'robinhood';
@@ -59,6 +72,8 @@ export interface AutomationPolicy {
   };
   rebalanceTrigger: {
     rangeExitPercent: number;
+    /** Where a rebalance places the new range. Defaults to 'narrow'. */
+    rangeStrategy: RangeStrategy;
   };
   switchingBuffer: {
     minEfficiencyDeltaPercent: number;
@@ -159,6 +174,36 @@ function checkSection(
     return null;
   }
   return value;
+}
+
+/**
+ * Validate the `rangeStrategy` enum.
+ *
+ * ABSENT is accepted — a client predating the field sends no value and
+ * `buildPolicy` fills in the 'narrow' default. A PRESENT value must be exactly
+ * one of the three strategies; anything else is rejected rather than silently
+ * coerced, so a typo cannot quietly land a rebalance in the wrong range band.
+ */
+function checkRangeStrategy(
+  issues: PolicyValidationIssue[],
+  field: string,
+  value: unknown,
+): void {
+  if (value === undefined) return;
+  if (typeof value !== 'string' || !(RANGE_STRATEGIES as readonly string[]).includes(value)) {
+    issues.push({ field, message: `must be one of ${RANGE_STRATEGIES.join(', ')}` });
+  }
+}
+
+/**
+ * Coerce an already-validated-or-absent strategy to a concrete value. `undefined`
+ * (older client) and any unexpected value fall back to the 'narrow' default; a
+ * value that reached here from `validatePolicyInput` is already known-good.
+ */
+function normalizeRangeStrategy(value: unknown): RangeStrategy {
+  return value === 'narrow' || value === 'wide' || value === 'full'
+    ? value
+    : DEFAULT_RANGE_STRATEGY;
 }
 
 /**
@@ -263,6 +308,7 @@ export function validatePolicyInput(input: unknown, version: number): PolicyVali
       exclusiveMin: 0,
       because: 'a zero threshold rebalances on the first tick outside the range',
     });
+    checkRangeStrategy(issues, 'rebalanceTrigger.rangeStrategy', rebalance.rangeStrategy);
   }
 
   const buffer = checkSection(issues, 'switchingBuffer', input.switchingBuffer);
@@ -305,7 +351,7 @@ export function validatePolicyInput(input: unknown, version: number): PolicyVali
 export function buildPolicy(input: Record<string, unknown>, version: number): AutomationPolicy {
   const criteria = input.poolSelectionCriteria as Record<string, number>;
   const compound = input.compoundTrigger as Record<string, number>;
-  const rebalance = input.rebalanceTrigger as Record<string, number>;
+  const rebalance = input.rebalanceTrigger as { rangeExitPercent: number; rangeStrategy?: unknown };
   const buffer = input.switchingBuffer as Record<string, number>;
 
   return {
@@ -322,7 +368,10 @@ export function buildPolicy(input: Record<string, unknown>, version: number): Au
       minFeesVsGasRatio: compound.minFeesVsGasRatio,
       maxIntervalHours: compound.maxIntervalHours,
     },
-    rebalanceTrigger: { rangeExitPercent: rebalance.rangeExitPercent },
+    rebalanceTrigger: {
+      rangeExitPercent: rebalance.rangeExitPercent,
+      rangeStrategy: normalizeRangeStrategy(rebalance.rangeStrategy),
+    },
     switchingBuffer: {
       minEfficiencyDeltaPercent: buffer.minEfficiencyDeltaPercent,
       sustainedDurationMinutes: buffer.sustainedDurationMinutes,
@@ -1373,7 +1422,7 @@ function getServiceClient(): SupabaseClient | null {
   return _client;
 }
 
-interface PolicyRow {
+export interface PolicyRow {
   version: number;
   is_active: boolean;
   chain: string;
@@ -1386,6 +1435,7 @@ interface PolicyRow {
   min_fees_vs_gas_ratio: number | string;
   max_interval_hours: number | string;
   range_exit_percent: number | string;
+  range_strategy: string;
   min_efficiency_delta_percent: number | string;
   sustained_duration_minutes: number | string;
   created_at: string;
@@ -1404,7 +1454,7 @@ function num(value: number | string, column: string): number {
   return parsed;
 }
 
-function rowToStored(row: PolicyRow): StoredPolicy {
+export function rowToStored(row: PolicyRow): StoredPolicy {
   return {
     isActive: row.is_active,
     createdAt: row.created_at,
@@ -1422,7 +1472,10 @@ function rowToStored(row: PolicyRow): StoredPolicy {
         minFeesVsGasRatio: num(row.min_fees_vs_gas_ratio, 'min_fees_vs_gas_ratio'),
         maxIntervalHours: num(row.max_interval_hours, 'max_interval_hours'),
       },
-      rebalanceTrigger: { rangeExitPercent: num(row.range_exit_percent, 'range_exit_percent') },
+      rebalanceTrigger: {
+        rangeExitPercent: num(row.range_exit_percent, 'range_exit_percent'),
+        rangeStrategy: normalizeRangeStrategy(row.range_strategy),
+      },
       switchingBuffer: {
         minEfficiencyDeltaPercent: num(
           row.min_efficiency_delta_percent,
@@ -1443,7 +1496,7 @@ function rowToStored(row: PolicyRow): StoredPolicy {
  * must be server-assigned under a row lock — a value computed here would be
  * read outside the lock and could collide with a concurrent save.
  */
-function policyToRpcPayload(policy: AutomationPolicy): Record<string, unknown> {
+export function policyToRpcPayload(policy: AutomationPolicy): Record<string, unknown> {
   return {
     chain: policy.chain,
     max_position_size_usd: policy.maxPositionSizeUsd,
@@ -1455,6 +1508,7 @@ function policyToRpcPayload(policy: AutomationPolicy): Record<string, unknown> {
     min_fees_vs_gas_ratio: policy.compoundTrigger.minFeesVsGasRatio,
     max_interval_hours: policy.compoundTrigger.maxIntervalHours,
     range_exit_percent: policy.rebalanceTrigger.rangeExitPercent,
+    range_strategy: policy.rebalanceTrigger.rangeStrategy,
     min_efficiency_delta_percent: policy.switchingBuffer.minEfficiencyDeltaPercent,
     sustained_duration_minutes: policy.switchingBuffer.sustainedDurationMinutes,
   };

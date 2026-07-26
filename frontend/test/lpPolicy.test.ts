@@ -1,4 +1,7 @@
 import { describe, it, expect } from 'vitest';
+import { createElement } from 'react';
+import { renderToStaticMarkup } from 'react-dom/server';
+import LpSegmentedField from '../src/components/lp/LpSegmentedField';
 import {
   DEFAULT_POLICY_DRAFT,
   draftFromPolicy,
@@ -176,6 +179,89 @@ describe('validatePolicyDraft', () => {
       validatePolicyPayload({ ...payload, chain: 'base' as unknown as 'robinhood' }),
     );
     expect(issues.chain).toMatch(/robinhood/);
+  });
+
+  it('accepts every valid range strategy', () => {
+    for (const strategy of ['narrow', 'wide', 'full'] as const) {
+      expect(
+        validatePolicyDraft(draft({ rebalanceTrigger: { rangeExitPercent: '5', rangeStrategy: strategy } })),
+      ).toEqual([]);
+    }
+  });
+
+  it('rejects a range strategy outside the enum', () => {
+    const payload = draftToPayload(DEFAULT_POLICY_DRAFT);
+    const issues = issuesByField(
+      validatePolicyPayload({
+        ...payload,
+        rebalanceTrigger: {
+          rangeExitPercent: 5,
+          rangeStrategy: 'sideways' as unknown as 'narrow',
+        },
+      }),
+    );
+    expect(issues['rebalanceTrigger.rangeStrategy']).toMatch(/narrow.*wide.*full/);
+  });
+});
+
+// --- Range strategy ---------------------------------------------------------
+
+describe('range strategy', () => {
+  it('defaults to narrow', () => {
+    expect(DEFAULT_POLICY_DRAFT.rebalanceTrigger.rangeStrategy).toBe('narrow');
+  });
+
+  it('round-trips through a policy in both directions', () => {
+    const wide = draft({ rebalanceTrigger: { rangeExitPercent: '8', rangeStrategy: 'wide' } });
+    const restored = draftFromPolicy({ ...draftToPayload(wide), version: 3 });
+    expect(restored.rebalanceTrigger.rangeStrategy).toBe('wide');
+    expect(draftToPayload(restored).rebalanceTrigger.rangeStrategy).toBe('wide');
+  });
+
+  it('coerces a missing or unknown stored strategy back to narrow', () => {
+    const restored = draftFromPolicy({
+      ...draftToPayload(DEFAULT_POLICY_DRAFT),
+      version: 1,
+      rebalanceTrigger: { rangeExitPercent: 5, rangeStrategy: 'ultrawide' as unknown as 'narrow' },
+    });
+    expect(restored.rebalanceTrigger.rangeStrategy).toBe('narrow');
+  });
+
+  it('a strategy change makes the draft unequal to its baseline', () => {
+    expect(draftsEqual(DEFAULT_POLICY_DRAFT, draft({ rebalanceTrigger: { rangeExitPercent: '5', rangeStrategy: 'full' } }))).toBe(false);
+  });
+});
+
+describe('LpSegmentedField', () => {
+  const options = [
+    { value: 'narrow', label: 'Narrow' },
+    { value: 'wide', label: 'Wide' },
+    { value: 'full', label: 'Full range' },
+  ] as const;
+
+  const render = (value: 'narrow' | 'wide' | 'full') =>
+    renderToStaticMarkup(
+      createElement(LpSegmentedField, {
+        label: 'Range strategy',
+        field: 'rebalanceTrigger.rangeStrategy',
+        value,
+        onChange: () => {},
+        options,
+        help: 'help text',
+      }),
+    );
+
+  it('marks exactly the option matching the value as checked', () => {
+    const html = render('wide');
+    // aria-checked precedes data-value in the same <button> tag.
+    expect(html).toMatch(/aria-checked="true"[^>]*data-value="wide"/);
+    expect(html).toMatch(/aria-checked="false"[^>]*data-value="narrow"/);
+    expect((html.match(/aria-checked="true"/g) ?? []).length).toBe(1);
+  });
+
+  it('moves the checked option when the value changes', () => {
+    expect(render('narrow')).toMatch(/aria-checked="true"[^>]*data-value="narrow"/);
+    expect(render('full')).toMatch(/aria-checked="true"[^>]*data-value="full"/);
   });
 });
 

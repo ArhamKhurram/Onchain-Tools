@@ -1,16 +1,25 @@
 import type { ReactNode } from 'react';
 import { Coins, Filter, Repeat, Scale, Timer } from 'lucide-react';
 import LpNumberField from './LpNumberField';
+import LpSegmentedField from './LpSegmentedField';
 import { LP_PANEL, LP_PANEL_HEADER, LP_PANEL_TITLE, LP_READOUT } from './styles';
 import {
   describeCapital,
   describeCompound,
+  describeRangeStrategy,
   describeRebalance,
   describeSurfacing,
   describeSwitching,
 } from './explain';
 import { LP_CHAIN_LABELS, ROBINHOOD_CHAIN_ID } from './types';
+import type { RangeStrategy } from './types';
 import type { PolicyDraft } from './policyDraft';
+
+const RANGE_STRATEGY_OPTIONS: ReadonlyArray<{ value: RangeStrategy; label: string }> = [
+  { value: 'narrow', label: 'Narrow' },
+  { value: 'wide', label: 'Wide' },
+  { value: 'full', label: 'Full range' },
+];
 
 /**
  * The policy form. Every field of `AutomationPolicy` except `version` (assigned
@@ -66,8 +75,11 @@ export default function LpPolicyEditor({ draft, onChange, errors, disabled = fal
   const setCompound = (key: keyof PolicyDraft['compoundTrigger']) => (value: string) =>
     onChange({ ...draft, compoundTrigger: { ...draft.compoundTrigger, [key]: value } });
 
-  const setRebalance = (key: keyof PolicyDraft['rebalanceTrigger']) => (value: string) =>
+  const setRebalance = (key: 'rangeExitPercent') => (value: string) =>
     onChange({ ...draft, rebalanceTrigger: { ...draft.rebalanceTrigger, [key]: value } });
+
+  const setRangeStrategy = (value: RangeStrategy) =>
+    onChange({ ...draft, rebalanceTrigger: { ...draft.rebalanceTrigger, rangeStrategy: value } });
 
   const setBuffer = (key: keyof PolicyDraft['switchingBuffer']) => (value: string) =>
     onChange({ ...draft, switchingBuffer: { ...draft.switchingBuffer, [key]: value } });
@@ -197,7 +209,7 @@ export default function LpPolicyEditor({ draft, onChange, errors, disabled = fal
       <Group
         icon={<Scale size={14} strokeWidth={2} />}
         title="Rebalance trigger"
-        blurb="How far price may wander outside a position's range before the range is moved to follow it."
+        blurb="How far price may wander outside a position's range before the range is moved to follow it, and where the new range is placed when it is."
         readout={describeRebalance(draft)}
       >
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
@@ -213,6 +225,18 @@ export default function LpPolicyEditor({ draft, onChange, errors, disabled = fal
             help="Tighter than about 5% and ordinary volatility rebalances the position repeatedly, paying gas each time to chase price. Wider leaves the position out of range — earning nothing — for longer."
           />
         </div>
+        <LpSegmentedField
+          label="Range strategy"
+          field="rebalanceTrigger.rangeStrategy"
+          value={draft.rebalanceTrigger.rangeStrategy}
+          onChange={setRangeStrategy}
+          options={RANGE_STRATEGY_OPTIONS}
+          defaultHint="default narrow"
+          error={errors['rebalanceTrigger.rangeStrategy']}
+          disabled={disabled}
+          help="Where the new range is placed on every rebalance. Set once here — it drives both automatic rebalances and the manual Rebalance button, with no per-action dialog."
+        />
+        <p className={LP_READOUT}>{describeRangeStrategy(draft)}</p>
       </Group>
 
       <Group

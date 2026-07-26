@@ -23,7 +23,10 @@
 // transaction that reverts on-chain after paying gas, or worse, silently snaps
 // to a range nobody intended.
 
-import type { LpPosition } from '../types.js';
+import { RANGE_STRATEGY_HALF_WIDTH, type LpPosition, type RangeStrategy } from '../types.js';
+
+/** ln(1.0001) — the per-tick log ratio. price = 1.0001^tick. */
+const LN_TICK_BASE = Math.log(1.0001);
 
 /** Uniswap V3 canonical fee tier (bps) -> tick spacing. */
 export const TICK_SPACING_BY_FEE_BPS: Readonly<Record<number, number>> = {
@@ -47,20 +50,28 @@ export type RecenterResult =
   | { ok: false; reason: string };
 
 /**
- * Re-centre a position's range on its current tick, preserving width.
+ * Compute the new range for a rebalance, per the policy's {@link RangeStrategy}.
  *
- * Pure. Returns a reason instead of throwing so the caller can record the
- * refusal in the audit log like any other non-action.
+ * The band is centred on the CURRENT tick (that is the whole point of a
+ * rebalance — the price left the old range) and its width comes from the
+ * strategy, NOT from the old range:
+ *
+ *   - `narrow`/`wide` — a band symmetric in PRICE (`±5%` / `±20%`), because
+ *     "±5%" is what the operator means. Price↔tick is logarithmic, so the two
+ *     tick deltas are not equal in magnitude; each is derived from its own
+ *     `ln(1±hw)` and the bounds are snapped OUTWARDS (floor the lower, ceil the
+ *     upper) so the realised band is never tighter than requested.
+ *   - `full` — the whole usable tick range, snapped inwards to valid multiples.
+ *     A position that never leaves range and never rebalances.
+ *
+ * Pure. Returns a reason instead of throwing so the caller records the refusal
+ * in the audit log like any other non-action.
  */
-export function recenterRange(position: LpPosition): RecenterResult {
+export function recenterRange(position: LpPosition, strategy: RangeStrategy): RecenterResult {
   const { tickLower, tickUpper, currentTick } = position;
 
-  if (!Number.isInteger(tickLower) || !Number.isInteger(tickUpper) || !Number.isInteger(currentTick)) {
-    return { ok: false, reason: `ticks are not integers (${tickLower}, ${tickUpper}, ${currentTick})` };
-  }
-  const width = tickUpper - tickLower;
-  if (width <= 0) {
-    return { ok: false, reason: `range width ${width} is not positive` };
+  if (!Number.isInteger(currentTick)) {
+    return { ok: false, reason: `currentTick is not an integer (${currentTick})` };
   }
 
   const spacing = TICK_SPACING_BY_FEE_BPS[position.pool.feeTierBps];
@@ -73,27 +84,47 @@ export function recenterRange(position: LpPosition): RecenterResult {
     };
   }
 
-  // Snap outwards from the centre in whole spacing units. `Math.round` on the
-  // half-width keeps the new range as close to the original width as the
-  // spacing allows; it can differ by at most one spacing unit.
-  const halfWidth = Math.max(spacing, Math.round(width / 2 / spacing) * spacing);
-  const centre = Math.round(currentTick / spacing) * spacing;
-  const nextLower = centre - halfWidth;
-  const nextUpper = centre + halfWidth;
+  let nextLower: number;
+  let nextUpper: number;
+
+  if (strategy === 'full') {
+    // Snap the usable bounds INWARDS so both are valid multiples of spacing.
+    nextLower = Math.ceil(MIN_TICK / spacing) * spacing;
+    nextUpper = Math.floor(MAX_TICK / spacing) * spacing;
+  } else {
+    const halfWidth = RANGE_STRATEGY_HALF_WIDTH[strategy];
+    if (!(halfWidth > 0 && halfWidth < 1)) {
+      return { ok: false, reason: `range strategy "${strategy}" has an invalid half-width` };
+    }
+    // Price-symmetric band -> asymmetric tick deltas (log scale). Snap outwards
+    // so the realised band is at least as wide as asked, never tighter.
+    const lowerDelta = Math.log(1 - halfWidth) / LN_TICK_BASE; // negative
+    const upperDelta = Math.log(1 + halfWidth) / LN_TICK_BASE; // positive
+    nextLower = Math.floor((currentTick + lowerDelta) / spacing) * spacing;
+    nextUpper = Math.ceil((currentTick + upperDelta) / spacing) * spacing;
+
+    // With a very tight band and coarse spacing the two can land on the same
+    // multiple; force at least one spacing unit either side of the centre.
+    if (nextUpper - nextLower < 2 * spacing) {
+      const centre = Math.round(currentTick / spacing) * spacing;
+      nextLower = centre - spacing;
+      nextUpper = centre + spacing;
+    }
+  }
 
   if (nextLower < MIN_TICK || nextUpper > MAX_TICK) {
     return {
       ok: false,
-      reason: `re-centred range [${nextLower}, ${nextUpper}] falls outside the usable tick range`,
+      reason: `range [${nextLower}, ${nextUpper}] falls outside the usable tick range`,
     };
   }
   if (nextUpper <= nextLower) {
-    return { ok: false, reason: `re-centred range [${nextLower}, ${nextUpper}] is degenerate` };
+    return { ok: false, reason: `range [${nextLower}, ${nextUpper}] is degenerate` };
   }
   if (nextLower === tickLower && nextUpper === tickUpper) {
-    // The trigger fired but re-centring would produce the range we already
-    // hold. Moving to the same place costs gas for nothing.
-    return { ok: false, reason: 'the re-centred range is identical to the current range' };
+    // The trigger fired but this would reproduce the range we already hold.
+    // Moving to the same place costs gas for nothing.
+    return { ok: false, reason: 'the target range is identical to the current range' };
   }
 
   return { ok: true, range: { tickLower: nextLower, tickUpper: nextUpper } };

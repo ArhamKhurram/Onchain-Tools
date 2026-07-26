@@ -18,7 +18,16 @@ import type {
   AutomationPolicyPayload,
   LpChainSlug,
   PolicyFieldIssue,
+  RangeStrategy,
 } from './types';
+
+/** The three range strategies, in display order. Source of truth for the enum check. */
+export const RANGE_STRATEGIES: readonly RangeStrategy[] = ['narrow', 'wide', 'full'];
+
+/** Anything the server did not store as a known strategy falls back to narrow. */
+function normalizeRangeStrategy(value: unknown): RangeStrategy {
+  return RANGE_STRATEGIES.includes(value as RangeStrategy) ? (value as RangeStrategy) : 'narrow';
+}
 
 /**
  * Numeric fields are held as strings so a half-typed value ("2.", "") survives
@@ -41,6 +50,7 @@ export interface PolicyDraft {
   };
   rebalanceTrigger: {
     rangeExitPercent: string;
+    rangeStrategy: RangeStrategy;
   };
   switchingBuffer: {
     minEfficiencyDeltaPercent: string;
@@ -73,6 +83,7 @@ export const DEFAULT_POLICY_DRAFT: PolicyDraft = {
   },
   rebalanceTrigger: {
     rangeExitPercent: '5',
+    rangeStrategy: 'narrow',
   },
   switchingBuffer: {
     minEfficiencyDeltaPercent: '5',
@@ -104,6 +115,7 @@ export function draftFromPolicy(policy: AutomationPolicy | null): PolicyDraft {
     },
     rebalanceTrigger: {
       rangeExitPercent: num(policy.rebalanceTrigger?.rangeExitPercent),
+      rangeStrategy: normalizeRangeStrategy(policy.rebalanceTrigger?.rangeStrategy),
     },
     switchingBuffer: {
       minEfficiencyDeltaPercent: num(policy.switchingBuffer?.minEfficiencyDeltaPercent),
@@ -141,6 +153,7 @@ export function draftToPayload(draft: PolicyDraft): AutomationPolicyPayload {
     },
     rebalanceTrigger: {
       rangeExitPercent: toNumber(draft.rebalanceTrigger.rangeExitPercent),
+      rangeStrategy: draft.rebalanceTrigger.rangeStrategy,
     },
     switchingBuffer: {
       minEfficiencyDeltaPercent: toNumber(draft.switchingBuffer.minEfficiencyDeltaPercent),
@@ -260,6 +273,15 @@ export function validatePolicyPayload(payload: AutomationPolicyPayload): PolicyF
     exclusiveMin: 0,
     because: 'a zero threshold rebalances on the first tick outside the range',
   });
+
+  // The strategy is a closed enum, not a number. A value outside it could only
+  // ever fail in the worker that maps it to tick bounds — reject it here first.
+  if (!RANGE_STRATEGIES.includes(payload.rebalanceTrigger.rangeStrategy)) {
+    issues.push({
+      field: 'rebalanceTrigger.rangeStrategy',
+      message: "must be one of 'narrow', 'wide' or 'full'",
+    });
+  }
 
   // Zero is allowed here — "any positive advantage counts" — because the
   // sustained-duration half of the buffer still gates the move. Negative is not.

@@ -12,9 +12,12 @@ import {
   nextPolicyVersion,
   normalizeAllowedPools,
   percentToBps,
+  policyToRpcPayload,
   readNumberParam,
+  rowToStored,
   validatePolicyInput,
   type AutomationPolicy,
+  type PolicyRow,
   type StoredPolicy,
 } from '../src/api/routes/lp';
 
@@ -148,6 +151,35 @@ describe('validatePolicyInput', () => {
     expect(fieldsOf(body({ poolSelectionCriteria: null }))).toContain('poolSelectionCriteria');
   });
 
+  it('accepts each of the three range strategies', () => {
+    for (const rangeStrategy of ['narrow', 'wide', 'full'] as const) {
+      expect(
+        validatePolicyInput(body({ rebalanceTrigger: { rangeExitPercent: 5, rangeStrategy } }), 1)
+          .valid,
+      ).toBe(true);
+    }
+  });
+
+  it('rejects an unknown range strategy rather than silently coercing it', () => {
+    expect(
+      fieldsOf(body({ rebalanceTrigger: { rangeExitPercent: 5, rangeStrategy: 'tight' } })),
+    ).toContain('rebalanceTrigger.rangeStrategy');
+    expect(
+      fieldsOf(body({ rebalanceTrigger: { rangeExitPercent: 5, rangeStrategy: 42 } })),
+    ).toContain('rebalanceTrigger.rangeStrategy');
+    expect(
+      fieldsOf(body({ rebalanceTrigger: { rangeExitPercent: 5, rangeStrategy: null } })),
+    ).toContain('rebalanceTrigger.rangeStrategy');
+  });
+
+  it('accepts an absent range strategy — an older client predates the field', () => {
+    // The fixture omits rangeStrategy entirely; buildPolicy fills the default.
+    expect(validatePolicyInput(body(), 1).valid).toBe(true);
+    expect(
+      fieldsOf(body({ rebalanceTrigger: { rangeExitPercent: 5 } })),
+    ).not.toContain('rebalanceTrigger.rangeStrategy');
+  });
+
   it('validates the SERVER-assigned version, not one supplied by the client', () => {
     // A client-sent version is ignored entirely: version 9999 in the body does
     // not make the server-assigned version 1 invalid.
@@ -184,6 +216,70 @@ describe('buildPolicy', () => {
       1,
     );
     expect(policy.allowedPools).toEqual([POOL_A, POOL_B]);
+  });
+
+  it('defaults an absent range strategy to narrow', () => {
+    const policy = buildPolicy(body({ rebalanceTrigger: { rangeExitPercent: 5 } }), 1);
+    expect(policy.rebalanceTrigger.rangeStrategy).toBe('narrow');
+  });
+
+  it('carries an explicit range strategy through unchanged', () => {
+    const policy = buildPolicy(
+      body({ rebalanceTrigger: { rangeExitPercent: 5, rangeStrategy: 'wide' } }),
+      1,
+    );
+    expect(policy.rebalanceTrigger.rangeStrategy).toBe('wide');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Persistence mappers — the field must survive the round trip to the database
+// and back, or a saved strategy would silently revert on the next load.
+// ---------------------------------------------------------------------------
+
+/** Build a hosted PolicyRow from an RPC payload, as `lp_append_policy` would. */
+const rowFromPayload = (payload: Record<string, unknown>, version = 1): PolicyRow => ({
+  version,
+  is_active: true,
+  chain: payload.chain as string,
+  max_position_size_usd: payload.max_position_size_usd as number,
+  daily_spend_cap_usd: payload.daily_spend_cap_usd as number,
+  allowed_pools: payload.allowed_pools as string[],
+  min_tvl_usd: payload.min_tvl_usd as number,
+  min_24h_volume_usd: payload.min_24h_volume_usd as number,
+  max_il_risk_score: payload.max_il_risk_score as number,
+  min_fees_vs_gas_ratio: payload.min_fees_vs_gas_ratio as number,
+  max_interval_hours: payload.max_interval_hours as number,
+  range_exit_percent: payload.range_exit_percent as number,
+  range_strategy: payload.range_strategy as string,
+  min_efficiency_delta_percent: payload.min_efficiency_delta_percent as number,
+  sustained_duration_minutes: payload.sustained_duration_minutes as number,
+  created_at: '2026-07-26T00:00:00.000Z',
+});
+
+describe('policy persistence round-trip', () => {
+  it('preserves the range strategy through payload -> row -> policy', () => {
+    for (const rangeStrategy of ['narrow', 'wide', 'full'] as const) {
+      const original = buildPolicy(
+        body({ rebalanceTrigger: { rangeExitPercent: 5, rangeStrategy } }),
+        3,
+      );
+      const payload = policyToRpcPayload(original);
+      expect(payload.range_strategy).toBe(rangeStrategy);
+
+      const restored = rowToStored(rowFromPayload(payload, 3)).policy;
+      expect(restored.rebalanceTrigger.rangeStrategy).toBe(rangeStrategy);
+      expect(restored.rebalanceTrigger.rangeExitPercent).toBe(5);
+    }
+  });
+
+  it('reads a legacy row with no range strategy as narrow', () => {
+    // A row that predates the column would surface `range_strategy` as undefined;
+    // the mapper must not emit an out-of-enum value.
+    const payload = policyToRpcPayload(buildPolicy(body(), 1));
+    const legacy = rowFromPayload(payload);
+    delete (legacy as { range_strategy?: string }).range_strategy;
+    expect(rowToStored(legacy).policy.rebalanceTrigger.rangeStrategy).toBe('narrow');
   });
 });
 

@@ -573,7 +573,7 @@ export class LifecycleLoop {
     if (decision.action !== 'rebalance') return;
     if (this.executor.checkGuards(position, policy) !== null) return; // refusal is recorded on confirm
 
-    const range = recenterRange(position);
+    const range = recenterRange(position, policy.rebalanceTrigger.rangeStrategy);
     if (!range.ok) return;
 
     try {
@@ -613,7 +613,7 @@ export class LifecycleLoop {
       return;
     }
 
-    const range = recenterRange(position);
+    const range = recenterRange(position, policy.rebalanceTrigger.rangeStrategy);
     if (!range.ok) {
       await this.recordRefusal(decision, {
         rule: 'lifecycle.no_target_range',
@@ -852,7 +852,7 @@ export class LifecycleLoop {
         // Same target range an automatic rebalance would use. The operator
         // chose to rebalance, not where to rebalance to — that stays a
         // property of the position and the policy.
-        const range = recenterRange(position);
+        const range = recenterRange(position, policy.rebalanceTrigger.rangeStrategy);
         if (!range.ok) {
           return `rebalance requested but no target range could be derived: ${range.reason}`;
         }

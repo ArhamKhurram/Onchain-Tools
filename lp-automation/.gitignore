@@ -9,3 +9,6 @@ contracts/lib/
 
 # Generated Safe Transaction Builder batches (public data, but regenerable)
 lp-safe-batch.json
+
+# Runtime data: audit log, local policy/settings/command stores
+data/

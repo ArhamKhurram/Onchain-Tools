@@ -196,6 +196,14 @@ export function validatePolicy(input: unknown): PolicyValidationResult {
       exclusiveMin: 0,
       because: 'a zero threshold rebalances on the first tick outside the range',
     });
+    // The strategy decides where funds are redeployed on every rebalance, so an
+    // unrecognised value must be rejected, not defaulted silently.
+    if (!['narrow', 'wide', 'full'].includes(rebalance.rangeStrategy as string)) {
+      issues.push({
+        field: 'rebalanceTrigger.rangeStrategy',
+        message: 'must be one of "narrow", "wide", or "full"',
+      });
+    }
   }
 
   const buffer = checkSection(issues, 'switchingBuffer', input.switchingBuffer);

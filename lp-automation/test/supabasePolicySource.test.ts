@@ -27,6 +27,23 @@ const row = (over: Record<string, unknown> = {}) => ({
   ...over,
 }) as any;
 
+describe('rowToPolicy — range strategy', () => {
+  it('reads an explicit strategy', () => {
+    expect(rowToPolicy(row({ range_strategy: 'wide' })).rebalanceTrigger.rangeStrategy).toBe('wide');
+    expect(rowToPolicy(row({ range_strategy: 'full' })).rebalanceTrigger.rangeStrategy).toBe('full');
+  });
+
+  it('defaults a null/absent strategy to narrow — a row predating the column', () => {
+    expect(rowToPolicy(row({ range_strategy: null })).rebalanceTrigger.rangeStrategy).toBe('narrow');
+  });
+
+  it('THROWS on an unrecognised strategy rather than redeploying under the wrong one', () => {
+    // A corrupted value is not a default. Silently treating "aggressive" as
+    // narrow would place funds in a band nobody chose.
+    expect(() => rowToPolicy(row({ range_strategy: 'aggressive' }))).toThrow(/range_strategy/);
+  });
+});
+
 describe('rowToPolicy', () => {
   it('parses Postgres numeric strings into numbers', () => {
     const policy = rowToPolicy(row());
@@ -41,7 +58,7 @@ describe('rowToPolicy', () => {
     expect(policy.poolSelectionCriteria).toEqual({
       minTvlUsd: 100000, min24hVolumeUsd: 50000, maxIlRiskScore: 40,
     });
-    expect(policy.rebalanceTrigger).toEqual({ rangeExitPercent: 5 });
+    expect(policy.rebalanceTrigger).toEqual({ rangeExitPercent: 5, rangeStrategy: 'narrow' });
   });
 
   it('accepts real numbers as well as strings', () => {

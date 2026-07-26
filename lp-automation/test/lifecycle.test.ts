@@ -815,33 +815,55 @@ describe('deriveLastCompounded', () => {
 });
 
 describe('recenterRange', () => {
-  it('keeps the width and re-centres on the current tick', () => {
-    const result = recenterRange(position({ currentTick: 200_000 }));
+  // Pool default is feeTierBps 10_000 -> spacing 200; currentTick 200_000.
+  // Expected bounds computed against `tick = round(ln(1±hw)/ln(1.0001))`,
+  // snapped outwards to 200. See RANGE_STRATEGY_HALF_WIDTH.
+
+  it('narrow: builds a ±5% price band, snapped outwards, centred on current tick', () => {
+    const result = recenterRange(position({ currentTick: 200_000 }), 'narrow');
     expect(result.ok).toBe(true);
     if (!result.ok) return;
-    const width = result.range.tickUpper - result.range.tickLower;
-    // The original 7000-tick width is not a whole number of 200-tick half-steps,
-    // so it snaps to 7200 — within one spacing unit, which is the documented
-    // tolerance. It must never silently become a different KIND of range.
-    expect(width).toBe(7200);
-    expect((result.range.tickLower + result.range.tickUpper) / 2).toBe(200_000);
+    expect(result.range).toEqual({ tickLower: 199_400, tickUpper: 200_600 });
     expect(result.range.tickLower % 200).toBe(0);
     expect(result.range.tickUpper % 200).toBe(0);
   });
 
+  it('wide is strictly wider than narrow around the same tick', () => {
+    const narrow = recenterRange(position({ currentTick: 200_000 }), 'narrow');
+    const wide = recenterRange(position({ currentTick: 200_000 }), 'wide');
+    expect(wide.ok && narrow.ok).toBe(true);
+    if (!wide.ok || !narrow.ok) return;
+    expect(wide.range).toEqual({ tickLower: 197_600, tickUpper: 202_000 });
+    const w = (r: { tickLower: number; tickUpper: number }) => r.tickUpper - r.tickLower;
+    expect(w(wide.range)).toBeGreaterThan(w(narrow.range));
+  });
+
+  it('full: snaps the whole usable range inwards to valid multiples', () => {
+    const result = recenterRange(position({ currentTick: 200_000 }), 'full');
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.range).toEqual({ tickLower: -887_200, tickUpper: 887_200 });
+  });
+
+  it('narrow follows the current tick, not the old range', () => {
+    // Old range is irrelevant now — the band re-centres wherever price is.
+    const moved = recenterRange(position({ currentTick: 50_000 }), 'narrow');
+    expect(moved.ok).toBe(true);
+    if (!moved.ok) return;
+    expect((moved.range.tickLower + moved.range.tickUpper) / 2).toBeCloseTo(50_000, -3);
+  });
+
   it('refuses a pool whose fee tier has no known tick spacing', () => {
     const odd = position();
-    const result = recenterRange({ ...odd, pool: { ...odd.pool, feeTierBps: 7 } });
+    const result = recenterRange({ ...odd, pool: { ...odd.pool, feeTierBps: 7 } }, 'narrow');
     expect(result.ok).toBe(false);
     if (result.ok) return;
     expect(result.reason).toMatch(/tick spacing/);
   });
 
-  it('refuses when re-centring would land on the range we already hold', () => {
-    // Already centred and already spacing-aligned: moving here costs gas to
-    // arrive where we are.
-    const centred = position({ tickLower: 141_800, tickUpper: 149_000, currentTick: 145_400 });
-    const result = recenterRange(centred);
+  it('refuses when the target range is the one we already hold', () => {
+    const centred = position({ tickLower: 199_400, tickUpper: 200_600, currentTick: 200_000 });
+    const result = recenterRange(centred, 'narrow');
     expect(result.ok).toBe(false);
     if (result.ok) return;
     expect(result.reason).toMatch(/identical/);

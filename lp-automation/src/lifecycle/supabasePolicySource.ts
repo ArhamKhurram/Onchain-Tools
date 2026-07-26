@@ -14,7 +14,7 @@
 // counterpart.
 
 import { createClient, type SupabaseClient } from '@supabase/supabase-js';
-import type { AutomationPolicy, ChainSlug } from '../types.js';
+import type { AutomationPolicy, ChainSlug, RangeStrategy } from '../types.js';
 import type { PolicyBundle, PolicySource } from './types.js';
 
 const TABLE = 'lp_automation_policies';
@@ -33,6 +33,7 @@ interface PolicyRow {
   min_fees_vs_gas_ratio: string | number;
   max_interval_hours: string | number;
   range_exit_percent: string | number;
+  range_strategy: string | null;
   min_efficiency_delta_percent: string | number;
   sustained_duration_minutes: string | number;
 }
@@ -63,6 +64,18 @@ function num(value: unknown, field: string): number {
     return parsed;
   }
   throw new PolicySourceError(`${field} is missing or not numeric (received ${JSON.stringify(value)}).`);
+}
+
+/**
+ * Map the stored `range_strategy`. Null/absent -> 'narrow': a row written
+ * before the column existed predates the choice, and narrow is the shipped
+ * default. An unrecognised non-null value is a corrupted row, not a default, so
+ * it throws rather than silently redeploying funds under the wrong strategy.
+ */
+function rangeStrategyOf(value: string | null): RangeStrategy {
+  if (value === null || value === undefined) return 'narrow';
+  if (value === 'narrow' || value === 'wide' || value === 'full') return value;
+  throw new PolicySourceError(`range_strategy is not a known strategy: "${value}".`);
 }
 
 /** Pure — exported for tests. Throws rather than producing a partial policy. */
@@ -96,6 +109,7 @@ export function rowToPolicy(row: PolicyRow): AutomationPolicy {
     },
     rebalanceTrigger: {
       rangeExitPercent: num(row.range_exit_percent, 'range_exit_percent'),
+      rangeStrategy: rangeStrategyOf(row.range_strategy),
     },
     switchingBuffer: {
       minEfficiencyDeltaPercent: num(row.min_efficiency_delta_percent, 'min_efficiency_delta_percent'),
