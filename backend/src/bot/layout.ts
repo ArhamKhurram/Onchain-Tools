@@ -12,6 +12,10 @@ export const BRAND = {
   white: 0xffffff,
 };
 
+/** OCT site brand accent (frontend/src/styles/cockpit-tokens.ts accentRed) — used
+ * for anything meant to look like it came from the site, e.g. /announce. */
+export const SITE_ACCENT = 0xff2a2a;
+
 export function makeNavRow(prefix: string, interactionId: string, page: number, totalPages: number) {
   return new ActionRowBuilder<ButtonBuilder>().addComponents(
     new ButtonBuilder()
@@ -57,6 +61,11 @@ export function makeThumbnail(url: string, name?: string) {
 
 export function makeSection(accessory: any, textComponents: any[]) {
   return { type: 9, components: textComponents, accessory };
+}
+
+/** Media gallery — a single full-width image (Components V2 type 12). */
+export function makeImage(url: string) {
+  return { type: 12, items: [{ media: { url } }] };
 }
 
 export function makeContainer(accentColor: number, components: any[]) {
