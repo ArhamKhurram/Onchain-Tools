@@ -50,7 +50,8 @@ describe('command registry', () => {
       'leaderboard',
       'ping',
       'token',
-      'wallets',
+      'tracked',
+      'wallet',
     ]);
   });
 

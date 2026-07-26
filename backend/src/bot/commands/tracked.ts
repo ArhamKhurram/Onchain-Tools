@@ -41,10 +41,10 @@ function buildComponents(data: BotTrackedResponse) {
   ];
 }
 
-export const wallets: BotCommand = {
+export const tracked: BotCommand = {
   data: anywhere(
     new SlashCommandBuilder()
-      .setName('wallets')
+      .setName('tracked')
       .setDescription('The FOMO traders your OCT account tracks (only you can see this)'),
   ),
 

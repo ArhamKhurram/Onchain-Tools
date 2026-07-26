@@ -30,6 +30,8 @@ export type {
   BotSnapshotResponse,
   BotTrackedTrader,
   BotTrackedResponse,
+  BotWalletHolding,
+  BotWalletProfile,
 } from './bot.js';
 
 // Runtime consts (values) from the shared type module.
