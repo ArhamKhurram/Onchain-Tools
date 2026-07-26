@@ -4,8 +4,10 @@ import ConsoleEmptyState from '../components/console/ConsoleEmptyState';
 import LpIdleNotice from '../components/lp/LpIdleNotice';
 import LpPolicyEditor from '../components/lp/LpPolicyEditor';
 import LpPoolPicker from '../components/lp/LpPoolPicker';
+import LpPositionsPanel from '../components/lp/LpPositionsPanel';
 import LpSafetyStrip from '../components/lp/LpSafetyStrip';
 import LpVersionHistory from '../components/lp/LpVersionHistory';
+import LpTabs, { LpTabPanel, type LpTabId } from '../components/lp/LpTabs';
 import {
   DEFAULT_POLICY_DRAFT,
   draftFromPolicy,
@@ -16,11 +18,14 @@ import {
   validatePolicyDraft,
   type PolicyDraft,
 } from '../components/lp/policyDraft';
+import { addToAllowlist } from '../components/lp/positions';
 import { summarizeAllowlist } from '../components/lp/selection';
 import { LP_BTN_GHOST, LP_BTN_PRIMARY, LP_EYEBROW } from '../components/lp/styles';
 import type { PolicyFieldIssue } from '../components/lp/types';
 import { useLpPolicy } from '../hooks/useLpPolicy';
 import { useLpPoolCandidates } from '../hooks/useLpPoolCandidates';
+import { useLpPositions } from '../hooks/useLpPositions';
+import { useLpSettings } from '../hooks/useLpSettings';
 import { useAuthSession } from '../hooks/useAuthSession';
 import { routes } from '../lib/routes';
 
@@ -115,6 +120,30 @@ export default function LpAutomationPage() {
 
   const pools = useLpPoolCandidates(minTvlUsd, min24hVolumeUsd, enabled);
 
+  // Positions are read-only and display-grade (plan §3), but admitting a pool
+  // from one is not: it writes into the same `draft.allowedPools` the picker
+  // edits, so it lands in the same unsaved state and is committed by the same
+  // Save at the bottom of the page. One draft, one save, one meaning of
+  // "unsaved" — a second save path here would be a second thing to misread.
+  const settings = useLpSettings(enabled);
+  const positions = useLpPositions(enabled);
+
+  // Positions is the landing tab: it is the only section read routinely. The
+  // other three are configure-once.
+  const [activeTab, setActiveTab] = useState<LpTabId>('positions');
+
+  const handleSaveSafeAddress = async (address: string): Promise<boolean> => {
+    const result = await settings.save({ safeAddress: address });
+    // A new Safe means a different set of positions; re-read rather than leave
+    // the previous account's rows on screen under the new address.
+    if (result.ok) void positions.refresh();
+    return result.ok;
+  };
+
+  const admitPool = (poolAddress: string) => {
+    updateDraft({ ...draft, allowedPools: addToAllowlist(draft.allowedPools, poolAddress) });
+  };
+
   const savedAllowlist = useMemo(() => baseline.allowedPools, [baseline]);
 
   const summary = useMemo(
@@ -176,6 +205,37 @@ export default function LpAutomationPage() {
   const totalIssues = clientIssues.length + serverIssues.length;
   const nextVersion = Math.max(versions[0] ?? 0, activeVersion ?? 0) + 1;
 
+  // Badges are counts of what is DEPLOYED, not of what is on screen: the pools
+  // badge shows the saved allowlist size, so switching tabs never changes it.
+  // `alert` marks a tab holding something that blocks or changes a save, so it
+  // is visible from whichever tab you happen to be on.
+  const tabs = useMemo(
+    () => [
+      {
+        id: 'positions' as const,
+        label: 'Positions',
+        badge: positions.positions.length || null,
+        alert: false,
+      },
+      {
+        id: 'pools' as const,
+        label: 'Pools',
+        badge: savedAllowlistSize || null,
+        alert: summary.pendingAdds > 0 || summary.pendingRemovals > 0,
+      },
+      {
+        id: 'policy' as const,
+        label: 'Policy',
+        badge: null,
+        // Field errors live only in the editor. Without this, hitting Save from
+        // the Positions tab would fail with the cause hidden behind a tab.
+        alert: totalIssues > 0,
+      },
+      { id: 'history' as const, label: 'History', badge: versions.length || null, alert: false },
+    ],
+    [positions.positions.length, savedAllowlistSize, summary.pendingAdds, summary.pendingRemovals, totalIssues, versions.length],
+  );
+
   return (
     <div className="h-full min-h-0 flex flex-col bg-oct-bg overflow-hidden">
       <div className="shrink-0 px-4 sm:px-6 py-4 border-b-2 border-oct-accent bg-oct-panel">
@@ -198,6 +258,10 @@ export default function LpAutomationPage() {
               Reload
             </button>
           </div>
+        </div>
+
+        <div className="mt-4 -mx-4 sm:-mx-6 px-4 sm:px-6 border-b-2 border-oct-border">
+          <LpTabs tabs={tabs} active={activeTab} onSelect={setActiveTab} />
         </div>
       </div>
 
@@ -231,12 +295,44 @@ export default function LpAutomationPage() {
           <LpIdleNotice surfacedCount={summary.surfacedCount} pendingAdds={summary.pendingAdds} />
         )}
 
-        <div className="grid grid-cols-1 xl:grid-cols-[minmax(0,1fr)_minmax(0,1.1fr)] gap-4 items-start">
-          <div className="space-y-4 order-2 xl:order-1">
-            <LpPolicyEditor draft={draft} onChange={updateDraft} errors={fieldErrors} disabled={unavailable} />
-          </div>
+        {/* The safety strip and idle notice above stay OUTSIDE the tabs: they
+            describe what is live right now, which is true regardless of which
+            section you are looking at. */}
 
-          <div className="space-y-4 order-1 xl:order-2">
+        <LpTabPanel id="positions" active={activeTab}>
+        <LpPositionsPanel
+          positions={positions.positions}
+          loading={positions.loading}
+          error={positions.error}
+          unavailable={positions.unavailable}
+          configured={positions.configured}
+          safeAddress={positions.safeAddress}
+          skipped={positions.skipped}
+          policyReadFailed={positions.policyReadFailed}
+          fetchedAt={positions.fetchedAt}
+          draftAllowlist={draft.allowedPools}
+          onAdmitPool={admitPool}
+          onRefresh={() => void positions.refresh()}
+          disabled={unavailable}
+          safeAddressField={{
+            settings: settings.settings,
+            loading: settings.loading,
+            saving: settings.saving,
+            saveError: settings.saveError,
+            issues: settings.issues,
+            savedAt: settings.savedAt,
+            disabled: settings.unavailable,
+            onSave: handleSaveSafeAddress,
+            onEdit: settings.clearIssues,
+          }}
+        />
+        </LpTabPanel>
+
+        <LpTabPanel id="policy" active={activeTab}>
+          <LpPolicyEditor draft={draft} onChange={updateDraft} errors={fieldErrors} disabled={unavailable} />
+        </LpTabPanel>
+
+        <LpTabPanel id="pools" active={activeTab}>
             <LpPoolPicker
               candidates={pools.candidates}
               loading={pools.loading}
@@ -252,9 +348,11 @@ export default function LpAutomationPage() {
               onRefresh={() => void pools.refresh()}
               disabled={unavailable}
             />
-            <LpVersionHistory versions={versions} activeVersion={activeVersion} loading={loading} />
-          </div>
-        </div>
+        </LpTabPanel>
+
+        <LpTabPanel id="history" active={activeTab}>
+          <LpVersionHistory versions={versions} activeVersion={activeVersion} loading={loading} />
+        </LpTabPanel>
       </div>
 
       <div

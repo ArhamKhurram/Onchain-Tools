@@ -740,9 +740,24 @@ export function filterCandidates(
     .slice(0, filters.limit);
 }
 
-async function fetchTopPools(chainId: number, limit: number): Promise<unknown> {
-  const query = buildKrystalQuery({ chainId, limit });
-  const url = `${KRYSTAL_BASE_URL}${TOP_POOLS_PATH}?${query}`;
+/**
+ * GET a Krystal endpoint as JSON.
+ *
+ * `label` names the operation in every error message, so a failure says which
+ * call broke rather than just "Krystal failed".
+ *
+ * The query is built OUTSIDE the try: `buildKrystalQuery` throws
+ * `KrystalWafError` for the zero-address tripwire, and that is a bug in our
+ * request, not a transport failure — it must not be re-wrapped as a
+ * `KrystalRequestError` and reported as "Krystal is down".
+ */
+async function fetchKrystalJson(
+  path: string,
+  params: Record<string, string | number | undefined>,
+  label: string,
+): Promise<unknown> {
+  const query = buildKrystalQuery(params);
+  const url = `${KRYSTAL_BASE_URL}${path}?${query}`;
 
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), KRYSTAL_TIMEOUT_MS);
@@ -757,7 +772,7 @@ async function fetchTopPools(chainId: number, limit: number): Promise<unknown> {
     const contentType = response.headers.get('content-type') ?? '';
     if (!response.ok || !contentType.includes('json')) {
       throw new KrystalRequestError(
-        `Krystal pool discovery failed (HTTP ${response.status}, content-type "${contentType}")`,
+        `${label} failed (HTTP ${response.status}, content-type "${contentType}")`,
         response.status,
       );
     }
@@ -765,18 +780,413 @@ async function fetchTopPools(chainId: number, limit: number): Promise<unknown> {
   } catch (error) {
     if (error instanceof KrystalRequestError) throw error;
     if ((error as Error)?.name === 'AbortError') {
-      throw new KrystalRequestError(
-        `Krystal pool discovery timed out after ${KRYSTAL_TIMEOUT_MS}ms`,
-        null,
-      );
+      throw new KrystalRequestError(`${label} timed out after ${KRYSTAL_TIMEOUT_MS}ms`, null);
     }
     throw new KrystalRequestError(
-      `Krystal pool discovery failed: ${(error as Error)?.message ?? 'unknown error'}`,
+      `${label} failed: ${(error as Error)?.message ?? 'unknown error'}`,
       null,
     );
   } finally {
     clearTimeout(timer);
   }
+}
+
+function fetchTopPools(chainId: number, limit: number): Promise<unknown> {
+  return fetchKrystalJson(TOP_POOLS_PATH, { chainId, limit }, 'Krystal pool discovery');
+}
+
+// ===========================================================================
+// User LP positions — DISPLAY ONLY (plan §3, "Position state")
+// ===========================================================================
+//
+// ####################################################################
+// #  THE OUTPUT OF THIS SECTION MUST NEVER FEED A SPEND DECISION.    #
+// ####################################################################
+//
+// Everything below exists to render a table for a human. It is NOT the data
+// path the automation uses, and it deliberately cannot become one.
+//
+// WHY. Krystal returns no tick data on any endpoint. Its `status` and
+// `pool.price` are cached/aggregated quotes, and when measured against the
+// pools' own `slot0()` on 2026-07-26 the tick derived from `pool.price` was off
+// by up to **66 ticks**. That is negligible for a "roughly here" price label and
+// fatal for `rebalanceTrigger.rangeExitPercent`, which is precisely the question
+// "has this position left its range?". So `lp-automation` refuses to decide from
+// these fields: `mapLpPosition` there REQUIRES an RPC-supplied `currentTick` and
+// skips any position lacking one. See the header of
+// `lp-automation/src/ingest/krystal/positions.ts`.
+//
+// HOW THAT IS ENFORCED HERE, rather than just documented:
+//
+//   * `LpPositionView` carries NO `tickLower`, `tickUpper` or `currentTick`.
+//     Their absence is the enforcement — a rule evaluator physically cannot be
+//     written against this type without first going and getting real tick data.
+//   * The type is named `LpPositionView`, never `LpPosition`, so a decision-grade
+//     value and a display value cannot be confused at a call site.
+//   * `lp-automation`'s `mapUserPositions` is NOT imported or replicated. It
+//     requires the tick context this endpoint does not have, and its output is
+//     decision-grade. The mapper below is a separate, lighter one that reads
+//     only fields safe to look at.
+//
+// `status`, `currentPrice`, `minPrice` and `maxPrice` are passed through as
+// Krystal reported them. They are honest enough to LOOK at and not accurate
+// enough to ACT on.
+
+export const USER_POSITIONS_PATH = '/all/v1/lp/userPositions';
+
+export type LpPositionViewStatus = 'in_range' | 'out_of_range' | 'closed';
+
+/** Display shape of a token in `LpPositionView`. Addresses are lowercased. */
+export interface TokenView {
+  symbol: string;
+  address: string;
+  decimals: number;
+}
+
+/**
+ * A position as SHOWN IN THE DASHBOARD. Display DTO — see the section header.
+ * Not `LpPosition`; not usable as an input to any spend decision.
+ */
+export interface LpPositionView {
+  tokenId: string;
+  poolAddress: string;
+  platform: string;
+  feeTierBps: number;
+  token0: TokenView;
+  token1: TokenView;
+  status: LpPositionViewStatus;
+  valueUsd: number;
+  unclaimedFeesUsd: number;
+  /** Krystal's human-readable range bounds, as reported. */
+  minPrice: number;
+  maxPrice: number;
+  /** Krystal's cached pool quote — indicative, drifts from spot. Never a tick. */
+  currentPrice: number;
+  /** Pool address is on the active policy's `allowedPools`. */
+  isAllowlisted: boolean;
+  /** Allowlisted and still open — i.e. the automation would consider it. */
+  managedByAutomation: boolean;
+}
+
+export interface MappedPositionViews {
+  positions: LpPositionView[];
+  skipped: SkippedEntry[];
+}
+
+export interface PositionViewContext {
+  chainId: number;
+  /** Active policy's allowlist, lowercased. Empty when no policy exists yet. */
+  allowedPools: ReadonlySet<string>;
+}
+
+/** Krystal's status strings, observed live: IN_RANGE, OUT_RANGE, CLOSED. */
+export function mapPositionViewStatus(raw: unknown, path: string): LpPositionViewStatus {
+  const status = requireString(raw, path).toUpperCase();
+  switch (status) {
+    case 'IN_RANGE':
+      return 'in_range';
+    case 'OUT_RANGE':
+    case 'OUT_OF_RANGE':
+      return 'out_of_range';
+    case 'CLOSED':
+      return 'closed';
+    default:
+      throw new KrystalFieldError(path, raw, 'is not a recognised position status');
+  }
+}
+
+/**
+ * Sum the USD quotes of a Krystal token-amount array (`feePending`).
+ *
+ * An entry whose `quotes.usd.value` is unreadable throws rather than
+ * contributing 0. Displaying "$0.00 unclaimed" for fees we simply failed to read
+ * is a lie the operator cannot detect; a skipped row with a reason is one they
+ * can.
+ */
+export function sumUsdQuotes(raw: unknown, path: string): number {
+  const entries = requireArray(raw, path);
+  let total = 0;
+  entries.forEach((entry, index) => {
+    const entryPath = `${path}[${index}]`;
+    const row = requireObject(entry, entryPath);
+    const quotes = requireObject(prop(row, 'quotes', entryPath), `${entryPath}.quotes`);
+    const usd = requireObject(prop(quotes, 'usd', `${entryPath}.quotes`), `${entryPath}.quotes.usd`);
+    total += requireNonNegativeNumber(
+      prop(usd, 'value', `${entryPath}.quotes.usd`),
+      `${entryPath}.quotes.usd.value`,
+    );
+  });
+  return total;
+}
+
+/**
+ * Read the `pool` object embedded in a position row.
+ *
+ * DIFFERENT SHAPE from `/all/v2/lp_explorer/top_pools` — `projectKey` not
+ * `protocol`, `fees: [1, 0]` not `feeTier`, numeric `tvl` not string `tvlUsd`,
+ * and no 24h volume at all. `mapPoolCandidate` cannot read it, which is why this
+ * is a separate reader rather than a reuse.
+ *
+ *   { poolAddress, projectKey: "uniswapv3", projectAddress, tickSpacing: 200,
+ *     fees: [1, 0],          // PERCENT, same units as v2 `feeTier`
+ *     tvl: 134724.36,        // number, not a string
+ *     price: 1437266.38,     // cached quote — display only
+ *     tokenAmounts: [ { token: { address, symbol, decimals } }, ... ] }
+ */
+function mapEmbeddedPoolView(
+  raw: unknown,
+  path: string,
+): { address: string; platform: string; feeTierBps: number; token0: TokenView; token1: TokenView; currentPrice: number } {
+  const pool = requireObject(raw, path);
+
+  const address = requireAddress(prop(pool, 'poolAddress', path), `${path}.poolAddress`);
+  const platform = requireString(prop(pool, 'projectKey', path), `${path}.projectKey`);
+
+  const tokenAmounts = requireArray(prop(pool, 'tokenAmounts', path), `${path}.tokenAmounts`);
+  if (tokenAmounts.length < 2) {
+    throw new KrystalFieldError(
+      `${path}.tokenAmounts`,
+      tokenAmounts.length,
+      'has fewer than 2 tokens',
+    );
+  }
+
+  const fees = requireArray(prop(pool, 'fees', path), `${path}.fees`);
+  if (fees.length === 0) throw new KrystalFieldError(`${path}.fees`, fees, 'is empty');
+  const feeTierPercent = requireFiniteNumber(fees[0], `${path}.fees[0]`);
+  if (feeTierPercent <= 0) {
+    throw new KrystalFieldError(`${path}.fees[0]`, feeTierPercent, 'is not a positive fee tier');
+  }
+
+  return {
+    address,
+    platform,
+    // Percent -> bps, same conversion as the discovery endpoint: 0.05 -> 5.
+    feeTierBps: percentToBps(feeTierPercent),
+    token0: mapEmbeddedTokenView(tokenAmounts[0], `${path}.tokenAmounts[0]`),
+    token1: mapEmbeddedTokenView(tokenAmounts[1], `${path}.tokenAmounts[1]`),
+    currentPrice: requireFiniteNumber(prop(pool, 'price', path), `${path}.price`),
+  };
+}
+
+function mapEmbeddedTokenView(raw: unknown, path: string): TokenView {
+  const entry = requireObject(raw, path);
+  const token = requireObject(prop(entry, 'token', path), `${path}.token`);
+  return {
+    symbol: requireString(prop(token, 'symbol', `${path}.token`), `${path}.token.symbol`),
+    address: requireAddress(prop(token, 'address', `${path}.token`), `${path}.token.address`),
+    decimals: requireDecimals(prop(token, 'decimals', `${path}.token`), `${path}.token.decimals`),
+  };
+}
+
+/**
+ * Map one raw position row to its DISPLAY shape. Pure — no network, no clock.
+ * Throws `KrystalFieldError` on anything it cannot read unambiguously, so a
+ * malformed row becomes a reported skip rather than a row of NaNs.
+ *
+ * DISPLAY ONLY — see the section header. Emits no tick data by construction.
+ */
+export function mapLpPositionView(
+  raw: unknown,
+  context: PositionViewContext,
+  path = 'position',
+): LpPositionView {
+  const row = requireObject(raw, path);
+
+  const chainId = requireInteger(prop(row, 'chainId', path), `${path}.chainId`);
+  if (chainId !== context.chainId) {
+    throw new KrystalFieldError(
+      `${path}.chainId`,
+      chainId,
+      `is not the requested chain ${context.chainId}`,
+    );
+  }
+
+  const tokenId = requireString(prop(row, 'tokenId', path), `${path}.tokenId`);
+  const pool = mapEmbeddedPoolView(prop(row, 'pool', path), `${path}.pool`);
+
+  const status = mapPositionViewStatus(prop(row, 'status', path), `${path}.status`);
+  const isAllowlisted = context.allowedPools.has(pool.address);
+
+  return {
+    tokenId,
+    poolAddress: pool.address,
+    platform: pool.platform,
+    feeTierBps: pool.feeTierBps,
+    token0: pool.token0,
+    token1: pool.token1,
+    status,
+    valueUsd: requireNonNegativeNumber(
+      prop(row, 'currentPositionValue', path),
+      `${path}.currentPositionValue`,
+    ),
+    unclaimedFeesUsd: sumUsdQuotes(prop(row, 'feePending', path), `${path}.feePending`),
+    minPrice: requireFiniteNumber(prop(row, 'minPrice', path), `${path}.minPrice`),
+    maxPrice: requireFiniteNumber(prop(row, 'maxPrice', path), `${path}.maxPrice`),
+    currentPrice: pool.currentPrice,
+    isAllowlisted,
+    // A closed position is history: the automation has nothing left to manage,
+    // whatever the allowlist says. Computed here so the dashboard cannot get the
+    // rule subtly wrong (e.g. by showing "managed" next to a withdrawn NFT).
+    managedByAutomation: isAllowlisted && status !== 'closed',
+  };
+}
+
+/**
+ * Map a whole `/all/v1/lp/userPositions` payload to display rows. Pure.
+ *
+ * A malformed ROW is skipped with a reason; a malformed ENVELOPE throws, because
+ * that means we are not looking at the response we think we are.
+ */
+export function mapUserPositionViews(
+  raw: unknown,
+  context: PositionViewContext,
+): MappedPositionViews {
+  const envelope = requireObject(raw, 'userPositions');
+
+  // A wallet with no LP positions gets `positions` OMITTED ENTIRELY, not an
+  // empty array — verified live against a funded Safe holding zero positions,
+  // which returned `{ statsByChain: { "4663": { openPositionCount: 0, … } } }`
+  // and no `positions` key at all. Treating that as malformed would make a
+  // brand-new, correctly-configured Safe look broken.
+  //
+  // But "absent" must not become a blanket "no positions" either — that would
+  // turn a genuinely broken response into a confident, empty table.
+  // `statsByChain` is the discriminator: its presence proves we received a
+  // well-formed envelope that simply has nothing in it. Same reasoning as
+  // `mapUserPositions` in lp-automation; both keys are read directly rather than
+  // via `prop`, which throws on absence — absence is the case being told apart.
+  const rawRows = envelope['positions'];
+  const isEmptyButValid = rawRows === undefined && envelope['statsByChain'] !== undefined;
+  const rows = isEmptyButValid
+    ? []
+    : requireArray(prop(envelope, 'positions', 'userPositions'), 'userPositions.positions');
+
+  const positions: LpPositionView[] = [];
+  const skipped: SkippedEntry[] = [];
+
+  rows.forEach((row, index) => {
+    try {
+      positions.push(mapLpPositionView(row, context, `userPositions.positions[${index}]`));
+    } catch (error) {
+      skipped.push({
+        index,
+        identifier: readIdentifier(row, 'tokenId'),
+        reason: error instanceof Error ? error.message : String(error),
+      });
+    }
+  });
+
+  return { positions, skipped };
+}
+
+/**
+ * Fetch a Safe's positions on `chainId`.
+ *
+ * `positionStatus: 'all'` — closed positions are returned too, and the DTO
+ * carries `status` so the dashboard can filter. Asking for only open ones would
+ * make `status: 'closed'` unreachable and hide a just-withdrawn position the
+ * operator is probably looking for.
+ */
+function fetchUserPositionsRaw(chainId: number, safeAddress: string): Promise<unknown> {
+  return fetchKrystalJson(
+    USER_POSITIONS_PATH,
+    { chainIds: chainId, addresses: safeAddress, positionStatus: 'all' },
+    'Krystal position lookup',
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Deployment settings — Safe + module address
+// ---------------------------------------------------------------------------
+//
+// Mutable, unversioned, one row per user. See the migration
+// `20260726170000_lp_automation_settings.sql` for why this is not two more
+// columns on the append-only policy table.
+
+export interface LpSettings {
+  safeAddress: string | null;
+  moduleAddress: string | null;
+  updatedAt: string | null;
+}
+
+/** A field the client actually sent. `null` clears it; absent leaves it alone. */
+export type SettingsPatch = Partial<Record<'safeAddress' | 'moduleAddress', string | null>>;
+
+export interface SettingsValidationResult {
+  valid: boolean;
+  issues: PolicyValidationIssue[];
+  /** Normalized, lowercased patch. Only meaningful when `valid`. */
+  patch: SettingsPatch;
+}
+
+const ZERO_ADDRESS = `0x${'0'.repeat(40)}`;
+
+/**
+ * Validate a `PUT /settings` body. Never throws; accumulates issues like
+ * `validatePolicyInput`, so the form can mark every bad field at once.
+ *
+ * PATCH SEMANTICS, deliberately: an OMITTED key is left unchanged, an explicit
+ * `null` clears the field. That distinction is why the request type is
+ * `{ safeAddress?: string | null }` rather than plain optional — if omission
+ * meant "clear", `| null` would be redundant, and a dashboard pane that only
+ * edits the Safe address would silently wipe the module address every save.
+ */
+export function validateSettingsInput(input: unknown): SettingsValidationResult {
+  const issues: PolicyValidationIssue[] = [];
+
+  if (!isRecord(input)) {
+    return {
+      valid: false,
+      issues: [{ field: '', message: 'settings must be an object' }],
+      patch: {},
+    };
+  }
+
+  const patch: SettingsPatch = {};
+  for (const field of ['safeAddress', 'moduleAddress'] as const) {
+    if (!(field in input) || input[field] === undefined) continue;
+
+    const value = input[field];
+    if (value === null) {
+      patch[field] = null;
+      continue;
+    }
+    if (typeof value !== 'string') {
+      issues.push({ field, message: 'must be a 0x-prefixed 20-byte hex address, or null' });
+      continue;
+    }
+
+    const trimmed = value.trim();
+    // An empty string is what a cleared form input sends. Read it as "clear"
+    // rather than rejecting it, so the operator can actually unset the field.
+    if (trimmed.length === 0) {
+      patch[field] = null;
+      continue;
+    }
+    if (!ADDRESS_PATTERN.test(trimmed)) {
+      issues.push({ field, message: 'must be a 0x-prefixed 20-byte hex address' });
+      continue;
+    }
+
+    const lower = trimmed.toLowerCase();
+    // The zero address is never a real Safe or module, and stored here it would
+    // additionally poison every Krystal call: Cloudflare answers any query
+    // string containing it with a 403 HTML block page (plan §3). Refuse it at
+    // the point of entry rather than at the point of confusing failure.
+    if (lower === ZERO_ADDRESS) {
+      issues.push({
+        field,
+        message:
+          'must not be the all-zero address (it is not a real deployment, and Krystal’s WAF 403s any request containing it)',
+      });
+      continue;
+    }
+
+    patch[field] = lower;
+  }
+
+  return { valid: issues.length === 0, issues, patch };
 }
 
 // ---------------------------------------------------------------------------
@@ -794,8 +1204,10 @@ const __dirname = dirname(fileURLToPath(import.meta.url));
 const BUNDLED_DATA_DIR = join(__dirname, '../../../data');
 const DATA_DIR = process.env.OCT_DATA_DIR || process.env.TRENCHCORD_DATA_DIR || BUNDLED_DATA_DIR;
 const LOCAL_POLICY_PATH = join(DATA_DIR, 'lp-policies.json');
+const LOCAL_SETTINGS_PATH = join(DATA_DIR, 'lp-settings.json');
 
 const POLICY_TABLE = 'lp_automation_policies';
+const SETTINGS_TABLE = 'lp_automation_settings';
 
 let _client: SupabaseClient | null = null;
 
@@ -897,23 +1309,24 @@ function policyToRpcPayload(policy: AutomationPolicy): Record<string, unknown> {
 
 // --- Local JSON store ------------------------------------------------------
 
-type LocalFile = Record<string, StoredPolicy[]>;
+/** Both local stores are keyed by user id; only the value type differs. */
+type LocalFile<T> = Record<string, T>;
 
-function readLocalFile(): LocalFile {
-  if (!existsSync(LOCAL_POLICY_PATH)) return {};
+function readLocalFile<T>(path: string): LocalFile<T> {
+  if (!existsSync(path)) return {};
   try {
-    const parsed = JSON.parse(readFileSync(LOCAL_POLICY_PATH, 'utf-8'));
-    return isRecord(parsed) ? (parsed as LocalFile) : {};
+    const parsed = JSON.parse(readFileSync(path, 'utf-8'));
+    return isRecord(parsed) ? (parsed as LocalFile<T>) : {};
   } catch (err) {
-    // A corrupt file must not look like "no policy configured" — that would
+    // A corrupt file must not look like "nothing configured" — that would
     // silently reset the operator's caps back to nothing on the next write.
-    throw new Error(`Could not read ${LOCAL_POLICY_PATH}: ${(err as Error).message}`);
+    throw new Error(`Could not read ${path}: ${(err as Error).message}`);
   }
 }
 
-function writeLocalFile(file: LocalFile): void {
+function writeLocalFile<T>(path: string, file: LocalFile<T>): void {
   if (!existsSync(DATA_DIR)) mkdirSync(DATA_DIR, { recursive: true });
-  writeFileSync(LOCAL_POLICY_PATH, JSON.stringify(file, null, 2));
+  writeFileSync(path, JSON.stringify(file, null, 2));
 }
 
 // --- Provider-agnostic operations ------------------------------------------
@@ -931,7 +1344,7 @@ async function listPolicies(userId: string): Promise<StoredPolicy[]> {
     return (data as PolicyRow[] | null ?? []).map(rowToStored);
   }
 
-  const stored = readLocalFile()[userId] ?? [];
+  const stored = readLocalFile<StoredPolicy[]>(LOCAL_POLICY_PATH)[userId] ?? [];
   return [...stored].sort((a, b) => a.policy.version - b.policy.version);
 }
 
@@ -967,7 +1380,7 @@ async function appendPolicy(userId: string, policy: AutomationPolicy): Promise<S
     return rowToStored(data as PolicyRow);
   }
 
-  const file = readLocalFile();
+  const file = readLocalFile<StoredPolicy[]>(LOCAL_POLICY_PATH);
   const existing = file[userId] ?? [];
   const stored: StoredPolicy = {
     policy,
@@ -975,7 +1388,82 @@ async function appendPolicy(userId: string, policy: AutomationPolicy): Promise<S
     createdAt: new Date().toISOString(),
   };
   file[userId] = [...existing.map((p) => ({ ...p, isActive: false })), stored];
-  writeLocalFile(file);
+  writeLocalFile(LOCAL_POLICY_PATH, file);
+  return stored;
+}
+
+// --- Settings --------------------------------------------------------------
+
+interface SettingsRow {
+  safe_address: string | null;
+  module_address: string | null;
+  updated_at: string | null;
+}
+
+const EMPTY_SETTINGS: LpSettings = { safeAddress: null, moduleAddress: null, updatedAt: null };
+
+function rowToSettings(row: SettingsRow): LpSettings {
+  return {
+    safeAddress: row.safe_address,
+    moduleAddress: row.module_address,
+    updatedAt: row.updated_at,
+  };
+}
+
+/** No row yet is a normal state — an account that has not deployed a Safe. */
+async function readSettings(userId: string): Promise<LpSettings> {
+  if (isHostedMode()) {
+    const db = getServiceClient();
+    if (!db) throw new Error('Supabase is not configured.');
+    const { data, error } = await db
+      .from(SETTINGS_TABLE)
+      .select('safe_address, module_address, updated_at')
+      .eq('user_id', userId)
+      .maybeSingle();
+    if (error) throw new Error(`Failed to load LP settings: ${error.message}`);
+    return data ? rowToSettings(data as SettingsRow) : { ...EMPTY_SETTINGS };
+  }
+
+  return readLocalFile<LpSettings>(LOCAL_SETTINGS_PATH)[userId] ?? { ...EMPTY_SETTINGS };
+}
+
+/**
+ * Apply a validated patch. Unlike the policy, this is a plain in-place upsert:
+ * the Safe address is deployment identity, not a rule, so correcting it must not
+ * mint a policy version (see the migration's header).
+ *
+ * The patch is merged against the CURRENT row rather than sent whole, so keys
+ * the client omitted keep their stored value.
+ */
+async function writeSettings(userId: string, patch: SettingsPatch): Promise<LpSettings> {
+  const current = await readSettings(userId);
+  const merged = {
+    safeAddress: 'safeAddress' in patch ? patch.safeAddress ?? null : current.safeAddress,
+    moduleAddress: 'moduleAddress' in patch ? patch.moduleAddress ?? null : current.moduleAddress,
+  };
+
+  if (isHostedMode()) {
+    const db = getServiceClient();
+    if (!db) throw new Error('Supabase is not configured.');
+    // `updated_at` is deliberately not sent: the table's default fills it on
+    // insert and its trigger refreshes it on update, so the timestamp comes from
+    // the database clock rather than from whichever server handled the request.
+    const { data, error } = await db
+      .from(SETTINGS_TABLE)
+      .upsert(
+        { user_id: userId, safe_address: merged.safeAddress, module_address: merged.moduleAddress },
+        { onConflict: 'user_id' },
+      )
+      .select('safe_address, module_address, updated_at')
+      .single();
+    if (error) throw new Error(`Failed to save LP settings: ${error.message}`);
+    return rowToSettings(data as SettingsRow);
+  }
+
+  const file = readLocalFile<LpSettings>(LOCAL_SETTINGS_PATH);
+  const stored: LpSettings = { ...merged, updatedAt: new Date().toISOString() };
+  file[userId] = stored;
+  writeLocalFile(LOCAL_SETTINGS_PATH, file);
   return stored;
 }
 
@@ -1111,6 +1599,139 @@ export function createLpRoutes(): Router {
         return res.status(502).json({ error: err.message, pools: [], skipped: [] });
       }
       res.status(500).json({ error: safeError(err, 'Failed to load pool candidates') });
+    }
+  });
+
+  // The positions route also reaches a third party on every call. It gets its
+  // OWN bucket rather than sharing the candidates one: a dashboard polling
+  // positions must not be able to exhaust the operator's ability to look up
+  // pools, or vice versa.
+  const positionsLimiter = rateLimit({
+    windowMs: 60_000,
+    max: 30,
+    standardHeaders: true,
+    legacyHeaders: false,
+    keyGenerator: (req) => req.userId ?? req.ip ?? 'unknown',
+    message: { error: 'Too many position requests — wait a minute and try again.' },
+  });
+
+  // GET /api/lp/settings -> { safeAddress, moduleAddress, updatedAt }
+  // All-null is the correct answer for an account that has not deployed a Safe.
+  router.get('/settings', async (req, res) => {
+    try {
+      res.json(await readSettings(getUserId(req)));
+    } catch (err) {
+      res.status(500).json({ error: safeError(err, 'Failed to load the LP settings') });
+    }
+  });
+
+  // PUT /api/lp/settings — body { safeAddress?, moduleAddress? }.
+  //
+  // Plain upsert, NOT a new version: the Safe address identifies a deployment,
+  // it is not a rule, and re-versioning the policy because a typo was corrected
+  // would repoint nothing while polluting the history that open positions pin.
+  //
+  // An omitted key is left unchanged; an explicit null (or "") clears it.
+  router.put('/settings', async (req, res) => {
+    try {
+      const result = validateSettingsInput(req.body);
+      if (!result.valid) {
+        return res.status(400).json({
+          error: 'The LP settings are not valid.',
+          issues: result.issues,
+        });
+      }
+      res.json(await writeSettings(getUserId(req), result.patch));
+    } catch (err) {
+      res.status(500).json({ error: safeError(err, 'Failed to save the LP settings') });
+    }
+  });
+
+  // GET /api/lp/positions — the operator's open positions, FOR DISPLAY ONLY.
+  //
+  // See the "User LP positions" section header: the values here come from
+  // Krystal's cached view and must never feed a spend decision. The response
+  // carries no tick data at all, which is what stops that from happening.
+  //
+  // With no Safe configured this returns 200 with `configured: false` and an
+  // empty list. That is a not-yet-set-up account, not a failure, and rendering
+  // an error for it would make the normal first-run state look broken.
+  router.get('/positions', positionsLimiter, async (req, res) => {
+    const fetchedAt = () => new Date().toISOString();
+    try {
+      const userId = getUserId(req);
+      const settings = await readSettings(userId);
+      const safeAddress = settings.safeAddress;
+
+      if (!safeAddress) {
+        return res.json({
+          safeAddress: null,
+          configured: false,
+          positions: [],
+          skipped: [],
+          fetchedAt: fetchedAt(),
+        });
+      }
+
+      // A missing/failed policy read must not hide the positions themselves —
+      // it only means we cannot say which are allowlisted, so the flags fall
+      // back to false rather than the whole request failing.
+      //
+      // But "false" here means two very different things, and the client cannot
+      // tell them apart without help: a genuinely empty allowlist (this position
+      // really is unmanaged) versus a policy read that FAILED (we have no idea).
+      // Reporting the second as the first tells the operator their money is
+      // unprotected when it may be perfectly well covered — alarming, and
+      // actionable in the wrong direction. `policyReadFailed` lets the dashboard
+      // say "coverage unknown" instead of asserting a gap it cannot see.
+      let policyReadFailed = false;
+      const policies = await listPolicies(userId).catch(() => {
+        policyReadFailed = true;
+        return [] as StoredPolicy[];
+      });
+      const current = currentDefaultPolicy(policies);
+      const allowedPools = new Set<string>(current?.policy.allowedPools ?? []);
+
+      const raw = await fetchUserPositionsRaw(ROBINHOOD_CHAIN_ID, safeAddress);
+      const { positions, skipped } = mapUserPositionViews(raw, {
+        chainId: ROBINHOOD_CHAIN_ID,
+        allowedPools,
+      });
+
+      res.json({
+        safeAddress,
+        configured: true,
+        positions,
+        // Surfaced, not swallowed: a growing skip list is how a Krystal schema
+        // change becomes visible instead of quietly shrinking the table.
+        skipped,
+        // True => every `isAllowlisted`/`managedByAutomation` flag above is
+        // unknown, not false. See the comment at the policy read.
+        policyReadFailed,
+        fetchedAt: fetchedAt(),
+      });
+    } catch (err) {
+      if (err instanceof KrystalWafError) {
+        return res.status(500).json({ error: err.message });
+      }
+      if (err instanceof KrystalRequestError) {
+        // Upstream is unreachable. The shape is kept identical to the success
+        // case so the dashboard renders "couldn't refresh" rather than having to
+        // special-case a differently-shaped error body.
+        return res.status(502).json({
+          error: err.message,
+          safeAddress: null,
+          configured: true,
+          positions: [],
+          skipped: [],
+          // Same key as the success shape so the client never has to branch on
+          // its presence. There are no positions to caveat here, but a response
+          // that sometimes omits a field is how optional-chaining bugs start.
+          policyReadFailed: false,
+          fetchedAt: fetchedAt(),
+        });
+      }
+      res.status(500).json({ error: safeError(err, 'Failed to load LP positions') });
     }
   });
 
