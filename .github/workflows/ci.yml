@@ -52,12 +52,18 @@ jobs:
         run: npm run typecheck -w landing
       - name: Typecheck fomo-worker
         run: npm run typecheck -w fomo-worker
+      - name: Typecheck lp-automation
+        run: npm run typecheck -w lp-automation
 
       # --- Unit tests (pure functions: contract/keyword detection, convergence) ---
       - name: Test backend
         run: npm run test -w backend
       - name: Test frontend
         run: npm run test -w frontend
+      # LP automation: policy validation, efficiency scoring, switching buffer,
+      # Krystal response mappers, tick math. All pure — no chain, no network.
+      - name: Test lp-automation
+        run: npm run test -w lp-automation
 
       # --- Build the three deploy targets (backend→Railway, frontend+landing→Vercel) ---
       - name: Build backend
@@ -66,3 +72,33 @@ jobs:
         run: npm run build -w frontend
       - name: Build landing
         run: npm run build -w landing
+
+  # The LP automation Safe module is the on-chain trust boundary over real funds.
+  # Foundry is not installed on the maintainer's machine, so THIS JOB IS THE ONLY
+  # automated verification the Solidity gets — treat a red run here as blocking,
+  # not advisory.
+  contracts:
+    name: Foundry (LP automation module)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: lp-automation/contracts
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install Foundry
+        uses: foundry-rs/foundry-toolchain@v1
+        with:
+          version: stable
+
+      # contracts/lib/ is gitignored, so forge-std is vendored here at a pinned
+      # tag rather than committed as a submodule.
+      - name: Vendor forge-std
+        run: git clone --depth 1 --branch v1.9.6 https://github.com/foundry-rs/forge-std lib/forge-std
+
+      - name: Build
+        run: forge build
+
+      - name: Test
+        run: forge test -vvv

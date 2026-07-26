@@ -32,7 +32,8 @@ The switch is read in exactly two places:
 
 ## Monorepo layout (npm workspaces)
 
-Root `package.json` declares `workspaces: [backend, frontend, landing, fomo-worker]`.
+Root `package.json` declares
+`workspaces: [packages/*, backend, frontend, landing, fomo-worker, lp-automation]`.
 `desktop` is not a workspace (invoked via `npm --prefix desktop`).
 
 - `backend/` (`oct-backend`) — Express + WebSocket server → **Railway**.
@@ -40,6 +41,14 @@ Root `package.json` declares `workspaces: [backend, frontend, landing, fomo-work
 - `landing/` — React + Vite marketing site, served at `/` → **Vercel**.
 - `fomo-worker/` (`oct-fomo-worker`) — always-on Playwright worker for the
   Cloudflare-gated FOMO API → **VPS**. Its `dist/` is gitignored; `src/` is tracked.
+- `lp-automation/` (`oct-lp-automation`) — autonomous Uniswap V3 LP position
+  manager for Robinhood Chain → **Railway** (`ponslive-worker`, no public
+  networking). **Holds a signing key over real funds**, which is exactly why it is
+  a separate process rather than a backend module like the Discord bot: the
+  backend ingests arbitrary Discord/Telegram input, and a bug there must not be
+  able to reach a signer. Read `LP_AUTOMATION_PLAN.md` §4 before touching
+  `contracts/` or anything that builds a transaction. Its Solidity is tested by
+  Foundry in CI only — `npm run test` does not cover it.
 - `desktop/` — Electron shell bundling backend + frontend.
 - `supabase/` — migrations + generated `database.types.ts`.
 - `scripts/` — `dev-local.mjs` (runs the three dev servers) and Vercel output merge.
@@ -49,15 +58,22 @@ Root `package.json` declares `workspaces: [backend, frontend, landing, fomo-work
 ```bash
 npm install              # installs all workspaces
 npm run dev              # backend + frontend + landing together
-npm run typecheck        # backend + frontend (tsc --noEmit)
+npm run typecheck        # backend + frontend + lp-automation (tsc --noEmit)
+npm run test             # backend + frontend + lp-automation (vitest)
 npm run build            # backend + frontend
 npm run build:vercel     # landing + frontend, merged for Vercel
 npm run build:railway    # backend only
 ```
 
 Per-workspace: `npm run <script> -w <workspace>` (e.g. `npm run typecheck -w landing`).
-**Always run `npm run typecheck` before considering a change done** — there is no test
-suite yet, so the compiler is the main safety net. `strict: true` is on everywhere.
+**Always run `npm run typecheck` and `npm run test` before considering a change
+done.** `strict: true` is on everywhere. Coverage is unit tests over pure functions
+only — there are no integration or end-to-end tests, so the compiler still carries
+most of the weight on anything involving I/O.
+
+The `lp-automation` Solidity is **not** covered by `npm run test`. It runs under
+Foundry in CI (`.github/workflows/ci.yml`, job `contracts`), which is its only
+automated verification — treat a red run there as blocking.
 
 ---
 

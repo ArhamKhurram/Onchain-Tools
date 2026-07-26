@@ -1,0 +1,36 @@
+[profile.default]
+src = "src"
+test = "test"
+out = "out"
+libs = ["lib"]
+cache_path = "cache"
+
+# Pinned so CI, local, and the eventual verified-source upload all agree.
+solc = "0.8.28"
+
+# Deliberately conservative: `shanghai` (PUSH0, no transient storage / MCOPY) is
+# supported by every chain we are likely to deploy to, including brand-new ones.
+# The module uses no cancun-only opcodes. Re-verify Robinhood Chain's supported
+# EVM version before the first mainnet deploy and only raise this if needed.
+evm_version = "shanghai"
+
+optimizer = true
+optimizer_runs = 200
+via_ir = false
+
+# Deterministic bytecode across machines (no metadata hash appended).
+bytecode_hash = "none"
+
+# This project must never touch the filesystem from Solidity.
+fs_permissions = []
+
+[fuzz]
+runs = 512
+
+[profile.ci.fuzz]
+runs = 5000
+
+[fmt]
+line_length = 120
+tab_width = 4
+bracket_spacing = false
