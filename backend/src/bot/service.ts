@@ -12,6 +12,7 @@ import type {
   BotSnapshotResponse,
   BotTokenInfo,
   BotTrackedResponse,
+  BotWalletProfile,
 } from '@oct/shared';
 import { ensureSharedFomoClientReady } from '../fomo/client.js';
 import { getFomoServiceClient } from '../fomo/store.js';
@@ -278,6 +279,94 @@ export async function getBotTracked(discordUserId: string): Promise<BotTrackedRe
       displayName: row.display_name ?? null,
       trackedAt: row.created_at,
     })),
+  };
+}
+
+/**
+ * Look up a FOMO trader by handle/display name/fuzzy search and return their
+ * public wallet addresses + current holdings + PnL. Ported from the standalone
+ * Outpost bot's /wallets command (proven against the real API), now reading
+ * through FomoClientLike so it also works in proxy mode.
+ */
+export async function getBotWallet(searchTerm: string): Promise<BotWalletProfile> {
+  const client = await requireFomoClient();
+
+  const searchResult = await client.searchUsers(searchTerm);
+  assertUpstreamOk(searchResult.status, 'user search');
+
+  const searchJson: any = searchResult.json;
+  const users = searchJson?.responseObject?.users ?? searchJson?.responseObject ?? searchJson?.users ?? searchJson?.data ?? [];
+  const candidates: any[] = Array.isArray(users) ? users : [];
+  if (candidates.length === 0) {
+    throw new BotServiceError('not_found', `No FOMO user found matching "${searchTerm}".`);
+  }
+
+  const term = searchTerm.toLowerCase();
+  const exactMatch = candidates.find((u) => String(u.userHandle ?? u.handle ?? '').toLowerCase() === term);
+  const target =
+    exactMatch ??
+    candidates.reduce((best, u) =>
+      Number(u.followers || 0) + Number(u.totalVolume || 0) > Number(best.followers || 0) + Number(best.totalVolume || 0)
+        ? u
+        : best,
+      candidates[0],
+    );
+
+  let userId: string | null = firstString(target.id, target.userId, target.user_id);
+  let userHandle = firstString(target.userHandle, target.handle, target.username) ?? searchTerm;
+  let displayName = firstString(target.displayName, target.name) ?? userHandle;
+  const solAddress = firstString(target.address);
+  const evmAddress = firstString(target.evmAddress);
+
+  if (!userId && userHandle) {
+    const profileResult = await client.getUserByHandle(userHandle);
+    if (profileResult.status && profileResult.status >= 200 && profileResult.status < 300) {
+      const profile: any = profileResult.json;
+      userId = firstString(profile?.id, profile?.userId) ?? userId;
+      displayName = firstString(profile?.displayName, profile?.name) ?? displayName;
+      userHandle = firstString(profile?.userHandle, profile?.handle) ?? userHandle;
+    }
+  }
+
+  if (!userId) {
+    throw new BotServiceError('not_found', `Found "${displayName}" but couldn't resolve their FOMO id.`);
+  }
+
+  const balancesResult = await client.getUserBalances(userId);
+  assertUpstreamOk(balancesResult.status, 'balances');
+
+  const balances: any = balancesResult.json;
+  const responseObject = balances?.responseObject ?? balances;
+  const balanceList: any[] = Array.isArray(responseObject?.balances) ? responseObject.balances : [];
+  const otherPnl = asNumber(responseObject?.otherPnl) ?? 0;
+  const livePerpPnl = asNumber(responseObject?.livePerpPnl) ?? 0;
+
+  let holdingsPnlSum = 0;
+  const holdings = balanceList.slice(0, 10).map((holding) => {
+    const token = holding?.tokenFilterResult?.token ?? {};
+    const balance = holding?.balance ?? {};
+    const userToken = holding?.userToken ?? {};
+    const symbol = firstString(token.symbol, token.name, balance.tokenAddress) ?? '???';
+    const priceUsd = asNumber(holding?.tokenFilterResult?.priceUSD) ?? 0;
+    const shiftedBalance = asNumber(balance.shiftedBalance) ?? 0;
+    const currentValue = priceUsd * shiftedBalance;
+    const currentCostBasis = asNumber(userToken.currentCostBasisUsd) ?? 0;
+    const currentRealizedPnl = asNumber(userToken.currentRealizedPnlUsd) ?? 0;
+    const holdingPnl = currentValue - currentCostBasis + currentRealizedPnl;
+    holdingsPnlSum += holdingPnl;
+    return { symbol, valueUsd: currentValue, pnlUsd: holdingPnl };
+  });
+
+  const portfolioPnlUsd = holdingsPnlSum !== 0 ? holdingsPnlSum + otherPnl : otherPnl;
+
+  return {
+    displayName,
+    handle: userHandle ?? null,
+    solAddress,
+    evmAddress,
+    holdings,
+    portfolioPnlUsd,
+    livePerpPnlUsd: livePerpPnl,
   };
 }
 

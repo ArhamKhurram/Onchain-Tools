@@ -62,6 +62,24 @@ export interface BotSnapshotResponse {
   stale: boolean;
 }
 
+/** One position in a trader's `/wallet` holdings list. */
+export interface BotWalletHolding {
+  symbol: string;
+  valueUsd: number;
+  pnlUsd: number;
+}
+
+/** A FOMO trader's public profile: wallets + current holdings + PnL. */
+export interface BotWalletProfile {
+  displayName: string | null;
+  handle: string | null;
+  solAddress: string | null;
+  evmAddress: string | null;
+  holdings: BotWalletHolding[];
+  portfolioPnlUsd: number;
+  livePerpPnlUsd: number;
+}
+
 /** Phase 2b — the linked OCT account's tracked FOMO traders. */
 export interface BotTrackedTrader {
   handle: string | null;
