@@ -575,14 +575,29 @@ flow, backtesting — per source spec, explicitly design-for-later.
    - ✅ **Historical `eth_call` is served** at both `head − 3` and `head − 5000`,
      so the reorg-proof confirmation read works and will not silently degrade to
      weaker log-derived evidence.
-   - ⬜ **`eth_subscribe` still unverified.** The public endpoint is **HTTPS
-     only** — `wss://` on that host, `ws.` and `/ws` variants all fail to
-     upgrade. A WebSocket endpoint (Alchemy, per Robinhood's docs) is therefore
-     a hard requirement for the low-latency path, not a preference. Without one
-     the watcher degrades to polling and reports `lowLatency: false`.
+   - ✅ **`eth_subscribe` works, on an Alchemy endpoint.** Verified live:
+     WebSocket upgrades (101), `newHeads` subscribes, and `logs` subscribes both
+     *filtered by pool address + Swap topic* and *topic-only across all pools*
+     (some providers reject the latter — this one does not).
+
+     **The public endpoint is HTTPS only** — `wss://` on that host, plus `ws.`
+     and `/ws` variants, all fail to upgrade. So a WebSocket provider is a hard
+     requirement for the low-latency path, not a preference. Without one the
+     watcher degrades to polling and reports `lowLatency: false`.
+   - ✅ **Sub-second reaction confirmed by measurement**, not inference. Over a
+     30s window: 293 `newHeads` at a median 102ms inter-arrival (worst gap
+     522ms), advancing 292 blocks — i.e. **delivery keeps exact pace with the
+     0.100s/block production rate, with no lag between the two.** Source spec G1
+     is achievable on this path. The 10s staleness default sits ~19x above the
+     worst observed gap, so it will not false-positive.
    - ⬜ **Reorg depth** remains a judgement call (3 confirmations ≈ 300ms at the
      measured block time), sized off block time rather than observed reorg
      statistics. Revisit once there's real chain history.
+   - ⚠️ **Volume note for provider quota.** The same window carried 707 Swap
+     logs across 250 blocks chain-wide (~24/s). Subscribing topic-only across
+     all pools would be a firehose; the watcher deliberately subscribes per-pool
+     for pools we hold positions in, which keeps this proportional. Worth
+     watching Alchemy compute-unit usage once running continuously.
 8. **`maxIlRiskScore` is accepted but not applied.** There is no IL model yet and
    `PoolCandidate` carries no IL field. Inventing a scoring model would silently
    filter pools on a number nobody chose, so the criterion takes the score as an
