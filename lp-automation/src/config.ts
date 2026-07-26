@@ -49,6 +49,7 @@ export interface LpAutomationConfig {
   /** OCT account whose dashboard policy this worker follows (Supabase source). */
   policyUserId: string;
   positionPollIntervalMs: number;
+  commandPollIntervalMs: number;
   calldataMaxAgeMs: number;
   /** Slippage FRACTIONS — 0.005 is 0.5%. See `calldata/lpTxn.ts`. */
   swapSlippage: number;
@@ -64,6 +65,10 @@ const ADDRESS = /^0x[0-9a-fA-F]{40}$/;
 const DEFAULTS = {
   auditLogPath: './data/audit.jsonl',
   positionPollIntervalMs: 60_000,
+  // Manual actions are a human waiting on a click; this reads only our own
+  // Supabase table (not Krystal), so the slow-lane rate-limit reasoning does
+  // not apply and it can be tight.
+  commandPollIntervalMs: 1_000,
   calldataMaxAgeMs: 30_000,
   swapSlippage: 0.005,
   liquiditySlippage: 0.005,
@@ -170,6 +175,14 @@ export function parseConfig(env: Record<string, string | undefined>): LpAutomati
       // (plan §11 item 2), but hammering a third-party API we do not pay for is
       // how that changes.
       { min: 5_000 },
+    ),
+    commandPollIntervalMs: readNumber(
+      env.LP_COMMAND_POLL_INTERVAL_MS,
+      'LP_COMMAND_POLL_INTERVAL_MS',
+      DEFAULTS.commandPollIntervalMs,
+      // 250ms floor: this only polls our own DB, but a runaway loop below that
+      // is pointless churn given the pipeline behind it takes seconds anyway.
+      { min: 250 },
     ),
     calldataMaxAgeMs: readNumber(
       env.LP_CALLDATA_MAX_AGE_MS,

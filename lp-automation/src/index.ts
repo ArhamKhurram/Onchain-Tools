@@ -254,6 +254,7 @@ export async function run(options: RunOptions = {}): Promise<LifecycleLoop> {
     logger,
     options: {
       positionPollIntervalMs: config.positionPollIntervalMs,
+      commandPollIntervalMs: config.commandPollIntervalMs,
       calldataMaxAgeMs: config.calldataMaxAgeMs,
       gasCostUsd: config.gasCostUsd,
     },
