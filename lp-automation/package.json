@@ -7,11 +7,19 @@
     "dev": "tsx watch src/index.ts",
     "build": "tsc",
     "start": "node dist/index.js",
-    "typecheck": "tsc --noEmit",
+    "typecheck": "tsc --noEmit && tsc --noEmit -p scripts",
+    "typecheck:scripts": "tsc --noEmit -p scripts",
     "test": "vitest run",
-    "test:watch": "vitest"
+    "test:watch": "vitest",
+
+    "preflight": "tsx scripts/preflight.ts",
+    "deploy:module": "tsx scripts/deployModule.ts",
+    "tx:enable": "tsx scripts/enableModule.ts",
+    "tx:allowlist": "tsx scripts/seedAllowlist.ts",
+    "verify:setup": "tsx scripts/verifySetup.ts"
   },
   "dependencies": {
+    "@supabase/supabase-js": "^2.98.0",
     "dotenv": "^17.3.1",
     "viem": "^2.21.0"
   },

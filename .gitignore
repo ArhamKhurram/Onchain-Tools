@@ -135,8 +135,12 @@ dist
 .yarn/install-state.gz
 .pnp.*
 
-backend/data/config.json
-backend/data/contracts.json
+# Runtime data: JSON stores (local-mode config, contracts, LP policies) and
+# uploaded sounds. Ignored wholesale rather than file-by-file — the old per-file
+# list meant every new local store had to remember to add itself, and one of them
+# (lp-policies.json, which holds spend caps) didn't. Keep the checked-in default.
+backend/data/*
+!backend/data/config.default.json
 
 # Discord / tweet posting drafts (local only)
 posts/

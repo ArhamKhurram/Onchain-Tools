@@ -8,6 +8,7 @@ const FeedPage = lazy(() => import('./pages/FeedPage'));
 const WalletsPage = lazy(() => import('./pages/WalletsPage'));
 const PortfolioPage = lazy(() => import('./pages/PortfolioPage'));
 const CallersPage = lazy(() => import('./pages/CallersPage'));
+const LpAutomationPage = lazy(() => import('./pages/LpAutomationPage'));
 const WorkspacePage = lazy(() => import('./pages/WorkspacePage'));
 const SettingsPage = lazy(() => import('./pages/SettingsPage'));
 const LoginPage = lazy(() => import('./pages/LoginPage'));
@@ -34,6 +35,7 @@ export default function App() {
               <Route path="wallets" element={<WalletsPage />} />
               <Route path="portfolio" element={<PortfolioPage />} />
               <Route path="callers" element={<CallersPage />} />
+              <Route path="lp" element={<LpAutomationPage />} />
               <Route path="workspace" element={<WorkspacePage />} />
               <Route path="settings" element={<SettingsPage />} />
               <Route path="login" element={<LoginPage />} />
