@@ -532,13 +532,23 @@ flow, backtesting — per source spec, explicitly design-for-later.
 3. ~~**Robinhood-Chain-specific Krystal `platform` parameter value**~~ — RESOLVED:
    it is `uniswapv3`, confirmed four ways including a live 200 with executable
    calldata. See §3.
-4. **Which Safe version is deployed on Robinhood Chain.** `OctAutomationModule`
-   declares a local `ISafe` matching Safe `ModuleManager` v1.3.0/v1.4.1
-   (`execTransactionFromModuleReturnData`, `isModuleEnabled`). If the singleton
-   actually deployed on chain 4663 differs, every `execute` call reverts. This
-   fails *closed* — a total outage, not a loss — but confirm it before deploying
-   by checking `safe-global/safe-deployments` for chain 4663, or simply by
-   creating a Safe in the Safe UI on that chain and reading the deployed version.
+4. ~~**Which Safe version is deployed on Robinhood Chain**~~ — RESOLVED
+   2026-07-26 by direct `eth_getCode` against the public RPC
+   (`https://rpc.mainnet.chain.robinhood.com`). **Safe is deployed on 4663 at
+   both versions**, at the canonical deterministic addresses:
+
+   | Contract | Address | Code |
+   | --- | --- | --- |
+   | Safe singleton v1.4.1 | `0x41675C099F32341bf84BFc5382aF534df5C7461a` | 23579 B |
+   | SafeProxyFactory v1.4.1 | `0x4e1DCf7AD4e460CfD30791CCC4F9c8a4f820ec67` | 3054 B |
+   | Safe singleton v1.3.0 | `0xd9Db270c1B5E3Bd161E8c8503c55cEABeE709552` | 22958 B |
+   | SafeL2 singleton v1.3.0 | `0x3E5c63644E683549055b9Be8653de26E0B4CD36E` | 23800 B |
+   | SafeProxyFactory v1.3.0 | `0xa6B71E26C5e0845f74c812102Ca7114b6a896AB2` | 3774 B |
+   | MultiSend v1.3.0 | `0xA238CBeb142c10Ef7Ad8442C6D1f9E89e07e7761` | 629 B |
+
+   `OctAutomationModule`'s local `ISafe` (`execTransactionFromModuleReturnData`,
+   `isModuleEnabled`) matches both. Prefer **v1.4.1** for a new Safe. Multicall3
+   is also present at the canonical `0xcA11bde0…`.
 5. **ERC-20 value is not capped on-chain.** The module's per-tx and daily caps
    bound *native* value only; token amounts live inside `data` and can't be read
    without per-selector ABI decoding. On a chain where LP value sits in tokens,
@@ -552,14 +562,27 @@ flow, backtesting — per source spec, explicitly design-for-later.
    ones are broken on every chain — but it can change without notice. Failure
    here degrades to "no new candidates surfaced", which is safe, but should be
    monitored rather than assumed stable.
-7. **Needs a live RPC endpoint to settle** (`src/ingest/rpc/`): Robinhood's
-   ~100ms block time (taken from viem's bundled chain metadata; it drives the
-   confirmation and staleness defaults), a reorg depth sized off that block time
-   rather than observed statistics, whether the free tier serves `eth_subscribe`
-   on logs *and* historical `eth_call` at `head − 3` (the confirmation read
-   degrades to weaker log-derived evidence if not), and whether the pools are
-   canonical Uniswap V3 — a fork with modified events would silently match no
-   topics. Worth one live sanity check against a real pool before trusting it.
+7. **RPC assumptions — mostly RESOLVED** 2026-07-26 against the public RPC
+   `https://rpc.mainnet.chain.robinhood.com` (HTTPS, no key required):
+   - ✅ **Block time measured at exactly 0.100s/block** over a 100-block span —
+     confirms the value viem's chain metadata reports, so the confirmation and
+     staleness defaults are correctly sized.
+   - ✅ **Pools are canonical Uniswap V3.** `slot0()` on the WETH/USDG 0.05% pool
+     (`0x69bfaf19…`) returns the standard 7 words; `fee()` returns `500`, which
+     independently confirms Krystal's `feeTier: 0.05` is *percent* and the
+     percent→bps conversion in the mapper is right; `factory()` returns
+     `0x1f7d7550…`, matching the factory address Krystal reported.
+   - ✅ **Historical `eth_call` is served** at both `head − 3` and `head − 5000`,
+     so the reorg-proof confirmation read works and will not silently degrade to
+     weaker log-derived evidence.
+   - ⬜ **`eth_subscribe` still unverified.** The public endpoint is **HTTPS
+     only** — `wss://` on that host, `ws.` and `/ws` variants all fail to
+     upgrade. A WebSocket endpoint (Alchemy, per Robinhood's docs) is therefore
+     a hard requirement for the low-latency path, not a preference. Without one
+     the watcher degrades to polling and reports `lowLatency: false`.
+   - ⬜ **Reorg depth** remains a judgement call (3 confirmations ≈ 300ms at the
+     measured block time), sized off block time rather than observed reorg
+     statistics. Revisit once there's real chain history.
 8. **`maxIlRiskScore` is accepted but not applied.** There is no IL model yet and
    `PoolCandidate` carries no IL field. Inventing a scoring model would silently
    filter pools on a number nobody chose, so the criterion takes the score as an
