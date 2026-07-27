@@ -127,6 +127,7 @@ export function summarize(records: AuditRecord[]): Record<ActionKind, number> {
   const counts: Record<ActionKind, number> = {
     enter: 0,
     increase: 0,
+    decrease: 0,
     approve: 0,
     compound: 0,
     rebalance: 0,

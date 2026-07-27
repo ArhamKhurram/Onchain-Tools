@@ -56,7 +56,8 @@ export type CommandAction =
   | 'exit'
   | 'compound_rebalance'
   | 'enter'
-  | 'increase';
+  | 'increase'
+  | 'decrease';
 
 const COMMAND_ACTIONS: readonly CommandAction[] = [
   'compound',
@@ -65,6 +66,7 @@ const COMMAND_ACTIONS: readonly CommandAction[] = [
   'compound_rebalance',
   'enter',
   'increase',
+  'decrease',
 ];
 
 /**
@@ -94,6 +96,7 @@ export interface LpCommand {
   swapSlippage?: number | null;
   // --- increase-only (present iff action === 'increase') ------------------
   // Reuses tokenInAddress, amountIn and swapSlippage above; rangeStrategy must be null.
+  liquidityPercent?: number | null;
 }
 
 /**
@@ -150,6 +153,7 @@ interface CommandRow {
   amount_in?: string | null;
   range_strategy?: string | null;
   swap_slippage?: string | number | null;
+  liquidity_percent?: string | number | null;
 }
 
 const ADDRESS_PATTERN = /^0x[0-9a-f]{40}$/;
@@ -249,6 +253,36 @@ export function rowToCommand(row: CommandRow): LpCommand {
     };
   }
 
+  if (action === 'decrease') {
+    const tokenOut = typeof row.token_in_address === 'string' ? row.token_in_address.toLowerCase() : '';
+    if (!ADDRESS_PATTERN.test(tokenOut)) {
+      throw new CommandSourceError(`decrease command ${row.id} has a malformed token_in_address: ${String(row.token_in_address)}`);
+    }
+    if (row.range_strategy !== null && row.range_strategy !== undefined) {
+      throw new CommandSourceError(`decrease command ${row.id} must not carry range_strategy: ${String(row.range_strategy)}`);
+    }
+    const liquidityPercent = liquidityPercentOrNull(row.liquidity_percent, row.id);
+    const hasPercent = liquidityPercent !== null;
+    const hasAmount = typeof row.amount_in === 'string' && AMOUNT_PATTERN.test(row.amount_in);
+    if (hasPercent && hasAmount) throw new CommandSourceError(`decrease command ${row.id} must not carry both liquidity_percent and amount_in`);
+    if (!hasPercent && !hasAmount) throw new CommandSourceError(`decrease command ${row.id} must carry liquidity_percent or amount_in`);
+    const swapSlippage = swapSlippageOrNull(row.swap_slippage, row.id);
+    if (typeof row.token_id !== 'string' || !TOKEN_ID_PATTERN.test(row.token_id)) {
+      throw new CommandSourceError(`decrease command ${row.id} has a malformed token_id: ${String(row.token_id)}`);
+    }
+    return {
+      id: row.id,
+      tokenId: row.token_id,
+      poolAddress: pool as Address,
+      action,
+      requestedAt,
+      tokenInAddress: tokenOut as Address,
+      ...(hasAmount ? { amountIn: row.amount_in } : {}),
+      ...(hasPercent ? { liquidityPercent } : {}),
+      swapSlippage,
+    };
+  }
+
   if (typeof row.token_id !== 'string' || !TOKEN_ID_PATTERN.test(row.token_id)) {
     throw new CommandSourceError(`command ${row.id} has a malformed token_id: ${String(row.token_id)}`);
   }
@@ -275,6 +309,15 @@ function swapSlippageOrNull(value: unknown, id: string): number | null {
   const n = typeof value === 'number' ? value : typeof value === 'string' && value.trim() !== '' ? Number(value) : NaN;
   if (!Number.isFinite(n) || n <= 0 || n > 0.05) {
     throw new CommandSourceError(`enter command ${id} has an out-of-range swap_slippage: ${String(value)}`);
+  }
+  return n;
+}
+
+function liquidityPercentOrNull(value: unknown, id: string): number | null {
+  if (value === null || value === undefined) return null;
+  const n = typeof value === 'number' ? value : typeof value === 'string' && value.trim() !== '' ? Number(value) : NaN;
+  if (!Number.isFinite(n) || n <= 0 || n > 1) {
+    throw new CommandSourceError(`decrease command ${id} has an out-of-range liquidity_percent: ${String(value)}`);
   }
   return n;
 }
@@ -339,7 +382,7 @@ export class SupabaseCommandSource implements CommandSource {
         // re-claim a command another instance is already executing.
         .eq('status', 'pending')
         .select(
-          'id, token_id, pool_address, action, requested_at, token_in_address, amount_in, range_strategy, swap_slippage',
+          'id, token_id, pool_address, action, requested_at, token_in_address, amount_in, range_strategy, swap_slippage, liquidity_percent',
         );
 
       if (error) {

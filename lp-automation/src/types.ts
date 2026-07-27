@@ -166,6 +166,7 @@ export interface EfficiencyScore {
 export type ActionKind =
   | 'enter'
   | 'increase'
+  | 'decrease'
   | 'approve'
   | 'compound'
   | 'rebalance'

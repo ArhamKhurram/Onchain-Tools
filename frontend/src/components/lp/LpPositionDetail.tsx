@@ -16,6 +16,7 @@ import { CoverageBanner, MoneyCell, RangeBar, StatusBadge } from './positionChro
 import { describeFeeAccrual, feeAccrual, type LpCommand, type LpCommandAction, inFlightActionFor } from './commands';
 import LpPositionActions from './LpPositionActions';
 import LpIncreaseForm from './LpIncreaseForm';
+import LpDecreaseForm from './LpDecreaseForm';
 import LpPolicyToggle from './LpPolicyToggle';
 import LpPositionHistorySlot from './LpPositionHistorySlot';
 import { LP_PANEL_TITLE } from './styles';
@@ -343,17 +344,30 @@ export default function LpPositionDetail({
 
           <div className="border-2 border-oct-border bg-oct-surface px-4 py-3 space-y-3">
             {!closed && !commandsUnavailable && (
-              <LpIncreaseForm
-                position={position}
-                enabled={!policyDisabled}
-                blocked={inFlight !== null}
-                blockedReason={
-                  inFlight !== null
-                    ? `A ${inFlight} is already queued for this position — wait for it to finish before adding more.`
-                    : null
-                }
-                onSubmitted={() => onRefresh?.()}
-              />
+              <>
+                <LpIncreaseForm
+                  position={position}
+                  enabled={!policyDisabled}
+                  blocked={inFlight !== null}
+                  blockedReason={
+                    inFlight !== null
+                      ? `A ${inFlight} is already queued for this position — wait for it to finish before adding more.`
+                      : null
+                  }
+                  onSubmitted={() => onRefresh?.()}
+                />
+                <LpDecreaseForm
+                  position={position}
+                  enabled={!policyDisabled}
+                  blocked={inFlight !== null}
+                  blockedReason={
+                    inFlight !== null
+                      ? `A ${inFlight} is already queued for this position — wait for it to finish before removing.`
+                      : null
+                  }
+                  onSubmitted={() => onRefresh?.()}
+                />
+              </>
             )}
             {commandsUnavailable ? (
               <p className="font-mono text-[11px] text-oct-muted leading-relaxed">

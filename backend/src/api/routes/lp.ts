@@ -1330,6 +1330,7 @@ export const LP_COMMAND_ACTIONS = [
   'compound_rebalance',
   'enter',
   'increase',
+  'decrease',
 ] as const;
 export type LpCommandAction = (typeof LP_COMMAND_ACTIONS)[number];
 
@@ -1717,6 +1718,93 @@ export function validateIncreaseInput(
       poolAddress: poolAddress as string,
       tokenInAddress: tokenInAddress as string,
       amountIn: amountIn as string,
+      swapSlippage,
+    },
+  };
+}
+
+export interface DecreaseCommandRequest {
+  tokenId: string;
+  poolAddress: string;
+  tokenOutAddress: string;
+  liquidityPercent: number | null;
+  amountOut: string | null;
+  swapSlippage: number | null;
+}
+
+export interface DecreaseValidationResult {
+  valid: boolean;
+  issues: PolicyValidationIssue[];
+  request: DecreaseCommandRequest | null;
+}
+
+export function validateDecreaseInput(
+  tokenId: unknown,
+  input: unknown,
+): DecreaseValidationResult {
+  const issues: PolicyValidationIssue[] = [];
+  if (typeof tokenId !== 'string' || !TOKEN_ID_PATTERN.test(tokenId)) {
+    issues.push({ field: 'tokenId', message: 'must be a positive integer position id' });
+  }
+  if (!isRecord(input)) {
+    return { valid: false, issues: [...issues, { field: '', message: 'the request body must be an object' }], request: null };
+  }
+  const normalizeAddress = (raw: unknown, field: 'poolAddress' | 'tokenOutAddress'): string | null => {
+    if (typeof raw !== 'string') {
+      issues.push({ field, message: 'must be a 0x-prefixed 20-byte hex address' });
+      return null;
+    }
+    const trimmed = raw.trim();
+    if (!ADDRESS_PATTERN.test(trimmed)) {
+      issues.push({ field, message: 'must be a 0x-prefixed 20-byte hex address' });
+      return null;
+    }
+    if (trimmed.toLowerCase() === ZERO_ADDRESS) {
+      issues.push({ field, message: 'must not be the all-zero address' });
+      return null;
+    }
+    return trimmed.toLowerCase();
+  };
+  const poolAddress = normalizeAddress(input.poolAddress, 'poolAddress');
+  const tokenOutAddress = normalizeAddress(input.tokenOutAddress, 'tokenOutAddress');
+  const hasPercent = input.liquidityPercent !== undefined && input.liquidityPercent !== null;
+  const hasAmount = typeof input.amountOut === 'string' && input.amountOut.trim() !== '';
+  if (hasPercent && hasAmount) {
+    issues.push({ field: 'liquidityPercent', message: 'provide liquidityPercent or amountOut, not both' });
+  } else if (!hasPercent && !hasAmount) {
+    issues.push({ field: 'liquidityPercent', message: 'liquidityPercent or amountOut is required' });
+  }
+  let liquidityPercent: number | null = null;
+  if (hasPercent) {
+    const value = input.liquidityPercent;
+    if (typeof value !== 'number' || !Number.isFinite(value) || value <= 0 || value > 1) {
+      issues.push({ field: 'liquidityPercent', message: 'must be a fraction greater than 0 and at most 1 (1 = 100%)' });
+    } else liquidityPercent = value;
+  }
+  let amountOut: string | null = null;
+  if (hasAmount) {
+    const raw = (input.amountOut as string).trim();
+    if (!AMOUNT_IN_PATTERN.test(raw)) {
+      issues.push({ field: 'amountOut', message: 'must be a positive-integer base-units string (no decimal point, no leading zero)' });
+    } else amountOut = raw;
+  }
+  let swapSlippage: number | null = null;
+  if (input.swapSlippage !== undefined && input.swapSlippage !== null) {
+    const value = input.swapSlippage;
+    if (typeof value !== 'number' || !Number.isFinite(value) || value <= 0 || value > MAX_SWAP_SLIPPAGE) {
+      issues.push({ field: 'swapSlippage', message: `must be a fraction greater than 0 and at most ${MAX_SWAP_SLIPPAGE} (5%)` });
+    } else swapSlippage = value;
+  }
+  if (issues.length > 0) return { valid: false, issues, request: null };
+  return {
+    valid: true,
+    issues,
+    request: {
+      tokenId: tokenId as string,
+      poolAddress: poolAddress as string,
+      tokenOutAddress: tokenOutAddress as string,
+      liquidityPercent,
+      amountOut,
       swapSlippage,
     },
   };
@@ -2274,6 +2362,47 @@ async function insertIncreaseCommand(userId: string, request: IncreaseCommandReq
   return command;
 }
 
+async function insertDecreaseCommand(userId: string, request: DecreaseCommandRequest): Promise<LpCommand> {
+  if (isHostedMode()) {
+    const db = getServiceClient();
+    if (!db) throw new Error('Supabase is not configured.');
+    const { data, error } = await db
+      .from(COMMANDS_TABLE)
+      .insert({
+        user_id: userId,
+        token_id: request.tokenId,
+        pool_address: request.poolAddress,
+        token_in_address: request.tokenOutAddress,
+        amount_in: request.amountOut,
+        liquidity_percent: request.liquidityPercent,
+        range_strategy: null,
+        swap_slippage: request.swapSlippage,
+        action: 'decrease',
+      })
+      .select(COMMAND_COLUMNS)
+      .single();
+    if (error) throw new Error(`Failed to queue the LP command: ${error.message}`);
+    return rowToCommand(data as CommandRow);
+  }
+  const file = readLocalFile<LpCommand[]>(LOCAL_COMMANDS_PATH);
+  const existing = file[userId] ?? [];
+  const command: LpCommand = {
+    id: globalThis.crypto.randomUUID(),
+    tokenId: request.tokenId,
+    poolAddress: request.poolAddress,
+    action: 'decrease',
+    status: 'pending',
+    requestedAt: new Date().toISOString(),
+    claimedAt: null,
+    completedAt: null,
+    txHash: null,
+    error: null,
+  };
+  file[userId] = [...existing, command];
+  writeLocalFile(LOCAL_COMMANDS_PATH, file);
+  return command;
+}
+
 /** Does this position already have a command in flight? Advisory — see above. */
 async function findOpenCommand(userId: string, tokenId: string): Promise<LpCommand | null> {
   if (isHostedMode()) {
@@ -2819,6 +2948,44 @@ export function createLpRoutes(): Router {
       if (err instanceof DuplicateCommandError) {
         return res.status(409).json({ error: err.message });
       }
+      res.status(500).json({ error: safeError(err, 'Failed to queue the requested action') });
+    }
+  });
+
+  router.post('/positions/:tokenId/decrease', commandsLimiter, async (req, res) => {
+    try {
+      const userId = getUserId(req);
+      const result = validateDecreaseInput(req.params.tokenId, req.body);
+      if (!result.valid || result.request === null) {
+        return res.status(400).json({ error: 'The requested action is not valid.', issues: result.issues });
+      }
+      const request = result.request;
+      let policies: StoredPolicy[];
+      try {
+        policies = await listPolicies(userId);
+      } catch (err) {
+        return res.status(503).json({
+          error: safeError(err, 'Could not read the LP policy, so the pool allowlist could not be checked. Nothing was queued.'),
+        });
+      }
+      const current = currentDefaultPolicy(policies);
+      if (!isPoolOnAllowlist(current?.policy ?? null, request.poolAddress)) {
+        return res.status(409).json({
+          error: current === null
+            ? 'No LP policy is configured yet, so no pool is approved. Save a policy with this pool allowlisted first.'
+            : `Pool ${request.poolAddress} is not on policy v${current.policy.version}'s allowlist.`,
+          poolAddress: request.poolAddress,
+          activeVersion: current?.policy.version ?? null,
+        });
+      }
+      const open = await findOpenCommand(userId, request.tokenId);
+      if (open !== null) {
+        return res.status(409).json({ error: new DuplicateCommandError(request.tokenId).message, command: open });
+      }
+      const command = await insertDecreaseCommand(userId, request);
+      res.status(201).json({ command });
+    } catch (err) {
+      if (err instanceof DuplicateCommandError) return res.status(409).json({ error: err.message });
       res.status(500).json({ error: safeError(err, 'Failed to queue the requested action') });
     }
   });

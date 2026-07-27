@@ -7,6 +7,7 @@ import {
   validateCommandInput,
   validateEnterInput,
   validateIncreaseInput,
+  validateDecreaseInput,
   type Address,
   type AutomationPolicy,
 } from '../src/api/routes/lp';
@@ -424,6 +425,37 @@ describe('validateIncreaseInput', () => {
 
   it('rejects a float amount', () => {
     expect(validateIncreaseInput(TOKEN_ID, increaseBody({ amountIn: '1.5' })).valid).toBe(false);
+  });
+});
+
+function decreaseBody(over: Record<string, unknown> = {}) {
+  return {
+    poolAddress: POOL,
+    tokenOutAddress: '0x0bd7d308f8e1639fab988df18a8011f41eacad73',
+    liquidityPercent: 0.25,
+    swapSlippage: 0.005,
+    ...over,
+  };
+}
+
+describe('validateDecreaseInput', () => {
+  it('accepts percent mode', () => {
+    const result = validateDecreaseInput(TOKEN_ID, decreaseBody());
+    expect(result.valid).toBe(true);
+    expect(result.request?.liquidityPercent).toBe(0.25);
+  });
+
+  it('accepts amountOut mode', () => {
+    const result = validateDecreaseInput(
+      TOKEN_ID,
+      decreaseBody({ liquidityPercent: undefined, amountOut: '50000000000000000' }),
+    );
+    expect(result.valid).toBe(true);
+    expect(result.request?.amountOut).toBe('50000000000000000');
+  });
+
+  it('rejects both percent and amountOut', () => {
+    expect(validateDecreaseInput(TOKEN_ID, decreaseBody({ amountOut: '10000000000000000' })).valid).toBe(false);
   });
 });
 

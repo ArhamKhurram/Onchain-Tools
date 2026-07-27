@@ -71,6 +71,7 @@ import { enrichZapOutcomeSnapshot } from './zapPnl.js';
 import { PositionLocks } from './locks.js';
 import { rangeFromCenter, recenterRange, type TickRange } from './range.js';
 import { deriveLastCompounded, Quarantine } from './unresolved.js';
+import { resolveDecreaseLiquidityPercent } from './decreaseLiquidity.js';
 import type { AlertDispatcher } from '../alerts/dispatch.js';
 import { OutOfRangeTracker } from '../alerts/outOfRange.js';
 import type { LpAlertPayload } from '../alerts/types.js';
@@ -106,6 +107,8 @@ export interface LifecycleOptions {
   calldataMaxAgeMs?: number;
   /** Delays between position-feed polls while waiting for Krystal to index a new mint. */
   lineagePollDelaysMs?: readonly number[];
+  /** Tighter freshness window for rebalance calldata (swap min-outs perish faster). */
+  rebalanceCalldataMaxAgeMs?: number;
   /**
    * Operator-supplied gas cost estimate in USD for one lifecycle transaction.
    *
@@ -195,6 +198,7 @@ export class LifecycleLoop {
   private readonly commandPollIntervalMs: number;
   private readonly calldataMaxAgeMs: number;
   private readonly lineagePollDelaysMs: readonly number[];
+  private readonly rebalanceCalldataMaxAgeMs: number;
   private readonly gasCostUsd: number | null;
   private readonly alertOutOfRangeMinutes: number;
   private readonly alertGasThresholdUsd: number | null;
@@ -232,6 +236,8 @@ export class LifecycleLoop {
       deps.options?.commandPollIntervalMs ?? DEFAULTS.commandPollIntervalMs;
     this.calldataMaxAgeMs = deps.options?.calldataMaxAgeMs ?? DEFAULTS.calldataMaxAgeMs;
     this.lineagePollDelaysMs = deps.options?.lineagePollDelaysMs ?? DEFAULT_LINEAGE_POLL_DELAYS_MS;
+    this.rebalanceCalldataMaxAgeMs =
+      deps.options?.rebalanceCalldataMaxAgeMs ?? DEFAULTS.rebalanceCalldataMaxAgeMs;
     this.gasCostUsd = deps.options?.gasCostUsd ?? null;
     this.alertOutOfRangeMinutes = deps.options?.alertOutOfRangeMinutes ?? 0;
     this.alertGasThresholdUsd = deps.options?.alertGasThresholdUsd ?? null;
@@ -1052,6 +1058,10 @@ export class LifecycleLoop {
 
     if (command.action === 'increase') {
       return this.runIncrease(command, position, policy);
+    }
+
+    if (command.action === 'decrease') {
+      return this.runDecrease(command, position, policy);
     }
 
     const singleStep = command as LpCommand & { action: SingleStepCommandAction };
@@ -2014,6 +2024,36 @@ function increaseDecision(command: LpCommand, position: LpPosition, policy: Auto
       policyVersion: policy.version,
       tokenInAddress: command.tokenInAddress ?? null,
       amountIn: command.amountIn ?? null,
+      positionStatus: position.status,
+      valueUsd: position.valueUsd,
+      unclaimedFeesUsd: position.unclaimedFeesUsd,
+    },
+  };
+}
+
+function decreaseDecision(
+  command: LpCommand,
+  position: LpPosition,
+  policy: AutomationPolicy,
+  resolved?: { liquidityPercent: number; estimatedWithdrawUsd: number | null },
+): Decision {
+  return {
+    action: 'decrease',
+    rule: 'manual.decrease',
+    reason:
+      `manual decrease (remove liquidity) requested from the dashboard (command ${command.id}); ` +
+      'running the same guard ladder as an automatic action',
+    snapshot: {
+      tokenId: position.tokenId,
+      pool: position.pool.address,
+      trigger: 'manual',
+      commandId: command.id,
+      requestedAt: command.requestedAt,
+      policyVersion: policy.version,
+      tokenOutAddress: command.tokenInAddress ?? null,
+      amountOut: command.amountIn ?? null,
+      liquidityPercent: command.liquidityPercent ?? resolved?.liquidityPercent ?? null,
+      estimatedWithdrawUsd: resolved?.estimatedWithdrawUsd ?? null,
       positionStatus: position.status,
       valueUsd: position.valueUsd,
       unclaimedFeesUsd: position.unclaimedFeesUsd,

@@ -23,7 +23,7 @@ import type { PositionCoverage } from './positions';
 // separate workspace the console does not depend on. Keep in sync with
 // `POST /api/lp/positions/:tokenId/actions` and `GET /api/lp/commands`.
 
-export type LpCommandAction = 'compound' | 'rebalance' | 'exit' | 'compound_rebalance' | 'increase';
+export type LpCommandAction = 'compound' | 'rebalance' | 'exit' | 'compound_rebalance' | 'increase' | 'decrease';
 
 /**
  * `pending | claimed | done | failed` are the states the API actually stores.
@@ -58,6 +58,7 @@ export const COMMAND_ACTIONS: readonly LpCommandAction[] = [
   'rebalance',
   'compound_rebalance',
   'increase',
+  'decrease',
   'exit',
 ];
 
@@ -230,6 +231,12 @@ export const ACTION_META: Record<LpCommandAction, ActionMeta> = {
     noun: 'add liquidity',
     description:
       'Zaps more of one token into this position without changing the range. The worker auto-approves WETH to Krystal when needed.',
+    destructive: false,
+  },
+  decrease: {
+    label: 'Remove liquidity',
+    noun: 'remove liquidity',
+    description: 'Withdraws part of the position and swaps to one token via Krystal withdraw_and_swap.',
     destructive: false,
   },
   exit: {

@@ -148,6 +148,12 @@ export interface CalldataBuilder {
     amountIn: string;
     swapSlippage?: number;
   }): Promise<PreparedTransaction>;
+  decrease?(request: {
+    position: LpPosition;
+    targetToken: Address;
+    liquidityPercent: number;
+    swapSlippage?: number;
+  }): Promise<PreparedTransaction>;
 }
 
 /**
@@ -189,7 +195,7 @@ export interface PositionWatcher {
 export type WatcherFactory = (callbacks: PoolWatcherCallbacks) => PositionWatcher;
 
 /** Actions the loop can actually take. `none` is a decision, not an action. */
-export type ExecutableAction = 'compound' | 'rebalance' | 'exit' | 'enter' | 'increase' | 'approve';
+export type ExecutableAction = 'compound' | 'rebalance' | 'exit' | 'enter' | 'increase' | 'decrease' | 'approve';
 
 /**
  * Why an action was refused before it reached the signer. Each maps to an audit

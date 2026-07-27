@@ -11,7 +11,7 @@
 // and the tick reader is a read-only `eth_call`.
 
 import { readFile } from 'node:fs/promises';
-import { buildAdjustRange, buildCompound, buildSwapAndIncrease, buildSwapAndMint, type LpTxnContext } from '../calldata/lpTxn.js';
+import { buildAdjustRange, buildCompound, buildSwapAndIncrease, buildSwapAndMint, buildWithdrawAndSwap, type LpTxnContext } from '../calldata/lpTxn.js';
 import type { PreparedTransaction } from '../calldata/types.js';
 import { KrystalFieldError } from '../ingest/krystal/coerce.js';
 import type { KrystalClient } from '../ingest/krystal/client.js';
@@ -170,6 +170,20 @@ export class KrystalCalldataBuilder implements CalldataBuilder {
       amountIn: request.amountIn,
       swapSlippage: request.swapSlippage ?? this.options.swapSlippage,
       liquiditySlippage: this.options.liquiditySlippage,
+    });
+  }
+
+  decrease(request: {
+    position: LpPosition;
+    targetToken: Address;
+    liquidityPercent: number;
+    swapSlippage?: number;
+  }): Promise<PreparedTransaction> {
+    return buildWithdrawAndSwap(this.options.context, {
+      tokenId: request.position.tokenId,
+      targetToken: request.targetToken,
+      liquidityPercent: request.liquidityPercent,
+      swapSlippage: request.swapSlippage ?? this.options.swapSlippage,
     });
   }
 }

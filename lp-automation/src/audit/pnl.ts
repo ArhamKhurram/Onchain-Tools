@@ -206,7 +206,7 @@ function sumGasPaid(
   let total = 0;
   for (const record of records) {
     if (!isSuccessfulAction(record)) continue;
-    if (!['compound', 'rebalance', 'exit', 'enter', 'increase', 'approve'].includes(record.action)) {
+    if (!['compound', 'rebalance', 'exit', 'enter', 'increase', 'decrease', 'approve'].includes(record.action)) {
       continue;
     }
     const tokenId = tokenIdFromRecord(record);
@@ -379,6 +379,21 @@ function computeNetCapitalDeployed(
       );
       if (deposit !== null && deposit > 0) {
         netCapital += deposit;
+        hasExplicitFlow = true;
+      }
+      continue;
+    }
+
+    if (record.action === 'decrease') {
+      if (!tokenId || !memberTokenIds.has(tokenId)) continue;
+      const withdrawal =
+        finite(snap.withdrawnValueUsd) ??
+        finite(snap.estimatedWithdrawUsd) ??
+        (finite(snap.valueUsd) !== null && finite(snap.liquidityPercent) !== null
+          ? finite(snap.valueUsd)! * finite(snap.liquidityPercent)!
+          : null);
+      if (withdrawal !== null && withdrawal > 0) {
+        netCapital -= withdrawal;
         hasExplicitFlow = true;
       }
       continue;

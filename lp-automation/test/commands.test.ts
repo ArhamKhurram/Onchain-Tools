@@ -391,6 +391,7 @@ class FakeCalldata implements CalldataBuilder {
   rebalanceCalls = 0;
   enterCalls = 0;
   increaseCalls = 0;
+  decreaseCalls = 0;
   failWith: Error | null = null;
 
   async compound(): Promise<PreparedTransaction> {
@@ -415,6 +416,12 @@ class FakeCalldata implements CalldataBuilder {
     this.increaseCalls += 1;
     if (this.failWith) throw this.failWith;
     return preparedTransaction({ kind: 'swap_and_increase', selector: '0x3dce3e25' });
+  }
+
+  async decrease(): Promise<PreparedTransaction> {
+    this.decreaseCalls += 1;
+    if (this.failWith) throw this.failWith;
+    return preparedTransaction({ kind: 'withdraw_and_swap', selector: '0xb88d4fde' });
   }
 }
 
@@ -816,6 +823,26 @@ describe('rowToCommand — increase (add liquidity)', () => {
     expect(() => rowToCommand(increaseRow({ range_strategy: 'narrow' }) as never)).toThrow(
       CommandSourceError,
     );
+  });
+});
+
+describe('rowToCommand — decrease', () => {
+  const TOKEN_OUT = '0x1111111111111111111111111111111111111111';
+  it('maps percent-mode decrease', () => {
+    const m = rowToCommand({
+      id: 'dec-1',
+      token_id: '12345',
+      pool_address: POOL,
+      action: 'decrease',
+      requested_at: new Date(0).toISOString(),
+      token_in_address: TOKEN_OUT,
+      amount_in: null,
+      liquidity_percent: 0.25,
+      range_strategy: null,
+      swap_slippage: 0.005,
+    } as never);
+    expect(m.action).toBe('decrease');
+    expect(m.liquidityPercent).toBe(0.25);
   });
 });
 
@@ -1272,6 +1299,38 @@ describe('increase (add liquidity) manual command', () => {
 
     expect(h.calldata.increaseCalls).toBe(2);
     expect(h.signer.submitted).toHaveLength(2);
+    expect(h.commands.last).toEqual({ txHash: '0xdeadbeef', error: null });
+    await h.loop.stop();
+  });
+});
+
+describe('decrease manual command', () => {
+  const DECREASE_TOKEN = '0x2222222222222222222222222222222222222222' as Address;
+
+  it('executes withdraw_and_swap', async () => {
+    const h = harness({
+      queued: {
+        id: 'cmd-decrease',
+        tokenId: TOKEN_ID,
+        poolAddress: POOL,
+        action: 'decrease',
+        requestedAt: NOW - 1_000,
+        tokenInAddress: DECREASE_TOKEN,
+        liquidityPercent: 0.5,
+        swapSlippage: null,
+      },
+      positions: [
+        position({
+          pool: {
+            ...position().pool,
+            token1: { address: DECREASE_TOKEN, symbol: 'USDC', decimals: 6 },
+          },
+        }),
+      ],
+    });
+    await h.loop.start();
+    await h.loop.runCommandTick();
+    expect(h.calldata.decreaseCalls).toBe(1);
     expect(h.commands.last).toEqual({ txHash: '0xdeadbeef', error: null });
     await h.loop.stop();
   });
