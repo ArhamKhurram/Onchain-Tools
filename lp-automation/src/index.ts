@@ -25,6 +25,7 @@ import { DEFAULT_APPROVABLE_TOKENS } from './calldata/erc20Approve.js';
 import type { CalldataPolicy } from './calldata/types.js';
 import { ROBINHOOD_UNISWAP_V3_TARGETS } from './calldata/validate.js';
 import { ConfigError, loadConfig, type LpAutomationConfig } from './config.js';
+import { createWebhookAlertDispatcher } from './alerts/dispatch.js';
 import { KrystalClient } from './ingest/krystal/client.js';
 import { UNISWAP_V3_POOL_ABI } from './ingest/rpc/abi.js';
 import { defineRobinhoodChain } from './ingest/rpc/chain.js';
@@ -253,6 +254,19 @@ export async function run(options: RunOptions = {}): Promise<LifecycleLoop> {
         'This is the safe default; tick a pool in the dashboard to change it.',
     );
   }
+  if (config.maxValueWei <= 0n) {
+    logger.warn(
+      'LP_MAX_TX_VALUE_WEI is zero — native ETH enter/increase zaps will be refused. ' +
+        'Set it to match the Safe module maxValuePerTx cap when using native ETH.',
+    );
+  }
+
+  if (config.alertWebhookUrl) {
+    logger.info('lp-alerts: Discord webhook configured', {
+      outOfRangeMinutes: config.alertOutOfRangeMinutes,
+      gasThresholdUsd: config.alertGasThresholdUsd,
+    });
+  }
 
   const loop = new LifecycleLoop({
     policySource,
@@ -276,6 +290,7 @@ export async function run(options: RunOptions = {}): Promise<LifecycleLoop> {
       approvableTokens: DEFAULT_APPROVABLE_TOKENS,
       reader: publicClient,
     },
+    maxValueWei: config.maxValueWei,
     signer,
     audit: new AuditLog(config.auditLogPath),
     waitForReceipt: async (txHash) => {
@@ -295,11 +310,14 @@ export async function run(options: RunOptions = {}): Promise<LifecycleLoop> {
     nativeTokenUsd: config.nativeTokenUsd,
     createWatcher: (callbacks) => new PoolWatcher({ config: config.rpc, callbacks, logger }),
     logger,
+    alerts: createWebhookAlertDispatcher({ webhookUrl: config.alertWebhookUrl }, logger),
     options: {
       positionPollIntervalMs: config.positionPollIntervalMs,
       commandPollIntervalMs: config.commandPollIntervalMs,
       calldataMaxAgeMs: config.calldataMaxAgeMs,
       gasCostUsd: config.gasCostUsd,
+      alertOutOfRangeMinutes: config.alertOutOfRangeMinutes,
+      alertGasThresholdUsd: config.alertGasThresholdUsd,
     },
   });
 

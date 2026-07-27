@@ -225,7 +225,11 @@ export class ActionExecutor {
       };
     }
 
-    return { status: 'submitted', auditId, outcome, recorded };
+    const gasSpentUsd =
+      typeof outcomeSnapshot.gasSpentUsd === 'number' && Number.isFinite(outcomeSnapshot.gasSpentUsd)
+        ? outcomeSnapshot.gasSpentUsd
+        : undefined;
+    return { status: 'submitted', auditId, outcome, recorded, gasSpentUsd };
   }
 
   /**

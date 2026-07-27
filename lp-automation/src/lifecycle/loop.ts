@@ -66,9 +66,17 @@ import { ROBINHOOD_CHAIN_ID } from '../types.js';
 import type { Address, AutomationPolicy, Decision, LpPosition, RangeStrategy } from '../types.js';
 import type { CommandResult, CommandSource, LpCommand } from './commandSource.js';
 import { ActionExecutor } from './executor.js';
+import {
+  DEFAULT_LINEAGE_POLL_DELAYS_MS,
+  findRebalanceSuccessor,
+  sleep,
+} from './lineage.js';
 import { PositionLocks } from './locks.js';
 import { rangeFromCenter, recenterRange, type TickRange } from './range.js';
 import { deriveLastCompounded, Quarantine } from './unresolved.js';
+import type { AlertDispatcher } from '../alerts/dispatch.js';
+import { OutOfRangeTracker } from '../alerts/outOfRange.js';
+import type { LpAlertPayload } from '../alerts/types.js';
 import type {
   ActionResult,
   AuditPort,
@@ -99,6 +107,8 @@ export interface LifecycleOptions {
   commandPollIntervalMs?: number;
   /** Parked calldata older than this is rebuilt rather than submitted. */
   calldataMaxAgeMs?: number;
+  /** Delays between position-feed polls while waiting for Krystal to index a rebalance mint. */
+  lineagePollDelaysMs?: readonly number[];
   /**
    * Operator-supplied gas cost estimate in USD for one lifecycle transaction.
    *
@@ -149,6 +159,8 @@ export interface LifecycleDeps {
     | { status: 'reverted' }
     | null
   >;
+  /** Parse the minted NFT token id from a successful rebalance receipt. */
+  extractRebalanceSuccessor?: (txHash: string) => Promise<string | null>;
   /** Native token USD price — converts receipt gas to `gasSpentUsd`. */
   nativeTokenUsd?: number | null;
   createWatcher: WatcherFactory;
@@ -213,6 +225,9 @@ export class LifecycleLoop {
       deps.options?.commandPollIntervalMs ?? DEFAULTS.commandPollIntervalMs;
     this.calldataMaxAgeMs = deps.options?.calldataMaxAgeMs ?? DEFAULTS.calldataMaxAgeMs;
     this.gasCostUsd = deps.options?.gasCostUsd ?? null;
+    this.alertOutOfRangeMinutes = deps.options?.alertOutOfRangeMinutes ?? 0;
+    this.alertGasThresholdUsd = deps.options?.alertGasThresholdUsd ?? null;
+    this.alerts = deps.alerts ?? null;
 
     this.executor = new ActionExecutor({
       audit: deps.audit,
@@ -1465,7 +1480,7 @@ export class LifecycleLoop {
             this.lastCompounded.set(position.tokenId, this.now());
           }
           if (action === 'rebalance' && result.recorded.error === null && result.recorded.txHash !== null) {
-            await this.recordRebalanceLineage(position, decision);
+            await this.recordRebalanceLineage(position, decision, result.recorded.txHash);
           }
           this.logger.info('lp-lifecycle: action submitted', {
             tokenId: position.tokenId,
@@ -1501,7 +1516,158 @@ export class LifecycleLoop {
       return { status: 'position_busy', reason };
     }
 
+    void this.emitActAlerts(request, attempt.value);
     return attempt.value;
+  }
+
+  private evaluateOutOfRangeAlert(position: LpPosition): void {
+    if (this.alerts === null || this.alertOutOfRangeMinutes <= 0) return;
+    const minutes = this.outOfRangeTracker.observe(position, this.now());
+    if (minutes === null || !this.outOfRangeTracker.shouldAlert(position.tokenId, minutes, this.alertOutOfRangeMinutes)) {
+      return;
+    }
+    this.outOfRangeTracker.markAlerted(position.tokenId);
+    void this.sendAlert({
+      kind: 'out_of_range',
+      timestamp: this.now(),
+      tokenId: position.tokenId,
+      poolAddress: position.pool.address,
+      reason: 'position is out of range and has not been rebalanced',
+      outOfRangeMinutes: minutes,
+    });
+  }
+
+  private emitActAlerts(
+    request: { position: LpPosition; action: ExecutableAction; decision: Decision },
+    result: ActionResult | { status: 'position_busy'; reason: string },
+  ): void {
+    if (this.alerts === null) return;
+    const poolAddress = request.position.pool.address;
+    const tokenId = request.position.tokenId;
+    const now = this.now();
+    if (request.action === 'rebalance' && result.status === 'submitted' && result.recorded.error === null) {
+      void this.sendAlert({
+        kind: 'rebalance_fired',
+        timestamp: now,
+        tokenId,
+        poolAddress,
+        action: request.action,
+        reason: request.decision.reason,
+        txHash: result.recorded.txHash,
+        gasSpentUsd: result.gasSpentUsd,
+      });
+    }
+    if ((request.action === 'enter' || request.action === 'increase') && this.isFailedAction(result)) {
+      void this.sendAlert({
+        kind: 'action_failed',
+        timestamp: now,
+        tokenId,
+        poolAddress,
+        action: request.action,
+        reason: this.describeActionFailure(result),
+        txHash: result.status === 'submitted' ? result.recorded.txHash : null,
+      });
+    }
+    const threshold = this.alertGasThresholdUsd;
+    if (
+      threshold !== null &&
+      threshold > 0 &&
+      result.status === 'submitted' &&
+      result.recorded.error === null &&
+      result.gasSpentUsd !== undefined &&
+      result.gasSpentUsd >= threshold
+    ) {
+      void this.sendAlert({
+        kind: 'gas_threshold',
+        timestamp: now,
+        tokenId,
+        poolAddress,
+        action: request.action,
+        reason: `gas spend $${result.gasSpentUsd.toFixed(4)} exceeded threshold $${threshold.toFixed(4)}`,
+        txHash: result.recorded.txHash,
+        gasSpentUsd: result.gasSpentUsd,
+      });
+    }
+  }
+
+  private isFailedAction(result: ActionResult | { status: 'position_busy'; reason: string }): boolean {
+    if (result.status === 'position_busy') return true;
+    if (result.status === 'refused' || result.status === 'simulation_failed') return true;
+    if (result.status === 'intent_write_failed' || result.status === 'outcome_write_failed') return true;
+    if (result.status === 'submitted' && result.recorded.error !== null) return true;
+    return false;
+  }
+
+  private describeActionFailure(result: ActionResult | { status: 'position_busy'; reason: string }): string {
+    switch (result.status) {
+      case 'position_busy':
+        return result.reason;
+      case 'refused':
+      case 'simulation_failed':
+        return result.refusal.reason;
+      case 'intent_write_failed':
+        return result.error;
+      case 'outcome_write_failed':
+        return result.recorded.error ?? result.error;
+      case 'submitted':
+        return result.recorded.error ?? 'action failed';
+    }
+  }
+
+  private sendAlert(payload: LpAlertPayload): Promise<void> {
+    return this.alerts?.send(payload) ?? Promise.resolve();
+  }
+
+  private shouldPrewarmRebalance(exitPercent: number, threshold: number): boolean {
+    if (!Number.isFinite(threshold) || threshold <= 0) return false;
+    if (!Number.isFinite(exitPercent) || exitPercent <= 0) return false;
+    const prewarmAt = threshold * PREWARM_EXIT_FRACTION;
+    return exitPercent >= prewarmAt && exitPercent <= threshold;
+  }
+
+  private isWarmFresh(tokenId: string): boolean {
+    const parked = this.warm.get(tokenId);
+    if (parked === undefined) return false;
+    return this.now() - parked.transaction.meta.builtAt <= this.calldataMaxAgeMs;
+  }
+
+  private async warmRebalanceCalldata(
+    position: LpPosition,
+    policy: AutomationPolicy,
+    decision: Decision,
+    snapshotExtras: Record<string, unknown> & { reason?: string },
+  ): Promise<void> {
+    if (this.isWarmFresh(position.tokenId)) return;
+    if (this.executor.checkGuards(position, policy) !== null) return;
+
+    const range = recenterRange(position, policy.rebalanceTrigger.rangeStrategy);
+    if (!range.ok) return;
+
+    try {
+      const transaction = await this.deps.calldata.rebalance({
+        position,
+        policy,
+        tickLower: range.range.tickLower,
+        tickUpper: range.range.tickUpper,
+      });
+      this.warm.set(position.tokenId, { action: 'rebalance', transaction, decision });
+      const reason =
+        snapshotExtras.reason ??
+        `calldata built and parked. Nothing was broadcast. (${decision.reason})`;
+      const { reason: _omit, ...extras } = snapshotExtras;
+      await this.logEvaluation({
+        action: 'none',
+        rule: `lifecycle.warm.${decision.rule}`,
+        reason,
+        snapshot: { ...decision.snapshot, ...extras, warmed: true },
+      });
+    } catch (error) {
+      // A failed warm-up costs nothing: the confirmed path rebuilds.
+      this.logger.warn('lp-lifecycle: warm calldata build failed', {
+        tokenId: position.tokenId,
+        error: describe(error),
+      });
+    }
   }
 
   /** Parked calldata for this position, if it is the right action and fresh. */
@@ -1516,34 +1682,68 @@ export class LifecycleLoop {
 
   // --- audit helpers -------------------------------------------------------
 
-  private async recordRebalanceLineage(position: LpPosition, decision: Decision): Promise<void> {
+  private async recordRebalanceLineage(
+    position: LpPosition,
+    decision: Decision,
+    txHash: string,
+  ): Promise<void> {
     const oldTokenId = position.tokenId;
     const poolAddress = position.pool.address;
 
-    let positions: LpPosition[];
-    try {
-      positions = await this.deps.positions.loadPositions();
-    } catch (error) {
-      this.logger.warn('lp-lifecycle: could not refresh positions for rebalance lineage', {
-        oldTokenId,
-        error: describe(error),
-      });
-      return;
+    let newTokenId: string | null = null;
+    let remintedValueUsd: number | null = null;
+    let source: 'receipt' | 'feed' | null = null;
+
+    const extractor = this.deps.extractRebalanceSuccessor;
+    if (extractor !== undefined) {
+      try {
+        newTokenId = await extractor(txHash);
+        if (newTokenId !== null) source = 'receipt';
+      } catch (error) {
+        this.logger.warn('lp-lifecycle: could not parse rebalance successor from receipt', {
+          oldTokenId,
+          txHash,
+          error: describe(error),
+        });
+      }
     }
 
-    const successor = positions
-      .filter(
-        (candidate) =>
-          candidate.pool.address.toLowerCase() === poolAddress.toLowerCase() &&
-          candidate.tokenId !== oldTokenId &&
-          candidate.status !== 'closed',
-      )
-      .sort((a, b) => Number.parseInt(b.tokenId, 10) - Number.parseInt(a.tokenId, 10))[0];
+    const pollSchedule = [0, ...this.lineagePollDelaysMs];
+    for (let attempt = 0; attempt < pollSchedule.length; attempt += 1) {
+      const delayMs = pollSchedule[attempt] ?? 0;
+      if (delayMs > 0) await sleep(delayMs);
 
-    if (successor === undefined) {
+      let positions: LpPosition[];
+      try {
+        positions = await this.deps.positions.loadPositions();
+      } catch (error) {
+        this.logger.warn('lp-lifecycle: could not refresh positions for rebalance lineage', {
+          oldTokenId,
+          attempt,
+          error: describe(error),
+        });
+        continue;
+      }
+
+      const successor = findRebalanceSuccessor(positions, oldTokenId, poolAddress);
+      if (successor !== undefined) {
+        if (newTokenId === null) {
+          newTokenId = successor.tokenId;
+          remintedValueUsd = successor.valueUsd;
+          source = 'feed';
+        } else if (remintedValueUsd === null) {
+          const matched = positions.find((candidate) => candidate.tokenId === newTokenId);
+          remintedValueUsd = matched?.valueUsd ?? successor.valueUsd;
+        }
+        break;
+      }
+    }
+
+    if (newTokenId === null) {
       this.logger.warn('lp-lifecycle: rebalance succeeded but no successor position was found', {
         oldTokenId,
         pool: poolAddress,
+        txHash,
       });
       return;
     }
@@ -1552,15 +1752,17 @@ export class LifecycleLoop {
       action: 'none',
       rule: 'lifecycle.rebalance.lineage',
       reason:
-        `rebalance lineage: position #${oldTokenId} was withdrawn and re-minted as #${successor.tokenId}`,
+        `rebalance lineage: position #${oldTokenId} was withdrawn and re-minted as #${newTokenId}`,
       snapshot: {
         oldTokenId,
-        newTokenId: successor.tokenId,
+        newTokenId,
         pool: poolAddress,
         withdrawnValueUsd: position.valueUsd,
-        remintedValueUsd: successor.valueUsd,
+        remintedValueUsd,
         unclaimedFeesUsd: position.unclaimedFeesUsd,
         policyVersion: decision.snapshot.policyVersion,
+        rebalanceTxHash: txHash,
+        ...(source === null ? {} : { lineageSource: source }),
       },
     });
   }

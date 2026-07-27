@@ -60,6 +60,9 @@ export interface LpAutomationConfig {
   gasCostUsd: number | null;
   /** Native token USD price for receipt gas → `gasSpentUsd` in the audit log. */
   nativeTokenUsd: number | null;
+  alertWebhookUrl: string | null;
+  alertOutOfRangeMinutes: number;
+  alertGasThresholdUsd: number | null;
 }
 
 const ADDRESS = /^0x[0-9a-fA-F]{40}$/;
@@ -75,6 +78,7 @@ const DEFAULTS = {
   swapSlippage: 0.005,
   liquiditySlippage: 0.005,
   platform: 'uniswapv3',
+  alertOutOfRangeMinutes: 30,
 } as const;
 
 /** Krystal rejects slippage >= 1 and 0.05 is already 5%; see `lpTxn.ts`. */
@@ -161,6 +165,19 @@ export function parseConfig(env: Record<string, string | undefined>): LpAutomati
       ? null
       : readNumber(nativeRaw, 'LP_NATIVE_TOKEN_USD', 0, { min: 0 });
 
+  const alertWebhookRaw = env.LP_ALERT_WEBHOOK_URL?.trim();
+  const alertWebhookUrl = alertWebhookRaw ? alertWebhookRaw : null;
+  const alertOutOfRangeMinutes = readNumber(
+    env.LP_ALERT_OUT_OF_RANGE_MINUTES,
+    'LP_ALERT_OUT_OF_RANGE_MINUTES',
+    DEFAULTS.alertOutOfRangeMinutes,
+    { min: 0 },
+  );
+  const alertGasRaw = env.LP_ALERT_GAS_THRESHOLD_USD?.trim();
+  const alertGasThresholdUsd =
+    alertGasRaw === undefined || alertGasRaw === ''
+      ? null
+      : readNumber(alertGasRaw, 'LP_ALERT_GAS_THRESHOLD_USD', 0, { min: 0 });
   const policyFileRaw = env.LP_POLICY_FILE?.trim();
 
   return {
@@ -207,6 +224,9 @@ export function parseConfig(env: Record<string, string | undefined>): LpAutomati
     maxValueWei,
     gasCostUsd,
     nativeTokenUsd,
+    alertWebhookUrl,
+    alertOutOfRangeMinutes,
+    alertGasThresholdUsd,
   };
 }
 

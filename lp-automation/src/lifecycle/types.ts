@@ -209,7 +209,7 @@ export interface RecordedOutcome {
 
 export type ActionResult =
   /** Reached the signer. `recorded` is the chain-confirmed audit outcome. */
-  | { status: 'submitted'; auditId: string; outcome: SubmitOutcome; recorded: RecordedOutcome }
+  | { status: 'submitted'; auditId: string; outcome: SubmitOutcome; recorded: RecordedOutcome; gasSpentUsd?: number }
   /** Refused before any intent was written. Nothing is in flight. */
   | { status: 'refused'; refusal: Refusal }
   /** The dry run said this would fail. Nothing is in flight. */
