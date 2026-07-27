@@ -19,7 +19,7 @@ import {
   validatePolicyDraft,
   type PolicyDraft,
 } from '../components/lp/policyDraft';
-import { addToAllowlist, removeFromAllowlist } from '../components/lp/positions';
+import { addToAllowlist, removeFromAllowlist, type LpSettingsPatch } from '../components/lp/positions';
 import { buildEnterPools } from '../components/lp/enter';
 import { summarizeAllowlist } from '../components/lp/selection';
 import { LP_BTN_GHOST, LP_BTN_PRIMARY, LP_EYEBROW } from '../components/lp/styles';
@@ -128,19 +128,15 @@ export default function LpAutomationPage() {
   // Save at the bottom of the page. One draft, one save, one meaning of
   // "unsaved" — a second save path here would be a second thing to misread.
   const settings = useLpSettings(enabled);
-  const positions = useLpPositions(enabled);
+  const activeSafe = settings.settings?.activeSafeAddress ?? settings.settings?.safeAddress ?? null;
+  const positions = useLpPositions(enabled, activeSafe);
 
   // Positions is the landing tab: it is the only section read routinely. The
   // other three are configure-once.
   const [activeTab, setActiveTab] = useState<LpTabId>('positions');
 
-  const handleSaveSafeAddress = async (address: string): Promise<boolean> => {
-    const result = await settings.save({ safeAddress: address });
-    // A new Safe means a different set of positions; re-read rather than leave
-    // the previous account's rows on screen under the new address.
-    if (result.ok) void positions.refresh();
-    return result.ok;
-  };
+  const handleSaveSafeSettings = async (patch: LpSettingsPatch) => { const r = await settings.save(patch); if (r.ok) void positions.refresh(); return r.ok; };
+  const handleSetActiveSafe = (address: string) => handleSaveSafeSettings({ activeSafeAddress: address });
 
   // Both directions of the positions panel's coverage switch land in the same
   // `draft.allowedPools` the picker edits, so they inherit the same unsaved
@@ -213,8 +209,8 @@ export default function LpAutomationPage() {
       {
         id: 'settings' as const,
         label: 'Settings',
-        badge: settings.settings?.safeAddress ? null : '!',
-        alert: !settings.settings?.safeAddress && !settings.loading,
+        badge: (settings.settings?.safeAddresses.length ?? 0) > 0 ? null : '!',
+        alert: (settings.settings?.safeAddresses.length ?? 0) === 0 && !settings.loading,
       },
     ],
     [
@@ -224,7 +220,7 @@ export default function LpAutomationPage() {
       summary.pendingRemovals,
       totalIssuesForTabs,
       versions.length,
-      settings.settings?.safeAddress,
+      settings.settings?.safeAddresses,
       settings.loading,
     ],
   );
@@ -406,7 +402,8 @@ export default function LpAutomationPage() {
             issues={settings.issues}
             savedAt={settings.savedAt}
             disabled={settings.unavailable}
-            onSave={handleSaveSafeAddress}
+            onSave={handleSaveSafeSettings}
+            onSetActive={handleSetActiveSafe}
             onEdit={settings.clearIssues}
           />
         </LpTabPanel>

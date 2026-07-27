@@ -13,6 +13,7 @@ import {
   formatTokenId,
   isCoveredNow,
   isUncovered,
+  MAX_LP_SAFE_ADDRESSES,
   normalizeSafeAddress,
   positionCoverage,
   positionPairLabel,
@@ -659,6 +660,8 @@ describe('validateSafeAddress', () => {
     expect(normalizeSafeAddress(`  ${SAFE}  `)).toBe(SAFE);
   });
 });
+
+describe('MAX_LP_SAFE_ADDRESSES', () => { it('is 2', () => expect(MAX_LP_SAFE_ADDRESSES).toBe(2)); });
 
 describe('safeAddressDirty', () => {
   it('is clean when nothing is saved and nothing is typed', () => {

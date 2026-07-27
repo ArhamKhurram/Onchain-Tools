@@ -62,7 +62,7 @@ function parseSkipped(value: unknown): LpPositionSkip[] {
     .filter((entry): entry is LpPositionSkip => entry !== null);
 }
 
-export function useLpPositions(enabled = true): UseLpPositionsResult {
+export function useLpPositions(enabled = true, selectedSafeAddress?: string | null): UseLpPositionsResult {
   const [positions, setPositions] = useState<LpPositionView[]>([]);
   const [safeAddress, setSafeAddress] = useState<string | null>(null);
   const [configured, setConfigured] = useState(false);
@@ -87,7 +87,10 @@ export function useLpPositions(enabled = true): UseLpPositionsResult {
     setError(null);
 
     try {
-      const res = await apiFetch(`${API_BASE}/lp/positions`);
+      const q = selectedSafeAddress?.trim()
+        ? `?safe=${encodeURIComponent(selectedSafeAddress.trim().toLowerCase())}`
+        : '';
+      const res = await apiFetch(`${API_BASE}/lp/positions${q}`);
       if (id !== requestId.current) return;
 
       if (res.status === 404 || res.status === 501) {
@@ -151,7 +154,7 @@ export function useLpPositions(enabled = true): UseLpPositionsResult {
     } finally {
       if (id === requestId.current && !silent) setLoading(false);
     }
-  }, [enabled]);
+  }, [enabled, selectedSafeAddress]);
 
   const refresh = useCallback(async () => {
     await refreshInternal(false);
