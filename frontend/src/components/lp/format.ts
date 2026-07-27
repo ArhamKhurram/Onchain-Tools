@@ -6,6 +6,7 @@
 // about real money.
 
 import type { PoolCandidate } from './types';
+import type { LpCommandStatus } from './commands';
 
 const DASH = '—';
 
@@ -130,4 +131,150 @@ export function describeDailyCapacity(maxPositionSizeUsd: number, dailySpendCapU
   if (entries < 1) return 'not even one full-size entry';
   const whole = Math.floor(entries + 1e-9);
   return `${whole} full-size ${whole === 1 ? 'entry' : 'entries'} per day`;
+}
+
+export type LpCommandReceiptStatus =
+  | 'pending'
+  | 'running'
+  | 'done'
+  | 'failed'
+  | 'reverted'
+  | 'skipped';
+
+export const LP_BLOCK_EXPLORER = 'https://robinhoodchain.blockscout.com';
+
+export const RECEIPT_STATUS_LABELS: Record<LpCommandReceiptStatus, string> = {
+  pending: 'Queued',
+  running: 'Running',
+  done: 'Done',
+  failed: 'Failed',
+  reverted: 'Reverted',
+  skipped: 'Skipped',
+};
+
+export const HISTORY_ACTION_LABELS: Record<string, string> = {
+  compound: 'Compound',
+  rebalance: 'Rebalance',
+  compound_rebalance: 'Compound + rebalance',
+  increase: 'Add liquidity',
+  enter: 'Enter',
+  exit: 'Exit',
+};
+
+export interface LpCommandHistoryRow {
+  id: string;
+  tokenId: string | null;
+  poolAddress: string | null;
+  action: string;
+  status: LpCommandStatus;
+  requestedAt: string | null;
+  claimedAt: string | null;
+  completedAt: string | null;
+  txHash: string | null;
+  error: string | null;
+  receiptStatus: LpCommandReceiptStatus;
+  txExplorerUrl: string | null;
+}
+
+function historyString(value: unknown): string | null {
+  return typeof value === 'string' && value.trim() !== '' ? value : null;
+}
+
+function historyTokenId(value: unknown): string | null {
+  if (typeof value === 'string') return value;
+  if (typeof value === 'number' && Number.isFinite(value)) return String(value);
+  return null;
+}
+
+function parseReceiptStatus(value: unknown): LpCommandReceiptStatus | null {
+  const statuses = ['pending', 'running', 'done', 'failed', 'reverted', 'skipped'] as const;
+  return typeof value === 'string' && statuses.includes(value as LpCommandReceiptStatus)
+    ? (value as LpCommandReceiptStatus)
+    : null;
+}
+
+function deriveReceiptStatus(
+  status: LpCommandStatus,
+  txHash: string | null,
+  error: string | null,
+): LpCommandReceiptStatus {
+  if (status === 'pending') return 'pending';
+  if (status === 'claimed') return 'running';
+  if (status === 'done') return 'done';
+  if (status === 'skipped') return 'skipped';
+  if (status === 'failed') {
+    if (error?.trimStart().toLowerCase().startsWith('skipped')) return 'skipped';
+    if (txHash && error && /reverted/i.test(error)) return 'reverted';
+    return 'failed';
+  }
+  return 'failed';
+}
+
+export function buildTxExplorerUrl(txHash: string | null): string | null {
+  return typeof txHash === 'string' && txHash.startsWith('0x')
+    ? `${LP_BLOCK_EXPLORER}/tx/${txHash}`
+    : null;
+}
+
+export function formatCommandTimestamp(iso: string | null): string {
+  if (!iso) return DASH;
+  const time = new Date(iso).getTime();
+  if (!Number.isFinite(time)) return DASH;
+  return new Date(time).toLocaleString(undefined, {
+    month: 'short',
+    day: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit',
+    second: '2-digit',
+  });
+}
+
+export function parseHistoryCommand(raw: unknown): LpCommandHistoryRow | null {
+  if (!raw || typeof raw !== 'object') return null;
+  const record = raw as Record<string, unknown>;
+  const actions = new Set(['compound', 'rebalance', 'compound_rebalance', 'increase', 'enter', 'exit']);
+  if (typeof record.action !== 'string' || !actions.has(record.action)) return null;
+
+  const id = historyString(record.id);
+  if (!id) return null;
+
+  const tokenId = historyTokenId(record.tokenId);
+  if (record.action !== 'enter' && tokenId === null) return null;
+
+  const status = typeof record.status === 'string' ? (record.status as LpCommandStatus) : 'unknown';
+  const txHash = historyString(record.txHash);
+  const error = historyString(record.error);
+  const receiptStatus = parseReceiptStatus(record.receiptStatus) ?? deriveReceiptStatus(status, txHash, error);
+
+  return {
+    id,
+    tokenId: record.action === 'enter' ? null : tokenId,
+    poolAddress: historyString(record.poolAddress),
+    action: record.action,
+    status,
+    requestedAt: historyString(record.requestedAt),
+    claimedAt: historyString(record.claimedAt),
+    completedAt: historyString(record.completedAt),
+    txHash,
+    error,
+    receiptStatus,
+    txExplorerUrl: historyString(record.txExplorerUrl) ?? buildTxExplorerUrl(txHash),
+  };
+}
+
+export function parseHistoryCommands(raw: unknown): LpCommandHistoryRow[] {
+  const list =
+    raw && typeof raw === 'object' && Array.isArray((raw as { commands?: unknown }).commands)
+      ? (raw as { commands: unknown[] }).commands
+      : Array.isArray(raw)
+        ? raw
+        : [];
+  return list
+    .map(parseHistoryCommand)
+    .filter((entry): entry is LpCommandHistoryRow => entry !== null)
+    .sort((a, b) => {
+      const aTime = a.requestedAt ? new Date(a.requestedAt).getTime() : 0;
+      const bTime = b.requestedAt ? new Date(b.requestedAt).getTime() : 0;
+      return bTime - aTime;
+    });
 }

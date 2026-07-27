@@ -8,6 +8,7 @@ import LpPoolPicker from '../components/lp/LpPoolPicker';
 import LpPositionsPanel from '../components/lp/LpPositionsPanel';
 import LpSafetyStrip from '../components/lp/LpSafetyStrip';
 import LpVersionHistory from '../components/lp/LpVersionHistory';
+import LpCommandHistory from '../components/lp/LpCommandHistory';
 import LpTabs, { LpTabPanel, type LpTabId } from '../components/lp/LpTabs';
 import {
   DEFAULT_POLICY_DRAFT,
@@ -394,7 +395,10 @@ export default function LpAutomationPage() {
         </LpTabPanel>
 
         <LpTabPanel id="history" active={activeTab}>
-          <LpVersionHistory versions={versions} activeVersion={activeVersion} loading={loading} />
+          <div className="space-y-4">
+            <LpCommandHistory enabled={activeTab === 'history'} />
+            <LpVersionHistory versions={versions} activeVersion={activeVersion} loading={loading} />
+          </div>
         </LpTabPanel>
 
         <LpTabPanel id="settings" active={activeTab}>
