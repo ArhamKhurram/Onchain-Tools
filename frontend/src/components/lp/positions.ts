@@ -104,6 +104,26 @@ export interface DisplayPnl {
   source: 'audit' | 'indicative';
 }
 
+/** One line in the position-detail PnL breakdown. */
+export interface PnlBreakdownLine {
+  label: string;
+  valueUsd: number | null;
+}
+
+/** Audit-backed component lines plus net return for the detail drawer. */
+export interface PnlBreakdown {
+  source: 'audit' | 'indicative';
+  hint: string | null;
+  lines: PnlBreakdownLine[];
+  netReturn: { valueUsd: number; percent: number | null } | null;
+}
+
+export function costBasisLabel(
+  pnl: Pick<LpLineagePnl, 'costBasisKnown' | 'costBasisSince'>,
+): string {
+  return pnl.costBasisKnown ? 'Cost basis' : `Basis since ${pnl.costBasisSince ?? '?'}`;
+}
+
 /**
  * Combined return the operator cares about: fees folded into the headline number.
  *
@@ -123,7 +143,7 @@ export function resolveDisplayPnl(
       label: 'Net return',
       valueUsd: pnl.netPnlUsd,
       percent: pnl.netPnlPercent,
-      hint: 'Value + unclaimed fees − net capital deployed − gas (deposits and withdrawals adjust basis)',
+      hint: 'Current value + unclaimed fees − cost basis − gas paid (deposits and withdrawals adjust basis)',
       source: 'audit',
     };
   }
@@ -147,6 +167,50 @@ export function resolveDisplayPnl(
       ? `Net return pending — basis since ${pnl.costBasisSince}`
       : 'Net return will appear after the worker records this farm.',
     source: 'indicative',
+  };
+}
+
+/**
+ * Component lines for the detail drawer's PnL section.
+ *
+ * Audit path surfaces every input to net return. Indicative path shows only
+ * what the cached quote carries and leaves net return to `resolveDisplayPnl`.
+ */
+export function resolvePnlBreakdown(
+  pnl: LpLineagePnl | null | undefined,
+  position: Pick<LpPositionView, 'valueUsd' | 'unclaimedFeesUsd'>,
+  auditLogAvailable: boolean,
+): PnlBreakdown {
+  const display = resolveDisplayPnl(pnl, position, auditLogAvailable);
+
+  if (display.source === 'audit' && pnl) {
+    return {
+      source: 'audit',
+      hint: display.hint,
+      lines: [
+        { label: costBasisLabel(pnl), valueUsd: pnl.costBasisUsd },
+        { label: 'Current value', valueUsd: pnl.currentValueUsd },
+        { label: 'Unclaimed fees', valueUsd: pnl.unclaimedFeesUsd },
+        { label: 'Gas paid', valueUsd: pnl.gasPaidUsd },
+      ],
+      netReturn: {
+        valueUsd: pnl.netPnlUsd!,
+        percent: pnl.netPnlPercent,
+      },
+    };
+  }
+
+  const value = finite(position.valueUsd) ?? 0;
+  const fees = finite(position.unclaimedFeesUsd) ?? 0;
+
+  return {
+    source: 'indicative',
+    hint: display.hint,
+    lines: [
+      { label: 'Current value', valueUsd: value },
+      { label: 'Unclaimed fees', valueUsd: fees },
+    ],
+    netReturn: null,
   };
 }
 
@@ -415,12 +479,21 @@ export interface PositionsSummary {
   outOfRangeValueUsd: number;
   /** Distinct pools behind `unmanaged` positions — what one-click adds would fix. */
   admittablePools: string[];
+  /** Sum of audit net PnL for open positions where known. Null when none known. */
+  netPnlUsd: number | null;
+  /** Open positions that contributed to `netPnlUsd`. */
+  netPnlKnownCount: number;
+  /** Open positions without audit net PnL yet. */
+  netPnlUnknownCount: number;
+  /** Total gas paid across open positions (audit log). */
+  gasPaidUsd: number;
 }
 
 export function summarizePositions(
   positions: readonly LpPositionView[],
   draftAllowlist: readonly string[],
   policyReadFailed = false,
+  pnlByLineage: Readonly<Record<string, LpLineagePnl>> = {},
 ): PositionsSummary {
   const summary: PositionsSummary = {
     total: positions.length,
@@ -436,9 +509,14 @@ export function summarizePositions(
     outOfRange: 0,
     outOfRangeValueUsd: 0,
     admittablePools: [],
+    netPnlUsd: null,
+    netPnlKnownCount: 0,
+    netPnlUnknownCount: 0,
+    gasPaidUsd: 0,
   };
 
   const admittable = new Set<string>();
+  let netPnlSum = 0;
 
   for (const position of positions) {
     const coverage = positionCoverage(position, draftAllowlist, policyReadFailed);
@@ -452,6 +530,20 @@ export function summarizePositions(
     summary.open += 1;
     summary.valueUsd += value;
     summary.unclaimedFeesUsd += fees;
+
+    const pnl = pnlByLineage[positionKey(position)];
+    if (pnl) {
+      summary.gasPaidUsd += finite(pnl.gasPaidUsd) ?? 0;
+      const net = finite(pnl.netPnlUsd);
+      if (net !== null) {
+        netPnlSum += net;
+        summary.netPnlKnownCount += 1;
+      } else {
+        summary.netPnlUnknownCount += 1;
+      }
+    } else {
+      summary.netPnlUnknownCount += 1;
+    }
 
     if (isCoveredNow(coverage)) {
       summary.managed += 1;
@@ -473,6 +565,7 @@ export function summarizePositions(
   }
 
   summary.admittablePools = Array.from(admittable);
+  summary.netPnlUsd = summary.netPnlKnownCount > 0 ? netPnlSum : null;
   return summary;
 }
 
