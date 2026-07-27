@@ -66,6 +66,7 @@ export interface ExecutorDeps {
    * also execute at a materially worse price than the one we decided on.
    */
   calldataMaxAgeMs: number;
+  rebalanceCalldataMaxAgeMs?: number;
   /**
    * Wait for a mined receipt after broadcast. When provided, a `broadcast`
    * outcome is not treated as success until the receipt confirms `success`.
@@ -132,12 +133,16 @@ export class ActionExecutor {
     if (guard !== null) return { status: 'refused', refusal: guard };
 
     const age = now() - transaction.meta.builtAt;
-    if (age > this.deps.calldataMaxAgeMs) {
+    const maxAge =
+      action === 'rebalance'
+        ? (this.deps.rebalanceCalldataMaxAgeMs ?? this.deps.calldataMaxAgeMs)
+        : this.deps.calldataMaxAgeMs;
+    if (age > maxAge) {
       return {
         status: 'refused',
         refusal: {
           rule: 'lifecycle.calldata_stale',
-          reason: `calldata is ${age}ms old, past the ${this.deps.calldataMaxAgeMs}ms limit; re-quote before executing`,
+          reason: `calldata is ${age}ms old, past the ${maxAge}ms limit; re-quote before executing`,
         },
       };
     }

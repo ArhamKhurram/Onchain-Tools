@@ -102,6 +102,8 @@ export interface LifecycleOptions {
   commandPollIntervalMs?: number;
   /** Parked calldata older than this is rebuilt rather than submitted. */
   calldataMaxAgeMs?: number;
+  /** Tighter freshness window for rebalance calldata (swap min-outs perish faster). */
+  rebalanceCalldataMaxAgeMs?: number;
   /**
    * Operator-supplied gas cost estimate in USD for one lifecycle transaction.
    *
@@ -174,6 +176,7 @@ const DEFAULTS = {
   positionPollIntervalMs: 60_000,
   commandPollIntervalMs: 5_000,
   calldataMaxAgeMs: 30_000,
+  rebalanceCalldataMaxAgeMs: 15_000,
 } as const;
 
 /** Warm rebalance calldata at this fraction of `rangeExitPercent` (3% when threshold is 5%). */
@@ -189,6 +192,7 @@ export class LifecycleLoop {
   private readonly positionPollIntervalMs: number;
   private readonly commandPollIntervalMs: number;
   private readonly calldataMaxAgeMs: number;
+  private readonly rebalanceCalldataMaxAgeMs: number;
   private readonly gasCostUsd: number | null;
   private readonly alertOutOfRangeMinutes: number;
   private readonly alertGasThresholdUsd: number | null;
@@ -225,6 +229,8 @@ export class LifecycleLoop {
     this.commandPollIntervalMs =
       deps.options?.commandPollIntervalMs ?? DEFAULTS.commandPollIntervalMs;
     this.calldataMaxAgeMs = deps.options?.calldataMaxAgeMs ?? DEFAULTS.calldataMaxAgeMs;
+    this.rebalanceCalldataMaxAgeMs =
+      deps.options?.rebalanceCalldataMaxAgeMs ?? DEFAULTS.rebalanceCalldataMaxAgeMs;
     this.gasCostUsd = deps.options?.gasCostUsd ?? null;
     this.alertOutOfRangeMinutes = deps.options?.alertOutOfRangeMinutes ?? 0;
     this.alertGasThresholdUsd = deps.options?.alertGasThresholdUsd ?? null;
@@ -238,6 +244,7 @@ export class LifecycleLoop {
       newId: this.newId,
       quarantine: () => this.quarantine,
       calldataMaxAgeMs: this.calldataMaxAgeMs,
+      rebalanceCalldataMaxAgeMs: this.rebalanceCalldataMaxAgeMs,
       waitForReceipt: deps.waitForReceipt,
       nativeTokenUsd: deps.nativeTokenUsd ?? null,
       estimatedGasCostUsd: this.gasCostUsd,
@@ -694,11 +701,10 @@ export class LifecycleLoop {
       return;
     }
 
-    await this.act({
+    await this.actRebalance({
       position,
       policy,
       decision,
-      action: 'rebalance',
       build: () =>
         this.deps.calldata.rebalance({
           position,
@@ -799,11 +805,10 @@ export class LifecycleLoop {
       return;
     }
 
-    await this.act({
+    await this.actRebalance({
       position,
       policy,
       decision,
-      action: 'rebalance',
       build: () =>
         this.deps.calldata.rebalance({
           position,
@@ -1049,13 +1054,16 @@ export class LifecycleLoop {
       return failure(build);
     }
 
-    const result = await this.act({
-      position,
-      policy,
-      decision,
-      action: singleStep.action,
-      build,
-    });
+    const result =
+      singleStep.action === 'rebalance'
+        ? await this.actRebalance({ position, policy, decision, build })
+        : await this.act({
+            position,
+            policy,
+            decision,
+            action: singleStep.action,
+            build,
+          });
 
     return commandResult(result);
   }
@@ -1097,11 +1105,10 @@ export class LifecycleLoop {
     }
 
     const rebalanceDecision = manualCompoundRebalanceStep(command, position, policy, 'rebalance');
-    const rebalanceResult = await this.act({
+    const rebalanceResult = await this.actRebalance({
       position,
       policy,
       decision: rebalanceDecision,
-      action: 'rebalance',
       build: () =>
         this.deps.calldata.rebalance({
           position,
@@ -1431,7 +1438,42 @@ export class LifecycleLoop {
       txHash: first.recorded.txHash,
     });
 
-    return this.act(request);
+    return this.act({ ...request, skipWarm: true });
+  }
+
+  private async actRebalance(request: {
+    position: LpPosition;
+    policy: AutomationPolicy;
+    decision: Decision;
+    build: () => Promise<PreparedTransaction>;
+  }): Promise<ActionResult | { status: 'position_busy'; reason: string }> {
+    const first = await this.act({ ...request, action: 'rebalance' });
+    if (!this.shouldRequoteRebalance(first)) return first;
+
+    this.logger.warn('lp-lifecycle: rebalance stale or reverted; re-quoting once', {
+      tokenId: request.position.tokenId,
+      status: first.status,
+      ...(first.status === 'submitted' ? { txHash: first.recorded.txHash } : {}),
+      ...(first.status === 'refused' ? { rule: first.refusal.rule } : {}),
+    });
+
+    return this.act({ ...request, action: 'rebalance', skipWarm: true });
+  }
+
+  private shouldRequoteRebalance(
+    result: ActionResult | { status: 'position_busy'; reason: string },
+  ): boolean {
+    if (result.status === 'refused' && result.refusal.rule === 'lifecycle.calldata_stale') {
+      return true;
+    }
+    if (
+      result.status === 'submitted' &&
+      result.recorded.error !== null &&
+      result.recorded.error.includes('reverted on chain')
+    ) {
+      return true;
+    }
+    return false;
   }
 
   // --- the single execution funnel -----------------------------------------
@@ -1453,8 +1495,9 @@ export class LifecycleLoop {
     decision: Decision;
     action: ExecutableAction;
     build: () => Promise<PreparedTransaction>;
+    skipWarm?: boolean;
   }): Promise<ActionResult | { status: 'position_busy'; reason: string }> {
-    const { position, policy, action, build } = request;
+    const { position, policy, action, build, skipWarm = false } = request;
     const decision = withPositionSnapshot(request.decision, position);
 
     const attempt = await this.locks.tryRun(position.tokenId, async (): Promise<ActionResult> => {
@@ -1469,7 +1512,7 @@ export class LifecycleLoop {
       }
 
       let transaction: PreparedTransaction;
-      const warm = this.takeWarm(action, position.tokenId);
+      const warm = skipWarm ? null : this.takeWarm(action, position.tokenId);
       if (warm !== null) {
         transaction = warm;
       } else {
@@ -1545,7 +1588,7 @@ export class LifecycleLoop {
   private isWarmFresh(tokenId: string): boolean {
     const parked = this.warm.get(tokenId);
     if (parked === undefined) return false;
-    return this.now() - parked.transaction.meta.builtAt <= this.calldataMaxAgeMs;
+    return this.now() - parked.transaction.meta.builtAt <= this.rebalanceCalldataMaxAgeMs;
   }
 
   private async warmRebalanceCalldata(
@@ -1626,13 +1669,17 @@ export class LifecycleLoop {
   }
   private sendAlert(payload: LpAlertPayload): Promise<void> { return this.alerts?.send(payload) ?? Promise.resolve(); }
 
+  private calldataMaxAgeFor(action: ExecutableAction): number {
+    return action === 'rebalance' ? this.rebalanceCalldataMaxAgeMs : this.calldataMaxAgeMs;
+  }
+
   /** Parked calldata for this position, if it is the right action and fresh. */
   private takeWarm(action: ExecutableAction, tokenId: string): PreparedTransaction | null {
     const parked = this.warm.get(tokenId);
     if (parked === undefined) return null;
     this.warm.delete(tokenId);
     if (parked.action !== action) return null;
-    if (this.now() - parked.transaction.meta.builtAt > this.calldataMaxAgeMs) return null;
+    if (this.now() - parked.transaction.meta.builtAt > this.calldataMaxAgeFor(action)) return null;
     return parked.transaction;
   }
 

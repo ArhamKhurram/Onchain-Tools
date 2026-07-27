@@ -314,6 +314,7 @@ export async function run(options: RunOptions = {}): Promise<LifecycleLoop> {
       positionPollIntervalMs: config.positionPollIntervalMs,
       commandPollIntervalMs: config.commandPollIntervalMs,
       calldataMaxAgeMs: config.calldataMaxAgeMs,
+      rebalanceCalldataMaxAgeMs: config.rebalanceCalldataMaxAgeMs,
       gasCostUsd: config.gasCostUsd,
       alertOutOfRangeMinutes: config.alertOutOfRangeMinutes,
       alertGasThresholdUsd: config.alertGasThresholdUsd,
