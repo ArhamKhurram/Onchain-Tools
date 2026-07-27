@@ -27,6 +27,7 @@ export interface ParsedArgs {
 }
 
 const BOOLEAN_FLAGS = new Set([
+  'annotate',
   'broadcast',
   'help',
   'h',

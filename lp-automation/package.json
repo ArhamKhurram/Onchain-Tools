@@ -22,7 +22,8 @@
     "verify:setup": "tsx scripts/verifySetup.ts",
     "forktest": "tsx scripts/forktest.ts",
     "forktest:compound": "tsx scripts/forktest.ts compound",
-    "forktest:rebalance": "tsx scripts/forktest.ts rebalance"
+    "forktest:rebalance": "tsx scripts/forktest.ts rebalance",
+    "audit:hygiene": "tsx scripts/auditHygiene.ts"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.98.0",
