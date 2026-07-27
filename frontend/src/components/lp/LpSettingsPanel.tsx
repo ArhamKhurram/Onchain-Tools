@@ -1,6 +1,8 @@
+import { useState } from 'react';
 import LpSafeAddressField, { type LpSafeAddressFieldProps } from './LpSafeAddressField';
-import { LP_PANEL, LP_PANEL_HEADER, LP_PANEL_TITLE } from './styles';
-import { Settings } from 'lucide-react';
+import { LP_BTN_GHOST, LP_PANEL, LP_PANEL_HEADER, LP_PANEL_TITLE, LP_HELP } from './styles';
+import { downloadLpTaxExport } from '../../hooks/useLpTaxExport';
+import { Download, Settings } from 'lucide-react';
 
 /**
  * One-time LP page configuration — which Safe to read.
@@ -10,6 +12,17 @@ import { Settings } from 'lucide-react';
  */
 
 export default function LpSettingsPanel(props: LpSafeAddressFieldProps) {
+  const [exporting, setExporting] = useState(false);
+  const [exportError, setExportError] = useState<string | null>(null);
+
+  const handleExport = async (format: 'csv' | 'json') => {
+    setExporting(true);
+    setExportError(null);
+    const result = await downloadLpTaxExport(format);
+    if (!result.ok) setExportError(result.error ?? 'Export failed');
+    setExporting(false);
+  };
+
   return (
     <section className={LP_PANEL}>
       <div className={LP_PANEL_HEADER}>
@@ -19,6 +32,38 @@ export default function LpSettingsPanel(props: LpSafeAddressFieldProps) {
         </div>
       </div>
       <LpSafeAddressField {...props} />
+      <div className="px-4 py-4 border-t-2 border-oct-border space-y-3">
+        <div>
+          <p className="font-mono text-xs text-oct-text">Tax / accounting export</p>
+          <p className={`${LP_HELP} mt-1`}>
+            Download successful LP actions from the worker audit log — deposits, withdrawals, compounds,
+            rebalances, and gas spent.
+          </p>
+        </div>
+        <div className="flex flex-wrap items-center gap-2">
+          <button
+            type="button"
+            onClick={() => void handleExport('csv')}
+            disabled={exporting || props.disabled}
+            className={LP_BTN_GHOST}
+          >
+            <Download size={12} />
+            {exporting ? 'Exporting…' : 'Download CSV'}
+          </button>
+          <button
+            type="button"
+            onClick={() => void handleExport('json')}
+            disabled={exporting || props.disabled}
+            className={LP_BTN_GHOST}
+          >
+            <Download size={12} />
+            JSON
+          </button>
+        </div>
+        {exportError && (
+          <p className="font-mono text-[11px] text-oct-flame">{exportError}</p>
+        )}
+      </div>
     </section>
   );
 }

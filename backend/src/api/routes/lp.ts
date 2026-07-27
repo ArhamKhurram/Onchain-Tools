@@ -1,4 +1,4 @@
-import { Router } from 'express';
+﻿import { Router } from 'express';
 import rateLimit from 'express-rate-limit';
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'fs';
 import { dirname, join } from 'path';
@@ -8,6 +8,7 @@ import { isHostedMode } from '../../storage/index.js';
 import { auditLogPathFromEnv, nativeTokenUsdFromEnv, readAuditLog } from '../../lp/auditReader.js';
 import { buildLineagePnlInputs } from '../../lp/lineagePnl.js';
 import { deriveAllLineagePnl, extractLineageLinks, type LineageLink, type LineagePnl } from '../../lp/pnl.js';
+import { buildTaxExportRows, taxExportRowsToCsv } from '../../lp/taxExport.js';
 import { getUserId, safeError } from '../shared.js';
 
 // LP automation policy + pool-candidate API (LP_AUTOMATION_PLAN.md §5, §9.1-2).
@@ -1999,24 +2000,53 @@ async function readSettings(userId: string): Promise<LpSettings> {
  */
 async function writeSettings(userId: string, patch: SettingsPatch): Promise<LpSettings> {
   const current = await readSettings(userId);
-  const merged = {
-    safeAddress: 'safeAddress' in patch ? patch.safeAddress ?? null : current.safeAddress,
+  let safeAddresses = current.safeAddresses;
+  let activeSafeAddress = current.activeSafeAddress;
+
+  if ('safeAddresses' in patch) {
+    safeAddresses = patch.safeAddresses ?? [];
+  }
+
+  if ('safeAddress' in patch) {
+    const addr = patch.safeAddress ?? null;
+    if (addr === null) {
+      safeAddresses = [];
+      activeSafeAddress = null;
+    } else if (!safeAddresses.includes(addr)) {
+      safeAddresses = [...safeAddresses, addr].slice(0, MAX_LP_SAFE_ADDRESSES);
+      activeSafeAddress = addr;
+    } else {
+      activeSafeAddress = addr;
+    }
+  }
+
+  if ('activeSafeAddress' in patch) {
+    activeSafeAddress = patch.activeSafeAddress ?? null;
+  }
+
+  const safes = normalizeLpSafeSettings({ safeAddresses, activeSafeAddress });
+  const merged: LpSettings = {
+    ...safes,
     moduleAddress: 'moduleAddress' in patch ? patch.moduleAddress ?? null : current.moduleAddress,
+    updatedAt: current.updatedAt,
   };
 
   if (isHostedMode()) {
     const db = getServiceClient();
     if (!db) throw new Error('Supabase is not configured.');
-    // `updated_at` is deliberately not sent: the table's default fills it on
-    // insert and its trigger refreshes it on update, so the timestamp comes from
-    // the database clock rather than from whichever server handled the request.
     const { data, error } = await db
       .from(SETTINGS_TABLE)
       .upsert(
-        { user_id: userId, safe_address: merged.safeAddress, module_address: merged.moduleAddress },
+        {
+          user_id: userId,
+          safe_address: merged.safeAddress,
+          safe_addresses: merged.safeAddresses,
+          active_safe_address: merged.activeSafeAddress,
+          module_address: merged.moduleAddress,
+        },
         { onConflict: 'user_id' },
       )
-      .select('safe_address, module_address, updated_at')
+      .select('safe_address, safe_addresses, active_safe_address, module_address, updated_at')
       .single();
     if (error) throw new Error(`Failed to save LP settings: ${error.message}`);
     return rowToSettings(data as SettingsRow);
@@ -2486,7 +2516,17 @@ export function createLpRoutes(): Router {
     try {
       const userId = getUserId(req);
       const settings = await readSettings(userId);
-      const safeAddress = settings.safeAddress;
+      const querySafe =
+        typeof req.query.safe === 'string' && req.query.safe.trim() !== ''
+          ? req.query.safe.trim().toLowerCase()
+          : null;
+      if (querySafe && !ADDRESS_PATTERN.test(querySafe)) {
+        return res.status(400).json({ error: 'safe must be a 0x-prefixed 20-byte hex address' });
+      }
+      if (querySafe && !settings.safeAddresses.includes(querySafe)) {
+        return res.status(400).json({ error: 'That Safe is not in your configured list.' });
+      }
+      const safeAddress = querySafe ?? settings.activeSafeAddress ?? settings.safeAddress;
 
       if (!safeAddress) {
         return res.json({
@@ -2800,6 +2840,55 @@ export function createLpRoutes(): Router {
       res.json({ commands });
     } catch (err) {
       res.status(500).json({ error: safeError(err, 'Failed to load LP commands') });
+    }
+  });
+
+  // GET /api/lp/export.csv | /api/lp/export.json — tax/accounting ledger from the audit log.
+  async function loadTaxExport() {
+    const auditPath = auditLogPathFromEnv();
+    if (!auditPath) {
+      return { rows: [], available: false };
+    }
+    const { records, available } = await readAuditLog(auditPath);
+    const rows = buildTaxExportRows(records, {
+      fallbackNativeTokenUsd: nativeTokenUsdFromEnv(),
+    });
+    return { rows, available };
+  }
+
+  router.get('/export.csv', positionsLimiter, async (_req, res) => {
+    try {
+      const { rows, available } = await loadTaxExport();
+      if (!available) {
+        return res.status(503).json({
+          error: 'LP audit log is not available on this backend.',
+          available: false,
+        });
+      }
+      res.setHeader('Content-Type', 'text/csv; charset=utf-8');
+      res.setHeader('Content-Disposition', 'attachment; filename="lp-activity.csv"');
+      res.send(taxExportRowsToCsv(rows));
+    } catch (err) {
+      res.status(500).json({ error: safeError(err, 'Failed to export LP activity') });
+    }
+  });
+
+  router.get('/export.json', positionsLimiter, async (_req, res) => {
+    try {
+      const { rows, available } = await loadTaxExport();
+      if (!available) {
+        return res.status(503).json({
+          error: 'LP audit log is not available on this backend.',
+          available: false,
+        });
+      }
+      res.json({
+        rows,
+        exportedAt: new Date().toISOString(),
+        available: true,
+      });
+    } catch (err) {
+      res.status(500).json({ error: safeError(err, 'Failed to export LP activity') });
     }
   });
 
