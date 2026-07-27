@@ -256,6 +256,7 @@ link are written correctly through a real rebalance before it's trusted.
 - **`dev` branch only** until the operator says prod. No push to `main`.
 - **Migrations apply to dev Supabase (`zcvubfadvdwjxgodznxh`) only.** Prod
   (`vmlxyqzjdaegkfylxfka`) is untouched until explicitly instructed.
+  See **`LP_DEPLOY.md`** for migration order and the full deploy checklist.
 - **No arming, no broadcast** from this work. Nothing here reaches `signer.submit`
   outside the existing `act()` funnel; the auto flags only *gate* the autonomous
   triggers, they don't add a path to the signer.
