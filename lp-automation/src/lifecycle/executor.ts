@@ -51,6 +51,16 @@ export type TransactionReceiptInfo =
   | { status: 'success'; gasUsed: bigint; effectiveGasPrice: bigint }
   | { status: 'reverted' };
 
+/** Optional post-receipt enrichment (enter/increase PnL fields from Krystal refresh). */
+export interface OutcomeEnrichmentRequest {
+  action: ExecutableAction;
+  position: LpPosition;
+  decision: Decision;
+  txHash: string;
+  receipt: TransactionReceiptInfo;
+  preValueUsd: number;
+}
+
 export interface ExecutorDeps {
   audit: AuditPort;
   signer: TransactionSigner;
@@ -75,6 +85,7 @@ export interface ExecutorDeps {
   nativeTokenUsd?: number | null;
   /** Fallback per-tx gas estimate when receipt read is unavailable. */
   estimatedGasCostUsd?: number | null;
+  enrichOutcomeSnapshot?: (request: OutcomeEnrichmentRequest) => Promise<OutcomeSnapshotExtra>;
 }
 
 export class ActionExecutor {
@@ -124,6 +135,7 @@ export class ActionExecutor {
     decision: Decision;
     action: ExecutableAction;
     transaction: PreparedTransaction;
+    preValueUsd?: number;
   }): Promise<ActionResult> {
     const { position, policy, decision, action, transaction } = request;
     const { audit, signer, logger, now, newId } = this.deps;
@@ -207,7 +219,30 @@ export class ActionExecutor {
 
     const resolved = await this.resolveRecordedOutcome(outcome);
     const recorded = { txHash: resolved.txHash, error: resolved.error };
-    const outcomeSnapshot = this.buildOutcomeSnapshot(recorded.txHash, recorded.error, resolved.receipt);
+    let outcomeSnapshot = this.buildOutcomeSnapshot(recorded.txHash, recorded.error, resolved.receipt);
+    if (recorded.error === null && recorded.txHash !== null && resolved.receipt?.status === 'success') {
+      const enricher = this.deps.enrichOutcomeSnapshot;
+      if (enricher !== undefined) {
+        try {
+          const extra = await enricher({
+            action,
+            position,
+            decision,
+            txHash: recorded.txHash,
+            receipt: resolved.receipt,
+            preValueUsd: request.preValueUsd ?? position.valueUsd,
+          });
+          if (Object.keys(extra).length > 0) outcomeSnapshot = { ...outcomeSnapshot, ...extra };
+        } catch (error) {
+          logger.warn('lp-lifecycle: outcome snapshot enrichment failed', {
+            auditId,
+            tokenId: position.tokenId,
+            action,
+            error: describe(error),
+          });
+        }
+      }
+    }
     try {
       await audit.recordOutcome(pending, recorded, now(), outcomeSnapshot);
     } catch (writeError) {

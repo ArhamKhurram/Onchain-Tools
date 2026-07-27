@@ -66,6 +66,8 @@ import { ROBINHOOD_CHAIN_ID } from '../types.js';
 import type { Address, AutomationPolicy, Decision, LpPosition, RangeStrategy } from '../types.js';
 import type { CommandResult, CommandSource, LpCommand } from './commandSource.js';
 import { ActionExecutor } from './executor.js';
+import { DEFAULT_LINEAGE_POLL_DELAYS_MS } from './lineage.js';
+import { enrichZapOutcomeSnapshot } from './zapPnl.js';
 import { PositionLocks } from './locks.js';
 import { rangeFromCenter, recenterRange, type TickRange } from './range.js';
 import { deriveLastCompounded, Quarantine } from './unresolved.js';
@@ -102,6 +104,8 @@ export interface LifecycleOptions {
   commandPollIntervalMs?: number;
   /** Parked calldata older than this is rebuilt rather than submitted. */
   calldataMaxAgeMs?: number;
+  /** Delays between position-feed polls while waiting for Krystal to index a new mint. */
+  lineagePollDelaysMs?: readonly number[];
   /**
    * Operator-supplied gas cost estimate in USD for one lifecycle transaction.
    *
@@ -174,6 +178,7 @@ const DEFAULTS = {
   positionPollIntervalMs: 60_000,
   commandPollIntervalMs: 5_000,
   calldataMaxAgeMs: 30_000,
+  rebalanceCalldataMaxAgeMs: 15_000,
 } as const;
 
 /** Warm rebalance calldata at this fraction of `rangeExitPercent` (3% when threshold is 5%). */
@@ -189,6 +194,7 @@ export class LifecycleLoop {
   private readonly positionPollIntervalMs: number;
   private readonly commandPollIntervalMs: number;
   private readonly calldataMaxAgeMs: number;
+  private readonly lineagePollDelaysMs: readonly number[];
   private readonly gasCostUsd: number | null;
   private readonly alertOutOfRangeMinutes: number;
   private readonly alertGasThresholdUsd: number | null;
@@ -225,6 +231,7 @@ export class LifecycleLoop {
     this.commandPollIntervalMs =
       deps.options?.commandPollIntervalMs ?? DEFAULTS.commandPollIntervalMs;
     this.calldataMaxAgeMs = deps.options?.calldataMaxAgeMs ?? DEFAULTS.calldataMaxAgeMs;
+    this.lineagePollDelaysMs = deps.options?.lineagePollDelaysMs ?? DEFAULT_LINEAGE_POLL_DELAYS_MS;
     this.gasCostUsd = deps.options?.gasCostUsd ?? null;
     this.alertOutOfRangeMinutes = deps.options?.alertOutOfRangeMinutes ?? 0;
     this.alertGasThresholdUsd = deps.options?.alertGasThresholdUsd ?? null;
@@ -238,9 +245,18 @@ export class LifecycleLoop {
       newId: this.newId,
       quarantine: () => this.quarantine,
       calldataMaxAgeMs: this.calldataMaxAgeMs,
+      rebalanceCalldataMaxAgeMs: this.rebalanceCalldataMaxAgeMs,
       waitForReceipt: deps.waitForReceipt,
       nativeTokenUsd: deps.nativeTokenUsd ?? null,
       estimatedGasCostUsd: this.gasCostUsd,
+      enrichOutcomeSnapshot: (request) =>
+        enrichZapOutcomeSnapshot(request, {
+          positions: this.deps.positions,
+          lineagePollDelaysMs: this.lineagePollDelaysMs,
+          knownTokenIds: new Set(this.positionsByToken.keys()),
+          parseMintFromReceipt: this.deps.extractRebalanceSuccessor,
+          warn: (message, meta) => this.logger.warn(message, meta),
+        }),
     });
   }
 
@@ -694,11 +710,10 @@ export class LifecycleLoop {
       return;
     }
 
-    await this.act({
+    await this.actRebalance({
       position,
       policy,
       decision,
-      action: 'rebalance',
       build: () =>
         this.deps.calldata.rebalance({
           position,
@@ -799,11 +814,10 @@ export class LifecycleLoop {
       return;
     }
 
-    await this.act({
+    await this.actRebalance({
       position,
       policy,
       decision,
-      action: 'rebalance',
       build: () =>
         this.deps.calldata.rebalance({
           position,
@@ -1049,13 +1063,16 @@ export class LifecycleLoop {
       return failure(build);
     }
 
-    const result = await this.act({
-      position,
-      policy,
-      decision,
-      action: singleStep.action,
-      build,
-    });
+    const result =
+      singleStep.action === 'rebalance'
+        ? await this.actRebalance({ position, policy, decision, build })
+        : await this.act({
+            position,
+            policy,
+            decision,
+            action: singleStep.action,
+            build,
+          });
 
     return commandResult(result);
   }
@@ -1097,11 +1114,10 @@ export class LifecycleLoop {
     }
 
     const rebalanceDecision = manualCompoundRebalanceStep(command, position, policy, 'rebalance');
-    const rebalanceResult = await this.act({
+    const rebalanceResult = await this.actRebalance({
       position,
       policy,
       decision: rebalanceDecision,
-      action: 'rebalance',
       build: () =>
         this.deps.calldata.rebalance({
           position,
@@ -1318,6 +1334,75 @@ export class LifecycleLoop {
     return commandResult(result);
   }
 
+  private async runDecrease(
+    command: LpCommand,
+    position: LpPosition,
+    policy: AutomationPolicy,
+  ): Promise<CommandResult> {
+    if (command.tokenInAddress === undefined) {
+      return failure(`decrease command ${command.id} is missing its target token; nothing was attempted.`);
+    }
+    const tokenOut = command.tokenInAddress;
+
+    const buildDecrease = this.deps.calldata.decrease;
+    if (buildDecrease === undefined) {
+      const reason =
+        'decrease is not wired into this worker: no decrease calldata builder is configured. Nothing was attempted.';
+      await this.recordRefusal(decreaseDecision(command, position, policy), {
+        rule: 'lifecycle.manual_unavailable',
+        reason,
+      });
+      return failure(reason);
+    }
+
+    if (tokenOut !== position.pool.token0.address && tokenOut !== position.pool.token1.address) {
+      const reason =
+        `token ${tokenOut} is not in pool ${position.pool.address} ` +
+        `(${position.pool.token0.address} / ${position.pool.token1.address}); refusing to decrease.`;
+      await this.recordRefusal(decreaseDecision(command, position, policy), {
+        rule: 'lifecycle.token_not_in_pool',
+        reason,
+      });
+      return failure(reason);
+    }
+
+    const resolved = resolveDecreaseLiquidityPercent(
+      {
+        liquidityPercent: command.liquidityPercent,
+        amountOut: command.amountIn,
+      },
+      position,
+      tokenOut,
+      this.deps.nativeTokenUsd ?? null,
+    );
+    if (!resolved.ok) {
+      await this.recordRefusal(decreaseDecision(command, position, policy), {
+        rule: 'lifecycle.decrease_invalid',
+        reason: resolved.reason,
+      });
+      return failure(resolved.reason);
+    }
+
+    const decision = decreaseDecision(command, position, policy, resolved);
+    const swapSlippage = command.swapSlippage;
+
+    const result = await this.actZap({
+      position,
+      policy,
+      decision,
+      action: 'decrease',
+      build: () =>
+        buildDecrease.call(this.deps.calldata, {
+          position,
+          targetToken: tokenOut,
+          liquidityPercent: resolved.liquidityPercent,
+          ...(swapSlippage === null || swapSlippage === undefined ? {} : { swapSlippage }),
+        }),
+    });
+
+    return commandResult(result);
+  }
+
   private async ensureZapAllowance(params: {
     token: Address;
     amountRequired: bigint;
@@ -1405,7 +1490,7 @@ export class LifecycleLoop {
   }
 
   /**
-   * Zap flows (enter / increase): run `act`, and if the chain receipt shows a
+   * Zap flows (enter / increase / decrease): run `act`, and if the chain receipt shows a
    * revert, re-quote from Krystal and try once more. Simulation cannot see
    * intra-block ordering or price drift between quote time and inclusion.
    */
@@ -1413,7 +1498,7 @@ export class LifecycleLoop {
     position: LpPosition;
     policy: AutomationPolicy;
     decision: Decision;
-    action: 'enter' | 'increase';
+    action: 'enter' | 'increase' | 'decrease';
     build: () => Promise<PreparedTransaction>;
   }): Promise<ActionResult | { status: 'position_busy'; reason: string }> {
     const first = await this.act(request);
@@ -1431,7 +1516,47 @@ export class LifecycleLoop {
       txHash: first.recorded.txHash,
     });
 
-    return this.act(request);
+    return this.act({ ...request, skipWarm: true });
+  }
+
+  /**
+   * Rebalance: run `act`, and if calldata is stale or the chain receipt shows a
+   * revert, re-quote from Krystal once. Warmed calldata from the observed
+   * crossing is skipped on retry so a fresh quote is always used.
+   */
+  private async actRebalance(request: {
+    position: LpPosition;
+    policy: AutomationPolicy;
+    decision: Decision;
+    build: () => Promise<PreparedTransaction>;
+  }): Promise<ActionResult | { status: 'position_busy'; reason: string }> {
+    const first = await this.act({ ...request, action: 'rebalance' });
+    if (!this.shouldRequoteRebalance(first)) return first;
+
+    this.logger.warn('lp-lifecycle: rebalance stale or reverted; re-quoting once', {
+      tokenId: request.position.tokenId,
+      status: first.status,
+      ...(first.status === 'submitted' ? { txHash: first.recorded.txHash } : {}),
+      ...(first.status === 'refused' ? { rule: first.refusal.rule } : {}),
+    });
+
+    return this.act({ ...request, action: 'rebalance', skipWarm: true });
+  }
+
+  private shouldRequoteRebalance(
+    result: ActionResult | { status: 'position_busy'; reason: string },
+  ): boolean {
+    if (result.status === 'refused' && result.refusal.rule === 'lifecycle.calldata_stale') {
+      return true;
+    }
+    if (
+      result.status === 'submitted' &&
+      result.recorded.error !== null &&
+      result.recorded.error.includes('reverted on chain')
+    ) {
+      return true;
+    }
+    return false;
   }
 
   // --- the single execution funnel -----------------------------------------
@@ -1453,8 +1578,9 @@ export class LifecycleLoop {
     decision: Decision;
     action: ExecutableAction;
     build: () => Promise<PreparedTransaction>;
+    skipWarm?: boolean;
   }): Promise<ActionResult | { status: 'position_busy'; reason: string }> {
-    const { position, policy, action, build } = request;
+    const { position, policy, action, build, skipWarm = false } = request;
     const decision = withPositionSnapshot(request.decision, position);
 
     const attempt = await this.locks.tryRun(position.tokenId, async (): Promise<ActionResult> => {
@@ -1469,7 +1595,7 @@ export class LifecycleLoop {
       }
 
       let transaction: PreparedTransaction;
-      const warm = this.takeWarm(action, position.tokenId);
+      const warm = skipWarm ? null : this.takeWarm(action, position.tokenId);
       if (warm !== null) {
         transaction = warm;
       } else {
@@ -1485,7 +1611,14 @@ export class LifecycleLoop {
         }
       }
 
-      const result = await this.executor.execute({ position, policy, decision, action, transaction });
+      const result = await this.executor.execute({
+        position,
+        policy,
+        decision,
+        action,
+        transaction,
+        preValueUsd: position.valueUsd,
+      });
 
       switch (result.status) {
         case 'submitted':
@@ -1545,7 +1678,7 @@ export class LifecycleLoop {
   private isWarmFresh(tokenId: string): boolean {
     const parked = this.warm.get(tokenId);
     if (parked === undefined) return false;
-    return this.now() - parked.transaction.meta.builtAt <= this.calldataMaxAgeMs;
+    return this.now() - parked.transaction.meta.builtAt <= this.rebalanceCalldataMaxAgeMs;
   }
 
   private async warmRebalanceCalldata(
@@ -1626,13 +1759,17 @@ export class LifecycleLoop {
   }
   private sendAlert(payload: LpAlertPayload): Promise<void> { return this.alerts?.send(payload) ?? Promise.resolve(); }
 
+  private calldataMaxAgeFor(action: ExecutableAction): number {
+    return action === 'rebalance' ? this.rebalanceCalldataMaxAgeMs : this.calldataMaxAgeMs;
+  }
+
   /** Parked calldata for this position, if it is the right action and fresh. */
   private takeWarm(action: ExecutableAction, tokenId: string): PreparedTransaction | null {
     const parked = this.warm.get(tokenId);
     if (parked === undefined) return null;
     this.warm.delete(tokenId);
     if (parked.action !== action) return null;
-    if (this.now() - parked.transaction.meta.builtAt > this.calldataMaxAgeMs) return null;
+    if (this.now() - parked.transaction.meta.builtAt > this.calldataMaxAgeFor(action)) return null;
     return parked.transaction;
   }
 
@@ -1770,7 +1907,7 @@ function failure(reason: string): CommandResult {
  * position. Excludes `compound_rebalance` (two steps) and `enter` (no existing
  * position — handled by `runEnter`, not `commandBuilder`).
  */
-type SingleStepCommandAction = Exclude<LpCommand['action'], 'compound_rebalance' | 'enter' | 'increase'>;
+type SingleStepCommandAction = Exclude<LpCommand['action'], 'compound_rebalance' | 'enter' | 'increase' | 'decrease'>;
 
 function manualDecision(
   command: LpCommand & { action: SingleStepCommandAction },

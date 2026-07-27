@@ -8,7 +8,7 @@ import type {
   SubmitRequest,
   TransactionSigner,
 } from '../src/signer/types.js';
-import { ActionExecutor, type TransactionReceiptInfo } from '../src/lifecycle/executor.js';
+import { ActionExecutor, type OutcomeEnrichmentRequest, type TransactionReceiptInfo } from '../src/lifecycle/executor.js';
 import { Quarantine } from '../src/lifecycle/unresolved.js';
 import type { AuditPort, Logger } from '../src/lifecycle/types.js';
 import type { Address, AutomationPolicy, Decision, LpPosition } from '../src/types.js';
@@ -47,7 +47,7 @@ function position(): LpPosition {
   };
 }
 
-function preparedTransaction(): PreparedTransaction {
+function preparedTransaction(builtAt = NOW): PreparedTransaction {
   return Object.freeze({
     to: '0x73991a25c818bf1f1128deaab1492d45638de0d3' as Address,
     value: 0n,
@@ -61,7 +61,7 @@ function preparedTransaction(): PreparedTransaction {
       estimateGas: null,
       gasLimit: null,
       usedDefaultGas: false,
-      builtAt: NOW,
+      builtAt,
       txInfo: null,
     },
   }) as PreparedTransaction;
@@ -105,6 +105,7 @@ class FakeAudit implements AuditPort {
     pending: PendingAction;
     txHash: string | null;
     error: string | null;
+    outcomeSnapshot?: Record<string, unknown>;
   }[] = [];
 
   async read() {
@@ -116,8 +117,10 @@ class FakeAudit implements AuditPort {
   async recordOutcome(
     pending: PendingAction,
     outcome: { txHash: string | null; error: string | null },
+    _now: number,
+    outcomeSnapshot?: Record<string, unknown>,
   ): Promise<void> {
-    this.outcomes.push({ pending, ...outcome });
+    this.outcomes.push({ pending, ...outcome, outcomeSnapshot });
   }
 
   async recordEvaluation(): Promise<void> {}
@@ -130,6 +133,8 @@ function executor(
     signer?: FakeSigner;
     audit?: FakeAudit;
     waitForReceipt?: (txHash: string) => Promise<TransactionReceiptInfo | null>;
+    nativeTokenUsd?: number | null;
+    enrichOutcomeSnapshot?: (request: OutcomeEnrichmentRequest) => Promise<Record<string, unknown>>;
   } = {},
 ) {
   const signer = over.signer ?? new FakeSigner();
@@ -143,7 +148,10 @@ function executor(
       newId: () => 'audit-1',
       quarantine: () => Quarantine.empty(),
       calldataMaxAgeMs: 30_000,
+      rebalanceCalldataMaxAgeMs: 15_000,
       waitForReceipt: over.waitForReceipt,
+      nativeTokenUsd: over.nativeTokenUsd,
+      enrichOutcomeSnapshot: over.enrichOutcomeSnapshot,
     }),
     signer,
     audit,
@@ -174,6 +182,10 @@ describe('ActionExecutor receipt confirmation', () => {
       pending: expect.objectContaining({ id: 'audit-1' }),
       txHash: TX_HASH,
       error: null,
+      outcomeSnapshot: expect.objectContaining({
+        gasUsed: '120000',
+        effectiveGasPriceWei: '1000000000',
+      }),
     });
     expect(waitForReceipt).toHaveBeenCalledWith(TX_HASH);
   });
@@ -216,5 +228,60 @@ describe('ActionExecutor receipt confirmation', () => {
     expect(result.recorded.error).toContain(TX_HASH);
     expect(audit.outcomes[0]?.txHash).toBe(TX_HASH);
     expect(audit.outcomes[0]?.error).toMatch(/timeout/);
+  });
+
+  it('merges enrichOutcomeSnapshot extras after a success receipt', async () => {
+    const enrichOutcomeSnapshot = vi.fn(async () => ({
+      depositValueUsd: 50,
+      valueUsd: 300,
+    }));
+    const waitForReceipt = vi.fn(async () => ({
+      status: 'success' as const,
+      gasUsed: 100_000n,
+      effectiveGasPrice: 1_000n,
+    }));
+    const { executor: actionExecutor, audit } = executor({ waitForReceipt, enrichOutcomeSnapshot });
+
+    await actionExecutor.execute({
+      position: position(),
+      policy: policy(),
+      decision: decision(),
+      action: 'increase',
+      transaction: preparedTransaction(),
+      preValueUsd: 250,
+    });
+
+    expect(enrichOutcomeSnapshot).toHaveBeenCalledOnce();
+    expect(audit.outcomes[0]?.outcomeSnapshot).toEqual(
+      expect.objectContaining({
+        depositValueUsd: 50,
+        valueUsd: 300,
+        gasUsed: '100000',
+      }),
+    );
+  });
+
+  it('includes nativeTokenUsd on success outcome snapshots when configured', async () => {
+    const waitForReceipt = vi.fn(async () => ({
+      status: 'success' as const,
+      gasUsed: 100_000n,
+      effectiveGasPrice: 1_000_000_000n,
+    }));
+    const { executor: actionExecutor, audit } = executor({ waitForReceipt, nativeTokenUsd: 2500 });
+
+    await actionExecutor.execute({
+      position: position(),
+      policy: policy(),
+      decision: decision(),
+      action: 'compound',
+      transaction: preparedTransaction(),
+    });
+
+    expect(audit.outcomes[0]?.outcomeSnapshot).toEqual(
+      expect.objectContaining({
+        nativeTokenUsd: 2500,
+        gasSpentUsd: expect.any(Number),
+      }),
+    );
   });
 });
