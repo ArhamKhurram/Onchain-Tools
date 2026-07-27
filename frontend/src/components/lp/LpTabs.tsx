@@ -15,7 +15,7 @@ import type { ReactNode } from 'react';
 // see and get a rejection with no visible cause. Hence `alert` — rendered in
 // flame, and never suppressed by the tab being inactive.
 
-export type LpTabId = 'positions' | 'pools' | 'policy' | 'history';
+export type LpTabId = 'positions' | 'pools' | 'policy' | 'history' | 'settings';
 
 export interface LpTabDef {
   id: LpTabId;

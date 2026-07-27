@@ -252,6 +252,8 @@ const rowFromPayload = (payload: Record<string, unknown>, version = 1): PolicyRo
   max_interval_hours: payload.max_interval_hours as number,
   range_exit_percent: payload.range_exit_percent as number,
   range_strategy: payload.range_strategy as string,
+  auto_compound: (payload.auto_compound as boolean | undefined) ?? true,
+  auto_rebalance: (payload.auto_rebalance as boolean | undefined) ?? true,
   min_efficiency_delta_percent: payload.min_efficiency_delta_percent as number,
   sustained_duration_minutes: payload.sustained_duration_minutes as number,
   created_at: '2026-07-26T00:00:00.000Z',
@@ -280,6 +282,30 @@ describe('policy persistence round-trip', () => {
     const legacy = rowFromPayload(payload);
     delete (legacy as { range_strategy?: string }).range_strategy;
     expect(rowToStored(legacy).policy.rebalanceTrigger.rangeStrategy).toBe('narrow');
+  });
+
+  it('preserves auto-compound and auto-rebalance flags through payload -> row -> policy', () => {
+    const original = buildPolicy(
+      body({
+        compoundTrigger: { enabled: false, minFeesVsGasRatio: 3, maxIntervalHours: 24 },
+        rebalanceTrigger: { enabled: false, rangeExitPercent: 5, rangeStrategy: 'wide' },
+      }),
+      2,
+    );
+    const payload = policyToRpcPayload(original);
+    expect(payload.auto_compound).toBe(false);
+    expect(payload.auto_rebalance).toBe(false);
+
+    const restored = rowToStored(rowFromPayload(payload, 2)).policy;
+    expect(restored.compoundTrigger.enabled).toBe(false);
+    expect(restored.rebalanceTrigger.enabled).toBe(false);
+    expect(restored.rebalanceTrigger.rangeStrategy).toBe('wide');
+  });
+
+  it('rejects a non-boolean auto-compound flag', () => {
+    expect(
+      fieldsOf(body({ compoundTrigger: { enabled: 'yes', minFeesVsGasRatio: 3, maxIntervalHours: 24 } })),
+    ).toContain('compoundTrigger.enabled');
   });
 });
 

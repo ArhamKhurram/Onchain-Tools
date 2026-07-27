@@ -17,8 +17,9 @@
 // specifically to reduce the number of owner signatures: 5 transactions instead
 // of 6, and one fewer opportunity to sign the wrong thing.
 //
-// Run:  npx tsx scripts/seedAllowlist.ts
-//       npx tsx scripts/seedAllowlist.ts --revoke     (the exact inverse plan)
+// Run:  npm run tx:allowlist
+//       npm run tx:allowlist -- --delta   (only missing targets/selectors; skips operator if armed)
+//       npm run tx:allowlist -- --revoke  (the exact inverse plan)
 
 import type { Address } from 'viem';
 import { MODULE_ABI, SAFE_ABI } from './lib/abi.js';
@@ -41,18 +42,27 @@ import {
   SAFE_UI_BASE,
 } from './lib/constants.js';
 import { loadEnv, optionalEnv, resolveOperatorAddress } from './lib/env.js';
-import { buildAllowlistPlan, buildSetPausedPayload, renderPayload } from './lib/plan.js';
+import {
+  buildAllowlistPlan,
+  buildSetPausedPayload,
+  destinationsNeedingAllowlist,
+  operatorNeedsAuthorization,
+  renderPayload,
+} from './lib/plan.js';
 import { banner, heading, wrap } from './lib/report.js';
 
 const HELP = `
 seedAllowlist.ts — emit the owner-signed transactions that arm the module
 
-  npx tsx scripts/seedAllowlist.ts [flags]
+  npm run tx:allowlist [-- flags]
 
-THIS SCRIPT CANNOT BROADCAST. It holds no key. It prints five transaction
-payloads for the OFFLINE Safe owner key to execute.
+THIS SCRIPT CANNOT BROADCAST. It holds no key. It prints owner-signed
+transaction payloads for the OFFLINE Safe owner key to execute.
 
 Flags
+  --delta             Emit ONLY destinations not yet allowlisted on-chain.
+                      Skips setOperator when the hot key is already armed.
+                      Use this after adding WETH approve to the intended list.
   --module <0x...>    Override LP_MODULE_ADDRESS.
   --operator <0x...>  Override the operator address (else LP_OPERATOR_ADDRESS,
                       else derived from LP_OPERATOR_PRIVATE_KEY).
@@ -93,7 +103,11 @@ async function main(): Promise<number> {
   loadEnv();
   const args = parseArgs(argv);
   const revoke = args.booleans.has('revoke');
+  const delta = args.booleans.has('delta');
   const allowChain = parseInteger(args.values.get('allow-chain'), '--allow-chain');
+  if (delta && revoke) {
+    throw new ArgError('--delta and --revoke cannot be used together.');
+  }
 
   const moduleAddress = requireAddress(
     args.values.get('module') ?? optionalEnv('LP_MODULE_ADDRESS'),
@@ -212,7 +226,39 @@ async function main(): Promise<number> {
   }
 
   // --- the payloads ---------------------------------------------------------
-  const payloads = buildAllowlistPlan({ module: moduleAddress, operator, allowed: !revoke });
+  let destinations = ROBINHOOD_ALLOWLIST;
+  let includeOperator = true;
+  if (delta && moduleCode > 0) {
+    destinations = await destinationsNeedingAllowlist(publicClient, moduleAddress);
+    includeOperator = await operatorNeedsAuthorization(publicClient, moduleAddress, operator);
+    if (destinations.length === 0 && !includeOperator) {
+      print(heading('Nothing to do'));
+      print('  Every intended target, selector and operator is already configured on-chain.');
+      print('  Run npm run verify:setup to audit the live state.\n');
+      return EXIT_OK;
+    }
+    print(heading('Delta mode — missing on-chain entries only'));
+    print(`  destinations to add  ${destinations.length}`);
+    for (const dest of destinations) {
+      print(`    - ${dest.name}  ${dest.address}`);
+    }
+    print(`  setOperator needed   ${includeOperator ? 'yes' : 'no (already armed)'}`);
+    print('');
+  }
+
+  const payloads = buildAllowlistPlan({
+    module: moduleAddress,
+    operator,
+    allowed: !revoke,
+    destinations,
+    includeOperator,
+  });
+
+  if (payloads.length === 0) {
+    print(heading('Nothing to sign'));
+    print('  No payloads were generated.\n');
+    return EXIT_OK;
+  }
 
   print(heading(`${payloads.length} transactions to sign with the OFFLINE Safe owner key, IN THIS ORDER`));
   print('');
@@ -275,9 +321,8 @@ async function main(): Promise<number> {
     ),
   );
   print('');
-  print('  These addresses are NOT on the allowlist and must never be added:');
+  print('  These addresses must NEVER be added to the allowlist:');
   print(`    ${REFERENCE_CONTRACTS.uniswapV3Factory}   Uniswap V3 factory (pool verification only)`);
-  print(`    ${REFERENCE_CONTRACTS.weth}   WETH (token identification only)`);
 
   print(heading('Emergency halt, for reference'));
   print('  One owner-signed transaction stops every operator immediately, without touching the allowlist,');

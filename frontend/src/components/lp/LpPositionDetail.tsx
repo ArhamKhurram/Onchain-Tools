@@ -1,17 +1,24 @@
 import { useEffect } from 'react';
 import { Info, ShieldCheck, ShieldOff, X } from 'lucide-react';
-import { formatFeeTier, formatUsdExact } from './format';
+import { formatFeeTier, formatSignedPercent, formatSignedUsd, formatUsdExact } from './format';
 import {
   formatTokenId,
   isPoolInDraft,
   positionPairLabel,
+  presentStatus,
+  resolveDisplayPnl,
+  type LpLineagePnl,
+  type LpPositionView,
   type PositionTileModel,
 } from './positions';
 import { CoverageBanner, MoneyCell, RangeBar, StatusBadge } from './positionChrome';
-import { describeFeeAccrual, feeAccrual, type LpCommand, type LpCommandAction } from './commands';
+import { describeFeeAccrual, feeAccrual, type LpCommand, type LpCommandAction, inFlightActionFor } from './commands';
 import LpPositionActions from './LpPositionActions';
+import LpIncreaseForm from './LpIncreaseForm';
+import LpPolicyToggle from './LpPolicyToggle';
 import LpPositionHistorySlot from './LpPositionHistorySlot';
 import { LP_PANEL_TITLE } from './styles';
+import type { RangeStrategy } from './types';
 
 /**
  * The position dashboard — one position, everything known about it, and the
@@ -38,6 +45,10 @@ function AddressRow({ label, value }: { label: string; value: string | null | un
 
 export interface LpPositionDetailProps {
   tile: PositionTileModel;
+  /** Older tokenIds in the same pool lineage, newest-first. */
+  ancestors?: readonly LpPositionView[];
+  pnl?: LpLineagePnl | null;
+  auditLogAvailable?: boolean;
   /** The unsaved allowlist the page is editing. */
   draftAllowlist: readonly string[];
   /**
@@ -46,6 +57,13 @@ export interface LpPositionDetailProps {
    * here on purpose.
    */
   onSetCoverage: (poolAddress: string, covered: boolean) => void;
+  draftAutoCompound: boolean;
+  draftAutoRebalance: boolean;
+  savedAutoCompound: boolean;
+  savedAutoRebalance: boolean;
+  draftRangeStrategy: RangeStrategy;
+  onSetAutoCompound: (enabled: boolean) => void;
+  onSetAutoRebalance: (enabled: boolean) => void;
   /** True when the policy draft cannot be edited at all. Gates the switch only. */
   policyDisabled: boolean;
   commands: LpCommand[];
@@ -56,12 +74,24 @@ export interface LpPositionDetailProps {
   commandsError: string | null;
   onSubmitAction: (action: LpCommandAction) => void;
   onClose: () => void;
+  /** Re-read positions/commands after a queued increase. */
+  onRefresh?: () => void;
 }
 
 export default function LpPositionDetail({
   tile,
+  ancestors = [],
+  pnl = null,
+  auditLogAvailable = false,
   draftAllowlist,
   onSetCoverage,
+  draftAutoCompound,
+  draftAutoRebalance,
+  savedAutoCompound,
+  savedAutoRebalance,
+  draftRangeStrategy,
+  onSetAutoCompound,
+  onSetAutoRebalance,
   policyDisabled,
   commands,
   submitting,
@@ -71,8 +101,10 @@ export default function LpPositionDetail({
   commandsError,
   onSubmitAction,
   onClose,
+  onRefresh,
 }: LpPositionDetailProps) {
   const { position, coverage, status, geometry } = tile;
+  const inFlight = inFlightActionFor(commands, position.tokenId);
 
   useEffect(() => {
     const onKey = (event: KeyboardEvent) => {
@@ -88,6 +120,7 @@ export default function LpPositionDetail({
   const unsaved = inDraft !== position.isAllowlisted;
   const accrual = feeAccrual(position);
   const closed = coverage === 'closed';
+  const displayPnl = resolveDisplayPnl(pnl, position, auditLogAvailable);
 
   return (
     <div className="fixed inset-0 z-[100] flex" role="dialog" aria-modal="true" aria-label="Position detail">
@@ -158,6 +191,35 @@ export default function LpPositionDetail({
           </CoverageBanner>
 
           {!closed && (
+            <div className="border-2 border-oct-border bg-oct-surface px-4 py-3 space-y-3">
+              <p className="font-mono text-[10px] uppercase tracking-[0.14em] text-oct-muted">
+                Autonomous behavior
+              </p>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <LpPolicyToggle
+                  label="Auto-compound"
+                  enabled={draftAutoCompound}
+                  onChange={onSetAutoCompound}
+                  disabled={policyDisabled}
+                  unsaved={draftAutoCompound !== savedAutoCompound}
+                  help="Gates autonomous compounding for all managed positions. Manual compound still works."
+                />
+                <LpPolicyToggle
+                  label="Auto-rebalance"
+                  enabled={draftAutoRebalance}
+                  onChange={onSetAutoRebalance}
+                  disabled={policyDisabled}
+                  unsaved={draftAutoRebalance !== savedAutoRebalance}
+                  help={`Gates autonomous rebalancing. Range strategy: ${draftRangeStrategy}. Manual rebalance still works.`}
+                />
+              </div>
+              <p className="font-mono text-[10px] text-oct-muted leading-relaxed">
+                Changes apply after you close this panel and Save the policy — same draft as the allowlist above.
+              </p>
+            </div>
+          )}
+
+          {!closed && (
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <MoneyCell
                 label="Position value"
@@ -169,6 +231,47 @@ export default function LpPositionDetail({
                 value={formatUsdExact(position.unclaimedFeesUsd)}
                 sub={describeFeeAccrual(accrual, coverage)}
               />
+            </div>
+          )}
+
+          {!closed && (
+            <div className="border-2 border-oct-border bg-oct-surface px-4 py-3">
+              <div className="flex items-start justify-between gap-2 mb-3">
+                <h4 className={LP_PANEL_TITLE}>{displayPnl.label}</h4>
+                {displayPnl.hint && (
+                  <p className="font-mono text-[10px] text-oct-muted text-right max-w-[14rem] leading-snug">
+                    {displayPnl.hint}
+                  </p>
+                )}
+              </div>
+              <div className="grid grid-cols-2 sm:grid-cols-3 gap-4">
+                <MoneyCell
+                  label={displayPnl.label}
+                  value={
+                    displayPnl.source === 'audit'
+                      ? formatSignedUsd(displayPnl.valueUsd)
+                      : formatUsdExact(displayPnl.valueUsd)
+                  }
+                  sub={
+                    displayPnl.percent !== null ? formatSignedPercent(displayPnl.percent) : undefined
+                  }
+                />
+                {pnl && displayPnl.source === 'audit' && (
+                  <>
+                    <MoneyCell
+                      label={pnl.costBasisKnown ? 'Cost basis' : `Basis since ${pnl.costBasisSince ?? '?'}`}
+                      value={formatUsdExact(pnl.costBasisUsd)}
+                    />
+                    <MoneyCell label="Gas paid" value={formatUsdExact(pnl.gasPaidUsd)} />
+                  </>
+                )}
+                {displayPnl.source === 'indicative' && (
+                  <>
+                    <MoneyCell label="Liquidity value" value={formatUsdExact(position.valueUsd)} />
+                    <MoneyCell label="Unclaimed fees" value={formatUsdExact(position.unclaimedFeesUsd)} />
+                  </>
+                )}
+              </div>
             </div>
           )}
 
@@ -185,7 +288,51 @@ export default function LpPositionDetail({
 
           <LpPositionHistorySlot />
 
-          <div className="border-2 border-oct-border bg-oct-surface px-4 py-3">
+          {ancestors.length > 0 && (
+            <div className="border-2 border-oct-border bg-oct-surface">
+              <div className="px-4 py-2 border-b-2 border-oct-border">
+                <h4 className={LP_PANEL_TITLE}>
+                  Earlier positions ({ancestors.length})
+                </h4>
+              </div>
+              <ul className="divide-y-2 divide-oct-border">
+                {ancestors.map((ancestor) => {
+                  const ancestorStatus = presentStatus(ancestor.status);
+                  return (
+                    <li key={ancestor.tokenId} className="px-4 py-3 flex flex-wrap items-baseline justify-between gap-2">
+                      <div className="min-w-0">
+                        <p className="font-mono text-xs text-oct-text">
+                          {formatTokenId(ancestor.tokenId)}
+                          <span className="text-oct-muted ml-2">{ancestorStatus.label}</span>
+                        </p>
+                        <p className="font-mono text-[10px] text-oct-muted mt-0.5">
+                          Withdrawn predecessor — same pool, replaced on rebalance.
+                        </p>
+                      </div>
+                      <p className="font-mono text-xs text-oct-muted tabular-nums shrink-0">
+                        {formatUsdExact(ancestor.valueUsd)}
+                      </p>
+                    </li>
+                  );
+                })}
+              </ul>
+            </div>
+          )}
+
+          <div className="border-2 border-oct-border bg-oct-surface px-4 py-3 space-y-3">
+            {!closed && !commandsUnavailable && (
+              <LpIncreaseForm
+                position={position}
+                enabled={!policyDisabled}
+                blocked={inFlight !== null}
+                blockedReason={
+                  inFlight !== null
+                    ? `A ${inFlight} is already queued for this position — wait for it to finish before adding more.`
+                    : null
+                }
+                onSubmitted={() => onRefresh?.()}
+              />
+            )}
             {commandsUnavailable ? (
               <p className="font-mono text-[11px] text-oct-muted leading-relaxed">
                 This backend has no manual-actions API yet, so there is nothing to queue against. The

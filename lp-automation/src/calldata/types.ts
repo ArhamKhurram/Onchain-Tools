@@ -15,6 +15,9 @@ export type LpTxnKind =
   | 'swap_and_increase'
   | 'withdraw_and_swap';
 
+/** Krystal lp_transaction ops plus locally-built ERC-20 approve. */
+export type PreparedTransactionKind = LpTxnKind | 'erc20_approve';
+
 /** Krystal path segment for each operation. */
 export const LP_TXN_PATHS: Record<LpTxnKind, string> = {
   compound: '/all/v1/lp_transaction/compound',
@@ -43,7 +46,7 @@ export interface PreparedTransaction {
 }
 
 export interface PreparedTransactionMeta {
-  readonly kind: LpTxnKind;
+  readonly kind: PreparedTransactionKind;
   readonly chainId: number;
   readonly platform: string;
   /** The address Krystal built the calldata FOR — must be the Safe. */

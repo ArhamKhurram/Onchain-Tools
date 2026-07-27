@@ -23,7 +23,7 @@ import type { PositionCoverage } from './positions';
 // separate workspace the console does not depend on. Keep in sync with
 // `POST /api/lp/positions/:tokenId/actions` and `GET /api/lp/commands`.
 
-export type LpCommandAction = 'compound' | 'rebalance' | 'exit';
+export type LpCommandAction = 'compound' | 'rebalance' | 'exit' | 'compound_rebalance' | 'increase';
 
 /**
  * `pending | claimed | done | failed` are the states the API actually stores.
@@ -53,7 +53,13 @@ export interface LpCommand {
   error: string | null;
 }
 
-export const COMMAND_ACTIONS: readonly LpCommandAction[] = ['compound', 'rebalance', 'exit'];
+export const COMMAND_ACTIONS: readonly LpCommandAction[] = [
+  'compound',
+  'rebalance',
+  'compound_rebalance',
+  'increase',
+  'exit',
+];
 
 const ACTION_SET = new Set<string>(COMMAND_ACTIONS);
 
@@ -210,6 +216,20 @@ export const ACTION_META: Record<LpCommandAction, ActionMeta> = {
     noun: 'rebalance',
     description:
       'Moves the range around the current price. The position is withdrawn and re-minted, so whatever is in it today is realised in the process.',
+    destructive: false,
+  },
+  compound_rebalance: {
+    label: 'Compound + rebalance',
+    noun: 'compound and rebalance',
+    description:
+      'Claims unclaimed fees back into the position, then recenters the range around the current price. Two on-chain steps, one queue entry.',
+    destructive: false,
+  },
+  increase: {
+    label: 'Add liquidity',
+    noun: 'add liquidity',
+    description:
+      'Zaps more of one token into this position without changing the range. The worker auto-approves WETH to Krystal when needed.',
     destructive: false,
   },
   exit: {
@@ -406,7 +426,7 @@ export function actionAvailability({
   if (coverage === 'closed') {
     return {
       enabled: false,
-      reason: 'This position is closed. There is nothing left to compound, rebalance or exit.',
+      reason: 'This position is closed. There is nothing left to compound, rebalance, exit, or compound-and-rebalance.',
     };
   }
 

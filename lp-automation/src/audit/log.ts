@@ -81,12 +81,20 @@ export function buildIntentRecord(pending: PendingAction): AuditRecord {
   };
 }
 
+/** Extra fields merged into the outcome snapshot (gas spent, lineage, etc.). */
+export type OutcomeSnapshotExtra = Record<string, unknown>;
+
 /** Build the "here is what happened" record. Pure. */
 export function buildOutcomeRecord(
   pending: PendingAction,
   outcome: { txHash: string | null; error: string | null },
   now: number,
+  outcomeSnapshot: OutcomeSnapshotExtra = {},
 ): AuditRecord {
+  const snapshot =
+    Object.keys(outcomeSnapshot).length === 0
+      ? pending.decision.snapshot
+      : { ...pending.decision.snapshot, ...outcomeSnapshot };
   return {
     id: pending.id,
     phase: outcome.error ? 'failure' : 'success',
@@ -94,7 +102,7 @@ export function buildOutcomeRecord(
     action: pending.decision.action,
     rule: pending.decision.rule,
     reason: pending.decision.reason,
-    snapshot: pending.decision.snapshot,
+    snapshot,
     txHash: outcome.txHash,
     error: outcome.error,
   };
@@ -118,6 +126,8 @@ export function findUnresolved(records: AuditRecord[]): AuditRecord[] {
 export function summarize(records: AuditRecord[]): Record<ActionKind, number> {
   const counts: Record<ActionKind, number> = {
     enter: 0,
+    increase: 0,
+    approve: 0,
     compound: 0,
     rebalance: 0,
     exit: 0,
@@ -153,8 +163,9 @@ export class AuditLog {
     pending: PendingAction,
     outcome: { txHash: string | null; error: string | null },
     now: number,
+    outcomeSnapshot: OutcomeSnapshotExtra = {},
   ): Promise<void> {
-    await this.append(buildOutcomeRecord(pending, outcome, now));
+    await this.append(buildOutcomeRecord(pending, outcome, now, outcomeSnapshot));
   }
 
   /**

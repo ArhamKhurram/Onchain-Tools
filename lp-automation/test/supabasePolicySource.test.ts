@@ -58,7 +58,18 @@ describe('rowToPolicy', () => {
     expect(policy.poolSelectionCriteria).toEqual({
       minTvlUsd: 100000, min24hVolumeUsd: 50000, maxIlRiskScore: 40,
     });
-    expect(policy.rebalanceTrigger).toEqual({ rangeExitPercent: 5, rangeStrategy: 'narrow' });
+    expect(policy.rebalanceTrigger).toEqual({
+      enabled: true,
+      rangeExitPercent: 5,
+      rangeStrategy: 'narrow',
+    });
+  });
+
+  it('maps auto flags from the database columns', () => {
+    expect(rowToPolicy(row({ auto_compound: false })).compoundTrigger.enabled).toBe(false);
+    expect(rowToPolicy(row({ auto_rebalance: false })).rebalanceTrigger.enabled).toBe(false);
+    expect(rowToPolicy(row({ auto_compound: null })).compoundTrigger.enabled).toBe(true);
+    expect(rowToPolicy(row({ auto_rebalance: null })).rebalanceTrigger.enabled).toBe(true);
   });
 
   it('accepts real numbers as well as strings', () => {

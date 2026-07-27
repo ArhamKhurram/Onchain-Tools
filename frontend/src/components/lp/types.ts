@@ -33,6 +33,8 @@ export interface PoolSelectionCriteria {
 }
 
 export interface CompoundTrigger {
+  /** When false, autonomous compound is skipped; manual commands still work. */
+  enabled: boolean;
   minFeesVsGasRatio: number;
   maxIntervalHours: number;
 }
@@ -46,6 +48,8 @@ export interface CompoundTrigger {
 export type RangeStrategy = 'narrow' | 'wide' | 'full';
 
 export interface RebalanceTrigger {
+  /** When false, autonomous rebalance is skipped; manual commands still work. */
+  enabled: boolean;
   rangeExitPercent: number;
   /**
    * Picked once in the policy; every automatic and manual rebalance uses it,

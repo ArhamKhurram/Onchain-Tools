@@ -54,6 +54,10 @@ export const DEFAULT_POLICY: AutomationPolicy = {
   },
 
   compoundTrigger: {
+    // Autonomous compound is on by default — existing managed positions should
+    // behave identically when this field is first introduced.
+    enabled: true,
+
     // 3.0, not the plan's illustrative 2.0. At 2x, a gas-price spike between the
     // decision and the broadcast can turn a marginal compound into a net loss.
     // 3x leaves headroom for that spike. The validator's hard floor is 1.0
@@ -68,6 +72,8 @@ export const DEFAULT_POLICY: AutomationPolicy = {
   },
 
   rebalanceTrigger: {
+    enabled: true,
+
     // 5% outside the range before we move. Tighter than this and ordinary
     // volatility rebalances us repeatedly, paying gas each time to chase price.
     rangeExitPercent: 5,

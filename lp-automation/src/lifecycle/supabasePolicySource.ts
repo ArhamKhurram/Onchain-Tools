@@ -34,6 +34,8 @@ interface PolicyRow {
   max_interval_hours: string | number;
   range_exit_percent: string | number;
   range_strategy: string | null;
+  auto_compound: boolean | null;
+  auto_rebalance: boolean | null;
   min_efficiency_delta_percent: string | number;
   sustained_duration_minutes: string | number;
 }
@@ -66,6 +68,11 @@ function num(value: unknown, field: string): number {
   throw new PolicySourceError(`${field} is missing or not numeric (received ${JSON.stringify(value)}).`);
 }
 
+function boolFlag(value: unknown, field: string, defaultValue: boolean): boolean {
+  if (value === null || value === undefined) return defaultValue;
+  if (typeof value === 'boolean') return value;
+  throw new PolicySourceError(`${field} is not a boolean (received ${JSON.stringify(value)}).`);
+}
 /**
  * Map the stored `range_strategy`. Null/absent -> 'narrow': a row written
  * before the column existed predates the choice, and narrow is the shipped
@@ -104,10 +111,12 @@ export function rowToPolicy(row: PolicyRow): AutomationPolicy {
       maxIlRiskScore: num(row.max_il_risk_score, 'max_il_risk_score'),
     },
     compoundTrigger: {
+      enabled: boolFlag(row.auto_compound, 'auto_compound', true),
       minFeesVsGasRatio: num(row.min_fees_vs_gas_ratio, 'min_fees_vs_gas_ratio'),
       maxIntervalHours: num(row.max_interval_hours, 'max_interval_hours'),
     },
     rebalanceTrigger: {
+      enabled: boolFlag(row.auto_rebalance, 'auto_rebalance', true),
       rangeExitPercent: num(row.range_exit_percent, 'range_exit_percent'),
       rangeStrategy: rangeStrategyOf(row.range_strategy),
     },

@@ -1,6 +1,9 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { API_BASE, apiFetch } from '../stores/appStore.helpers';
-import type { LpPositionSkip, LpPositionView } from '../components/lp/positions';
+import type { LpPositionSkip, LpLineageLink, LpLineagePnl, LpPositionView } from '../components/lp/positions';
+
+/** Background refresh — Krystal quotes are cached, not live. */
+const POSITIONS_POLL_MS = 30_000;
 
 /**
  * `GET /api/lp/positions`
@@ -29,6 +32,9 @@ export interface UseLpPositionsResult {
    * is protected on a transient database error.
    */
   policyReadFailed: boolean;
+  pnlByLineage: Record<string, LpLineagePnl>;
+  lineageLinks: LpLineageLink[];
+  auditLogAvailable: boolean;
   fetchedAt: string | null;
   loading: boolean;
   error: string | null;
@@ -62,19 +68,22 @@ export function useLpPositions(enabled = true): UseLpPositionsResult {
   const [configured, setConfigured] = useState(false);
   const [skipped, setSkipped] = useState<LpPositionSkip[]>([]);
   const [policyReadFailed, setPolicyReadFailed] = useState(false);
+  const [pnlByLineage, setPnlByLineage] = useState<Record<string, LpLineagePnl>>({});
+  const [lineageLinks, setLineageLinks] = useState<LpLineageLink[]>([]);
+  const [auditLogAvailable, setAuditLogAvailable] = useState(false);
   const [fetchedAt, setFetchedAt] = useState<string | null>(null);
   const [loading, setLoading] = useState(enabled);
   const [error, setError] = useState<string | null>(null);
   const [unavailable, setUnavailable] = useState(false);
   const requestId = useRef(0);
 
-  const refresh = useCallback(async () => {
+  const refreshInternal = useCallback(async (silent: boolean) => {
     if (!enabled) {
-      setLoading(false);
+      if (!silent) setLoading(false);
       return;
     }
     const id = ++requestId.current;
-    setLoading(true);
+    if (!silent) setLoading(true);
     setError(null);
 
     try {
@@ -125,19 +134,40 @@ export function useLpPositions(enabled = true): UseLpPositionsResult {
       setSkipped(parseSkipped(record.skipped));
       // Absent (older backend) reads as false — the normal, non-alarming default.
       setPolicyReadFailed(record.policyReadFailed === true);
+      if (record.pnlByLineage && typeof record.pnlByLineage === 'object') {
+        setPnlByLineage(record.pnlByLineage as Record<string, LpLineagePnl>);
+      } else {
+        setPnlByLineage({});
+      }
+      setLineageLinks(Array.isArray(record.lineageLinks) ? (record.lineageLinks as LpLineageLink[]) : []);
+      setAuditLogAvailable(record.auditLogAvailable === true);
       setFetchedAt(typeof record.fetchedAt === 'string' ? record.fetchedAt : null);
     } catch (err) {
       if (id !== requestId.current) return;
-      setError(err instanceof Error ? err.message : 'Failed to load positions');
-      setPositions([]);
+      if (!silent) {
+        setError(err instanceof Error ? err.message : 'Failed to load positions');
+        setPositions([]);
+      }
     } finally {
-      if (id === requestId.current) setLoading(false);
+      if (id === requestId.current && !silent) setLoading(false);
     }
   }, [enabled]);
 
+  const refresh = useCallback(async () => {
+    await refreshInternal(false);
+  }, [refreshInternal]);
+
   useEffect(() => {
-    void refresh();
-  }, [refresh]);
+    void refreshInternal(false);
+  }, [refreshInternal]);
+
+  useEffect(() => {
+    if (!enabled) return;
+    const timer = window.setInterval(() => {
+      void refreshInternal(true);
+    }, POSITIONS_POLL_MS);
+    return () => window.clearInterval(timer);
+  }, [enabled, refreshInternal]);
 
   return {
     positions,
@@ -145,6 +175,9 @@ export function useLpPositions(enabled = true): UseLpPositionsResult {
     configured,
     skipped,
     policyReadFailed,
+    pnlByLineage,
+    lineageLinks,
+    auditLogAvailable,
     fetchedAt,
     loading,
     error,

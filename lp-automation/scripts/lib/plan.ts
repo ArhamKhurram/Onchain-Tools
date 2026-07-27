@@ -11,7 +11,7 @@
 //
 // Covered by `test/scripts.test.ts`.
 
-import { encodeFunctionData, type Address } from 'viem';
+import { encodeFunctionData, type Address, type PublicClient } from 'viem';
 import { MODULE_ABI, SAFE_ABI } from './abi.js';
 import { ROBINHOOD_ALLOWLIST, type AllowlistDestination } from './constants.js';
 
@@ -101,6 +101,8 @@ export interface AllowlistPlanInput {
   readonly allowed?: boolean;
   /** Defaults to the verified Robinhood Chain allowlist. Injectable for tests. */
   readonly destinations?: readonly AllowlistDestination[];
+  /** When false, omit setOperator (for --delta updates where the operator is already armed). */
+  readonly includeOperator?: boolean;
 }
 
 /**
@@ -171,27 +173,78 @@ export function buildAllowlistPlan(input: AllowlistPlanInput): SafeTxPayload[] {
     });
   }
 
-  payloads.push({
-    id: `operator:${input.operator}`,
-    description: `${verb} operator (automation hot key) ${input.operator}`,
-    rationale: allowed
-      ? 'SIGN THIS LAST. It is the moment the hot key becomes able to act. Before signing, confirm ' +
-        'this address is NOT one of the Safe\'s owners and that it is a freshly generated wallet ' +
-        'holding gas only.'
-      : 'Revoking the operator stops the automation without touching the allowlist — the right move ' +
-        'for a planned key rotation. For an active compromise use setPaused(true) instead: it is one ' +
-        'transaction and it stops every operator at once.',
-    to: input.module,
-    value: 0n,
-    data: encodeFunctionData({
-      abi: MODULE_ABI,
-      functionName: 'setOperator',
-      args: [input.operator, allowed],
-    }),
-    decoded: [`operator = ${input.operator}`, `allowed  = ${allowed}`],
-  });
+  if (input.includeOperator !== false) {
+    payloads.push({
+      id: `operator:${input.operator}`,
+      description: `${verb} operator (automation hot key) ${input.operator}`,
+      rationale: allowed
+        ? 'SIGN THIS LAST. It is the moment the hot key becomes able to act. Before signing, confirm ' +
+          'this address is NOT one of the Safe\'s owners and that it is a freshly generated wallet ' +
+          'holding gas only.'
+        : 'Revoking the operator stops the automation without touching the allowlist — the right move ' +
+          'for a planned key rotation. For an active compromise use setPaused(true) instead: it is one ' +
+          'transaction and it stops every operator at once.',
+      to: input.module,
+      value: 0n,
+      data: encodeFunctionData({
+        abi: MODULE_ABI,
+        functionName: 'setOperator',
+        args: [input.operator, allowed],
+      }),
+      decoded: [`operator = ${input.operator}`, `allowed  = ${allowed}`],
+    });
+  }
 
   return payloads;
+}
+
+/** Destinations whose target and/or selectors are not yet allowlisted on-chain. */
+export async function destinationsNeedingAllowlist(
+  client: PublicClient,
+  module: Address,
+  destinations: readonly AllowlistDestination[] = ROBINHOOD_ALLOWLIST,
+): Promise<AllowlistDestination[]> {
+  const missing: AllowlistDestination[] = [];
+  for (const dest of destinations) {
+    const targetAllowed = (await client.readContract({
+      address: module,
+      abi: MODULE_ABI,
+      functionName: 'isAllowedTarget',
+      args: [dest.address],
+    })) as boolean;
+    if (!targetAllowed) {
+      missing.push(dest);
+      continue;
+    }
+    for (const sel of dest.selectors) {
+      const selectorAllowed = (await client.readContract({
+        address: module,
+        abi: MODULE_ABI,
+        functionName: 'isAllowedSelector',
+        args: [dest.address, sel],
+      })) as boolean;
+      if (!selectorAllowed) {
+        missing.push(dest);
+        break;
+      }
+    }
+  }
+  return missing;
+}
+
+/** True when setOperator(true) still needs to be signed for this hot key. */
+export async function operatorNeedsAuthorization(
+  client: PublicClient,
+  module: Address,
+  operator: Address,
+): Promise<boolean> {
+  const authorized = (await client.readContract({
+    address: module,
+    abi: MODULE_ABI,
+    functionName: 'isOperator',
+    args: [operator],
+  })) as boolean;
+  return !authorized;
 }
 
 /**

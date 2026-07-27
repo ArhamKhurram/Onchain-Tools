@@ -11,7 +11,7 @@
 // and the tick reader is a read-only `eth_call`.
 
 import { readFile } from 'node:fs/promises';
-import { buildAdjustRange, buildCompound, type LpTxnContext } from '../calldata/lpTxn.js';
+import { buildAdjustRange, buildCompound, buildSwapAndIncrease, buildSwapAndMint, type LpTxnContext } from '../calldata/lpTxn.js';
 import type { PreparedTransaction } from '../calldata/types.js';
 import { KrystalFieldError } from '../ingest/krystal/coerce.js';
 import type { KrystalClient } from '../ingest/krystal/client.js';
@@ -135,6 +135,40 @@ export class KrystalCalldataBuilder implements CalldataBuilder {
       newTickLower: request.tickLower,
       newTickUpper: request.tickUpper,
       swapSlippage: this.options.swapSlippage,
+      liquiditySlippage: this.options.liquiditySlippage,
+    });
+  }
+
+  enter(request: {
+    poolAddress: Address;
+    tokenInAddress: Address;
+    amountIn: string;
+    tickLower: number;
+    tickUpper: number;
+    swapSlippage?: number;
+  }): Promise<PreparedTransaction> {
+    return buildSwapAndMint(this.options.context, {
+      poolAddress: request.poolAddress,
+      tickLower: request.tickLower,
+      tickUpper: request.tickUpper,
+      tokenInAddress: request.tokenInAddress,
+      amountIn: request.amountIn,
+      swapSlippage: request.swapSlippage ?? this.options.swapSlippage,
+      liquiditySlippage: this.options.liquiditySlippage,
+    });
+  }
+
+  increase(request: {
+    position: LpPosition;
+    tokenInAddress: Address;
+    amountIn: string;
+    swapSlippage?: number;
+  }): Promise<PreparedTransaction> {
+    return buildSwapAndIncrease(this.options.context, {
+      tokenId: request.position.tokenId,
+      tokenInAddress: request.tokenInAddress,
+      amountIn: request.amountIn,
+      swapSlippage: request.swapSlippage ?? this.options.swapSlippage,
       liquiditySlippage: this.options.liquiditySlippage,
     });
   }

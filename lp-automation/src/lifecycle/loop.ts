@@ -58,12 +58,16 @@ import type {
   ObservedCrossing,
   WatchedRange,
 } from '../ingest/rpc/types.js';
-import type { SubmitOutcome, TransactionSigner } from '../signer/types.js';
-import type { AutomationPolicy, Decision, LpPosition } from '../types.js';
+import type { Erc20ReadClient } from '../calldata/erc20Approve.js';
+import { ensureErc20Allowance, type EnsureAllowanceResult } from './allowance.js';
+import type { TransactionSigner } from '../signer/types.js';
+import { isPoolAllowed } from '../policy/pools.js';
+import { ROBINHOOD_CHAIN_ID } from '../types.js';
+import type { Address, AutomationPolicy, Decision, LpPosition, RangeStrategy } from '../types.js';
 import type { CommandResult, CommandSource, LpCommand } from './commandSource.js';
 import { ActionExecutor } from './executor.js';
 import { PositionLocks } from './locks.js';
-import { recenterRange } from './range.js';
+import { rangeFromCenter, recenterRange, type TickRange } from './range.js';
 import { deriveLastCompounded, Quarantine } from './unresolved.js';
 import type {
   ActionResult,
@@ -75,6 +79,8 @@ import type {
   Logger,
   PolicyBundle,
   PolicySource,
+  PoolState,
+  PoolStateReader,
   PositionFeed,
   PositionWatcher,
   Refusal,
@@ -103,6 +109,13 @@ export interface LifecycleOptions {
   gasCostUsd?: number | null;
 }
 
+export interface AllowanceConfig {
+  owner: Address;
+  chainId: number;
+  approvableTokens: readonly Address[];
+  reader: Erc20ReadClient;
+}
+
 export interface LifecycleDeps {
   policySource: PolicySource;
   positions: PositionFeed;
@@ -116,6 +129,28 @@ export interface LifecycleDeps {
   commands?: CommandSource;
   signer: TransactionSigner;
   audit: AuditPort;
+  /**
+   * Reads a pool's live on-chain state (tick, fee, tokens). Required for `enter`
+   * (Zap In) — the target ticks are computed from the pool's current tick, never
+   * a cached price. Absent means enter is refused with a recorded reason, exactly
+   * as an absent `calldata.enter` is.
+   */
+  poolState?: PoolStateReader;
+  /**
+   * ERC-20 approve pre-flight for zap flows (enter / increase). When absent,
+   * those actions refuse with a recorded reason rather than failing at simulation.
+   */
+  allowance?: AllowanceConfig;
+  /** Wait for a mined receipt after broadcast (chain confirmation + gas for PnL). */
+  waitForReceipt?: (
+    txHash: string,
+  ) => Promise<
+    | { status: 'success'; gasUsed: bigint; effectiveGasPrice: bigint }
+    | { status: 'reverted' }
+    | null
+  >;
+  /** Native token USD price — converts receipt gas to `gasSpentUsd`. */
+  nativeTokenUsd?: number | null;
   createWatcher: WatcherFactory;
   logger: Logger;
   now?: Clock;
@@ -187,6 +222,9 @@ export class LifecycleLoop {
       newId: this.newId,
       quarantine: () => this.quarantine,
       calldataMaxAgeMs: this.calldataMaxAgeMs,
+      waitForReceipt: deps.waitForReceipt,
+      nativeTokenUsd: deps.nativeTokenUsd ?? null,
+      estimatedGasCostUsd: this.gasCostUsd,
     });
   }
 
@@ -432,12 +470,25 @@ export class LifecycleLoop {
 
   /**
    * One slow-lane tick: refresh policy + positions, re-point the watcher, and
-   * evaluate the compound trigger for every position.
+   * evaluate the compound AND rebalance triggers for every position.
    *
-   * Rebalance is NOT evaluated here — it is driven by the watcher, which is the
-   * only component with an authoritative current tick (plan §3). Re-deriving it
-   * from Krystal's cached price is precisely the thing `ingest/krystal/
-   * positions.ts` refuses to do.
+   * REBALANCE IS EVALUATED HERE TOO, as a LEVEL-triggered backstop to the
+   * watcher's EDGE-triggered fast lane. The watcher fires on a range crossing —
+   * an inside→outside *transition* — and evaluates the threshold once, at that
+   * instant. If price crosses right at the boundary (exit ≈ 0%, below the
+   * threshold) and then keeps drifting out, the watcher never re-fires (it is
+   * already "above"; there is no new transition), so nothing would ever move a
+   * position that is genuinely, increasingly out of range. That gap is exactly
+   * how position #418840 sat out of range for 20+ minutes without rebalancing.
+   *
+   * Evaluating it here is SAFE and does not violate plan §3: the position's
+   * `currentTick` is the authoritative `slot0()` tick injected by the position
+   * feed (`ingest/krystal/positions.ts` requires it be RPC-sourced, and skips a
+   * position whose tick cannot be read) — NOT Krystal's cached `pool.price`,
+   * which is the thing §3 forbids trading on. The watcher stays the sub-second
+   * fast path for a price that jumps past the threshold in one move; this is the
+   * ≤60s catch-up for slow drift and for the boundary-crossing gap above. Both
+   * meet at `act()`, whose per-position lock stops them racing.
    */
   async runPositionTick(): Promise<void> {
     if (this.stopping) return;
@@ -488,6 +539,8 @@ export class LifecycleLoop {
     for (const position of this.positionsByToken.values()) {
       if (this.stopping) return;
       await this.evaluateCompound(position);
+      if (this.stopping) return;
+      await this.evaluateRebalance(position);
     }
   }
 
@@ -513,6 +566,21 @@ export class LifecycleLoop {
     }
     const policy = resolved.policy;
 
+    if (!policy.compoundTrigger.enabled) {
+      await this.logEvaluation({
+        action: 'none',
+        rule: 'policy.auto_compound_off',
+        reason:
+          'auto-compound is disabled in policy; autonomous compounding will not fire (manual compound commands still work)',
+        snapshot: {
+          tokenId: position.tokenId,
+          pool: position.pool.address,
+          policyVersion: policy.version,
+        },
+      });
+      return;
+    }
+
     // `NaN` for an unknown gas cost is not laziness: `shouldCompound` treats a
     // non-finite gas figure as "the fees-vs-gas arm cannot be evaluated" and
     // says so in its reason, rather than treating gas as free.
@@ -529,6 +597,85 @@ export class LifecycleLoop {
       decision,
       action: 'compound',
       build: () => this.deps.calldata.compound({ position, policy }),
+    });
+  }
+
+  /**
+   * Slow-lane rebalance: the LEVEL-triggered backstop to the watcher's edge.
+   *
+   * Runs `shouldRebalance` against the position's authoritative `slot0` tick. It
+   * ACTS when the trigger fires — that is the whole point, catching a position
+   * the watcher's one-shot crossing check let slip past the threshold. When it
+   * does NOT fire it stays quiet for an in-range position (the compound tick
+   * already recorded that position this tick), but records the evaluation for an
+   * OUT-OF-RANGE one, so a position sitting outside its band while under the
+   * threshold is visible in the log rather than silent.
+   */
+  private async evaluateRebalance(position: LpPosition): Promise<void> {
+    if (position.status === 'closed') return;
+
+    const resolved = this.resolvePolicy(position.tokenId);
+    // A policy that could not be resolved was already recorded by
+    // `evaluateCompound` this same tick; a second identical refusal would only
+    // double the log.
+    if (!resolved.ok) return;
+    const policy = resolved.policy;
+
+    if (!policy.rebalanceTrigger.enabled) {
+      // Autonomous rebalance is off. Manual rebalance commands still work. Only
+      // note it for an out-of-range position, where "we are deliberately not
+      // moving this" is the fact worth having in the log.
+      if (position.status === 'out_of_range') {
+        await this.logEvaluation({
+          action: 'none',
+          rule: 'policy.auto_rebalance_off',
+          reason:
+            'auto-rebalance is disabled in policy; this out-of-range position will NOT be moved ' +
+            'autonomously (manual rebalance commands still work)',
+          snapshot: {
+            tokenId: position.tokenId,
+            pool: position.pool.address,
+            status: position.status,
+            policyVersion: policy.version,
+          },
+        });
+      }
+      return;
+    }
+
+    const decision = shouldRebalance(position, policy);
+
+    if (decision.action !== 'rebalance') {
+      // Record only when out of range — an in-range "no rebalance" is already
+      // implied by this tick's compound entry, and logging it for every position
+      // every tick would double the log for no signal.
+      if (position.status === 'out_of_range') {
+        await this.logEvaluation(decision);
+      }
+      return;
+    }
+
+    const range = recenterRange(position, policy.rebalanceTrigger.rangeStrategy);
+    if (!range.ok) {
+      await this.recordRefusal(decision, {
+        rule: 'lifecycle.no_target_range',
+        reason: `rebalance triggered but no target range could be derived: ${range.reason}`,
+      });
+      return;
+    }
+
+    await this.act({
+      position,
+      policy,
+      decision,
+      action: 'rebalance',
+      build: () =>
+        this.deps.calldata.rebalance({
+          position,
+          policy,
+          tickLower: range.range.tickLower,
+          tickUpper: range.range.tickUpper,
+        }),
     });
   }
 
@@ -669,7 +816,33 @@ export class LifecycleLoop {
     }
 
     const position: LpPosition = { ...known, currentTick: event.observation.tick };
-    const decision = shouldRebalance(position, resolved.policy);
+    const policy = resolved.policy;
+
+    if (!policy.rebalanceTrigger.enabled) {
+      const disabled: Decision = {
+        action: 'none',
+        rule: 'policy.auto_rebalance_off',
+        reason:
+          'auto-rebalance is disabled in policy; autonomous rebalancing will not fire (manual rebalance commands still work)',
+        snapshot: {
+          tokenId,
+          pool: position.pool.address,
+          policyVersion: policy.version,
+          crossingPhase: event.phase,
+          watcherExitPercent: event.exitPercent,
+          watcherSide: event.side,
+          watcherPreviousSide: event.previousSide,
+          observedTick: event.observation.tick,
+          observationSource: event.observation.source,
+          ...(event.phase === 'confirmed'
+            ? { confirmationDepth: event.depth, verifiedBy: event.verifiedBy }
+            : {}),
+        },
+      };
+      return { position, policy, decision: disabled };
+    }
+
+    const decision = shouldRebalance(position, policy);
 
     // The watcher's own `exitPercent` is computed from the tick it VERIFIED at
     // confirmation depth, while the rules re-derive it from `observation.tick`
@@ -692,7 +865,7 @@ export class LifecycleLoop {
       },
     };
 
-    return { position, policy: resolved.policy, decision: enriched };
+    return { position, policy, decision: enriched };
   }
 
   // --- manual lane: the dashboard's command queue ---------------------------
@@ -784,6 +957,19 @@ export class LifecycleLoop {
    * the same story. A refusal is never reported as `done`.
    */
   private async runCommand(command: LpCommand): Promise<CommandResult> {
+    // Enter opens a NEW position, so it has no tokenId to look up and takes a
+    // separate path. Everything below this branch is position-scoped.
+    if (command.action === 'enter') {
+      return this.runEnter(command);
+    }
+
+    if (command.tokenId === null) {
+      // Only enter is allowed a null tokenId (enforced by the DB shape CHECK and
+      // `rowToCommand`). Reaching here means a row got past both — refuse rather
+      // than dereference it.
+      return failure(`command ${command.id} has action "${command.action}" but no token_id.`);
+    }
+
     const position = this.positionsByToken.get(command.tokenId);
     if (position === undefined) {
       // Not tracked: closed, in a pool whose tick could not be read, or held by
@@ -816,9 +1002,18 @@ export class LifecycleLoop {
     }
     const policy = resolved.policy;
 
-    const decision = manualDecision(command, position, policy);
+    if (command.action === 'compound_rebalance') {
+      return this.runCompoundRebalance(command, position, policy);
+    }
 
-    const build = this.commandBuilder(command, position, policy);
+    if (command.action === 'increase') {
+      return this.runIncrease(command, position, policy);
+    }
+
+    const singleStep = command as LpCommand & { action: SingleStepCommandAction };
+    const decision = manualDecision(singleStep, position, policy);
+
+    const build = this.commandBuilder(singleStep, position, policy);
     if (typeof build === 'string') {
       await this.recordRefusal(decision, { rule: 'lifecycle.manual_unavailable', reason: build });
       return failure(build);
@@ -828,7 +1023,7 @@ export class LifecycleLoop {
       position,
       policy,
       decision,
-      action: command.action,
+      action: singleStep.action,
       build,
     });
 
@@ -836,11 +1031,307 @@ export class LifecycleLoop {
   }
 
   /**
+   * Manual compound then rebalance on the same tokenId.
+   *
+   * The compound step uses the queued position id; rebalance may mint a new
+   * NFT. Fails fast — rebalance is not attempted if compound does not broadcast.
+   */
+  private async runCompoundRebalance(
+    command: LpCommand,
+    position: LpPosition,
+    policy: AutomationPolicy,
+  ): Promise<CommandResult> {
+    const compoundDecision = manualCompoundRebalanceStep(command, position, policy, 'compound');
+    const compoundResult = await this.act({
+      position,
+      policy,
+      decision: compoundDecision,
+      action: 'compound',
+      build: () => this.deps.calldata.compound({ position, policy }),
+    });
+    const compoundOutcome = commandResult(compoundResult);
+    if (compoundOutcome.error !== null) {
+      return compoundOutcome;
+    }
+
+    const range = recenterRange(position, policy.rebalanceTrigger.rangeStrategy);
+    if (!range.ok) {
+      const reason =
+        `compound succeeded but rebalance could not proceed: ${range.reason}` +
+        (compoundOutcome.txHash !== null ? ` (compound tx ${compoundOutcome.txHash})` : '');
+      await this.recordRefusal(manualCompoundRebalanceStep(command, position, policy, 'rebalance'), {
+        rule: 'lifecycle.manual_unavailable',
+        reason,
+      });
+      return failure(reason);
+    }
+
+    const rebalanceDecision = manualCompoundRebalanceStep(command, position, policy, 'rebalance');
+    const rebalanceResult = await this.act({
+      position,
+      policy,
+      decision: rebalanceDecision,
+      action: 'rebalance',
+      build: () =>
+        this.deps.calldata.rebalance({
+          position,
+          policy,
+          tickLower: range.range.tickLower,
+          tickUpper: range.range.tickUpper,
+        }),
+    });
+    const rebalanceOutcome = commandResult(rebalanceResult);
+    if (rebalanceOutcome.error !== null && compoundOutcome.txHash !== null) {
+      return {
+        txHash: compoundOutcome.txHash,
+        error: `compound succeeded (tx ${compoundOutcome.txHash}) but rebalance failed: ${rebalanceOutcome.error}`,
+      };
+    }
+    return rebalanceOutcome;
+  }
+
+  /**
+   * Enter: open a BRAND-NEW position from a manual command (Zap In).
+   *
+   * There is no existing position, so this does the extra work the other manual
+   * actions get for free from the position feed — resolve the default policy,
+   * gate the pool at the allowlist, read the pool's LIVE tick, and compute the
+   * target range — then hands a SYNTHETIC position to the same `act()` funnel.
+   * The synthetic position exists only so the funnel's lock, guard ladder and
+   * executor can run; only its `tokenId` (the command id, for lock + quarantine
+   * attribution) and `pool.address`/`feeTierBps` are read by that path. Nothing
+   * here reaches the signer except through `act()`.
+   */
+  private async runEnter(command: LpCommand): Promise<CommandResult> {
+    if (command.tokenInAddress === undefined || command.amountIn === undefined) {
+      // rowToCommand guarantees these for an enter; a missing one means a shape
+      // slipped past it. Refuse rather than build a transaction from a hole.
+      return failure(`enter command ${command.id} is missing its parameters; nothing was attempted.`);
+    }
+    const tokenIn = command.tokenInAddress;
+    const amountIn = command.amountIn;
+
+    const reader = this.deps.poolState;
+    const buildEnter = this.deps.calldata.enter;
+    if (reader === undefined || buildEnter === undefined) {
+      const reason =
+        'enter (Zap In) is not wired into this worker: no pool-state reader or enter calldata ' +
+        'builder is configured. Nothing was attempted.';
+      await this.recordRefusal(enterDecision(command, null), { rule: 'lifecycle.manual_unavailable', reason });
+      return failure(reason);
+    }
+
+    const policy = currentDefaultPolicy(this.bundle.policies);
+    if (policy === null) {
+      const reason = 'no default policy is available; refusing to enter.';
+      await this.recordRefusal(enterDecision(command, null), { rule: 'lifecycle.policy_unresolved', reason });
+      return failure(reason);
+    }
+
+    // Execution-time allowlist gate. The backend checked at queue time, but the
+    // policy can change between; this is the same `isPoolAllowed` gate `act()`
+    // re-applies, checked here first so the failure names the pool clearly and no
+    // pool state is read for a pool we may not touch.
+    if (!isPoolAllowed(policy, command.poolAddress)) {
+      const reason =
+        `pool ${command.poolAddress} is not on policy v${policy.version}'s allowlist ` +
+        `(${policy.allowedPools.length} pool(s)); refusing to enter.`;
+      await this.recordRefusal(enterDecision(command, policy), { rule: 'lifecycle.pool_not_allowed', reason });
+      return failure(reason);
+    }
+
+    let state: PoolState;
+    try {
+      state = await reader.readPoolState(command.poolAddress);
+    } catch (error) {
+      const reason = `could not read pool state for ${command.poolAddress}: ${describe(error)}`;
+      await this.recordRefusal(enterDecision(command, policy), { rule: 'lifecycle.pool_state_failed', reason });
+      return failure(reason);
+    }
+
+    // The input token must be one side of the pool. Krystal would otherwise have
+    // to route a swap we never priced, and the operator picked from the pair.
+    if (tokenIn !== state.token0 && tokenIn !== state.token1) {
+      const reason =
+        `token ${tokenIn} is not in pool ${command.poolAddress} ` +
+        `(${state.token0} / ${state.token1}); refusing to enter.`;
+      await this.recordRefusal(enterDecision(command, policy), { rule: 'lifecycle.token_not_in_pool', reason });
+      return failure(reason);
+    }
+
+    const strategy = command.rangeStrategy ?? policy.rebalanceTrigger.rangeStrategy;
+    const range = rangeFromCenter(state.currentTick, state.feeUnits, strategy);
+    if (!range.ok) {
+      const reason = `enter requested but no target range could be derived: ${range.reason}`;
+      await this.recordRefusal(enterDecision(command, policy), { rule: 'lifecycle.no_target_range', reason });
+      return failure(reason);
+    }
+
+    const position = syntheticEnterPosition(command, state, range.range, this.now());
+    const decision = enterDecision(command, policy, {
+      tickLower: range.range.tickLower,
+      tickUpper: range.range.tickUpper,
+      strategy,
+      currentTick: state.currentTick,
+    });
+    const swapSlippage = command.swapSlippage;
+
+    const allowance = await this.ensureZapAllowance({
+      token: tokenIn,
+      amountRequired: BigInt(amountIn),
+      position,
+      policy,
+      commandId: command.id,
+      refusalDecision: enterDecision(command, policy, {
+        tickLower: range.range.tickLower,
+        tickUpper: range.range.tickUpper,
+        strategy,
+        currentTick: state.currentTick,
+      }),
+    });
+    if (!allowance.ok) {
+      return failure(allowance.reason);
+    }
+
+    const result = await this.actZap({
+      position,
+      policy,
+      decision,
+      action: 'enter',
+      build: () =>
+        buildEnter.call(this.deps.calldata, {
+          poolAddress: command.poolAddress,
+          tokenInAddress: tokenIn,
+          amountIn,
+          tickLower: range.range.tickLower,
+          tickUpper: range.range.tickUpper,
+          ...(swapSlippage === null || swapSlippage === undefined ? {} : { swapSlippage }),
+        }),
+    });
+
+    return commandResult(result);
+  }
+
+  /**
+   * Increase: zap more liquidity into an EXISTING position (Krystal `swap_and_increase`).
+   *
+   * FAILURE MODE — simulation passed, chain reverted (e.g. tx
+   * `0x0104…5949` on position #419551): Krystal embeds swap min-outs in the
+   * calldata. `simulateContract` runs at the pending head; the tx can land
+   * several blocks later and after other txs in the same block have moved the
+   * pool, so the quote is stale even though preflight passed. Balance and
+   * allowance are unaffected. `actZap` re-quotes once when the mined receipt
+   * reports `reverted`.
+   */
+  private async runIncrease(
+    command: LpCommand,
+    position: LpPosition,
+    policy: AutomationPolicy,
+  ): Promise<CommandResult> {
+    if (command.tokenInAddress === undefined || command.amountIn === undefined) {
+      return failure(`increase command ${command.id} is missing its parameters; nothing was attempted.`);
+    }
+    const tokenIn = command.tokenInAddress;
+    const amountIn = command.amountIn;
+
+    const buildIncrease = this.deps.calldata.increase;
+    if (buildIncrease === undefined) {
+      const reason =
+        'increase is not wired into this worker: no increase calldata builder is configured. Nothing was attempted.';
+      await this.recordRefusal(increaseDecision(command, position, policy), {
+        rule: 'lifecycle.manual_unavailable',
+        reason,
+      });
+      return failure(reason);
+    }
+
+    if (tokenIn !== position.pool.token0.address && tokenIn !== position.pool.token1.address) {
+      const reason =
+        `token ${tokenIn} is not in pool ${position.pool.address} ` +
+        `(${position.pool.token0.address} / ${position.pool.token1.address}); refusing to increase.`;
+      await this.recordRefusal(increaseDecision(command, position, policy), {
+        rule: 'lifecycle.token_not_in_pool',
+        reason,
+      });
+      return failure(reason);
+    }
+
+    const decision = increaseDecision(command, position, policy);
+    const swapSlippage = command.swapSlippage;
+
+    const allowance = await this.ensureZapAllowance({
+      token: tokenIn,
+      amountRequired: BigInt(amountIn),
+      position,
+      policy,
+      commandId: command.id,
+      refusalDecision: decision,
+    });
+    if (!allowance.ok) {
+      return failure(allowance.reason);
+    }
+
+    const result = await this.actZap({
+      position,
+      policy,
+      decision,
+      action: 'increase',
+      build: () =>
+        buildIncrease.call(this.deps.calldata, {
+          position,
+          tokenInAddress: tokenIn,
+          amountIn,
+          ...(swapSlippage === null || swapSlippage === undefined ? {} : { swapSlippage }),
+        }),
+    });
+
+    return commandResult(result);
+  }
+
+  private async ensureZapAllowance(params: {
+    token: Address;
+    amountRequired: bigint;
+    position: LpPosition;
+    policy: AutomationPolicy;
+    commandId: string;
+    refusalDecision: Decision;
+  }): Promise<EnsureAllowanceResult> {
+    const cfg = this.deps.allowance;
+    if (cfg === undefined) {
+      const reason =
+        'ERC-20 allowance pre-flight is not configured on this worker; refusing to zap without it.';
+      await this.recordRefusal(params.refusalDecision, { rule: 'lifecycle.manual_unavailable', reason });
+      return { ok: false, reason };
+    }
+
+    return ensureErc20Allowance(
+      {
+        owner: cfg.owner,
+        chainId: cfg.chainId,
+        approvableTokens: cfg.approvableTokens,
+        reader: cfg.reader,
+        executor: this.executor,
+        now: this.now,
+        newId: this.newId,
+        logger: this.logger,
+        recordRefusal: (decision, refusal) => this.recordRefusal(decision, refusal),
+      },
+      {
+        token: params.token,
+        amountRequired: params.amountRequired,
+        position: params.position,
+        policy: params.policy,
+        commandId: params.commandId,
+      },
+    );
+  }
+
+  /**
    * Pick the calldata builder for a manual action, or return the reason there
    * isn't one. A string return is a refusal, not an error.
    */
   private commandBuilder(
-    command: LpCommand,
+    command: LpCommand & { action: SingleStepCommandAction },
     position: LpPosition,
     policy: AutomationPolicy,
   ): (() => Promise<PreparedTransaction>) | string {
@@ -883,6 +1374,36 @@ export class LifecycleLoop {
     }
   }
 
+  /**
+   * Zap flows (enter / increase): run `act`, and if the chain receipt shows a
+   * revert, re-quote from Krystal and try once more. Simulation cannot see
+   * intra-block ordering or price drift between quote time and inclusion.
+   */
+  private async actZap(request: {
+    position: LpPosition;
+    policy: AutomationPolicy;
+    decision: Decision;
+    action: 'enter' | 'increase';
+    build: () => Promise<PreparedTransaction>;
+  }): Promise<ActionResult | { status: 'position_busy'; reason: string }> {
+    const first = await this.act(request);
+    if (
+      first.status !== 'submitted' ||
+      first.recorded.error === null ||
+      !first.recorded.error.includes('reverted on chain')
+    ) {
+      return first;
+    }
+
+    this.logger.warn('lp-lifecycle: zap action reverted on chain; re-quoting once', {
+      tokenId: request.position.tokenId,
+      action: request.action,
+      txHash: first.recorded.txHash,
+    });
+
+    return this.act(request);
+  }
+
   // --- the single execution funnel -----------------------------------------
 
   /**
@@ -903,7 +1424,8 @@ export class LifecycleLoop {
     action: ExecutableAction;
     build: () => Promise<PreparedTransaction>;
   }): Promise<ActionResult | { status: 'position_busy'; reason: string }> {
-    const { position, policy, decision, action, build } = request;
+    const { position, policy, action, build } = request;
+    const decision = withPositionSnapshot(request.decision, position);
 
     const attempt = await this.locks.tryRun(position.tokenId, async (): Promise<ActionResult> => {
       // Guards first: refusing here avoids a Krystal round trip, and — more
@@ -937,10 +1459,13 @@ export class LifecycleLoop {
 
       switch (result.status) {
         case 'submitted':
-          if (action === 'compound' && result.outcome.status === 'broadcast') {
+          if (action === 'compound' && result.recorded.error === null && result.recorded.txHash !== null) {
             // Keep the in-memory backstop clock in step with the log we just
             // wrote, so the next tick does not re-fire the interval arm.
             this.lastCompounded.set(position.tokenId, this.now());
+          }
+          if (action === 'rebalance' && result.recorded.error === null && result.recorded.txHash !== null) {
+            await this.recordRebalanceLineage(position, decision);
           }
           this.logger.info('lp-lifecycle: action submitted', {
             tokenId: position.tokenId,
@@ -990,6 +1515,55 @@ export class LifecycleLoop {
   }
 
   // --- audit helpers -------------------------------------------------------
+
+  private async recordRebalanceLineage(position: LpPosition, decision: Decision): Promise<void> {
+    const oldTokenId = position.tokenId;
+    const poolAddress = position.pool.address;
+
+    let positions: LpPosition[];
+    try {
+      positions = await this.deps.positions.loadPositions();
+    } catch (error) {
+      this.logger.warn('lp-lifecycle: could not refresh positions for rebalance lineage', {
+        oldTokenId,
+        error: describe(error),
+      });
+      return;
+    }
+
+    const successor = positions
+      .filter(
+        (candidate) =>
+          candidate.pool.address.toLowerCase() === poolAddress.toLowerCase() &&
+          candidate.tokenId !== oldTokenId &&
+          candidate.status !== 'closed',
+      )
+      .sort((a, b) => Number.parseInt(b.tokenId, 10) - Number.parseInt(a.tokenId, 10))[0];
+
+    if (successor === undefined) {
+      this.logger.warn('lp-lifecycle: rebalance succeeded but no successor position was found', {
+        oldTokenId,
+        pool: poolAddress,
+      });
+      return;
+    }
+
+    await this.logEvaluation({
+      action: 'none',
+      rule: 'lifecycle.rebalance.lineage',
+      reason:
+        `rebalance lineage: position #${oldTokenId} was withdrawn and re-minted as #${successor.tokenId}`,
+      snapshot: {
+        oldTokenId,
+        newTokenId: successor.tokenId,
+        pool: poolAddress,
+        withdrawnValueUsd: position.valueUsd,
+        remintedValueUsd: successor.valueUsd,
+        unclaimedFeesUsd: position.unclaimedFeesUsd,
+        policyVersion: decision.snapshot.policyVersion,
+      },
+    });
+  }
 
   /**
    * Record a decision that produced no action.
@@ -1069,8 +1643,15 @@ function failure(reason: string): CommandResult {
  * attributes a quarantined intent by that field, and an intent it cannot
  * attribute blocks EVERY position, not just this one.
  */
+/**
+ * Manual actions executed as a single on-chain step against an EXISTING
+ * position. Excludes `compound_rebalance` (two steps) and `enter` (no existing
+ * position — handled by `runEnter`, not `commandBuilder`).
+ */
+type SingleStepCommandAction = Exclude<LpCommand['action'], 'compound_rebalance' | 'enter' | 'increase'>;
+
 function manualDecision(
-  command: LpCommand,
+  command: LpCommand & { action: SingleStepCommandAction },
   position: LpPosition,
   policy: AutomationPolicy,
 ): Decision {
@@ -1094,6 +1675,133 @@ function manualDecision(
   };
 }
 
+function manualCompoundRebalanceStep(
+  command: LpCommand,
+  position: LpPosition,
+  policy: AutomationPolicy,
+  step: 'compound' | 'rebalance',
+): Decision {
+  return {
+    action: step,
+    rule: `manual.compound_rebalance.${step}`,
+    reason:
+      `manual compound_rebalance requested from the dashboard (command ${command.id}); ` +
+      `${step} step — running the same guard ladder as an automatic action`,
+    snapshot: {
+      tokenId: position.tokenId,
+      pool: position.pool.address,
+      trigger: 'manual',
+      commandId: command.id,
+      requestedAt: command.requestedAt,
+      policyVersion: policy.version,
+      positionStatus: position.status,
+      valueUsd: position.valueUsd,
+      unclaimedFeesUsd: position.unclaimedFeesUsd,
+      compoundRebalanceStep: step,
+    },
+  };
+}
+
+/**
+ * The `Decision` an enter is recorded under.
+ *
+ * `snapshot.tokenId` is the COMMAND id, not a position id — there is no position
+ * yet. It is still mandatory and still opaque-unique, which is exactly what
+ * `unresolved.ts` needs: if the outcome write fails, the quarantine blocks this
+ * one enter, not every position. `policy` is nullable so a refusal raised before
+ * a policy is resolved (nothing wired, no default) still records a decision.
+ */
+function enterDecision(
+  command: LpCommand,
+  policy: AutomationPolicy | null,
+  target?: { tickLower: number; tickUpper: number; strategy: RangeStrategy; currentTick: number },
+): Decision {
+  return {
+    action: 'enter',
+    rule: 'manual.enter',
+    reason:
+      `manual enter (Zap In) requested from the dashboard (command ${command.id}); ` +
+      'running the same guard ladder as an automatic action',
+    snapshot: {
+      tokenId: command.id,
+      pool: command.poolAddress,
+      trigger: 'manual',
+      commandId: command.id,
+      requestedAt: command.requestedAt,
+      ...(policy === null ? {} : { policyVersion: policy.version }),
+      tokenInAddress: command.tokenInAddress ?? null,
+      amountIn: command.amountIn ?? null,
+      rangeStrategy: target?.strategy ?? command.rangeStrategy ?? null,
+      ...(target === undefined
+        ? {}
+        : { tickLower: target.tickLower, tickUpper: target.tickUpper, currentTick: target.currentTick }),
+    },
+  };
+}
+
+function increaseDecision(command: LpCommand, position: LpPosition, policy: AutomationPolicy): Decision {
+  return {
+    action: 'increase',
+    rule: 'manual.increase',
+    reason:
+      `manual increase (add liquidity) requested from the dashboard (command ${command.id}); ` +
+      'running the same guard ladder as an automatic action',
+    snapshot: {
+      tokenId: position.tokenId,
+      pool: position.pool.address,
+      trigger: 'manual',
+      commandId: command.id,
+      requestedAt: command.requestedAt,
+      policyVersion: policy.version,
+      tokenInAddress: command.tokenInAddress ?? null,
+      amountIn: command.amountIn ?? null,
+      positionStatus: position.status,
+      valueUsd: position.valueUsd,
+      unclaimedFeesUsd: position.unclaimedFeesUsd,
+    },
+  };
+}
+
+/**
+ * A stand-in `LpPosition` for an enter, so the execution funnel (lock, guards,
+ * executor) can run for an action that has no real position yet.
+ *
+ * ONLY `tokenId` (the command id — lock key and quarantine attribution) and
+ * `pool.address` / `pool.feeTierBps` are consulted by that path. Every other
+ * field is a placeholder and MUST NOT be read as real position data: the value
+ * and fees are zero because there is nothing here yet, and the token symbols /
+ * decimals are unknown because the worker reads only addresses on-chain.
+ */
+function syntheticEnterPosition(
+  command: LpCommand,
+  state: PoolState,
+  range: TickRange,
+  now: number,
+): LpPosition {
+  return {
+    tokenId: command.id,
+    pool: {
+      address: command.poolAddress,
+      chainId: ROBINHOOD_CHAIN_ID,
+      platform: 'uniswapv3',
+      feeTierBps: state.feeUnits,
+      token0: { address: state.token0, symbol: '', decimals: 0 },
+      token1: { address: state.token1, symbol: '', decimals: 0 },
+      tvlUsd: 0,
+      volume24hUsd: 0,
+      feeApr: 0,
+    },
+    status: 'in_range',
+    tickLower: range.tickLower,
+    tickUpper: range.tickUpper,
+    currentTick: state.currentTick,
+    valueUsd: 0,
+    unclaimedFeesUsd: 0,
+    openedAt: now,
+    lastCompoundedAt: null,
+  };
+}
+
 /**
  * Map what the funnel did onto what the dashboard is told.
  *
@@ -1108,7 +1816,7 @@ function manualDecision(
 function commandResult(result: ActionResult | { status: 'position_busy'; reason: string }): CommandResult {
   switch (result.status) {
     case 'submitted':
-      return submitOutcomeToResult(result.outcome);
+      return recordedOutcomeToResult(result.recorded);
     case 'position_busy':
       return failure(result.reason);
     case 'refused':
@@ -1123,7 +1831,7 @@ function commandResult(result: ActionResult | { status: 'position_busy'; reason:
       // will quarantine this position. Say exactly that: the chain, not this
       // row, is the authority on what happened.
       return {
-        txHash: result.outcome.status === 'broadcast' ? result.outcome.txHash : null,
+        txHash: result.recorded.txHash,
         error:
           'the transaction was submitted but its outcome could NOT be written to the audit log ' +
           `(${result.error}). This position is now quarantined until a human resolves it; ` +
@@ -1132,20 +1840,22 @@ function commandResult(result: ActionResult | { status: 'position_busy'; reason:
   }
 }
 
-function submitOutcomeToResult(outcome: SubmitOutcome): CommandResult {
-  switch (outcome.status) {
-    case 'broadcast':
-      return { txHash: outcome.txHash, error: null };
-    case 'skipped_disarmed':
-      return failure(
-        'skipped_disarmed: the signer is disarmed, so the action was evaluated, simulated and ' +
-          'audited but NOTHING WAS BROADCAST. Arm the worker (LP_ARMED) to execute it.',
-      );
-    case 'rejected':
-      return failure(`rejected at ${outcome.stage}: ${outcome.reason}`);
-    case 'failed':
-      return { txHash: outcome.txHash, error: `failed: ${outcome.reason}` };
+function recordedOutcomeToResult(recorded: { txHash: string | null; error: string | null }): CommandResult {
+  if (recorded.error === null) {
+    return { txHash: recorded.txHash, error: null };
   }
+  return { txHash: recorded.txHash, error: recorded.error };
+}
+
+function withPositionSnapshot(decision: Decision, position: LpPosition): Decision {
+  return {
+    ...decision,
+    snapshot: {
+      ...decision.snapshot,
+      valueUsd: position.valueUsd,
+      unclaimedFeesUsd: position.unclaimedFeesUsd,
+    },
+  };
 }
 
 function unresolvedPolicyDecision(position: LpPosition, reason: string): Decision {

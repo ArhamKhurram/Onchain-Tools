@@ -25,7 +25,28 @@ export function formatUsdExact(value: unknown): string {
   })}`;
 }
 
-/** `$250K`, `$1.2M`. Compact — use for market-sourced numbers in tables. */
+/** Signed dollar PnL with explicit +/− prefix. */
+export function formatSignedUsd(value: unknown): string {
+  const n = finite(value);
+  if (n === null) return DASH;
+  const formatted = formatUsdExact(Math.abs(n));
+  if (n > 0) return `+${formatted}`;
+  if (n < 0) return `−${formatted}`;
+  return formatted;
+}
+
+/** Signed percentage for net PnL %. */
+export function formatSignedPercent(value: unknown): string {
+  const n = finite(value);
+  if (n === null) return DASH;
+  const abs = Math.abs(n);
+  const text = `${abs.toFixed(abs >= 10 ? 1 : 2)}%`;
+  if (n > 0) return `+${text}`;
+  if (n < 0) return `−${text}`;
+  return text;
+}
+
+/** Compact — use for market-sourced numbers in tables. */
 export function formatUsdCompact(value: unknown): string {
   const n = finite(value);
   if (n === null) return DASH;

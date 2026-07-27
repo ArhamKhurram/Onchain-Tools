@@ -13,13 +13,13 @@
 // constructs an account, a wallet client, or a key. If you find yourself
 // importing anything else from `src/signer/`, the seam has been broken.
 
-import type { AuditRecord, PendingAction } from '../audit/log.js';
+import type { AuditRecord, OutcomeSnapshotExtra, PendingAction } from '../audit/log.js';
 import type { PreparedTransaction } from '../calldata/types.js';
 import type { PoolWatcherCallbacks, WatchedRange, WatcherStatus } from '../ingest/rpc/types.js';
 // The ONLY import from `src/signer/` anywhere in `src/lifecycle/`. It is a
 // type-only import of the seam file, which is itself dependency-free.
 import type { SubmitOutcome } from '../signer/types.js';
-import type { AutomationPolicy, Decision, LpPosition } from '../types.js';
+import type { Address, AutomationPolicy, Decision, LpPosition } from '../types.js';
 
 /** Injectable clock. Every timestamp in the loop comes through one of these. */
 export type Clock = () => number;
@@ -48,6 +48,7 @@ export interface AuditPort {
     pending: PendingAction,
     outcome: { txHash: string | null; error: string | null },
     now: number,
+    outcomeSnapshot?: OutcomeSnapshotExtra,
   ): Promise<void>;
   recordEvaluation(decision: Decision, id: string, now: number): Promise<void>;
 }
@@ -117,6 +118,60 @@ export interface CalldataBuilder {
     position: LpPosition;
     policy: AutomationPolicy;
   }): Promise<PreparedTransaction>;
+  /**
+   * Enter: zap into a BRAND-NEW position (Krystal `swap_and_mint`).
+   *
+   * OPTIONAL for the same structural reason as `exit?`: a `CalldataBuilder` used
+   * in a test need not implement it, and the loop refuses a manual enter with a
+   * recorded reason when it is absent, rather than throwing. Unlike the other
+   * operations there is no `position` — the position does not exist yet — so the
+   * pool, the input token + amount and the target ticks are all passed
+   * explicitly. The ticks are computed by the loop from the pool's LIVE on-chain
+   * tick (see `PoolStateReader`), never from a cached price.
+   */
+  enter?(request: {
+    poolAddress: Address;
+    tokenInAddress: Address;
+    /** Raw base units, decimal string. Never a JS number — precision loss. */
+    amountIn: string;
+    tickLower: number;
+    tickUpper: number;
+    /** Per-enter slippage override (fraction). Absent uses the builder default. */
+    swapSlippage?: number;
+  }): Promise<PreparedTransaction>;
+  /**
+   * Increase: zap more liquidity into an EXISTING position (Krystal `swap_and_increase`).
+   */
+  increase?(request: {
+    position: LpPosition;
+    tokenInAddress: Address;
+    amountIn: string;
+    swapSlippage?: number;
+  }): Promise<PreparedTransaction>;
+}
+
+/**
+ * The authoritative on-chain state of a pool, read for an enter.
+ *
+ * `feeUnits` is Uniswap's on-chain fee unit (10000 == 1%), read from the pool's
+ * `fee()` — the same unit `TICK_SPACING_BY_FEE_BPS` is keyed by, so it maps to a
+ * tick spacing without conversion. `currentTick` is `slot0().tick`, the same
+ * value the range-exit watcher trusts (plan §3).
+ */
+export interface PoolState {
+  currentTick: number;
+  feeUnits: number;
+  token0: Address;
+  token1: Address;
+}
+
+/**
+ * Reads {@link PoolState} for a pool. RPC-backed in production; a fake in tests.
+ * Kept a narrow port for the same reason `readTick` is on the position feed:
+ * enter must not be forced to run against a live chain to be tested.
+ */
+export interface PoolStateReader {
+  readPoolState(pool: Address): Promise<PoolState>;
 }
 
 /**
@@ -134,7 +189,7 @@ export interface PositionWatcher {
 export type WatcherFactory = (callbacks: PoolWatcherCallbacks) => PositionWatcher;
 
 /** Actions the loop can actually take. `none` is a decision, not an action. */
-export type ExecutableAction = 'compound' | 'rebalance' | 'exit' | 'enter';
+export type ExecutableAction = 'compound' | 'rebalance' | 'exit' | 'enter' | 'increase' | 'approve';
 
 /**
  * Why an action was refused before it reached the signer. Each maps to an audit
@@ -146,9 +201,15 @@ export interface Refusal {
   reason: string;
 }
 
+/** What was written (or would have been written) to the audit outcome record. */
+export interface RecordedOutcome {
+  txHash: string | null;
+  error: string | null;
+}
+
 export type ActionResult =
-  /** Reached the signer. `outcome` says what the signer then did. */
-  | { status: 'submitted'; auditId: string; outcome: SubmitOutcome }
+  /** Reached the signer. `recorded` is the chain-confirmed audit outcome. */
+  | { status: 'submitted'; auditId: string; outcome: SubmitOutcome; recorded: RecordedOutcome }
   /** Refused before any intent was written. Nothing is in flight. */
   | { status: 'refused'; refusal: Refusal }
   /** The dry run said this would fail. Nothing is in flight. */
@@ -164,4 +225,10 @@ export type ActionResult =
    * intent is now UNRESOLVED on disk and the next startup will quarantine this
    * position. That is the intended behaviour, not a leak.
    */
-  | { status: 'outcome_write_failed'; auditId: string; outcome: SubmitOutcome; error: string };
+  | {
+      status: 'outcome_write_failed';
+      auditId: string;
+      outcome: SubmitOutcome;
+      recorded: RecordedOutcome;
+      error: string;
+    };

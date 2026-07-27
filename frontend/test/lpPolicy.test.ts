@@ -62,6 +62,31 @@ const pool = (over: Partial<PoolCandidate> = {}): PoolCandidate => ({
 
 // --- Validation mirror ------------------------------------------------------
 
+describe('auto flags draft', () => {
+  it('defaults auto flags to on in the shipped draft', () => {
+    expect(DEFAULT_POLICY_DRAFT.compoundTrigger.enabled).toBe(true);
+    expect(DEFAULT_POLICY_DRAFT.rebalanceTrigger.enabled).toBe(true);
+  });
+
+  it('round-trips auto flags through draftFromPolicy and draftToPayload', () => {
+    const restored = draftFromPolicy({
+      version: 1,
+      chain: 'robinhood',
+      maxPositionSizeUsd: 250,
+      dailySpendCapUsd: 500,
+      allowedPools: [],
+      poolSelectionCriteria: { minTvlUsd: 250_000, min24hVolumeUsd: 50_000, maxIlRiskScore: 40 },
+      compoundTrigger: { enabled: false, minFeesVsGasRatio: 3, maxIntervalHours: 24 },
+      rebalanceTrigger: { enabled: false, rangeExitPercent: 5, rangeStrategy: 'wide' },
+      switchingBuffer: { minEfficiencyDeltaPercent: 5, sustainedDurationMinutes: 60 },
+    });
+    expect(restored.compoundTrigger.enabled).toBe(false);
+    expect(restored.rebalanceTrigger.enabled).toBe(false);
+    expect(draftToPayload(restored).compoundTrigger.enabled).toBe(false);
+    expect(draftToPayload(restored).rebalanceTrigger.enabled).toBe(false);
+  });
+});
+
 describe('validatePolicyDraft', () => {
   it('accepts the shipped defaults', () => {
     expect(validatePolicyDraft(DEFAULT_POLICY_DRAFT)).toEqual([]);

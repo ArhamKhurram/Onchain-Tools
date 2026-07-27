@@ -13,6 +13,7 @@
 
 import type { Address } from '../../src/types.js';
 import { ROBINHOOD_CHAIN_ID } from '../../src/types.js';
+import { ERC20_APPROVE_SELECTOR } from '../../src/calldata/erc20Approve.js';
 import {
   KRYSTAL_TARGETS_ROBINHOOD_UNISWAP_V3,
   OBSERVED_SELECTORS,
@@ -63,11 +64,12 @@ export const REFERENCE_CONTRACTS = {
 } as const;
 
 /**
- * The complete intended module allowlist: two destinations, three selectors.
+ * The complete intended module allowlist: three destinations, four selectors.
  *
- * Sourced from `src/calldata/validate.ts` rather than retyped, so the off-chain
- * validator's destination allowlist and the on-chain module's allowlist cannot
- * silently drift apart. `test/scripts.test.ts` asserts they still agree.
+ * Krystal targets are sourced from `src/calldata/validate.ts` rather than
+ * retyped, so the off-chain validator and the on-chain module cannot silently
+ * drift apart on those addresses. WETH is added separately for ERC-20 approve
+ * (zap-in / zap-increase). `test/scripts.test.ts` asserts the Krystal half.
  */
 export interface AllowlistDestination {
   readonly name: string;
@@ -101,6 +103,15 @@ export const ROBINHOOD_ALLOWLIST: readonly AllowlistDestination[] = [
       // and cannot inspect.
       [OBSERVED_SELECTORS.compound]:
         'safeTransferFrom — covers compound, adjust_range AND withdraw_and_swap (one selector, three operations)',
+    },
+  },
+  {
+    name: 'WETH (zap input token)',
+    address: REFERENCE_CONTRACTS.weth,
+    selectors: [ERC20_APPROVE_SELECTOR],
+    selectorPurpose: {
+      [ERC20_APPROVE_SELECTOR]:
+        'approve — one-time unlimited allowance to Krystal v3utils for zap-in and zap-increase',
     },
   },
 ] as const;

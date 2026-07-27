@@ -40,7 +40,7 @@ import type {
 import { LifecycleLoop } from '../src/lifecycle/loop.js';
 import { PositionLocks } from '../src/lifecycle/locks.js';
 import { Quarantine, deriveLastCompounded } from '../src/lifecycle/unresolved.js';
-import { recenterRange } from '../src/lifecycle/range.js';
+import { rangeFromCenter, recenterRange } from '../src/lifecycle/range.js';
 import type {
   AuditPort,
   CalldataBuilder,
@@ -77,11 +77,15 @@ function position(over: Partial<LpPosition> = {}): LpPosition {
       volume24hUsd: 100_000,
       feeApr: 0.4,
     },
-    status: 'out_of_range',
+    // Quiet by default: in range, so a bare poll tick takes no action. Tests
+    // that exercise a rebalance either emit a watcher crossing (which carries its
+    // own out-of-range tick) or set `status: 'out_of_range'` + an outside tick
+    // explicitly. The default must be quiet now that the slow poll evaluates
+    // rebalance too (the level-triggered backstop).
+    status: 'in_range',
     tickLower: 141_800,
     tickUpper: 148_800,
-    // Far outside the range: `shouldRebalance` fires well past the 5% default.
-    currentTick: 200_000,
+    currentTick: 145_000,
     valueUsd: 250,
     unclaimedFeesUsd: 0,
     openedAt: NOW - 3_600_000,
@@ -195,9 +199,10 @@ class FakeAudit implements AuditPort {
     pending: PendingAction,
     outcome: { txHash: string | null; error: string | null },
     _now: number,
+    outcomeSnapshot?: Record<string, unknown>,
   ): Promise<void> {
     if (this.failOutcome) throw new Error('disk full');
-    this.outcomes.push({ pending, ...outcome });
+    this.outcomes.push({ pending, ...outcome, outcomeSnapshot });
   }
 
   async recordEvaluation(decision: Decision): Promise<void> {
@@ -724,6 +729,35 @@ describe('evaluation logging', () => {
     expect(h.audit.rules()).not.toContain('compound.fees_vs_gas');
     await h.loop.stop();
   });
+
+  it('skips autonomous compound when auto-compound is disabled in policy', async () => {
+    const rich = position({ status: 'in_range', currentTick: 145_000, unclaimedFeesUsd: 50 });
+    const h = harness({
+      positions: [rich],
+      policies: [policy({ compoundTrigger: { ...DEFAULT_POLICY.compoundTrigger, enabled: false } })],
+    });
+    await h.loop.start();
+
+    expect(h.signer.submitted).toEqual([]);
+    expect(h.calldata.compoundCalls).toBe(0);
+    expect(h.audit.rules()).toContain('policy.auto_compound_off');
+    await h.loop.stop();
+  });
+
+  it('skips autonomous rebalance when auto-rebalance is disabled in policy', async () => {
+    const h = harness({
+      policies: [policy({ rebalanceTrigger: { ...DEFAULT_POLICY.rebalanceTrigger, enabled: false } })],
+    });
+    await h.loop.start();
+
+    h.watcher().emit(crossing('confirmed'));
+    await h.loop.settle();
+
+    expect(h.signer.submitted).toEqual([]);
+    expect(h.calldata.rebalanceCalls).toBe(0);
+    expect(h.audit.rules()).toContain('policy.auto_rebalance_off');
+    await h.loop.stop();
+  });
 });
 
 // --- shutdown ---------------------------------------------------------------
@@ -870,6 +904,47 @@ describe('recenterRange', () => {
   });
 });
 
+describe('rangeFromCenter (shared by rebalance and enter)', () => {
+  // feeUnits 10_000 -> spacing 200. Matches recenterRange's geometry exactly,
+  // since recenterRange delegates here; the difference is enter has no existing
+  // range, so there is no "identical range" guard to trip.
+
+  it('narrow: same ±5% band recenterRange produces, without needing a position', () => {
+    const result = rangeFromCenter(200_000, 10_000, 'narrow');
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.range).toEqual({ tickLower: 199_400, tickUpper: 200_600 });
+  });
+
+  it('does NOT refuse a range that happens to equal a hypothetical current one', () => {
+    // The very input recenterRange rejects as "identical" is fine for an enter —
+    // there is no current range to be identical to.
+    const result = rangeFromCenter(200_000, 10_000, 'narrow');
+    expect(result.ok).toBe(true);
+  });
+
+  it('full snaps the whole usable range inwards to valid multiples', () => {
+    const result = rangeFromCenter(200_000, 10_000, 'full');
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.range).toEqual({ tickLower: -887_200, tickUpper: 887_200 });
+  });
+
+  it('refuses a fee unit with no known tick spacing', () => {
+    const result = rangeFromCenter(200_000, 7, 'narrow');
+    expect(result.ok).toBe(false);
+    if (result.ok) return;
+    expect(result.reason).toMatch(/tick spacing/);
+  });
+
+  it('refuses a non-integer current tick', () => {
+    const result = rangeFromCenter(200_000.5, 10_000, 'narrow');
+    expect(result.ok).toBe(false);
+    if (result.ok) return;
+    expect(result.reason).toMatch(/not an integer/);
+  });
+});
+
 describe('the loop never reaches the signer from an observed crossing', () => {
   it('has exactly one call site for submit, guarded by the confirmed phase', async () => {
     const h = harness();
@@ -882,6 +957,51 @@ describe('the loop never reaches the signer from an observed crossing', () => {
     }
 
     expect(submit).not.toHaveBeenCalled();
+    await h.loop.stop();
+  });
+});
+
+// ===========================================================================
+// The rebalance backstop on the slow poll (level-triggered).
+//
+// Regression for position #418840: it crossed its upper bound right at the
+// boundary (exit ~0% < 5% threshold), the watcher's one-shot check declined,
+// and — because the watcher only fires on a side CHANGE — nothing re-evaluated
+// rebalance as price kept drifting out. The position sat out of range for 20+
+// minutes. The poll must catch a drifted position with no fresh crossing.
+// ===========================================================================
+
+describe('rebalance backstop on the slow poll', () => {
+  it('rebalances an out-of-range position on a poll tick with NO watcher crossing', async () => {
+    // The #418840 case: drifted well past the band, no fresh crossing event.
+    const h = harness({ positions: [position({ status: 'out_of_range', currentTick: 200_000 })] });
+    await h.loop.start(); // start() runs one runPositionTick — no crossing emitted
+    await h.loop.settle();
+
+    expect(h.calldata.rebalanceCalls).toBe(1);
+    expect(h.signer.submitted.map((s) => s.action)).toContain('rebalance');
+    await h.loop.stop();
+  });
+
+  it('leaves an in-range position alone on the poll', async () => {
+    const h = harness({ positions: [position({ status: 'in_range', currentTick: 145_000 })] });
+    await h.loop.start();
+    await h.loop.settle();
+
+    expect(h.calldata.rebalanceCalls).toBe(0);
+    await h.loop.stop();
+  });
+
+  it('does not autonomously rebalance when auto-rebalance is off, but records why', async () => {
+    const h = harness({
+      positions: [position({ status: 'out_of_range', currentTick: 200_000 })],
+      policies: [policy({ rebalanceTrigger: { enabled: false, rangeExitPercent: 5, rangeStrategy: 'narrow' } })],
+    });
+    await h.loop.start();
+    await h.loop.settle();
+
+    expect(h.calldata.rebalanceCalls).toBe(0);
+    expect(h.audit.rules()).toContain('policy.auto_rebalance_off');
     await h.loop.stop();
   });
 });

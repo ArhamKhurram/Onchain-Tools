@@ -68,6 +68,89 @@ export interface LpPositionSkip {
 }
 
 /** `GET /api/lp/positions` */
+export interface LpLineageLink {
+  oldTokenId: string;
+  newTokenId: string;
+  poolAddress: string;
+  withdrawnValueUsd: number | null;
+  remintedValueUsd: number | null;
+  timestamp: number;
+}
+
+/** Lifetime PnL for one position row — derived from the worker audit log. */
+export interface LpLineagePnl {
+  /** `positionKey` (`{pool}:{tokenId}`) — matches grid row `entry.key`. */
+  lineageKey: string;
+  headTokenId: string;
+  memberTokenIds: string[];
+  costBasisUsd: number | null;
+  costBasisKnown: boolean;
+  /** When cost basis is approximate: "since YYYY-MM-DD". */
+  costBasisSince: string | null;
+  currentValueUsd: number;
+  unclaimedFeesUsd: number;
+  lifetimeFeesUsd: number;
+  gasPaidUsd: number;
+  netPnlUsd: number | null;
+  netPnlPercent: number | null;
+}
+
+/** What to show for PnL on a row — audit-backed net return or combined equity fallback. */
+export interface DisplayPnl {
+  label: string;
+  valueUsd: number;
+  percent: number | null;
+  hint: string | null;
+  source: 'audit' | 'indicative';
+}
+
+/**
+ * Combined return the operator cares about: fees folded into the headline number.
+ *
+ * Audit path: netPnlUsd already equals value + unclaimed − basis − gas.
+ * Fallback: total equity = value + unclaimed (Krystal splits these apart).
+ */
+export function resolveDisplayPnl(
+  pnl: LpLineagePnl | null | undefined,
+  position: Pick<LpPositionView, 'valueUsd' | 'unclaimedFeesUsd'>,
+  auditLogAvailable: boolean,
+): DisplayPnl {
+  const value = finite(position.valueUsd) ?? 0;
+  const fees = finite(position.unclaimedFeesUsd) ?? 0;
+
+  if (pnl?.netPnlUsd !== null && pnl?.netPnlUsd !== undefined) {
+    return {
+      label: 'Net return',
+      valueUsd: pnl.netPnlUsd,
+      percent: pnl.netPnlPercent,
+      hint: 'Value + unclaimed fees − net capital deployed − gas (deposits and withdrawals adjust basis)',
+      source: 'audit',
+    };
+  }
+
+  const totalEquity = value + fees;
+  if (!auditLogAvailable) {
+    return {
+      label: 'Total equity',
+      valueUsd: totalEquity,
+      percent: null,
+      hint: 'Value + fees combined. Set LP_AUDIT_LOG_PATH on the backend for net return vs cost basis.',
+      source: 'indicative',
+    };
+  }
+
+  return {
+    label: 'Total equity',
+    valueUsd: totalEquity,
+    percent: null,
+    hint: pnl?.costBasisSince
+      ? `Net return pending — basis since ${pnl.costBasisSince}`
+      : 'Net return will appear after the worker records this farm.',
+    source: 'indicative',
+  };
+}
+
+/** `GET /api/lp/positions` */
 export interface LpPositionsResponse {
   safeAddress: string | null;
   /** False until a Safe address is saved — a setup step, not an error. */
@@ -83,6 +166,10 @@ export interface LpPositionsResponse {
    * error — alarming, and actionable in exactly the wrong direction.
    */
   policyReadFailed: boolean;
+  /** Keyed by normalized pool address. Absent on older backends. */
+  pnlByLineage?: Record<string, LpLineagePnl>;
+  lineageLinks?: LpLineageLink[];
+  auditLogAvailable?: boolean;
   fetchedAt: string;
 }
 
@@ -495,6 +582,250 @@ export function findTile(
 ): PositionTileModel | null {
   if (!key) return null;
   return tiles.find((tile) => tile.key === key) ?? null;
+}
+
+// --- Lineage grouping -------------------------------------------------------
+//
+// A rebalance mints a new tokenId and closes the old one, so one farm can span
+// several NFTs in the same pool. Each *open* position gets its own grid row;
+// closed predecessors from a rebalance chain collapse into that row's detail
+// drawer only. Concurrent open farms in the same pool are never hidden.
+
+/** Stable pool key for grouping positions in the same pool. */
+export function lineageKey(poolAddress: string): string {
+  return normalizeAddress(poolAddress) ?? poolAddress.trim().toLowerCase();
+}
+
+function tokenIdNumeric(tokenId: unknown): number {
+  const text = String(tokenId ?? '').replace(/^#/, '').trim();
+  const n = Number.parseInt(text, 10);
+  return Number.isFinite(n) ? n : 0;
+}
+
+/** One grid row — an open position (or newest closed when fully exited). */
+export interface LpPositionLineage {
+  /** `positionKey(head)` — unique per row even when several opens share a pool. */
+  key: string;
+  poolAddress: string;
+  /** The position this row represents. */
+  head: LpPositionView;
+  /** Closed rebalance predecessors for this head only, newest-first. */
+  ancestors: LpPositionView[];
+  /** Every NFT in the pool, newest tokenId first. */
+  members: LpPositionView[];
+  hasOpen: boolean;
+}
+
+function closedAncestorsWithoutLinks(
+  head: LpPositionView,
+  members: readonly LpPositionView[],
+): LpPositionView[] {
+  const opens = members
+    .filter((p) => p.status !== 'closed')
+    .sort((a, b) => tokenIdNumeric(a.tokenId) - tokenIdNumeric(b.tokenId));
+  const headIndex = opens.findIndex((p) => p.tokenId === head.tokenId);
+
+  if (headIndex < 0) {
+    return members
+      .filter((p) => p.tokenId !== head.tokenId && p.status === 'closed')
+      .sort((a, b) => tokenIdNumeric(b.tokenId) - tokenIdNumeric(a.tokenId));
+  }
+
+  const lowerBound =
+    headIndex === 0 ? 0 : tokenIdNumeric(opens[headIndex - 1]!.tokenId);
+  const upperBound = tokenIdNumeric(head.tokenId);
+
+  return members
+    .filter((p) => {
+      if (p.status !== 'closed') return false;
+      const id = tokenIdNumeric(p.tokenId);
+      return id > lowerBound && id < upperBound;
+    })
+    .sort((a, b) => tokenIdNumeric(b.tokenId) - tokenIdNumeric(a.tokenId));
+}
+
+function closedAncestorsForHead(
+  head: LpPositionView,
+  members: readonly LpPositionView[],
+  poolLinks: readonly LpLineageLink[],
+): LpPositionView[] {
+  const byTokenId = new Map(members.map((p) => [p.tokenId, p]));
+
+  if (poolLinks.length > 0) {
+    const chain = lineageMembersFromLinks(head.tokenId, poolLinks);
+    return chain
+      .slice(1)
+      .map((id) => byTokenId.get(id))
+      .filter((p): p is LpPositionView => p !== undefined && p.status === 'closed');
+  }
+
+  return closedAncestorsWithoutLinks(head, members);
+}
+
+/**
+ * Group flat positions into lineages. Pure.
+ *
+ * Emits one lineage per open position. Closed-only pools emit a single lineage.
+ * Ancestors are closed rebalance predecessors only — never concurrent opens.
+ */
+export function buildLineages(
+  positions: readonly LpPositionView[],
+  lineageLinks: readonly LpLineageLink[] = [],
+): LpPositionLineage[] {
+  const linksByPool = new Map<string, LpLineageLink[]>();
+  for (const link of lineageLinks) {
+    const key = lineageKey(link.poolAddress);
+    const list = linksByPool.get(key) ?? [];
+    list.push(link);
+    linksByPool.set(key, list);
+  }
+
+  const byPool = new Map<string, LpPositionView[]>();
+
+  for (const position of positions) {
+    const key = lineageKey(position.poolAddress);
+    if (!key) continue;
+    const list = byPool.get(key) ?? [];
+    list.push(position);
+    byPool.set(key, list);
+  }
+
+  const lineages: LpPositionLineage[] = [];
+
+  for (const [poolKey, members] of byPool) {
+    const sorted = [...members].sort(
+      (a, b) => tokenIdNumeric(b.tokenId) - tokenIdNumeric(a.tokenId),
+    );
+    const poolLinks = linksByPool.get(poolKey) ?? [];
+    const opens = sorted.filter((p) => p.status !== 'closed');
+
+    if (opens.length === 0) {
+      const head = sorted[0]!;
+      lineages.push({
+        key: positionKey(head),
+        poolAddress: head.poolAddress,
+        head,
+        ancestors: closedAncestorsForHead(head, sorted, poolLinks),
+        members: sorted,
+        hasOpen: false,
+      });
+      continue;
+    }
+
+    for (const head of opens) {
+      lineages.push({
+        key: positionKey(head),
+        poolAddress: head.poolAddress,
+        head,
+        ancestors: closedAncestorsForHead(head, sorted, poolLinks),
+        members: sorted,
+        hasOpen: true,
+      });
+    }
+  }
+
+  return lineages;
+}
+
+function lineageMembersFromLinks(headTokenId: string, links: readonly LpLineageLink[]): string[] {
+  const byNew = new Map<string, string>();
+  for (const link of links) {
+    byNew.set(link.newTokenId, link.oldTokenId);
+  }
+  const members: string[] = [headTokenId];
+  let cursor = headTokenId;
+  const seen = new Set<string>([headTokenId]);
+  while (byNew.has(cursor)) {
+    const prev = byNew.get(cursor)!;
+    if (seen.has(prev)) break;
+    members.push(prev);
+    seen.add(prev);
+    cursor = prev;
+  }
+  return members;
+}
+
+/** One grid row — the lineage head plus derived tile state. */
+export interface LineageTileModel {
+  key: string;
+  lineage: LpPositionLineage;
+  tile: PositionTileModel;
+  ancestorCount: number;
+}
+
+function tileForPosition(
+  position: LpPositionView,
+  draftAllowlist: readonly string[],
+  policyReadFailed: boolean,
+): PositionTileModel {
+  return {
+    key: positionKey(position),
+    position,
+    coverage: positionCoverage(position, draftAllowlist, policyReadFailed),
+    status: presentStatus(position.status),
+    geometry: rangeGeometry(position.minPrice, position.maxPrice, position.currentPrice),
+  };
+}
+
+function lineageSortRank(
+  lineage: LpPositionLineage,
+  draftAllowlist: readonly string[],
+  policyReadFailed: boolean,
+): number {
+  return coverageRank(positionCoverage(lineage.head, draftAllowlist, policyReadFailed));
+}
+
+/**
+ * Lineage heads for the positions grid — live farms first, closed-only farms
+ * separated for the collapsible section below.
+ */
+export function buildLineageGrid(
+  positions: readonly LpPositionView[],
+  draftAllowlist: readonly string[],
+  policyReadFailed = false,
+  lineageLinks: readonly LpLineageLink[] = [],
+): { live: LineageTileModel[]; closedOnly: LineageTileModel[] } {
+  const lineages = buildLineages(positions, lineageLinks);
+  const models: LineageTileModel[] = lineages.map((lineage) => ({
+    key: positionKey(lineage.head),
+    lineage,
+    tile: tileForPosition(lineage.head, draftAllowlist, policyReadFailed),
+    ancestorCount: lineage.ancestors.length,
+  }));
+
+  const sorted = [...models].sort((a, b) => {
+    const rank =
+      lineageSortRank(a.lineage, draftAllowlist, policyReadFailed) -
+      lineageSortRank(b.lineage, draftAllowlist, policyReadFailed);
+    if (rank !== 0) return rank;
+
+    const idle =
+      Number(b.lineage.head.status === 'out_of_range') -
+      Number(a.lineage.head.status === 'out_of_range');
+    if (idle !== 0) return idle;
+
+    const value =
+      (finite(b.lineage.head.valueUsd) ?? 0) - (finite(a.lineage.head.valueUsd) ?? 0);
+    if (value !== 0) return value;
+
+    return tokenIdNumeric(b.lineage.head.tokenId) - tokenIdNumeric(a.lineage.head.tokenId);
+  });
+
+  return {
+    live: sorted.filter((m) => m.lineage.hasOpen),
+    closedOnly: sorted.filter((m) => !m.lineage.hasOpen),
+  };
+}
+
+/** Resolve selection by position key or lineage key after a refresh. */
+export function findLineageTile(
+  tiles: readonly LineageTileModel[],
+  key: string | null,
+): LineageTileModel | null {
+  if (!key) return null;
+  return (
+    tiles.find((entry) => entry.key === key || entry.tile.key === key) ?? null
+  );
 }
 
 // --- Formatting -------------------------------------------------------------

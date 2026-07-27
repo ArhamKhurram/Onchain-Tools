@@ -41,6 +41,8 @@ export interface PoolSelectionCriteria {
 }
 
 export interface CompoundTrigger {
+  /** When false, autonomous compound is skipped; manual commands still work. */
+  enabled: boolean;
   /** e.g. 2.0 — compound once claimable fees exceed 2x the gas cost. */
   minFeesVsGasRatio: number;
   /** e.g. 6 — compound at least this often regardless; whichever fires first. */
@@ -68,6 +70,8 @@ export const RANGE_STRATEGY_HALF_WIDTH: Record<Exclude<RangeStrategy, 'full'>, n
 };
 
 export interface RebalanceTrigger {
+  /** When false, autonomous rebalance is skipped; manual commands still work. */
+  enabled: boolean;
   /** Rebalance once price has left the position's range by this percentage. */
   rangeExitPercent: number;
   /**
@@ -159,7 +163,14 @@ export interface EfficiencyScore {
   costDrag: number;
 }
 
-export type ActionKind = 'enter' | 'compound' | 'rebalance' | 'exit' | 'none';
+export type ActionKind =
+  | 'enter'
+  | 'increase'
+  | 'approve'
+  | 'compound'
+  | 'rebalance'
+  | 'exit'
+  | 'none';
 
 export interface Decision {
   action: ActionKind;

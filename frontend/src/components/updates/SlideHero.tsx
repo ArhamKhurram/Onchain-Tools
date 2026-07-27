@@ -125,7 +125,7 @@ export function SlideHero({ slide }: { slide: UpdateSlide }) {
         className="absolute inset-0 opacity-[0.07]"
         style={{
           backgroundImage:
-            'radial-gradient(circle at 50% 30%, var(--oct-accent, #ff3b3b) 0%, transparent 55%)',
+            'radial-gradient(circle at 50% 30%, rgb(var(--oct-accent, 255 59 59)) 0%, transparent 55%)',
         }}
       />
       <div className="relative z-10 w-full">

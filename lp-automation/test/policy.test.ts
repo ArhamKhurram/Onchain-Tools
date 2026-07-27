@@ -73,6 +73,11 @@ describe('DEFAULT_POLICY', () => {
   it('has a daily cap that can actually fund one position', () => {
     expect(DEFAULT_POLICY.dailySpendCapUsd).toBeGreaterThanOrEqual(DEFAULT_POLICY.maxPositionSizeUsd);
   });
+
+  it('defaults both auto flags to true', () => {
+    expect(DEFAULT_POLICY.compoundTrigger.enabled).toBe(true);
+    expect(DEFAULT_POLICY.rebalanceTrigger.enabled).toBe(true);
+  });
 });
 
 // ===========================================================================
@@ -136,6 +141,12 @@ describe('validatePolicy', () => {
     expect(fieldsOf(withPolicy({ maxPositionSizeUsd: '250' }))).toContain('maxPositionSizeUsd');
     expect(fieldsOf(withPolicy({ maxPositionSizeUsd: null }))).toContain('maxPositionSizeUsd');
     expect(fieldsOf(withPolicy({ maxPositionSizeUsd: undefined }))).toContain('maxPositionSizeUsd');
+  });
+
+  it('rejects a non-boolean auto-compound flag', () => {
+    expect(fieldsOf(withPolicy({ compoundTrigger: { enabled: 'yes' } }))).toContain(
+      'compoundTrigger.enabled',
+    );
   });
 
   it('rejects a daily cap that cannot fund a single position', () => {

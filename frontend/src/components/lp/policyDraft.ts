@@ -45,10 +45,12 @@ export interface PolicyDraft {
     maxIlRiskScore: string;
   };
   compoundTrigger: {
+    enabled: boolean;
     minFeesVsGasRatio: string;
     maxIntervalHours: string;
   };
   rebalanceTrigger: {
+    enabled: boolean;
     rangeExitPercent: string;
     rangeStrategy: RangeStrategy;
   };
@@ -78,10 +80,12 @@ export const DEFAULT_POLICY_DRAFT: PolicyDraft = {
     maxIlRiskScore: '40',
   },
   compoundTrigger: {
+    enabled: true,
     minFeesVsGasRatio: '3',
     maxIntervalHours: '24',
   },
   rebalanceTrigger: {
+    enabled: true,
     rangeExitPercent: '5',
     rangeStrategy: 'narrow',
   },
@@ -110,10 +114,12 @@ export function draftFromPolicy(policy: AutomationPolicy | null): PolicyDraft {
       maxIlRiskScore: num(policy.poolSelectionCriteria?.maxIlRiskScore),
     },
     compoundTrigger: {
+      enabled: policy.compoundTrigger?.enabled !== false,
       minFeesVsGasRatio: num(policy.compoundTrigger?.minFeesVsGasRatio),
       maxIntervalHours: num(policy.compoundTrigger?.maxIntervalHours),
     },
     rebalanceTrigger: {
+      enabled: policy.rebalanceTrigger?.enabled !== false,
       rangeExitPercent: num(policy.rebalanceTrigger?.rangeExitPercent),
       rangeStrategy: normalizeRangeStrategy(policy.rebalanceTrigger?.rangeStrategy),
     },
@@ -148,10 +154,12 @@ export function draftToPayload(draft: PolicyDraft): AutomationPolicyPayload {
       maxIlRiskScore: toNumber(draft.poolSelectionCriteria.maxIlRiskScore),
     },
     compoundTrigger: {
+      enabled: draft.compoundTrigger.enabled,
       minFeesVsGasRatio: toNumber(draft.compoundTrigger.minFeesVsGasRatio),
       maxIntervalHours: toNumber(draft.compoundTrigger.maxIntervalHours),
     },
     rebalanceTrigger: {
+      enabled: draft.rebalanceTrigger.enabled,
       rangeExitPercent: toNumber(draft.rebalanceTrigger.rangeExitPercent),
       rangeStrategy: draft.rebalanceTrigger.rangeStrategy,
     },
@@ -169,6 +177,19 @@ interface NumberRule {
   max?: number;
   exclusiveMin?: number;
   because?: string;
+}
+
+function checkBoolean(
+  issues: PolicyFieldIssue[],
+  field: string,
+  value: unknown,
+  because?: string,
+): void {
+  const suffix = because ? ` (${because})` : '';
+  if (value === undefined) return;
+  if (typeof value !== 'boolean') {
+    issues.push({ field, message: `must be true or false${suffix}` });
+  }
 }
 
 function checkNumber(
@@ -260,6 +281,7 @@ export function validatePolicyPayload(payload: AutomationPolicyPayload): PolicyF
     { min: 0, max: 100, because: 'the IL risk score is defined on a 0-100 scale' },
   );
 
+  checkBoolean(issues, 'compoundTrigger.enabled', payload.compoundTrigger.enabled);
   checkNumber(issues, 'compoundTrigger.minFeesVsGasRatio', payload.compoundTrigger.minFeesVsGasRatio, {
     min: 1,
     because: 'compounding for less than the gas it costs is always a net loss',
@@ -269,6 +291,7 @@ export function validatePolicyPayload(payload: AutomationPolicyPayload): PolicyF
     because: 'a zero interval would compound on every single tick',
   });
 
+  checkBoolean(issues, 'rebalanceTrigger.enabled', payload.rebalanceTrigger.enabled);
   checkNumber(issues, 'rebalanceTrigger.rangeExitPercent', payload.rebalanceTrigger.rangeExitPercent, {
     exclusiveMin: 0,
     because: 'a zero threshold rebalances on the first tick outside the range',

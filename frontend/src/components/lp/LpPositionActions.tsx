@@ -83,7 +83,9 @@ function ToneIcon({ tone }: { tone: CommandTone }) {
 
 function ActionIcon({ action }: { action: LpCommandAction }) {
   if (action === 'compound') return <RefreshCw size={12} strokeWidth={2.5} />;
-  if (action === 'rebalance') return <Repeat size={12} strokeWidth={2.5} />;
+  if (action === 'rebalance' || action === 'compound_rebalance') {
+    return <Repeat size={12} strokeWidth={2.5} />;
+  }
   return <Ban size={12} strokeWidth={2.5} />;
 }
 
@@ -216,7 +218,7 @@ export default function LpPositionActions({
         </p>
       </div>
 
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-2">
         {COMMAND_ACTIONS.map((action) => {
           const meta = ACTION_META[action];
           const availability = actionAvailability({ action, coverage, inFlight, apiUnavailable });

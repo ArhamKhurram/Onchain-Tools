@@ -4,53 +4,59 @@
 @tailwind components;
 @tailwind utilities;
 
-/* ── Dark: black + red (OCT classic) · Light: cream + blue (Agentic-inspired) ─ */
+/* ── Dark: black + red (OCT classic) · Light: cream + blue (Agentic-inspired) ─
+   Colors are stored as bare `R G B` channel triples so Tailwind can compose them
+   with an alpha modifier (`rgb(var(--oct-accent) / <alpha-value>)` in
+   tailwind.config.js), which makes `border-oct-accent/30` & friends work. Every
+   direct use in CSS/JS must therefore wrap them: `rgb(var(--oct-accent))`.
+   The `*-dim` / `*-pulse` tokens carry their own baked-in alpha (`R G B / A`),
+   so they are solid tokens and take no further alpha modifier. */
 
 :root,
 [data-theme='dark'] {
   color-scheme: dark;
-  --oct-bg: #0a0a0a;
-  --oct-panel: #0a0a0a;
-  --oct-surface: #141414;
-  --oct-surface-raised: #1e1e1e;
-  --oct-border: #2e2e2e;
-  --oct-border-bright: #4d4d4d;
-  --oct-text: #f5f5f5;
-  --oct-muted: #9a9a9a;
-  --oct-accent: #ff2a2a;
-  --oct-accent-hover: #e10600;
-  --oct-flame: #ff1744;
-  --oct-accent-dim: rgba(255, 42, 42, 0.14);
-  --oct-live: #ff2a2a;
-  --oct-live-dim: rgba(255, 42, 42, 0.16);
-  --oct-live-pulse: rgba(255, 42, 42, 0.55);
-  --oct-green: #22c55e;
-  --oct-yellow: #fbbf24;
-  --oct-shadow: #000000;
-  --oct-feed-bg: #0b0e1a;
+  --oct-bg: 10 10 10;
+  --oct-panel: 10 10 10;
+  --oct-surface: 20 20 20;
+  --oct-surface-raised: 30 30 30;
+  --oct-border: 46 46 46;
+  --oct-border-bright: 77 77 77;
+  --oct-text: 245 245 245;
+  --oct-muted: 154 154 154;
+  --oct-accent: 255 42 42;
+  --oct-accent-hover: 225 6 0;
+  --oct-flame: 255 23 68;
+  --oct-accent-dim: 255 42 42 / 0.14;
+  --oct-live: 255 42 42;
+  --oct-live-dim: 255 42 42 / 0.16;
+  --oct-live-pulse: 255 42 42 / 0.55;
+  --oct-green: 34 197 94;
+  --oct-yellow: 251 191 36;
+  --oct-shadow: 0 0 0;
+  --oct-feed-bg: 11 14 26;
 }
 
 [data-theme='light'] {
   color-scheme: light;
-  --oct-bg: #f4f2ec;
-  --oct-panel: #ebe8e0;
-  --oct-surface: #e4e1d8;
-  --oct-surface-raised: #faf9f6;
-  --oct-border: #cfcabf;
-  --oct-border-bright: #b5b0a4;
-  --oct-text: #0a0c0a;
-  --oct-muted: #3a4038;
-  --oct-accent: #3d6b9e;
-  --oct-accent-hover: #2f5580;
-  --oct-flame: #c45c4a;
-  --oct-accent-dim: rgba(61, 107, 158, 0.12);
-  --oct-live: #3d6b9e;
-  --oct-live-dim: rgba(61, 107, 158, 0.14);
-  --oct-live-pulse: rgba(61, 107, 158, 0.45);
-  --oct-green: #2d7a4a;
-  --oct-yellow: #a8841a;
-  --oct-shadow: #1a1c18;
-  --oct-feed-bg: #ebe8e0;
+  --oct-bg: 244 242 236;
+  --oct-panel: 235 232 224;
+  --oct-surface: 228 225 216;
+  --oct-surface-raised: 250 249 246;
+  --oct-border: 207 202 191;
+  --oct-border-bright: 181 176 164;
+  --oct-text: 10 12 10;
+  --oct-muted: 58 64 56;
+  --oct-accent: 61 107 158;
+  --oct-accent-hover: 47 85 128;
+  --oct-flame: 196 92 74;
+  --oct-accent-dim: 61 107 158 / 0.12;
+  --oct-live: 61 107 158;
+  --oct-live-dim: 61 107 158 / 0.14;
+  --oct-live-pulse: 61 107 158 / 0.45;
+  --oct-green: 45 122 74;
+  --oct-yellow: 168 132 26;
+  --oct-shadow: 26 28 24;
+  --oct-feed-bg: 235 232 224;
 }
 
 * {
@@ -76,8 +82,8 @@ body {
   font-family: 'Space Grotesk', system-ui, sans-serif;
   font-size: 14px;
   line-height: 1.5;
-  color: var(--oct-text);
-  background-color: var(--oct-bg);
+  color: rgb(var(--oct-text));
+  background-color: rgb(var(--oct-bg));
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
   transition: background-color 0.2s ease, color 0.2s ease;
@@ -95,20 +101,20 @@ h3 {
 }
 
 ::-webkit-scrollbar-track {
-  background: var(--oct-bg);
+  background: rgb(var(--oct-bg));
 }
 
 ::-webkit-scrollbar-thumb {
-  background: var(--oct-border);
+  background: rgb(var(--oct-border));
   border-radius: 0;
 }
 
 ::-webkit-scrollbar-thumb:hover {
-  background: var(--oct-accent);
+  background: rgb(var(--oct-accent));
 }
 
 ::selection {
-  background: var(--oct-accent);
+  background: rgb(var(--oct-accent));
   color: #ffffff;
 }
 
@@ -158,5 +164,5 @@ h3 {
   height: 3px;
   overflow: hidden;
   pointer-events: none;
-  background: var(--oct-accent);
+  background: rgb(var(--oct-accent));
 }

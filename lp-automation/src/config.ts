@@ -58,6 +58,8 @@ export interface LpAutomationConfig {
   maxValueWei: bigint;
   /** Operator's per-transaction gas estimate in USD; null means unknown. */
   gasCostUsd: number | null;
+  /** Native token USD price for receipt gas → `gasSpentUsd` in the audit log. */
+  nativeTokenUsd: number | null;
 }
 
 const ADDRESS = /^0x[0-9a-fA-F]{40}$/;
@@ -153,6 +155,12 @@ export function parseConfig(env: Record<string, string | undefined>): LpAutomati
       ? null
       : readNumber(gasRaw, 'LP_GAS_COST_USD', 0, { min: 0 });
 
+  const nativeRaw = env.LP_NATIVE_TOKEN_USD?.trim();
+  const nativeTokenUsd =
+    nativeRaw === undefined || nativeRaw === ''
+      ? null
+      : readNumber(nativeRaw, 'LP_NATIVE_TOKEN_USD', 0, { min: 0 });
+
   const policyFileRaw = env.LP_POLICY_FILE?.trim();
 
   return {
@@ -198,6 +206,7 @@ export function parseConfig(env: Record<string, string | undefined>): LpAutomati
     ),
     maxValueWei,
     gasCostUsd,
+    nativeTokenUsd,
   };
 }
 

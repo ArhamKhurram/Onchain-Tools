@@ -32,13 +32,17 @@ import type {
   SubmitRequest,
   TransactionSigner,
 } from '../src/signer/types.js';
-import { LifecycleLoop } from '../src/lifecycle/loop.js';
+import { LifecycleLoop, type AllowanceConfig } from '../src/lifecycle/loop.js';
+import type { TransactionReceiptInfo } from '../src/lifecycle/executor.js';
+import { DEFAULT_APPROVABLE_TOKENS, MAX_UINT256 } from '../src/calldata/erc20Approve.js';
 import type {
   AuditPort,
   CalldataBuilder,
   Logger,
   PolicyBundle,
   PolicySource,
+  PoolState,
+  PoolStateReader,
   PositionFeed,
   PositionWatcher,
 } from '../src/lifecycle/types.js';
@@ -226,10 +230,13 @@ function position(over: Partial<LpPosition> = {}): LpPosition {
       volume24hUsd: 100_000,
       feeApr: 0.4,
     },
-    status: 'out_of_range',
+    // In range by default: a manual command drives these tests, and the startup
+    // poll tick must stay a no-op so it does not add an autonomous rebalance
+    // (the poll now evaluates rebalance too) that muddies what the command did.
+    status: 'in_range',
     tickLower: 141_800,
     tickUpper: 148_800,
-    currentTick: 200_000,
+    currentTick: 145_000,
     valueUsd: 250,
     unclaimedFeesUsd: 0,
     openedAt: NOW - 3_600_000,
@@ -240,17 +247,22 @@ function position(over: Partial<LpPosition> = {}): LpPosition {
   };
 }
 
-function preparedTransaction(builtAt = NOW): PreparedTransaction {
+function preparedTransaction(
+  over: { builtAt?: number; kind?: PreparedTransaction['meta']['kind']; selector?: string } = {},
+): PreparedTransaction {
+  const builtAt = over.builtAt ?? NOW;
+  const kind = over.kind ?? 'compound';
+  const selector = over.selector ?? '0xb88d4fde';
   return Object.freeze({
     to: '0x73991a25c818bf1f1128deaab1492d45638de0d3' as Address,
     value: 0n,
-    data: '0xb88d4fde0000',
+    data: `${selector}0000`,
     meta: {
-      kind: 'compound',
+      kind,
       chainId: 4663,
       platform: 'uniswapv3',
       from: SAFE,
-      selector: '0xb88d4fde',
+      selector,
       estimateGas: null,
       gasLimit: null,
       usedDefaultGas: false,
@@ -377,6 +389,8 @@ class FakeWatcher implements PositionWatcher {
 class FakeCalldata implements CalldataBuilder {
   compoundCalls = 0;
   rebalanceCalls = 0;
+  enterCalls = 0;
+  increaseCalls = 0;
   failWith: Error | null = null;
 
   async compound(): Promise<PreparedTransaction> {
@@ -390,6 +404,54 @@ class FakeCalldata implements CalldataBuilder {
     if (this.failWith) throw this.failWith;
     return preparedTransaction();
   }
+
+  async enter(): Promise<PreparedTransaction> {
+    this.enterCalls += 1;
+    if (this.failWith) throw this.failWith;
+    return preparedTransaction();
+  }
+
+  async increase(): Promise<PreparedTransaction> {
+    this.increaseCalls += 1;
+    if (this.failWith) throw this.failWith;
+    return preparedTransaction({ kind: 'swap_and_increase', selector: '0x3dce3e25' });
+  }
+}
+
+/** Token the enter fake zaps in; matches `FakePoolState.token0` so it is in-pool. */
+const ENTER_TOKEN_IN = '0x2222222222222222222222222222222222222222' as Address;
+
+/** A pool-state reader that reports the enter token as one side of the pool. */
+const fakePoolState: PoolStateReader = {
+  readPoolState: async (): Promise<PoolState> => ({
+    currentTick: 200_000,
+    feeUnits: 10_000,
+    token0: ENTER_TOKEN_IN,
+    token1: OTHER_POOL,
+  }),
+};
+
+const fakeAllowance: AllowanceConfig = {
+  owner: SAFE,
+  chainId: 4663,
+  approvableTokens: [...DEFAULT_APPROVABLE_TOKENS, ENTER_TOKEN_IN],
+  reader: { readContract: async () => MAX_UINT256 },
+};
+
+/** A valid `enter` command: no tokenId, carries pool + token + amount + range. */
+function enterCommand(over: Partial<LpCommand> = {}): LpCommand {
+  return {
+    id: 'cmd-enter',
+    tokenId: null,
+    poolAddress: POOL,
+    action: 'enter',
+    requestedAt: NOW - 1_000,
+    tokenInAddress: ENTER_TOKEN_IN,
+    amountIn: '1000000000000000',
+    rangeStrategy: 'narrow',
+    swapSlippage: null,
+    ...over,
+  };
 }
 
 /** An in-memory `CommandSource`. One command, handed out once. */
@@ -448,6 +510,9 @@ function harness(
     policies?: AutomationPolicy[];
     records?: AuditRecord[];
     calldata?: CalldataBuilder & { compoundCalls?: number };
+    /** Omit for the default working reader; pass `null` to leave enter unwired. */
+    poolState?: PoolStateReader | null;
+    waitForReceipt?: (txHash: string) => Promise<TransactionReceiptInfo | null>;
   } = {},
 ): Harness {
   const signer = new FakeSigner();
@@ -474,8 +539,11 @@ function harness(
     positions: feed,
     calldata,
     commands,
+    ...(over.poolState === null ? {} : { poolState: over.poolState ?? fakePoolState }),
+    allowance: fakeAllowance,
     signer,
     audit,
+    ...(over.waitForReceipt === undefined ? {} : { waitForReceipt: over.waitForReceipt }),
     createWatcher: (callbacks) => {
       watcher = new FakeWatcher(callbacks);
       return watcher;
@@ -635,6 +703,11 @@ describe('rowToCommand', () => {
     expect(mapped.poolAddress).toBe(POOL);
   });
 
+  it('accepts compound_rebalance as a queue action', () => {
+    const mapped = rowToCommand(fakeRow({ action: 'compound_rebalance' }) as never);
+    expect(mapped.action).toBe('compound_rebalance');
+  });
+
   it('refuses a row it cannot read rather than guessing at a transaction', () => {
     for (const over of [
       { action: 'withdraw' },
@@ -648,6 +721,101 @@ describe('rowToCommand', () => {
         CommandSourceError,
       );
     }
+  });
+});
+
+describe('rowToCommand — enter (Zap In)', () => {
+  const TOKEN_IN = '0x1111111111111111111111111111111111111111';
+  const enterRow = (over: Record<string, unknown> = {}) => ({
+    id: 'enter-1',
+    user_id: 'u1',
+    token_id: null,
+    pool_address: POOL,
+    action: 'enter',
+    status: 'pending',
+    requested_at: new Date(0).toISOString(),
+    token_in_address: TOKEN_IN,
+    amount_in: '1000000000000000',
+    range_strategy: 'narrow',
+    swap_slippage: 0.005,
+    ...over,
+  });
+
+  it('maps a valid enter row with a null tokenId and the enter params', () => {
+    const m = rowToCommand(enterRow() as never);
+    expect(m.tokenId).toBeNull();
+    expect(m.action).toBe('enter');
+    expect(m.tokenInAddress).toBe(TOKEN_IN);
+    expect(m.amountIn).toBe('1000000000000000');
+    expect(m.rangeStrategy).toBe('narrow');
+    expect(m.swapSlippage).toBe(0.005);
+  });
+
+  it('lowercases token_in_address so allowlist/pool comparison is plain equality', () => {
+    const m = rowToCommand(enterRow({ token_in_address: TOKEN_IN.toUpperCase().replace('0X', '0x') }) as never);
+    expect(m.tokenInAddress).toBe(TOKEN_IN);
+  });
+
+  it('treats a null range_strategy / swap_slippage as "use the default"', () => {
+    const m = rowToCommand(enterRow({ range_strategy: null, swap_slippage: null }) as never);
+    expect(m.rangeStrategy).toBeNull();
+    expect(m.swapSlippage).toBeNull();
+  });
+
+  it('parses a numeric-string swap_slippage (PostgREST returns numeric as a string)', () => {
+    const m = rowToCommand(enterRow({ swap_slippage: '0.01' }) as never);
+    expect(m.swapSlippage).toBe(0.01);
+  });
+
+  it('refuses a malformed enter row rather than guessing at a transaction', () => {
+    for (const over of [
+      { token_in_address: '0xnope' },
+      { token_in_address: null },
+      { amount_in: '0' },
+      { amount_in: '1.5' },
+      { amount_in: '007' },
+      { amount_in: null },
+      { range_strategy: 'medium' },
+      { swap_slippage: 0.5 },
+      { swap_slippage: 0 },
+    ]) {
+      expect(() => rowToCommand(enterRow(over) as never), JSON.stringify(over)).toThrow(
+        CommandSourceError,
+      );
+    }
+  });
+});
+
+describe('rowToCommand — increase (add liquidity)', () => {
+  const TOKEN_IN = '0x1111111111111111111111111111111111111111';
+  const increaseRow = (over: Record<string, unknown> = {}) => ({
+    id: 'inc-1',
+    user_id: 'u1',
+    token_id: '12345',
+    pool_address: POOL,
+    action: 'increase',
+    status: 'pending',
+    requested_at: new Date(0).toISOString(),
+    token_in_address: TOKEN_IN,
+    amount_in: '1000000000000000',
+    range_strategy: null,
+    swap_slippage: 0.005,
+    ...over,
+  });
+
+  it('maps a valid increase row with tokenId and zap params', () => {
+    const m = rowToCommand(increaseRow() as never);
+    expect(m.tokenId).toBe('12345');
+    expect(m.action).toBe('increase');
+    expect(m.tokenInAddress).toBe(TOKEN_IN);
+    expect(m.amountIn).toBe('1000000000000000');
+    expect(m.swapSlippage).toBe(0.005);
+  });
+
+  it('refuses range_strategy on an increase row', () => {
+    expect(() => rowToCommand(increaseRow({ range_strategy: 'narrow' }) as never)).toThrow(
+      CommandSourceError,
+    );
   });
 });
 
@@ -862,8 +1030,8 @@ describe('disarmed mode', () => {
     expect(result?.txHash).toBeNull();
     // `error !== null` is what makes the row `failed`. A dry run must never
     // read as a completed action to the person who pressed the button.
-    expect(result?.error).toContain('skipped_disarmed');
-    expect(result?.error).toContain('NOTHING WAS BROADCAST');
+    expect(result?.error).toContain('disarmed');
+    expect(result?.error).toMatch(/nothing broadcast/i);
     await h.loop.stop();
   });
 
@@ -961,6 +1129,150 @@ describe('failures are recorded with their reason', () => {
     // The transaction still went out and the AUDIT LOG still recorded it —
     // that, not this row, is the authority on what happened to the funds.
     expect(h.audit.outcomes).toHaveLength(1);
+    await h.loop.stop();
+  });
+});
+
+describe('compound_rebalance manual command', () => {
+  it('runs compound then rebalance sequentially and records both manual rules', async () => {
+    const h = harness({ queued: command({ action: 'compound_rebalance' }) });
+    await h.loop.start();
+    await h.loop.runCommandTick();
+
+    expect(h.calldata.compoundCalls).toBe(1);
+    expect(h.calldata.rebalanceCalls).toBe(1);
+    expect(h.signer.submitted).toHaveLength(2);
+    expect(h.signer.submitted[0]?.action).toBe('compound');
+    expect(h.signer.submitted[1]?.action).toBe('rebalance');
+    expect(h.commands.last).toEqual({ txHash: '0xdeadbeef', error: null });
+    expect(h.audit.intents.map((intent) => intent.decision.rule)).toEqual([
+      'manual.compound_rebalance.compound',
+      'manual.compound_rebalance.rebalance',
+    ]);
+    await h.loop.stop();
+  });
+
+  it('does not attempt rebalance when compound fails', async () => {
+    const calldata = new FakeCalldata();
+    calldata.failWith = new Error('compound calldata unavailable');
+    const h = harness({ queued: command({ action: 'compound_rebalance' }), calldata });
+    await h.loop.start();
+    await h.loop.runCommandTick();
+
+    expect(h.calldata.compoundCalls).toBe(1);
+    expect(h.calldata.rebalanceCalls).toBe(0);
+    expect(h.signer.submitted).toEqual([]);
+    expect(h.commands.last?.error).toContain('compound calldata unavailable');
+    await h.loop.stop();
+  });
+});
+
+describe('enter (Zap In) manual command', () => {
+  it('reads the pool, builds swap_and_mint calldata, and runs the SAME ladder', async () => {
+    const h = harness({ queued: enterCommand() });
+    await h.loop.start();
+    await h.loop.runCommandTick();
+
+    expect(h.calldata.enterCalls).toBe(1);
+    expect(h.signer.simulated).toHaveLength(1); // the dry run still ran
+    expect(h.signer.submitted).toHaveLength(1);
+    expect(h.signer.submitted[0]?.action).toBe('enter');
+    expect(h.commands.last).toEqual({ txHash: '0xdeadbeef', error: null });
+    await h.loop.stop();
+  });
+
+  it('records the enter under manual.enter with the COMMAND id as the attributable tokenId', async () => {
+    const h = harness({ queued: enterCommand() });
+    await h.loop.start();
+    await h.loop.runCommandTick();
+
+    const decision = h.audit.intents[0]?.decision;
+    expect(decision?.action).toBe('enter');
+    expect(decision?.rule).toBe('manual.enter');
+    // There is no position yet; the command id is the quarantine attribution key.
+    expect(decision?.snapshot?.tokenId).toBe('cmd-enter');
+    expect(decision?.snapshot?.trigger).toBe('manual');
+    await h.loop.stop();
+  });
+
+  it('is refused when the target pool is not on the allowlist AT EXECUTION TIME', async () => {
+    const h = harness({ queued: enterCommand(), policies: [policy({ allowedPools: [OTHER_POOL] })] });
+    await h.loop.start();
+    await h.loop.runCommandTick();
+
+    expect(h.calldata.enterCalls).toBe(0);
+    expect(h.signer.submitted).toEqual([]);
+    expect(h.commands.last?.error).toContain('allowlist');
+    await h.loop.stop();
+  });
+
+  it('is refused when the input token is not one side of the pool', async () => {
+    const h = harness({
+      queued: enterCommand({ tokenInAddress: '0x3333333333333333333333333333333333333333' as Address }),
+    });
+    await h.loop.start();
+    await h.loop.runCommandTick();
+
+    expect(h.calldata.enterCalls).toBe(0);
+    expect(h.signer.submitted).toEqual([]);
+    expect(h.commands.last?.error).toContain('is not in pool');
+    await h.loop.stop();
+  });
+
+  it('is refused with a recorded reason when enter is not wired (no pool-state reader)', async () => {
+    const h = harness({ queued: enterCommand(), poolState: null });
+    await h.loop.start();
+    await h.loop.runCommandTick();
+
+    expect(h.calldata.enterCalls).toBe(0);
+    expect(h.signer.submitted).toEqual([]);
+    expect(h.commands.last?.error).toContain('not wired');
+    await h.loop.stop();
+  });
+});
+
+describe('increase (add liquidity) manual command', () => {
+  const INCREASE_TOKEN = '0x2222222222222222222222222222222222222222' as Address;
+
+  function increaseCommand(over: Partial<LpCommand> = {}): LpCommand {
+    return {
+      id: 'cmd-increase',
+      tokenId: TOKEN_ID,
+      poolAddress: POOL,
+      action: 'increase',
+      requestedAt: NOW - 1_000,
+      tokenInAddress: INCREASE_TOKEN,
+      amountIn: '10000000000000000',
+      swapSlippage: null,
+      ...over,
+    };
+  }
+
+  it('re-quotes once when the mined receipt reverts (stale Krystal swap bounds)', async () => {
+    let receiptCalls = 0;
+    const h = harness({
+      queued: increaseCommand(),
+      positions: [
+        position({
+          pool: {
+            ...position().pool,
+            token0: { address: INCREASE_TOKEN, symbol: 'WETH', decimals: 18 },
+          },
+        }),
+      ],
+      waitForReceipt: async () => {
+        receiptCalls += 1;
+        if (receiptCalls === 1) return { status: 'reverted' };
+        return { status: 'success', gasUsed: 100_000n, effectiveGasPrice: 1_000n };
+      },
+    });
+
+    await h.loop.start();
+    await h.loop.runCommandTick();
+
+    expect(h.calldata.increaseCalls).toBe(2);
+    expect(h.signer.submitted).toHaveLength(2);
+    expect(h.commands.last).toEqual({ txHash: '0xdeadbeef', error: null });
     await h.loop.stop();
   });
 });

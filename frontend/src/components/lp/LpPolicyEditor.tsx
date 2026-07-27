@@ -1,6 +1,7 @@
 import type { ReactNode } from 'react';
 import { Coins, Filter, Repeat, Scale, Timer } from 'lucide-react';
 import LpNumberField from './LpNumberField';
+import LpPolicyToggle from './LpPolicyToggle';
 import LpSegmentedField from './LpSegmentedField';
 import { LP_PANEL, LP_PANEL_HEADER, LP_PANEL_TITLE, LP_READOUT } from './styles';
 import {
@@ -75,8 +76,14 @@ export default function LpPolicyEditor({ draft, onChange, errors, disabled = fal
   const setCompound = (key: keyof PolicyDraft['compoundTrigger']) => (value: string) =>
     onChange({ ...draft, compoundTrigger: { ...draft.compoundTrigger, [key]: value } });
 
+  const setCompoundEnabled = (enabled: boolean) =>
+    onChange({ ...draft, compoundTrigger: { ...draft.compoundTrigger, enabled } });
+
   const setRebalance = (key: 'rangeExitPercent') => (value: string) =>
     onChange({ ...draft, rebalanceTrigger: { ...draft.rebalanceTrigger, [key]: value } });
+
+  const setRebalanceEnabled = (enabled: boolean) =>
+    onChange({ ...draft, rebalanceTrigger: { ...draft.rebalanceTrigger, enabled } });
 
   const setRangeStrategy = (value: RangeStrategy) =>
     onChange({ ...draft, rebalanceTrigger: { ...draft.rebalanceTrigger, rangeStrategy: value } });
@@ -180,6 +187,13 @@ export default function LpPolicyEditor({ draft, onChange, errors, disabled = fal
         blurb="When to claim fees and put them back to work. Whichever condition fires first wins."
         readout={describeCompound(draft)}
       >
+        <LpPolicyToggle
+          label="Auto-compound"
+          enabled={draft.compoundTrigger.enabled}
+          onChange={setCompoundEnabled}
+          disabled={disabled}
+          help="When on, the worker compounds fees on its own when the thresholds below are met. When off, only manual compound commands fire."
+        />
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
           <LpNumberField
             label="Min fees vs gas"
@@ -193,7 +207,7 @@ export default function LpPolicyEditor({ draft, onChange, errors, disabled = fal
             help="Compound only once claimable fees are worth this multiple of the gas cost to claim them. At 2× a gas spike between the decision and the broadcast can turn a marginal compound into a net loss; 3× leaves headroom. Anything below 1.0 is rejected — it spends more than it collects."
           />
           <LpNumberField
-            label="Max interval"
+            label="Max interval (hours)"
             field="compoundTrigger.maxIntervalHours"
             value={draft.compoundTrigger.maxIntervalHours}
             onChange={setCompound('maxIntervalHours')}
@@ -201,7 +215,7 @@ export default function LpPolicyEditor({ draft, onChange, errors, disabled = fal
             defaultHint="default 24h"
             error={errors['compoundTrigger.maxIntervalHours']}
             disabled={disabled}
-            help="A liveness backstop so fees never sit unclaimed forever — not a schedule. Every interval-driven compound the ratio would not have justified is gas spent for nothing, so this should fire rarely."
+            help="Backstop only — not a schedule. Auto-compound normally fires when unclaimed fees exceed the gas ratio above. Max interval means: even if fees are tiny, claim and reinvest at least once every N hours so nothing sits unclaimed forever. Setting this too low wastes gas on compounds the ratio would never justify."
           />
         </div>
       </Group>
@@ -212,6 +226,19 @@ export default function LpPolicyEditor({ draft, onChange, errors, disabled = fal
         blurb="How far price may wander outside a position's range before the range is moved to follow it, and where the new range is placed when it is."
         readout={describeRebalance(draft)}
       >
+        <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-3">
+          <LpPolicyToggle
+            label="Auto-rebalance"
+            enabled={draft.rebalanceTrigger.enabled}
+            onChange={setRebalanceEnabled}
+            disabled={disabled}
+            help="When on, the worker re-centers the range on its own when price leaves by the threshold below. When off, only manual rebalance commands fire."
+          />
+          <p className="font-mono text-[11px] text-oct-muted sm:text-right shrink-0">
+            Range strategy:{' '}
+            <span className="text-oct-text font-semibold capitalize">{draft.rebalanceTrigger.rangeStrategy}</span>
+          </p>
+        </div>
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
           <LpNumberField
             label="Range exit threshold"

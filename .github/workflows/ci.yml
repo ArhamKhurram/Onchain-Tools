@@ -1,6 +1,6 @@
 name: CI
 
-# Verifies every workspace typechecks and builds before code can merge.
+# Verifies every workspace lints, typechecks and builds before code can merge.
 # Wire this to branch protection on `main` (and ideally `dev`) so a red run
 # blocks the merge — this is the gate that stops a broken commit reaching
 # Railway/Vercel.
@@ -18,6 +18,8 @@ concurrency:
 
 jobs:
   verify:
+    # NOTE: this display name is what branch protection matches as a required
+    # status check — renaming it silently stops the required check reporting.
     name: Typecheck & build
     runs-on: ubuntu-latest
     env:
@@ -54,6 +56,15 @@ jobs:
         run: npm run typecheck -w fomo-worker
       - name: Typecheck lp-automation
         run: npm run typecheck -w lp-automation
+
+      # --- Lint (frontend only, for now) ---
+      # `react-hooks/rules-of-hooks` is an error, so this step is a hard gate.
+      # It exists because a hook placed after an early return typechecks and
+      # builds cleanly, then blanks the page at runtime with an empty console
+      # (see f382999) — tsc cannot see that class of bug, only the linter can.
+      # Other workspaces have no ESLint config yet; adding them is follow-up work.
+      - name: Lint frontend
+        run: npm run lint -w frontend
 
       # --- Unit tests (pure functions: contract/keyword detection, convergence) ---
       - name: Test backend

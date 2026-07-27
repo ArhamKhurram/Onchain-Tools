@@ -50,11 +50,9 @@ export type RecenterResult =
   | { ok: false; reason: string };
 
 /**
- * Compute the new range for a rebalance, per the policy's {@link RangeStrategy}.
+ * Compute a range centred on `currentTick`, per the {@link RangeStrategy}.
  *
- * The band is centred on the CURRENT tick (that is the whole point of a
- * rebalance — the price left the old range) and its width comes from the
- * strategy, NOT from the old range:
+ * The width comes from the strategy, NOT from any existing range:
  *
  *   - `narrow`/`wide` — a band symmetric in PRICE (`±5%` / `±20%`), because
  *     "±5%" is what the operator means. Price↔tick is logarithmic, so the two
@@ -64,22 +62,28 @@ export type RecenterResult =
  *   - `full` — the whole usable tick range, snapped inwards to valid multiples.
  *     A position that never leaves range and never rebalances.
  *
- * Pure. Returns a reason instead of throwing so the caller records the refusal
- * in the audit log like any other non-action.
+ * `feeUnits` is Uniswap's on-chain fee unit (10000 == 1%) — the key
+ * `TICK_SPACING_BY_FEE_BPS` uses. Pure; returns a reason instead of throwing so
+ * the caller records the refusal in the audit log like any other non-action.
+ *
+ * This is the shared core of both a rebalance ({@link recenterRange}) and an
+ * enter (a brand-new position, which has no existing range to compare against).
  */
-export function recenterRange(position: LpPosition, strategy: RangeStrategy): RecenterResult {
-  const { tickLower, tickUpper, currentTick } = position;
-
+export function rangeFromCenter(
+  currentTick: number,
+  feeUnits: number,
+  strategy: RangeStrategy,
+): RecenterResult {
   if (!Number.isInteger(currentTick)) {
     return { ok: false, reason: `currentTick is not an integer (${currentTick})` };
   }
 
-  const spacing = TICK_SPACING_BY_FEE_BPS[position.pool.feeTierBps];
+  const spacing = TICK_SPACING_BY_FEE_BPS[feeUnits];
   if (spacing === undefined) {
     return {
       ok: false,
       reason:
-        `fee tier ${position.pool.feeTierBps}bps has no known tick spacing; ` +
+        `fee tier ${feeUnits}bps has no known tick spacing; ` +
         'refusing to guess a range for a pool whose spacing we cannot derive',
     };
   }
@@ -121,11 +125,27 @@ export function recenterRange(position: LpPosition, strategy: RangeStrategy): Re
   if (nextUpper <= nextLower) {
     return { ok: false, reason: `range [${nextLower}, ${nextUpper}] is degenerate` };
   }
-  if (nextLower === tickLower && nextUpper === tickUpper) {
-    // The trigger fired but this would reproduce the range we already hold.
-    // Moving to the same place costs gas for nothing.
-    return { ok: false, reason: 'the target range is identical to the current range' };
-  }
 
   return { ok: true, range: { tickLower: nextLower, tickUpper: nextUpper } };
+}
+
+/**
+ * Compute the new range for a rebalance, per the policy's {@link RangeStrategy}.
+ *
+ * The band is centred on the CURRENT tick (that is the whole point of a
+ * rebalance — the price left the old range). Delegates the geometry to
+ * {@link rangeFromCenter} and adds the one rebalance-specific guard: a target
+ * identical to the range we already hold is refused, because moving to the same
+ * place costs gas for nothing.
+ *
+ * Pure. Returns a reason instead of throwing.
+ */
+export function recenterRange(position: LpPosition, strategy: RangeStrategy): RecenterResult {
+  const result = rangeFromCenter(position.currentTick, position.pool.feeTierBps, strategy);
+  if (!result.ok) return result;
+
+  if (result.range.tickLower === position.tickLower && result.range.tickUpper === position.tickUpper) {
+    return { ok: false, reason: 'the target range is identical to the current range' };
+  }
+  return result;
 }

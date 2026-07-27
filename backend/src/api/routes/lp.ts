@@ -5,6 +5,9 @@ import { dirname, join } from 'path';
 import { fileURLToPath } from 'url';
 import { createClient, type SupabaseClient } from '@supabase/supabase-js';
 import { isHostedMode } from '../../storage/index.js';
+import { auditLogPathFromEnv, nativeTokenUsdFromEnv, readAuditLog } from '../../lp/auditReader.js';
+import { buildLineagePnlInputs } from '../../lp/lineagePnl.js';
+import { deriveAllLineagePnl, extractLineageLinks, type LineageLink, type LineagePnl } from '../../lp/pnl.js';
 import { getUserId, safeError } from '../shared.js';
 
 // LP automation policy + pool-candidate API (LP_AUTOMATION_PLAN.md §5, §9.1-2).
@@ -67,10 +70,12 @@ export interface AutomationPolicy {
     maxIlRiskScore: number;
   };
   compoundTrigger: {
+    enabled: boolean;
     minFeesVsGasRatio: number;
     maxIntervalHours: number;
   };
   rebalanceTrigger: {
+    enabled: boolean;
     rangeExitPercent: number;
     /** Where a rebalance places the new range. Defaults to 'narrow'. */
     rangeStrategy: RangeStrategy;
@@ -176,6 +181,19 @@ function checkSection(
   return value;
 }
 
+function checkBoolean(
+  issues: PolicyValidationIssue[],
+  field: string,
+  value: unknown,
+  because?: string,
+): void {
+  const suffix = because ? ` (${because})` : '';
+  if (value === undefined) return;
+  if (typeof value !== 'boolean') {
+    issues.push({ field, message: `must be true or false${suffix}` });
+  }
+}
+
 /**
  * Validate the `rangeStrategy` enum.
  *
@@ -204,6 +222,10 @@ function normalizeRangeStrategy(value: unknown): RangeStrategy {
   return value === 'narrow' || value === 'wide' || value === 'full'
     ? value
     : DEFAULT_RANGE_STRATEGY;
+}
+
+function normalizeEnabled(value: unknown, defaultValue = true): boolean {
+  return typeof value === 'boolean' ? value : defaultValue;
 }
 
 /**
@@ -289,6 +311,7 @@ export function validatePolicyInput(input: unknown, version: number): PolicyVali
 
   const compound = checkSection(issues, 'compoundTrigger', input.compoundTrigger);
   if (compound) {
+    checkBoolean(issues, 'compoundTrigger.enabled', compound.enabled);
     // Hard floor of 1.0 — below 1 the policy instructs us to spend more on gas
     // than the fees being claimed are worth. Always wrong, in every market
     // condition, so it is a validation error rather than a tuning choice.
@@ -304,6 +327,7 @@ export function validatePolicyInput(input: unknown, version: number): PolicyVali
 
   const rebalance = checkSection(issues, 'rebalanceTrigger', input.rebalanceTrigger);
   if (rebalance) {
+    checkBoolean(issues, 'rebalanceTrigger.enabled', rebalance.enabled);
     checkNumber(issues, 'rebalanceTrigger.rangeExitPercent', rebalance.rangeExitPercent, {
       exclusiveMin: 0,
       because: 'a zero threshold rebalances on the first tick outside the range',
@@ -350,8 +374,12 @@ export function validatePolicyInput(input: unknown, version: number): PolicyVali
  */
 export function buildPolicy(input: Record<string, unknown>, version: number): AutomationPolicy {
   const criteria = input.poolSelectionCriteria as Record<string, number>;
-  const compound = input.compoundTrigger as Record<string, number>;
-  const rebalance = input.rebalanceTrigger as { rangeExitPercent: number; rangeStrategy?: unknown };
+  const compound = input.compoundTrigger as Record<string, unknown>;
+  const rebalance = input.rebalanceTrigger as {
+    enabled?: unknown;
+    rangeExitPercent: number;
+    rangeStrategy?: unknown;
+  };
   const buffer = input.switchingBuffer as Record<string, number>;
 
   return {
@@ -365,10 +393,12 @@ export function buildPolicy(input: Record<string, unknown>, version: number): Au
       maxIlRiskScore: criteria.maxIlRiskScore,
     },
     compoundTrigger: {
-      minFeesVsGasRatio: compound.minFeesVsGasRatio,
-      maxIntervalHours: compound.maxIntervalHours,
+      enabled: normalizeEnabled(compound.enabled),
+      minFeesVsGasRatio: compound.minFeesVsGasRatio as number,
+      maxIntervalHours: compound.maxIntervalHours as number,
     },
     rebalanceTrigger: {
+      enabled: normalizeEnabled(rebalance.enabled),
       rangeExitPercent: rebalance.rangeExitPercent,
       rangeStrategy: normalizeRangeStrategy(rebalance.rangeStrategy),
     },
@@ -922,6 +952,37 @@ export interface MappedPositionViews {
   skipped: SkippedEntry[];
 }
 
+/** Lineage-keyed lifetime PnL — derived from the worker audit log. */
+export type { LineageLink, LineagePnl };
+
+export interface LpPositionsPnlPayload {
+  /** Keyed by `positionKey` (`{pool}:{tokenId}`) — one entry per grid row. */
+  pnlByLineage: Record<string, LineagePnl>;
+  /** Explicit mint→burn links from rebalance audit entries. */
+  lineageLinks: LineageLink[];
+  /** False when LP_AUDIT_LOG_PATH is unset or the file does not exist yet. */
+  auditLogAvailable: boolean;
+}
+
+async function loadLineagePnl(positions: LpPositionView[]): Promise<LpPositionsPnlPayload> {
+  const auditPath = auditLogPathFromEnv();
+  if (!auditPath) {
+    return { pnlByLineage: {}, lineageLinks: [], auditLogAvailable: false };
+  }
+
+  const { records, available } = await readAuditLog(auditPath);
+  const lineageLinks = extractLineageLinks(records);
+  const inputs = buildLineagePnlInputs(positions, lineageLinks);
+  const rows = deriveAllLineagePnl(records, inputs, {
+    fallbackNativeTokenUsd: nativeTokenUsdFromEnv(),
+  });
+  const pnlByLineage: Record<string, LineagePnl> = {};
+  for (const row of rows) {
+    pnlByLineage[row.lineageKey] = row;
+  }
+  return { pnlByLineage, lineageLinks, auditLogAvailable: available };
+}
+
 export interface PositionViewContext {
   chainId: number;
   /** Active policy's allowlist, lowercased. Empty when no policy exists yet. */
@@ -1260,8 +1321,32 @@ export function validateSettingsInput(input: unknown): SettingsValidationResult 
 // that sits `pending` for a few seconds and then comes back `failed` for a
 // reason the dashboard could have told them straight away.
 
-export const LP_COMMAND_ACTIONS = ['compound', 'rebalance', 'exit'] as const;
+export const LP_COMMAND_ACTIONS = [
+  'compound',
+  'rebalance',
+  'exit',
+  'compound_rebalance',
+  'enter',
+  'increase',
+] as const;
 export type LpCommandAction = (typeof LP_COMMAND_ACTIONS)[number];
+
+// The actions that operate on an EXISTING position — everything except `enter`.
+// These carry a tokenId and go through `POST /positions/:tokenId/actions`. An
+// `enter` opens a brand-new position: it has no tokenId and a different body
+// shape (pool + input token + amount + range), so it has its own route
+// (`POST /enter`) and its own validator. `validateCommandInput` below checks the
+// tokenId-actions against this narrower set, not against `LP_COMMAND_ACTIONS`.
+export const POSITION_COMMAND_ACTIONS = [
+  'compound',
+  'rebalance',
+  'exit',
+  'compound_rebalance',
+] as const satisfies readonly LpCommandAction[];
+
+/** The range strategy an enter re-centers around; ticks are computed worker-side. */
+export const LP_RANGE_STRATEGIES = ['narrow', 'wide', 'full'] as const;
+export type LpRangeStrategy = (typeof LP_RANGE_STRATEGIES)[number];
 
 /** pending -> claimed -> done | failed. Only the worker moves a command along. */
 export type LpCommandStatus = 'pending' | 'claimed' | 'done' | 'failed';
@@ -1271,7 +1356,11 @@ const OPEN_COMMAND_STATUSES: readonly LpCommandStatus[] = ['pending', 'claimed']
 
 export interface LpCommand {
   id: string;
-  tokenId: string;
+  /**
+   * Null for an `enter` — the position does not exist yet, so there is no NFT id
+   * to carry. Every other action operates on an existing position and has one.
+   */
+  tokenId: string | null;
   poolAddress: string;
   action: LpCommandAction;
   status: LpCommandStatus;
@@ -1332,10 +1421,15 @@ export function validateCommandInput(tokenId: unknown, input: unknown): CommandV
   }
 
   const action = input.action;
-  if (typeof action !== 'string' || !(LP_COMMAND_ACTIONS as readonly string[]).includes(action)) {
+  // `enter` is intentionally excluded: it has no tokenId and cannot travel this
+  // route (see POSITION_COMMAND_ACTIONS above / `POST /enter` below).
+  if (
+    typeof action !== 'string' ||
+    !(POSITION_COMMAND_ACTIONS as readonly string[]).includes(action)
+  ) {
     issues.push({
       field: 'action',
-      message: `must be one of ${LP_COMMAND_ACTIONS.join(', ')}`,
+      message: `must be one of ${POSITION_COMMAND_ACTIONS.join(', ')}`,
     });
   }
 
@@ -1367,6 +1461,261 @@ export function validateCommandInput(tokenId: unknown, input: unknown): CommandV
       tokenId: tokenId as string,
       action: action as LpCommandAction,
       poolAddress: poolAddress as string,
+    },
+  };
+}
+
+// ---------------------------------------------------------------------------
+// Enter (Zap In) — open a BRAND-NEW position
+// ---------------------------------------------------------------------------
+//
+// An enter is a command with a different shape: no tokenId (the position does
+// not exist yet), and instead a pool, an input token, an amount and a range
+// strategy. It rides the SAME queue as the tokenId actions — one worker poll,
+// one History list — so `action='enter'` lands in `lp_automation_commands` with
+// `token_id=null` and the enter-only columns filled. See LP_DASHBOARD_PLAN.md §5
+// and the `20260727150000_lp_command_enter.sql` migration, whose CHECKs are the
+// real boundary — the validation here just gives the operator an immediate,
+// legible refusal instead of a row that fails a few seconds later.
+
+/** Base units, as a positive-integer decimal string. Never a float, never zero. */
+const AMOUNT_IN_PATTERN = /^[1-9][0-9]*$/;
+
+/** Our slippage ceiling. Krystal expects a FRACTION, so 0.05 is 5%. */
+const MAX_SWAP_SLIPPAGE = 0.05;
+
+export interface EnterCommandRequest {
+  /** Lowercased. Re-checked by the worker against the saved allowlist. */
+  poolAddress: string;
+  /** Lowercased. One of the pool's two tokens (the worker enforces which). */
+  tokenInAddress: string;
+  /** Base-units integer string. The worker resolves decimals; we only shape-check. */
+  amountIn: string;
+  /** Null lets the worker fall back to the policy default. */
+  rangeStrategy: LpRangeStrategy | null;
+  /** Null lets the worker fall back to its default. Fraction in (0, 0.05]. */
+  swapSlippage: number | null;
+}
+
+export interface EnterValidationResult {
+  valid: boolean;
+  issues: PolicyValidationIssue[];
+  /** Normalized request. Only meaningful when `valid`. */
+  request: EnterCommandRequest | null;
+}
+
+/**
+ * Validate a `POST /enter` request. Never throws; accumulates issues like the
+ * other validators so the form can mark every bad field at once.
+ *
+ * A SEPARATE validator from `validateCommandInput` on purpose: the two command
+ * kinds have different bodies (an enter has no tokenId and carries the pool,
+ * token, amount and range instead), and welding them into one branchy validator
+ * would only make each harder to read. Addresses are normalized (trimmed,
+ * lowercased) so the downstream allowlist check — and the DB's lowercase-only
+ * regex CHECK — see plain equality, exactly as the tokenId-actions validator does.
+ */
+export function validateEnterInput(input: unknown): EnterValidationResult {
+  if (!isRecord(input)) {
+    return {
+      valid: false,
+      issues: [{ field: '', message: 'the request body must be an object' }],
+      request: null,
+    };
+  }
+
+  const issues: PolicyValidationIssue[] = [];
+
+  // Both addresses go through the same shape: a well-formed 20-byte hex address
+  // that is not the all-zero address (never a real pool or token, and it 403s
+  // every Krystal call it reaches — same reasoning as the settings validator).
+  const normalizeAddress = (
+    raw: unknown,
+    field: 'poolAddress' | 'tokenInAddress',
+  ): string | null => {
+    if (typeof raw !== 'string') {
+      issues.push({ field, message: 'must be a 0x-prefixed 20-byte hex address' });
+      return null;
+    }
+    const trimmed = raw.trim();
+    if (!ADDRESS_PATTERN.test(trimmed)) {
+      issues.push({ field, message: 'must be a 0x-prefixed 20-byte hex address' });
+      return null;
+    }
+    if (trimmed.toLowerCase() === ZERO_ADDRESS) {
+      issues.push({ field, message: 'must not be the all-zero address' });
+      return null;
+    }
+    return trimmed.toLowerCase();
+  };
+
+  const poolAddress = normalizeAddress(input.poolAddress, 'poolAddress');
+  const tokenInAddress = normalizeAddress(input.tokenInAddress, 'tokenInAddress');
+
+  // Amount is a base-units integer STRING, deliberately not a number: a JS number
+  // cannot carry a uint256 without losing precision, and a float here would be a
+  // wrong amount on-chain, not a rejected request. The DB CHECK matches this.
+  let amountIn: string | null = null;
+  if (typeof input.amountIn !== 'string' || !AMOUNT_IN_PATTERN.test(input.amountIn)) {
+    issues.push({
+      field: 'amountIn',
+      message: 'must be a positive-integer base-units string (no decimal point, no leading zero)',
+    });
+  } else {
+    amountIn = input.amountIn;
+  }
+
+  // Optional. Omitted -> null -> the worker uses the policy default range.
+  let rangeStrategy: LpRangeStrategy | null = null;
+  if (input.rangeStrategy !== undefined && input.rangeStrategy !== null) {
+    if (
+      typeof input.rangeStrategy !== 'string' ||
+      !(LP_RANGE_STRATEGIES as readonly string[]).includes(input.rangeStrategy)
+    ) {
+      issues.push({
+        field: 'rangeStrategy',
+        message: `must be one of ${LP_RANGE_STRATEGIES.join(', ')}`,
+      });
+    } else {
+      rangeStrategy = input.rangeStrategy as LpRangeStrategy;
+    }
+  }
+
+  // Optional. Omitted -> null -> the worker uses its default slippage. When
+  // present it must be a finite fraction in (0, 0.05]; `Number.isFinite` first so
+  // a blank or garbage value fails closed rather than sailing through as NaN.
+  let swapSlippage: number | null = null;
+  if (input.swapSlippage !== undefined && input.swapSlippage !== null) {
+    const value = input.swapSlippage;
+    if (
+      typeof value !== 'number' ||
+      !Number.isFinite(value) ||
+      value <= 0 ||
+      value > MAX_SWAP_SLIPPAGE
+    ) {
+      issues.push({
+        field: 'swapSlippage',
+        message: `must be a fraction greater than 0 and at most ${MAX_SWAP_SLIPPAGE} (5%)`,
+      });
+    } else {
+      swapSlippage = value;
+    }
+  }
+
+  if (issues.length > 0) return { valid: false, issues, request: null };
+
+  return {
+    valid: true,
+    issues,
+    request: {
+      poolAddress: poolAddress as string,
+      tokenInAddress: tokenInAddress as string,
+      amountIn: amountIn as string,
+      rangeStrategy,
+      swapSlippage,
+    },
+  };
+}
+
+// ---------------------------------------------------------------------------
+// Increase — add liquidity to an EXISTING position
+// ---------------------------------------------------------------------------
+
+export interface IncreaseCommandRequest {
+  tokenId: string;
+  poolAddress: string;
+  tokenInAddress: string;
+  amountIn: string;
+  swapSlippage: number | null;
+}
+
+export interface IncreaseValidationResult {
+  valid: boolean;
+  issues: PolicyValidationIssue[];
+  request: IncreaseCommandRequest | null;
+}
+
+/**
+ * Validate `POST /positions/:tokenId/increase`. Mirrors enter amount rules;
+ * the position id comes from the path.
+ */
+export function validateIncreaseInput(
+  tokenId: unknown,
+  input: unknown,
+): IncreaseValidationResult {
+  const issues: PolicyValidationIssue[] = [];
+
+  if (typeof tokenId !== 'string' || !TOKEN_ID_PATTERN.test(tokenId)) {
+    issues.push({ field: 'tokenId', message: 'must be a positive integer position id' });
+  }
+
+  if (!isRecord(input)) {
+    return {
+      valid: false,
+      issues: [...issues, { field: '', message: 'the request body must be an object' }],
+      request: null,
+    };
+  }
+
+  const normalizeAddress = (raw: unknown, field: 'poolAddress' | 'tokenInAddress'): string | null => {
+    if (typeof raw !== 'string') {
+      issues.push({ field, message: 'must be a 0x-prefixed 20-byte hex address' });
+      return null;
+    }
+    const trimmed = raw.trim();
+    if (!ADDRESS_PATTERN.test(trimmed)) {
+      issues.push({ field, message: 'must be a 0x-prefixed 20-byte hex address' });
+      return null;
+    }
+    if (trimmed.toLowerCase() === ZERO_ADDRESS) {
+      issues.push({ field, message: 'must not be the all-zero address' });
+      return null;
+    }
+    return trimmed.toLowerCase();
+  };
+
+  const poolAddress = normalizeAddress(input.poolAddress, 'poolAddress');
+  const tokenInAddress = normalizeAddress(input.tokenInAddress, 'tokenInAddress');
+
+  let amountIn: string | null = null;
+  if (typeof input.amountIn !== 'string' || !AMOUNT_IN_PATTERN.test(input.amountIn)) {
+    issues.push({
+      field: 'amountIn',
+      message: 'must be a positive-integer base-units string (no decimal point, no leading zero)',
+    });
+  } else {
+    amountIn = input.amountIn;
+  }
+
+  let swapSlippage: number | null = null;
+  if (input.swapSlippage !== undefined && input.swapSlippage !== null) {
+    const value = input.swapSlippage;
+    if (
+      typeof value !== 'number' ||
+      !Number.isFinite(value) ||
+      value <= 0 ||
+      value > MAX_SWAP_SLIPPAGE
+    ) {
+      issues.push({
+        field: 'swapSlippage',
+        message: `must be a fraction greater than 0 and at most ${MAX_SWAP_SLIPPAGE} (5%)`,
+      });
+    } else {
+      swapSlippage = value;
+    }
+  }
+
+  if (issues.length > 0) return { valid: false, issues, request: null };
+
+  return {
+    valid: true,
+    issues,
+    request: {
+      tokenId: tokenId as string,
+      poolAddress: poolAddress as string,
+      tokenInAddress: tokenInAddress as string,
+      amountIn: amountIn as string,
+      swapSlippage,
     },
   };
 }
@@ -1436,6 +1785,8 @@ export interface PolicyRow {
   max_interval_hours: number | string;
   range_exit_percent: number | string;
   range_strategy: string;
+  auto_compound: boolean;
+  auto_rebalance: boolean;
   min_efficiency_delta_percent: number | string;
   sustained_duration_minutes: number | string;
   created_at: string;
@@ -1469,10 +1820,12 @@ export function rowToStored(row: PolicyRow): StoredPolicy {
         maxIlRiskScore: num(row.max_il_risk_score, 'max_il_risk_score'),
       },
       compoundTrigger: {
+        enabled: row.auto_compound ?? true,
         minFeesVsGasRatio: num(row.min_fees_vs_gas_ratio, 'min_fees_vs_gas_ratio'),
         maxIntervalHours: num(row.max_interval_hours, 'max_interval_hours'),
       },
       rebalanceTrigger: {
+        enabled: row.auto_rebalance ?? true,
         rangeExitPercent: num(row.range_exit_percent, 'range_exit_percent'),
         rangeStrategy: normalizeRangeStrategy(row.range_strategy),
       },
@@ -1507,8 +1860,10 @@ export function policyToRpcPayload(policy: AutomationPolicy): Record<string, unk
     max_il_risk_score: policy.poolSelectionCriteria.maxIlRiskScore,
     min_fees_vs_gas_ratio: policy.compoundTrigger.minFeesVsGasRatio,
     max_interval_hours: policy.compoundTrigger.maxIntervalHours,
+    auto_compound: policy.compoundTrigger.enabled,
     range_exit_percent: policy.rebalanceTrigger.rangeExitPercent,
     range_strategy: policy.rebalanceTrigger.rangeStrategy,
+    auto_rebalance: policy.rebalanceTrigger.enabled,
     min_efficiency_delta_percent: policy.switchingBuffer.minEfficiencyDeltaPercent,
     sustained_duration_minutes: policy.switchingBuffer.sustainedDurationMinutes,
   };
@@ -1678,7 +2033,8 @@ async function writeSettings(userId: string, patch: SettingsPatch): Promise<LpSe
 
 interface CommandRow {
   id: string;
-  token_id: string;
+  /** Null for an `enter` row — the position does not exist yet. */
+  token_id: string | null;
   pool_address: string;
   action: string;
   status: string;
@@ -1695,9 +2051,12 @@ const COMMAND_COLUMNS =
 /** Most recent commands returned to the dashboard. Enough for a history panel. */
 const COMMAND_HISTORY_LIMIT = 50;
 
-function rowToCommand(row: CommandRow): LpCommand {
+export function rowToCommand(row: CommandRow): LpCommand {
   return {
     id: row.id,
+    // Passed through as-is: an `enter` row's null stays null rather than being
+    // coerced to "" — the History view distinguishes "opens a new position"
+    // from a real tokenId on exactly this field.
     tokenId: row.token_id,
     poolAddress: row.pool_address,
     action: row.action as LpCommandAction,
@@ -1776,6 +2135,102 @@ async function insertCommand(userId: string, request: CommandRequest): Promise<L
     tokenId: request.tokenId,
     poolAddress: request.poolAddress,
     action: request.action,
+    status: 'pending',
+    requestedAt: new Date().toISOString(),
+    claimedAt: null,
+    completedAt: null,
+    txHash: null,
+    error: null,
+  };
+  file[userId] = [...existing, command];
+  writeLocalFile(LOCAL_COMMANDS_PATH, file);
+  return command;
+}
+
+/**
+ * Queue one `enter` (Zap In) command.
+ *
+ * Separate from `insertCommand` because the row shape differs: `token_id` is
+ * null and the enter-only columns carry the pool, input token, amount and range.
+ * There is deliberately no duplicate check — the "one open command per position"
+ * rule is keyed on tokenId, and an enter has none (the DB's partial unique index
+ * is likewise on `token_id`, so a null never collides). Two enters for the same
+ * pool are a legitimate thing to queue; the worker serializes them.
+ */
+async function insertEnterCommand(userId: string, request: EnterCommandRequest): Promise<LpCommand> {
+  if (isHostedMode()) {
+    const db = getServiceClient();
+    if (!db) throw new Error('Supabase is not configured.');
+
+    const { data, error } = await db
+      .from(COMMANDS_TABLE)
+      .insert({
+        user_id: userId,
+        token_id: null,
+        pool_address: request.poolAddress,
+        token_in_address: request.tokenInAddress,
+        amount_in: request.amountIn,
+        range_strategy: request.rangeStrategy,
+        swap_slippage: request.swapSlippage,
+        action: 'enter',
+      })
+      .select(COMMAND_COLUMNS)
+      .single();
+
+    if (error) throw new Error(`Failed to queue the LP command: ${error.message}`);
+    return rowToCommand(data as CommandRow);
+  }
+
+  const file = readLocalFile<LpCommand[]>(LOCAL_COMMANDS_PATH);
+  const existing = file[userId] ?? [];
+  const command: LpCommand = {
+    id: globalThis.crypto.randomUUID(),
+    tokenId: null,
+    poolAddress: request.poolAddress,
+    action: 'enter',
+    status: 'pending',
+    requestedAt: new Date().toISOString(),
+    claimedAt: null,
+    completedAt: null,
+    txHash: null,
+    error: null,
+  };
+  file[userId] = [...existing, command];
+  writeLocalFile(LOCAL_COMMANDS_PATH, file);
+  return command;
+}
+
+async function insertIncreaseCommand(userId: string, request: IncreaseCommandRequest): Promise<LpCommand> {
+  if (isHostedMode()) {
+    const db = getServiceClient();
+    if (!db) throw new Error('Supabase is not configured.');
+
+    const { data, error } = await db
+      .from(COMMANDS_TABLE)
+      .insert({
+        user_id: userId,
+        token_id: request.tokenId,
+        pool_address: request.poolAddress,
+        token_in_address: request.tokenInAddress,
+        amount_in: request.amountIn,
+        range_strategy: null,
+        swap_slippage: request.swapSlippage,
+        action: 'increase',
+      })
+      .select(COMMAND_COLUMNS)
+      .single();
+
+    if (error) throw new Error(`Failed to queue the LP command: ${error.message}`);
+    return rowToCommand(data as CommandRow);
+  }
+
+  const file = readLocalFile<LpCommand[]>(LOCAL_COMMANDS_PATH);
+  const existing = file[userId] ?? [];
+  const command: LpCommand = {
+    id: globalThis.crypto.randomUUID(),
+    tokenId: request.tokenId,
+    poolAddress: request.poolAddress,
+    action: 'increase',
     status: 'pending',
     requestedAt: new Date().toISOString(),
     claimedAt: null,
@@ -2039,6 +2494,9 @@ export function createLpRoutes(): Router {
           configured: false,
           positions: [],
           skipped: [],
+          pnlByLineage: {},
+          lineageLinks: [],
+          auditLogAvailable: false,
           fetchedAt: fetchedAt(),
         });
       }
@@ -2068,6 +2526,12 @@ export function createLpRoutes(): Router {
         allowedPools,
       });
 
+      const pnl = await loadLineagePnl(positions).catch(() => ({
+        pnlByLineage: {},
+        lineageLinks: [],
+        auditLogAvailable: false,
+      }));
+
       res.json({
         safeAddress,
         configured: true,
@@ -2078,6 +2542,7 @@ export function createLpRoutes(): Router {
         // True => every `isAllowlisted`/`managedByAutomation` flag above is
         // unknown, not false. See the comment at the policy read.
         policyReadFailed,
+        ...pnl,
         fetchedAt: fetchedAt(),
       });
     } catch (err) {
@@ -2094,6 +2559,9 @@ export function createLpRoutes(): Router {
           configured: true,
           positions: [],
           skipped: [],
+          pnlByLineage: {},
+          lineageLinks: [],
+          auditLogAvailable: false,
           // Same key as the success shape so the client never has to branch on
           // its presence. There are no positions to caveat here, but a response
           // that sometimes omits a field is how optional-chaining bugs start.
@@ -2185,6 +2653,126 @@ export function createLpRoutes(): Router {
       }
 
       const command = await insertCommand(userId, request);
+      res.status(201).json({ command });
+    } catch (err) {
+      if (err instanceof DuplicateCommandError) {
+        return res.status(409).json({ error: err.message });
+      }
+      res.status(500).json({ error: safeError(err, 'Failed to queue the requested action') });
+    }
+  });
+
+  // POST /api/lp/enter — body { poolAddress, tokenInAddress, amountIn,
+  //                            rangeStrategy?, swapSlippage? }.
+  //
+  // ENQUEUES AN INTENT to open a BRAND-NEW position (Zap In). Same contract as
+  // the tokenId-actions route above — nothing here signs, simulates, or contacts
+  // a chain — but the body carries a pool + input token + amount + range instead
+  // of a tokenId, because the position does not exist yet. The row it writes
+  // (`action='enter'`, `token_id=null`) is polled by `lp-automation`, which reads
+  // the pool's live tick, computes the range and runs the same `ActionExecutor`
+  // ladder (allowlist re-check, dry run, audit intent, module caps, LP_ARMED).
+  //
+  // The same two refusals happen here as for a manual action: a pool that is not
+  // on the SAVED allowlist (409, the worker would refuse it anyway) and a policy
+  // that cannot be read (503, so an outage is not mis-reported as "not
+  // allowlisted"). There is no duplicate-command refusal — that rule is per
+  // tokenId, and an enter has none.
+  router.post('/enter', commandsLimiter, async (req, res) => {
+    try {
+      const userId = getUserId(req);
+      const result = validateEnterInput(req.body);
+      if (!result.valid || result.request === null) {
+        return res.status(400).json({
+          error: 'The requested action is not valid.',
+          issues: result.issues,
+        });
+      }
+      const request = result.request;
+
+      // A policy read failure must NOT fall through to "not allowlisted" — that
+      // would report a temporary outage as a permission problem and send the
+      // operator off to edit an allowlist that is already correct.
+      let policies: StoredPolicy[];
+      try {
+        policies = await listPolicies(userId);
+      } catch (err) {
+        return res.status(503).json({
+          error: safeError(
+            err,
+            'Could not read the LP policy, so the pool allowlist could not be checked. Nothing was queued.',
+          ),
+        });
+      }
+
+      const current = currentDefaultPolicy(policies);
+      if (!isPoolOnAllowlist(current?.policy ?? null, request.poolAddress)) {
+        return res.status(409).json({
+          error:
+            current === null
+              ? 'No LP policy is configured yet, so no pool is approved. Save a policy with this pool allowlisted first.'
+              : `Pool ${request.poolAddress} is not on policy v${current.policy.version}'s allowlist ` +
+                `(${current.policy.allowedPools.length} pool(s)). The worker would refuse this action, so it was not queued.`,
+          poolAddress: request.poolAddress,
+          activeVersion: current?.policy.version ?? null,
+        });
+      }
+
+      const command = await insertEnterCommand(userId, request);
+      res.status(201).json({ command });
+    } catch (err) {
+      res.status(500).json({ error: safeError(err, 'Failed to queue the requested action') });
+    }
+  });
+
+  // POST /api/lp/positions/:tokenId/increase — body { poolAddress, tokenInAddress,
+  // amountIn, swapSlippage? }. Adds liquidity to an existing position via the worker.
+  router.post('/positions/:tokenId/increase', commandsLimiter, async (req, res) => {
+    try {
+      const userId = getUserId(req);
+      const result = validateIncreaseInput(req.params.tokenId, req.body);
+      if (!result.valid || result.request === null) {
+        return res.status(400).json({
+          error: 'The requested action is not valid.',
+          issues: result.issues,
+        });
+      }
+      const request = result.request;
+
+      let policies: StoredPolicy[];
+      try {
+        policies = await listPolicies(userId);
+      } catch (err) {
+        return res.status(503).json({
+          error: safeError(
+            err,
+            'Could not read the LP policy, so the pool allowlist could not be checked. Nothing was queued.',
+          ),
+        });
+      }
+
+      const current = currentDefaultPolicy(policies);
+      if (!isPoolOnAllowlist(current?.policy ?? null, request.poolAddress)) {
+        return res.status(409).json({
+          error:
+            current === null
+              ? 'No LP policy is configured yet, so no pool is approved. Save a policy with this pool allowlisted first.'
+              : `Pool ${request.poolAddress} is not on policy v${current.policy.version}'s allowlist ` +
+                `(${current.policy.allowedPools.length} pool(s)). The worker would refuse this action, so it was not queued.`,
+          poolAddress: request.poolAddress,
+          activeVersion: current?.policy.version ?? null,
+        });
+      }
+
+      const open = await findOpenCommand(userId, request.tokenId);
+      if (open !== null) {
+        return res.status(409).json({
+          error: new DuplicateCommandError(request.tokenId).message,
+          command: open,
+        });
+      }
+
+      const command = await insertIncreaseCommand(userId, request);
       res.status(201).json({ command });
     } catch (err) {
       if (err instanceof DuplicateCommandError) {

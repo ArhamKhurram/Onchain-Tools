@@ -1,6 +1,9 @@
 import { describe, it, expect } from 'vitest';
 import {
   addToAllowlist,
+  buildLineageGrid,
+  buildLineages,
+  resolveDisplayPnl,
   canAdmitPool,
   coverageRank,
   describeRange,
@@ -390,6 +393,150 @@ describe('sortPositions', () => {
     ];
     expect(sortPositions(input, [POOL_A]).map((r) => r.tokenId)).toEqual(['c', 'a', 'b']);
     expect(input[0].tokenId).toBe('b');
+  });
+});
+
+describe('buildLineages', () => {
+  it('returns one lineage per pool with the newest open position as head', () => {
+    const lineages = buildLineages([
+      position({ tokenId: '100', poolAddress: POOL_A, status: 'closed' }),
+      position({ tokenId: '200', poolAddress: POOL_A, status: 'in_range' }),
+      position({ tokenId: '50', poolAddress: POOL_A, status: 'closed' }),
+    ]);
+    expect(lineages).toHaveLength(1);
+    expect(lineages[0]?.head.tokenId).toBe('200');
+    expect(lineages[0]?.ancestors.map((p) => p.tokenId)).toEqual(['100', '50']);
+    expect(lineages[0]?.hasOpen).toBe(true);
+  });
+
+  it('uses the newest closed position as head when fully exited', () => {
+    const lineages = buildLineages([
+      position({ tokenId: '10', poolAddress: POOL_A, status: 'closed' }),
+      position({ tokenId: '20', poolAddress: POOL_A, status: 'closed' }),
+    ]);
+    expect(lineages[0]?.head.tokenId).toBe('20');
+    expect(lineages[0]?.hasOpen).toBe(false);
+    expect(lineages[0]?.ancestors.map((p) => p.tokenId)).toEqual(['10']);
+  });
+
+  it('keeps multiple pools as separate lineages', () => {
+    const lineages = buildLineages([
+      position({ tokenId: '1', poolAddress: POOL_A }),
+      position({ tokenId: '2', poolAddress: POOL_B }),
+    ]);
+    expect(lineages).toHaveLength(2);
+    expect(lineages.map((l) => l.poolAddress).sort()).toEqual([POOL_A, POOL_B].sort());
+  });
+
+  it('orders ancestors by explicit mint→burn links when provided', () => {
+    const lineages = buildLineages(
+      [
+        position({ tokenId: '100', poolAddress: POOL_A, status: 'closed' }),
+        position({ tokenId: '200', poolAddress: POOL_A, status: 'closed' }),
+        position({ tokenId: '300', poolAddress: POOL_A, status: 'in_range' }),
+      ],
+      [
+        {
+          oldTokenId: '100',
+          newTokenId: '200',
+          poolAddress: POOL_A,
+          withdrawnValueUsd: null,
+          remintedValueUsd: null,
+          timestamp: 1,
+        },
+        {
+          oldTokenId: '200',
+          newTokenId: '300',
+          poolAddress: POOL_A,
+          withdrawnValueUsd: null,
+          remintedValueUsd: null,
+          timestamp: 2,
+        },
+      ],
+    );
+    expect(lineages).toHaveLength(1);
+    expect(lineages[0]?.head.tokenId).toBe('300');
+    expect(lineages[0]?.ancestors.map((p) => p.tokenId)).toEqual(['200', '100']);
+  });
+
+  it('emits one lineage per concurrent open position in the same pool', () => {
+    const lineages = buildLineages([
+      position({ tokenId: '419551', poolAddress: POOL_A, status: 'in_range', valueUsd: 60 }),
+      position({ tokenId: '420479', poolAddress: POOL_A, status: 'in_range', valueUsd: 19 }),
+    ]);
+    expect(lineages).toHaveLength(2);
+    expect(lineages.map((l) => l.head.tokenId).sort()).toEqual(['419551', '420479']);
+    expect(lineages.every((l) => l.ancestors.length === 0)).toBe(true);
+  });
+
+  it('does not treat a concurrent open as an ancestor of another open', () => {
+    const lineages = buildLineages([
+      position({ tokenId: '100', poolAddress: POOL_A, status: 'closed' }),
+      position({ tokenId: '200', poolAddress: POOL_A, status: 'in_range' }),
+      position({ tokenId: '300', poolAddress: POOL_A, status: 'in_range' }),
+    ]);
+    const byHead = new Map(lineages.map((l) => [l.head.tokenId, l]));
+    expect(byHead.get('200')?.ancestors.map((p) => p.tokenId)).toEqual(['100']);
+    expect(byHead.get('300')?.ancestors).toEqual([]);
+  });
+
+  it('buildLineageGrid splits live and closed-only farms', () => {
+    const grid = buildLineageGrid(
+      [
+        position({ tokenId: '1', poolAddress: POOL_A, status: 'in_range' }),
+        position({ tokenId: '2', poolAddress: POOL_B, status: 'closed' }),
+      ],
+      [POOL_A, POOL_B],
+    );
+    expect(grid.live).toHaveLength(1);
+    expect(grid.live[0]?.lineage.head.poolAddress).toBe(POOL_A);
+    expect(grid.closedOnly).toHaveLength(1);
+    expect(grid.closedOnly[0]?.lineage.head.poolAddress).toBe(POOL_B);
+  });
+
+  it('buildLineageGrid shows two live rows for two in-range positions in one pool', () => {
+    const grid = buildLineageGrid(
+      [
+        position({ tokenId: '419551', poolAddress: POOL_A, status: 'in_range', valueUsd: 60 }),
+        position({ tokenId: '420479', poolAddress: POOL_A, status: 'in_range', valueUsd: 19 }),
+      ],
+      [POOL_A],
+    );
+    expect(grid.live).toHaveLength(2);
+    expect(grid.live.map((row) => row.tile.position.tokenId).sort()).toEqual(['419551', '420479']);
+    expect(grid.live.every((row) => row.ancestorCount === 0)).toBe(true);
+  });
+});
+
+describe('resolveDisplayPnl', () => {
+  it('returns audit net return when available', () => {
+    const display = resolveDisplayPnl(
+      {
+        lineageKey: POOL_A,
+        headTokenId: '1',
+        memberTokenIds: ['1'],
+        costBasisUsd: 50,
+        costBasisKnown: true,
+        costBasisSince: null,
+        currentValueUsd: 59,
+        unclaimedFeesUsd: 0.01,
+        lifetimeFeesUsd: 0.5,
+        gasPaidUsd: 2,
+        netPnlUsd: 7.01,
+        netPnlPercent: 14.02,
+      },
+      position({ valueUsd: 59, unclaimedFeesUsd: 0.01 }),
+      true,
+    );
+    expect(display.source).toBe('audit');
+    expect(display.valueUsd).toBeCloseTo(7.01);
+  });
+
+  it('combines value and fees when audit PnL is unavailable', () => {
+    const display = resolveDisplayPnl(null, position({ valueUsd: 59.41, unclaimedFeesUsd: 0.01 }), false);
+    expect(display.source).toBe('indicative');
+    expect(display.label).toBe('Total equity');
+    expect(display.valueUsd).toBeCloseTo(59.42);
   });
 });
 

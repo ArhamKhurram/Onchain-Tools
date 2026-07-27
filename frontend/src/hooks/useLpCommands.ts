@@ -87,7 +87,11 @@ function messageFor(res: Response, body: unknown): string {
  *   command, which is what the grid needs to mark positions with work in
  *   flight. Both shapes go to the same route; the filter is a query param.
  */
-export function useLpCommands(tokenId: string | null, enabled = true): UseLpCommandsResult {
+export function useLpCommands(
+  tokenId: string | null,
+  enabled = true,
+  options?: { onSettled?: () => void },
+): UseLpCommandsResult {
   const [commands, setCommands] = useState<LpCommand[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -98,6 +102,8 @@ export function useLpCommands(tokenId: string | null, enabled = true): UseLpComm
 
   const requestId = useRef(0);
   const mounted = useRef(true);
+  const hadInFlight = useRef(false);
+  const onSettled = options?.onSettled;
 
   useEffect(() => {
     mounted.current = true;
@@ -153,6 +159,17 @@ export function useLpCommands(tokenId: string | null, enabled = true): UseLpComm
 
   // --- Poll while, and only while, something is unsettled --------------------
   const inFlight = enabled && !unavailable && hasCommandInFlight(commands);
+
+  useEffect(() => {
+    if (inFlight) {
+      hadInFlight.current = true;
+      return;
+    }
+    if (hadInFlight.current) {
+      hadInFlight.current = false;
+      onSettled?.();
+    }
+  }, [inFlight, onSettled]);
 
   useEffect(() => {
     if (!inFlight) return;

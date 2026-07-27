@@ -31,7 +31,7 @@
 // This module holds no key and constructs no client. It calls `simulate()` and
 // `submit()` on an injected `TransactionSigner` and nothing else.
 
-import type { PendingAction } from '../audit/log.js';
+import type { OutcomeSnapshotExtra, PendingAction } from '../audit/log.js';
 import type { PreparedTransaction } from '../calldata/types.js';
 import { isPoolAllowed } from '../policy/pools.js';
 import type { TransactionSigner } from '../signer/types.js';
@@ -46,6 +46,10 @@ import type {
   Logger,
   Refusal,
 } from './types.js';
+
+export type TransactionReceiptInfo =
+  | { status: 'success'; gasUsed: bigint; effectiveGasPrice: bigint }
+  | { status: 'reverted' };
 
 export interface ExecutorDeps {
   audit: AuditPort;
@@ -62,6 +66,15 @@ export interface ExecutorDeps {
    * also execute at a materially worse price than the one we decided on.
    */
   calldataMaxAgeMs: number;
+  /**
+   * Wait for a mined receipt after broadcast. When provided, a `broadcast`
+   * outcome is not treated as success until the receipt confirms `success`.
+   */
+  waitForReceipt?: (txHash: string) => Promise<TransactionReceiptInfo | null>;
+  /** Native token USD price for converting receipt gas to dollars. */
+  nativeTokenUsd?: number | null;
+  /** Fallback per-tx gas estimate when receipt read is unavailable. */
+  estimatedGasCostUsd?: number | null;
 }
 
 export class ActionExecutor {
@@ -192,19 +205,112 @@ export class ActionExecutor {
       };
     }
 
-    const { txHash, error } = summarizeOutcome(outcome);
+    const resolved = await this.resolveRecordedOutcome(outcome);
+    const recorded = { txHash: resolved.txHash, error: resolved.error };
+    const outcomeSnapshot = this.buildOutcomeSnapshot(recorded.txHash, recorded.error, resolved.receipt);
     try {
-      await audit.recordOutcome(pending, { txHash, error }, now());
+      await audit.recordOutcome(pending, recorded, now(), outcomeSnapshot);
     } catch (writeError) {
       logger.error(
         'lp-lifecycle: outcome write FAILED — intent left UNRESOLVED on purpose; ' +
           'the next startup will quarantine this position',
-        { auditId, tokenId: position.tokenId, action, txHash, error: describe(writeError) },
+        { auditId, tokenId: position.tokenId, action, txHash: recorded.txHash, error: describe(writeError) },
       );
-      return { status: 'outcome_write_failed', auditId, outcome, error: describe(writeError) };
+      return {
+        status: 'outcome_write_failed',
+        auditId,
+        outcome,
+        recorded,
+        error: describe(writeError),
+      };
     }
 
-    return { status: 'submitted', auditId, outcome };
+    return { status: 'submitted', auditId, outcome, recorded };
+  }
+
+  /**
+   * Map signer output to the audit log's `{ txHash, error }` pair, then — when
+   * configured — wait for the mined receipt so a reverted broadcast is not
+   * recorded as success.
+   */
+  private async resolveRecordedOutcome(
+    outcome: Awaited<ReturnType<TransactionSigner['submit']>>,
+  ): Promise<{
+    txHash: string | null;
+    error: string | null;
+    receipt: TransactionReceiptInfo | null;
+  }> {
+    const { txHash, error: submitError } = summarizeOutcome(outcome);
+    if (submitError !== null || txHash === null) {
+      return { txHash, error: submitError, receipt: null };
+    }
+
+    const waiter = this.deps.waitForReceipt;
+    if (waiter === undefined) {
+      return { txHash, error: null, receipt: null };
+    }
+
+    try {
+      const receipt = await waiter(txHash);
+      if (receipt === null) {
+        return {
+          txHash,
+          error: `transaction receipt unavailable after timeout (tx ${txHash}); check chain before retrying`,
+          receipt: null,
+        };
+      }
+      if (receipt.status === 'reverted') {
+        return {
+          txHash,
+          error: `transaction reverted on chain (tx ${txHash})`,
+          receipt,
+        };
+      }
+      return { txHash, error: null, receipt };
+    } catch (readError) {
+      return {
+        txHash,
+        error: `could not confirm transaction receipt (tx ${txHash}): ${describe(readError)}`,
+        receipt: null,
+      };
+    }
+  }
+
+  /** Gas spent on a confirmed successful broadcast — merged into the outcome snapshot. */
+  private buildOutcomeSnapshot(
+    txHash: string | null,
+    error: string | null,
+    receipt: TransactionReceiptInfo | null,
+  ): OutcomeSnapshotExtra {
+    if (error !== null || txHash === null) return {};
+
+    const extra: OutcomeSnapshotExtra = {};
+    const nativeUsd = this.deps.nativeTokenUsd;
+    if (nativeUsd !== null && nativeUsd !== undefined && Number.isFinite(nativeUsd) && nativeUsd > 0) {
+      extra.nativeTokenUsd = nativeUsd;
+    }
+
+    if (receipt?.status === 'success' && receipt.gasUsed > 0n) {
+      extra.gasUsed = receipt.gasUsed.toString();
+      extra.effectiveGasPriceWei = receipt.effectiveGasPrice.toString();
+      if (nativeUsd !== null && nativeUsd !== undefined && Number.isFinite(nativeUsd) && nativeUsd > 0) {
+        const wei = receipt.gasUsed * receipt.effectiveGasPrice;
+        const eth = Number(wei) / 1e18;
+        if (Number.isFinite(eth)) {
+          extra.gasSpentUsd = eth * nativeUsd;
+        }
+      }
+    }
+
+    if (extra.gasSpentUsd === undefined) {
+      const estimate = this.deps.estimatedGasCostUsd;
+      if (estimate !== null && estimate !== undefined && Number.isFinite(estimate) && estimate > 0) {
+        extra.gasSpentUsd = estimate;
+        extra.gasSpentEstimated = true;
+      }
+    }
+
+    return extra;
   }
 }
 

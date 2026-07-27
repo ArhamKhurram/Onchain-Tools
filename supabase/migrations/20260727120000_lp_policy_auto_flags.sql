@@ -1,0 +1,111 @@
+-- Add global auto-compound / auto-rebalance flags to the LP automation policy.
+--
+-- These gate AUTONOMOUS firing only — manual commands via the dashboard queue
+-- are unaffected. Default both `true` so existing managed positions behave
+-- identically to before this column existed.
+--
+-- ---------------------------------------------------------------------------
+-- APPEND-ONLY TABLE — three coordinated changes (see range_strategy migration).
+-- ---------------------------------------------------------------------------
+
+-- --- 1. Columns ------------------------------------------------------------
+alter table public.lp_automation_policies
+  add column auto_compound boolean not null default true,
+  add column auto_rebalance boolean not null default true;
+
+comment on column public.lp_automation_policies.auto_compound is
+  'When false, the worker skips autonomous compound evaluation (manual compound commands still work). Mirrors CompoundTrigger.enabled in lp-automation/src/types.ts. Default true.';
+
+comment on column public.lp_automation_policies.auto_rebalance is
+  'When false, the worker skips autonomous rebalance on range crossings (manual rebalance commands still work). Mirrors RebalanceTrigger.enabled in lp-automation/src/types.ts. Default true.';
+
+-- --- 2. Immutability trigger --------------------------------------------
+create or replace function public.lp_automation_policies_immutable()
+returns trigger
+language plpgsql
+as $$
+begin
+  if (new.id, new.user_id, new.version, new.chain, new.max_position_size_usd,
+      new.daily_spend_cap_usd, new.allowed_pools, new.min_tvl_usd,
+      new.min_24h_volume_usd, new.max_il_risk_score, new.min_fees_vs_gas_ratio,
+      new.max_interval_hours, new.range_exit_percent, new.range_strategy,
+      new.auto_compound, new.auto_rebalance,
+      new.min_efficiency_delta_percent, new.sustained_duration_minutes,
+      new.created_at)
+     is distinct from
+     (old.id, old.user_id, old.version, old.chain, old.max_position_size_usd,
+      old.daily_spend_cap_usd, old.allowed_pools, old.min_tvl_usd,
+      old.min_24h_volume_usd, old.max_il_risk_score, old.min_fees_vs_gas_ratio,
+      old.max_interval_hours, old.range_exit_percent, old.range_strategy,
+      old.auto_compound, old.auto_rebalance,
+      old.min_efficiency_delta_percent, old.sustained_duration_minutes,
+      old.created_at)
+  then
+    raise exception
+      'lp_automation_policies is append-only: edit the policy by inserting a new version (only is_active may be updated)';
+  end if;
+  return new;
+end;
+$$;
+
+-- --- 3. Atomic version append -------------------------------------------
+create or replace function public.lp_append_policy(p_user_id uuid, p_policy jsonb)
+returns public.lp_automation_policies
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  v_next    integer;
+  v_result  public.lp_automation_policies;
+begin
+  perform 1 from public.lp_automation_policies
+   where user_id = p_user_id
+     for update;
+
+  select coalesce(max(version), 0) + 1
+    into v_next
+    from public.lp_automation_policies
+   where user_id = p_user_id;
+
+  update public.lp_automation_policies
+     set is_active = false
+   where user_id = p_user_id
+     and is_active;
+
+  insert into public.lp_automation_policies (
+    user_id, version, is_active, chain,
+    max_position_size_usd, daily_spend_cap_usd, allowed_pools,
+    min_tvl_usd, min_24h_volume_usd, max_il_risk_score,
+    min_fees_vs_gas_ratio, max_interval_hours,
+    range_exit_percent, range_strategy,
+    auto_compound, auto_rebalance,
+    min_efficiency_delta_percent, sustained_duration_minutes
+  ) values (
+    p_user_id,
+    v_next,
+    true,
+    p_policy ->> 'chain',
+    (p_policy ->> 'max_position_size_usd')::numeric,
+    (p_policy ->> 'daily_spend_cap_usd')::numeric,
+    coalesce(
+      (select array_agg(value::text) from jsonb_array_elements_text(p_policy -> 'allowed_pools') as t(value)),
+      '{}'::text[]
+    ),
+    (p_policy ->> 'min_tvl_usd')::numeric,
+    (p_policy ->> 'min_24h_volume_usd')::numeric,
+    (p_policy ->> 'max_il_risk_score')::numeric,
+    (p_policy ->> 'min_fees_vs_gas_ratio')::numeric,
+    (p_policy ->> 'max_interval_hours')::numeric,
+    (p_policy ->> 'range_exit_percent')::numeric,
+    coalesce(p_policy ->> 'range_strategy', 'narrow'),
+    coalesce((p_policy ->> 'auto_compound')::boolean, true),
+    coalesce((p_policy ->> 'auto_rebalance')::boolean, true),
+    (p_policy ->> 'min_efficiency_delta_percent')::numeric,
+    (p_policy ->> 'sustained_duration_minutes')::numeric
+  )
+  returning * into v_result;
+
+  return v_result;
+end;
+$$;

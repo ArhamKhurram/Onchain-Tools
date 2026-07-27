@@ -34,6 +34,9 @@ export function describeSurfacing(draft: PolicyDraft): string {
 }
 
 export function describeCompound(draft: PolicyDraft): string {
+  if (draft.compoundTrigger.enabled === false) {
+    return 'Auto-compound is off. The worker will not compound fees on its own; you can still queue a manual compound.';
+  }
   const ratio = toNumber(draft.compoundTrigger.minFeesVsGasRatio);
   const interval = toNumber(draft.compoundTrigger.maxIntervalHours);
   if (!ok(ratio, interval)) return UNSET;
@@ -43,6 +46,9 @@ export function describeCompound(draft: PolicyDraft): string {
 }
 
 export function describeRebalance(draft: PolicyDraft): string {
+  if (draft.rebalanceTrigger.enabled === false) {
+    return 'Auto-rebalance is off. The worker will not move the range on its own when price leaves; you can still queue a manual rebalance.';
+  }
   const exit = toNumber(draft.rebalanceTrigger.rangeExitPercent);
   if (!ok(exit)) return UNSET;
   return `Move the range once price has left it by ${exit}%. Below that, price drifting out of range is left alone.`;

@@ -21,6 +21,7 @@
 import { pathToFileURL } from 'node:url';
 import { createPublicClient, http, type PublicClient } from 'viem';
 import { AuditLog } from './audit/log.js';
+import { DEFAULT_APPROVABLE_TOKENS } from './calldata/erc20Approve.js';
 import type { CalldataPolicy } from './calldata/types.js';
 import { ROBINHOOD_UNISWAP_V3_TARGETS } from './calldata/validate.js';
 import { ConfigError, loadConfig, type LpAutomationConfig } from './config.js';
@@ -146,6 +147,26 @@ export async function run(options: RunOptions = {}): Promise<LifecycleLoop> {
     return slot0[1];
   };
 
+  // Full pool state for an enter (Zap In): the live tick, the fee unit (which
+  // maps to tick spacing), and the token pair. Same public client — read-only,
+  // cannot sign. viem batches these into one multicall.
+  const readPoolState = async (
+    pool: Address,
+  ): Promise<{ currentTick: number; feeUnits: number; token0: Address; token1: Address }> => {
+    const [slot0, fee, token0, token1] = await Promise.all([
+      publicClient.readContract({ address: pool, abi: UNISWAP_V3_POOL_ABI, functionName: 'slot0' }),
+      publicClient.readContract({ address: pool, abi: UNISWAP_V3_POOL_ABI, functionName: 'fee' }),
+      publicClient.readContract({ address: pool, abi: UNISWAP_V3_POOL_ABI, functionName: 'token0' }),
+      publicClient.readContract({ address: pool, abi: UNISWAP_V3_POOL_ABI, functionName: 'token1' }),
+    ]);
+    return {
+      currentTick: slot0[1],
+      feeUnits: Number(fee),
+      token0: token0.toLowerCase() as Address,
+      token1: token1.toLowerCase() as Address,
+    };
+  };
+
   const krystal = new KrystalClient(
     config.krystalBaseUrl === undefined ? {} : { baseUrl: config.krystalBaseUrl },
   );
@@ -248,8 +269,30 @@ export async function run(options: RunOptions = {}): Promise<LifecycleLoop> {
       liquiditySlippage: config.liquiditySlippage,
     }),
     ...(commandSource === null ? {} : { commands: commandSource }),
+    poolState: { readPoolState },
+    allowance: {
+      owner: config.safeAddress,
+      chainId: config.chainId,
+      approvableTokens: DEFAULT_APPROVABLE_TOKENS,
+      reader: publicClient,
+    },
     signer,
     audit: new AuditLog(config.auditLogPath),
+    waitForReceipt: async (txHash) => {
+      try {
+        const receipt = await publicClient.waitForTransactionReceipt({
+          hash: txHash as `0x${string}`,
+          timeout: 120_000,
+        });
+        if (receipt.status !== 'success') return { status: 'reverted' };
+        const effectiveGasPrice =
+          receipt.effectiveGasPrice ?? (await publicClient.getGasPrice());
+        return { status: 'success', gasUsed: receipt.gasUsed, effectiveGasPrice };
+      } catch {
+        return null;
+      }
+    },
+    nativeTokenUsd: config.nativeTokenUsd,
     createWatcher: (callbacks) => new PoolWatcher({ config: config.rpc, callbacks, logger }),
     logger,
     options: {

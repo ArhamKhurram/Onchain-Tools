@@ -364,7 +364,7 @@ describe('presentCommand', () => {
   });
 
   it('names the right action in every headline', () => {
-    for (const action of ['compound', 'rebalance', 'exit'] as LpCommandAction[]) {
+    for (const action of ['compound', 'rebalance', 'compound_rebalance', 'exit'] as LpCommandAction[]) {
       expect(presentCommand(command({ action, status: 'pending' })).headline).toBe(
         `${ACTION_META[action].label} queued`,
       );
@@ -405,7 +405,7 @@ describe('actionAvailability', () => {
     coverage: PositionCoverage,
     over: Partial<Parameters<typeof actionAvailability>[0]> = {},
   ) =>
-    (['compound', 'rebalance', 'exit'] as LpCommandAction[]).map((action) =>
+    (['compound', 'rebalance', 'compound_rebalance', 'exit'] as LpCommandAction[]).map((action) =>
       actionAvailability({ action, coverage, inFlight: null, ...over }),
     );
 
@@ -504,6 +504,12 @@ describe('actionAvailability', () => {
     expect(ACTION_META.exit.destructive).toBe(true);
     expect(ACTION_META.compound.destructive).toBe(false);
     expect(ACTION_META.rebalance.destructive).toBe(false);
+    expect(ACTION_META.compound_rebalance.destructive).toBe(false);
+  });
+
+  it('describes compound_rebalance as a two-step queue entry', () => {
+    expect(ACTION_META.compound_rebalance.label).toBe('Compound + rebalance');
+    expect(ACTION_META.compound_rebalance.description).toContain('Two on-chain steps');
   });
 });
 

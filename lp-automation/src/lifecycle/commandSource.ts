@@ -37,29 +37,63 @@
 // to any other table ever appears in this workspace, that invariant is gone.
 
 import { createClient, type SupabaseClient } from '@supabase/supabase-js';
-import type { Address } from '../types.js';
+import type { Address, RangeStrategy } from '../types.js';
 
 const TABLE = 'lp_automation_commands';
 
 /**
- * Actions a human can request on an EXISTING position.
+ * Actions a human can request.
  *
- * `enter` is absent on purpose: opening a position needs a pool, a size and a
- * range, and those are policy decisions, not queue-entry decisions.
+ * All but `enter` act on an EXISTING position and carry its `tokenId`. `enter`
+ * opens a BRAND-NEW position, so it has no tokenId — it carries the pool, the
+ * input token + amount and the range strategy instead. The two shapes are kept
+ * from being confused by a database CHECK (see the enter migration) and by
+ * `rowToCommand` below.
  */
-export type CommandAction = 'compound' | 'rebalance' | 'exit';
+export type CommandAction =
+  | 'compound'
+  | 'rebalance'
+  | 'exit'
+  | 'compound_rebalance'
+  | 'enter'
+  | 'increase';
 
-const COMMAND_ACTIONS: readonly CommandAction[] = ['compound', 'rebalance', 'exit'];
+const COMMAND_ACTIONS: readonly CommandAction[] = [
+  'compound',
+  'rebalance',
+  'exit',
+  'compound_rebalance',
+  'enter',
+  'increase',
+];
 
-/** A claimed command: ours to execute, exactly once. */
+/**
+ * A claimed command: ours to execute, exactly once.
+ *
+ * `tokenId` is null for `enter` and a string for every other action. The enter
+ * fields (`tokenInAddress`, `amountIn`, `rangeStrategy`, `swapSlippage`) are
+ * present only for `enter`; `rowToCommand` enforces both halves of that.
+ */
 export interface LpCommand {
   id: string;
-  tokenId: string;
-  /** Pool the requester believed the position was in. Lowercased. */
+  /** Null for `enter` (the position does not exist yet); set otherwise. */
+  tokenId: string | null;
+  /** Pool the requester believed the position was in, or the enter target. Lowercased. */
   poolAddress: Address;
   action: CommandAction;
   /** Epoch ms. Used only for logging — staleness is judged on the calldata. */
   requestedAt: number;
+  // --- enter-only (present iff action === 'enter') --------------------------
+  /** The token the operator is zapping in. Lowercased. */
+  tokenInAddress?: Address;
+  /** Raw base units, decimal string. Never a number — precision loss. */
+  amountIn?: string;
+  /** Where to place the new range. Null means "use the policy default". */
+  rangeStrategy?: RangeStrategy | null;
+  /** Per-enter slippage override (fraction). Null means "use the builder default". */
+  swapSlippage?: number | null;
+  // --- increase-only (present iff action === 'increase') ------------------
+  // Reuses tokenInAddress, amountIn and swapSlippage above; rangeStrategy must be null.
 }
 
 /**
@@ -107,49 +141,142 @@ export class CommandSourceError extends Error {
 /** Row shape written by `*_lp_automation_commands.sql`. */
 interface CommandRow {
   id: string;
-  token_id: string;
+  token_id: string | null;
   pool_address: string;
   action: string;
   requested_at: string;
+  // enter-only columns, null for every other action.
+  token_in_address?: string | null;
+  amount_in?: string | null;
+  range_strategy?: string | null;
+  swap_slippage?: string | number | null;
 }
 
 const ADDRESS_PATTERN = /^0x[0-9a-f]{40}$/;
+const TOKEN_ID_PATTERN = /^[1-9][0-9]{0,77}$/;
+const AMOUNT_PATTERN = /^[1-9][0-9]*$/;
 
 /**
  * Map a row, refusing anything it cannot read unambiguously.
  *
  * Pure — exported for tests. Throws rather than repairing: a command row whose
  * action or pool we cannot read is not a command we may guess at, because the
- * guess would be a transaction.
+ * guess would be a transaction. The `enter` branch validates its own required
+ * fields the same way — a malformed enter is refused, never zapped with a
+ * defaulted amount or pool.
  */
 export function rowToCommand(row: CommandRow): LpCommand {
   if (typeof row.id !== 'string' || row.id.length === 0) {
     throw new CommandSourceError('command row has no id.');
   }
-  if (typeof row.token_id !== 'string' || !/^[1-9][0-9]{0,77}$/.test(row.token_id)) {
-    throw new CommandSourceError(`command ${row.id} has a malformed token_id: ${String(row.token_id)}`);
+  if (!COMMAND_ACTIONS.includes(row.action as CommandAction)) {
+    throw new CommandSourceError(`command ${row.id} has an unknown action: ${String(row.action)}`);
   }
+  const action = row.action as CommandAction;
+
   const pool = typeof row.pool_address === 'string' ? row.pool_address.toLowerCase() : '';
   if (!ADDRESS_PATTERN.test(pool)) {
     throw new CommandSourceError(
       `command ${row.id} has a malformed pool_address: ${String(row.pool_address)}`,
     );
   }
-  if (!COMMAND_ACTIONS.includes(row.action as CommandAction)) {
-    throw new CommandSourceError(`command ${row.id} has an unknown action: ${String(row.action)}`);
-  }
 
   // A timestamp we cannot parse is logged as 0 rather than NaN: it is used only
   // for a log line, and NaN would serialize to null and read as "missing".
-  const requestedAt = Date.parse(row.requested_at);
+  const parsedAt = Date.parse(row.requested_at);
+  const requestedAt = Number.isFinite(parsedAt) ? parsedAt : 0;
+
+  if (action === 'enter') {
+    // No tokenId — the position does not exist yet. Every enter parameter is
+    // required and validated; the DB shape CHECK guarantees the same, but this
+    // process does not trust the row it read to build a transaction.
+    const tokenIn = typeof row.token_in_address === 'string' ? row.token_in_address.toLowerCase() : '';
+    if (!ADDRESS_PATTERN.test(tokenIn)) {
+      throw new CommandSourceError(
+        `enter command ${row.id} has a malformed token_in_address: ${String(row.token_in_address)}`,
+      );
+    }
+    if (typeof row.amount_in !== 'string' || !AMOUNT_PATTERN.test(row.amount_in)) {
+      throw new CommandSourceError(
+        `enter command ${row.id} has a malformed amount_in: ${String(row.amount_in)}`,
+      );
+    }
+    const rangeStrategy = rangeStrategyOrNull(row.range_strategy, row.id);
+    const swapSlippage = swapSlippageOrNull(row.swap_slippage, row.id);
+    return {
+      id: row.id,
+      tokenId: null,
+      poolAddress: pool as Address,
+      action,
+      requestedAt,
+      tokenInAddress: tokenIn as Address,
+      amountIn: row.amount_in,
+      rangeStrategy,
+      swapSlippage,
+    };
+  }
+
+  if (action === 'increase') {
+    const tokenIn = typeof row.token_in_address === 'string' ? row.token_in_address.toLowerCase() : '';
+    if (!ADDRESS_PATTERN.test(tokenIn)) {
+      throw new CommandSourceError(
+        `increase command ${row.id} has a malformed token_in_address: ${String(row.token_in_address)}`,
+      );
+    }
+    if (typeof row.amount_in !== 'string' || !AMOUNT_PATTERN.test(row.amount_in)) {
+      throw new CommandSourceError(
+        `increase command ${row.id} has a malformed amount_in: ${String(row.amount_in)}`,
+      );
+    }
+    if (row.range_strategy !== null && row.range_strategy !== undefined) {
+      throw new CommandSourceError(
+        `increase command ${row.id} must not carry range_strategy: ${String(row.range_strategy)}`,
+      );
+    }
+    const swapSlippage = swapSlippageOrNull(row.swap_slippage, row.id);
+    if (typeof row.token_id !== 'string' || !TOKEN_ID_PATTERN.test(row.token_id)) {
+      throw new CommandSourceError(`increase command ${row.id} has a malformed token_id: ${String(row.token_id)}`);
+    }
+    return {
+      id: row.id,
+      tokenId: row.token_id,
+      poolAddress: pool as Address,
+      action,
+      requestedAt,
+      tokenInAddress: tokenIn as Address,
+      amountIn: row.amount_in,
+      swapSlippage,
+    };
+  }
+
+  if (typeof row.token_id !== 'string' || !TOKEN_ID_PATTERN.test(row.token_id)) {
+    throw new CommandSourceError(`command ${row.id} has a malformed token_id: ${String(row.token_id)}`);
+  }
 
   return {
     id: row.id,
     tokenId: row.token_id,
     poolAddress: pool as Address,
-    action: row.action as CommandAction,
-    requestedAt: Number.isFinite(requestedAt) ? requestedAt : 0,
+    action,
+    requestedAt,
   };
+}
+
+/** null (use the policy default) or a known strategy; anything else is corrupt. */
+function rangeStrategyOrNull(value: unknown, id: string): RangeStrategy | null {
+  if (value === null || value === undefined) return null;
+  if (value === 'narrow' || value === 'wide' || value === 'full') return value;
+  throw new CommandSourceError(`enter command ${id} has an unknown range_strategy: ${String(value)}`);
+}
+
+/** null (use the builder default) or a fraction in (0, 0.05]; anything else is corrupt. */
+function swapSlippageOrNull(value: unknown, id: string): number | null {
+  if (value === null || value === undefined) return null;
+  const n = typeof value === 'number' ? value : typeof value === 'string' && value.trim() !== '' ? Number(value) : NaN;
+  if (!Number.isFinite(n) || n <= 0 || n > 0.05) {
+    throw new CommandSourceError(`enter command ${id} has an out-of-range swap_slippage: ${String(value)}`);
+  }
+  return n;
 }
 
 export interface SupabaseCommandSourceOptions {
@@ -211,7 +338,9 @@ export class SupabaseCommandSource implements CommandSource {
         // THE ATOMIC BIT. Without this predicate the update would happily
         // re-claim a command another instance is already executing.
         .eq('status', 'pending')
-        .select('id, token_id, pool_address, action, requested_at');
+        .select(
+          'id, token_id, pool_address, action, requested_at, token_in_address, amount_in, range_strategy, swap_slippage',
+        );
 
       if (error) {
         throw new CommandSourceError(`Failed to claim LP command ${candidate.id}: ${error.message}`);

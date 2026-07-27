@@ -98,6 +98,19 @@ function checkSection(
   return value;
 }
 
+function checkBoolean(
+  issues: PolicyValidationIssue[],
+  field: string,
+  value: unknown,
+  because?: string,
+): void {
+  const suffix = because ? ` (${because})` : '';
+  if (value === undefined) return;
+  if (typeof value !== 'boolean') {
+    issues.push({ field, message: `must be true or false${suffix}` });
+  }
+}
+
 /**
  * Validate an untrusted value as an `AutomationPolicy`.
  *
@@ -177,6 +190,7 @@ export function validatePolicy(input: unknown): PolicyValidationResult {
 
   const compound = checkSection(issues, 'compoundTrigger', input.compoundTrigger);
   if (compound) {
+    checkBoolean(issues, 'compoundTrigger.enabled', compound.enabled);
     // Hard floor of 1.0. Below 1 the policy is instructing us to spend more on
     // gas than the fees being claimed are worth — always wrong, in every market
     // condition, so it is a validation error rather than a tuning choice.
@@ -192,6 +206,7 @@ export function validatePolicy(input: unknown): PolicyValidationResult {
 
   const rebalance = checkSection(issues, 'rebalanceTrigger', input.rebalanceTrigger);
   if (rebalance) {
+    checkBoolean(issues, 'rebalanceTrigger.enabled', rebalance.enabled);
     checkNumber(issues, 'rebalanceTrigger.rangeExitPercent', rebalance.rangeExitPercent, {
       exclusiveMin: 0,
       because: 'a zero threshold rebalances on the first tick outside the range',

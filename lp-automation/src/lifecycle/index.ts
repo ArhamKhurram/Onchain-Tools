@@ -14,7 +14,7 @@
 // an implementation detail.
 
 export { LifecycleLoop, type LifecycleDeps, type LifecycleOptions } from './loop.js';
-export { ActionExecutor, type ExecutorDeps } from './executor.js';
+export { ActionExecutor, type ExecutorDeps, type TransactionReceiptInfo } from './executor.js';
 export { PositionLocks } from './locks.js';
 export {
   Quarantine,

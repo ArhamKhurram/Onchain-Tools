@@ -17,6 +17,9 @@ export const LP_PANEL_TITLE =
   'font-mono text-[11px] uppercase tracking-[0.16em] text-oct-text font-semibold';
 export const LP_EYEBROW = 'font-mono text-[10px] uppercase tracking-[0.2em] text-oct-muted';
 export const LP_HELP = 'font-mono text-[11px] leading-relaxed text-oct-muted';
+/** Promoted stat on the positions panel — higher contrast than body prose. */
+export const LP_STAT = 'font-mono text-xs text-oct-text tabular-nums';
+export const LP_STAT_MUTED = 'font-mono text-[11px] text-oct-muted tabular-nums';
 
 /** Live plain-English readout of what a group of settings does. */
 export const LP_READOUT =

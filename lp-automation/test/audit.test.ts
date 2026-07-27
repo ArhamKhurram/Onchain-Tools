@@ -74,6 +74,21 @@ describe('buildIntentRecord / buildOutcomeRecord', () => {
     expect(record.rule).toBe('compound.fees_vs_gas');
   });
 
+  it('merges outcome snapshot extras onto the decision snapshot', () => {
+    const p = pending();
+    const record = buildOutcomeRecord(
+      p,
+      { txHash: '0xabc', error: null },
+      1_700_000_005_000,
+      { gasSpentUsd: 0.05, valueUsd: 56 },
+    );
+    expect(record.snapshot).toMatchObject({
+      unclaimedFeesUsd: 42.1,
+      gasSpentUsd: 0.05,
+      valueUsd: 56,
+    });
+  });
+
   it('marks a successful outcome and carries the tx hash', () => {
     const record = buildOutcomeRecord(pending(), { txHash: '0xabc', error: null }, 1_700_000_005_000);
     expect(record.phase).toBe('success');
@@ -136,7 +151,15 @@ describe('summarize', () => {
   });
 
   it('reports zero for every action kind on an empty log', () => {
-    expect(summarize([])).toEqual({ enter: 0, compound: 0, rebalance: 0, exit: 0, none: 0 });
+    expect(summarize([])).toEqual({
+      enter: 0,
+      increase: 0,
+      approve: 0,
+      compound: 0,
+      rebalance: 0,
+      exit: 0,
+      none: 0,
+    });
   });
 
   it('separates action kinds', () => {

@@ -1,8 +1,9 @@
 import { ChevronRight, Loader } from 'lucide-react';
-import { formatFeeTier, formatUsdExact, shortAddress } from './format';
-import { formatTokenId, positionPairLabel, type PositionTileModel } from './positions';
+import { formatFeeTier, formatSignedPercent, formatSignedUsd, formatUsdExact, shortAddress } from './format';
+import { formatTokenId, positionPairLabel, type LpLineagePnl, type PositionTileModel } from './positions';
 import { COVERAGE_META, CoverageStrip, MoneyCell, RangeBar, StatusBadge } from './positionChrome';
 import { presentCommand, type LpCommand } from './commands';
+import type { RangeStrategy } from './types';
 
 /**
  * One position, compressed to the five things worth scanning ten of at once:
@@ -23,9 +24,26 @@ interface LpPositionTileProps {
   onSelect: () => void;
   /** Newest command for this position, if the commands API returned one. */
   command: LpCommand | null;
+  /** Closed predecessors in the same pool lineage. */
+  ancestorCount?: number;
+  /** Lifetime PnL from audit log — keyed by lineage, passed when available. */
+  pnl?: LpLineagePnl | null;
+  autoCompound?: boolean;
+  autoRebalance?: boolean;
+  rangeStrategy?: RangeStrategy;
 }
 
-export default function LpPositionTile({ tile, selected, onSelect, command }: LpPositionTileProps) {
+export default function LpPositionTile({
+  tile,
+  selected,
+  onSelect,
+  command,
+  ancestorCount = 0,
+  pnl = null,
+  autoCompound = true,
+  autoRebalance = true,
+  rangeStrategy = 'narrow',
+}: LpPositionTileProps) {
   const { position, coverage, status, geometry } = tile;
   const closed = coverage === 'closed';
   const presentation = command ? presentCommand(command) : null;
@@ -72,9 +90,39 @@ export default function LpPositionTile({ tile, selected, onSelect, command }: Lp
 
       {!closed && (
         <div className="px-3 pb-2 grid grid-cols-2 gap-2 min-w-0">
-          <MoneyCell label="Value" value={formatUsdExact(position.valueUsd)} size="sm" />
-          <MoneyCell label="Unclaimed" value={formatUsdExact(position.unclaimedFeesUsd)} size="sm" />
+          <MoneyCell label="Value" value={formatUsdExact(position.valueUsd)} />
+          <MoneyCell label="Unclaimed" value={formatUsdExact(position.unclaimedFeesUsd)} />
+          {pnl && (
+            <>
+              <MoneyCell
+                label="Net PnL"
+                value={formatSignedUsd(pnl.netPnlUsd)}
+                sub={
+                  pnl.netPnlPercent !== null
+                    ? formatSignedPercent(pnl.netPnlPercent)
+                    : undefined
+                }
+              />
+              <MoneyCell
+                label={pnl.costBasisKnown ? 'Cost basis' : `Basis since ${pnl.costBasisSince ?? '?'}`}
+                value={formatUsdExact(pnl.costBasisUsd)}
+              />
+            </>
+          )}
         </div>
+      )}
+
+      {!closed && (
+        <p className="px-3 pb-1 font-mono text-[10px] text-oct-muted truncate">
+          Auto compound {autoCompound ? 'on' : 'off'} · Auto rebalance {autoRebalance ? 'on' : 'off'}
+          {autoRebalance ? ` (${rangeStrategy})` : ''}
+        </p>
+      )}
+
+      {ancestorCount > 0 && (
+        <p className="px-3 pb-1.5 font-mono text-[10px] text-oct-muted">
+          ⌄ {ancestorCount} earlier position{ancestorCount === 1 ? '' : 's'}
+        </p>
       )}
 
       <div className="px-3 pb-2 mt-auto">

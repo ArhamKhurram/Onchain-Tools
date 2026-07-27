@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { AlertTriangle, Beaker, Check, RefreshCw, RotateCcw, Save, ShieldCheck } from 'lucide-react';
 import ConsoleEmptyState from '../components/console/ConsoleEmptyState';
 import LpIdleNotice from '../components/lp/LpIdleNotice';
+import LpSettingsPanel from '../components/lp/LpSettingsPanel';
 import LpPolicyEditor from '../components/lp/LpPolicyEditor';
 import LpPoolPicker from '../components/lp/LpPoolPicker';
 import LpPositionsPanel from '../components/lp/LpPositionsPanel';
@@ -19,6 +20,7 @@ import {
   type PolicyDraft,
 } from '../components/lp/policyDraft';
 import { addToAllowlist, removeFromAllowlist } from '../components/lp/positions';
+import { buildEnterPools } from '../components/lp/enter';
 import { summarizeAllowlist } from '../components/lp/selection';
 import { LP_BTN_GHOST, LP_BTN_PRIMARY, LP_EYEBROW } from '../components/lp/styles';
 import type { PolicyFieldIssue } from '../components/lp/types';
@@ -152,7 +154,24 @@ export default function LpAutomationPage() {
     });
   };
 
+  const setAutoCompound = (enabled: boolean) => {
+    updateDraft({ ...draft, compoundTrigger: { ...draft.compoundTrigger, enabled } });
+  };
+
+  const setAutoRebalance = (enabled: boolean) => {
+    updateDraft({ ...draft, rebalanceTrigger: { ...draft.rebalanceTrigger, enabled } });
+  };
+
   const savedAllowlist = useMemo(() => baseline.allowedPools, [baseline]);
+
+  // Pools the enter form may open a position in: the SAVED allowlist, restricted
+  // to pools whose token metadata is known (from held positions or discovery).
+  // The backend 409s on anything not on the saved allowlist, so the draft is not
+  // used here — a ticked-but-unsaved pool cannot be entered yet.
+  const enterPools = useMemo(
+    () => buildEnterPools(savedAllowlist, positions.positions, pools.candidates),
+    [savedAllowlist, positions.positions, pools.candidates],
+  );
 
   const summary = useMemo(
     () => summarizeAllowlist(pools.candidates, draft.allowedPools, savedAllowlist),
@@ -191,6 +210,12 @@ export default function LpAutomationPage() {
         alert: totalIssuesForTabs > 0,
       },
       { id: 'history' as const, label: 'History', badge: versions.length || null, alert: false },
+      {
+        id: 'settings' as const,
+        label: 'Settings',
+        badge: settings.settings?.safeAddress ? null : '!',
+        alert: !settings.settings?.safeAddress && !settings.loading,
+      },
     ],
     [
       positions.positions.length,
@@ -199,6 +224,8 @@ export default function LpAutomationPage() {
       summary.pendingRemovals,
       totalIssuesForTabs,
       versions.length,
+      settings.settings?.safeAddress,
+      settings.loading,
     ],
   );
 
@@ -323,22 +350,24 @@ export default function LpAutomationPage() {
           safeAddress={positions.safeAddress}
           skipped={positions.skipped}
           policyReadFailed={positions.policyReadFailed}
+          pnlByLineage={positions.pnlByLineage}
+          lineageLinks={positions.lineageLinks}
+          auditLogAvailable={positions.auditLogAvailable}
           fetchedAt={positions.fetchedAt}
           draftAllowlist={draft.allowedPools}
           onSetPoolCoverage={setPoolCoverage}
+          draftAutoCompound={draft.compoundTrigger.enabled}
+          draftAutoRebalance={draft.rebalanceTrigger.enabled}
+          savedAutoCompound={baseline.compoundTrigger.enabled}
+          savedAutoRebalance={baseline.rebalanceTrigger.enabled}
+          draftRangeStrategy={draft.rebalanceTrigger.rangeStrategy}
+          onSetAutoCompound={setAutoCompound}
+          onSetAutoRebalance={setAutoRebalance}
           onRefresh={() => void positions.refresh()}
+          onOpenSettings={() => setActiveTab('settings')}
+          onOpenPools={() => setActiveTab('pools')}
+          enterPools={enterPools}
           disabled={unavailable}
-          safeAddressField={{
-            settings: settings.settings,
-            loading: settings.loading,
-            saving: settings.saving,
-            saveError: settings.saveError,
-            issues: settings.issues,
-            savedAt: settings.savedAt,
-            disabled: settings.unavailable,
-            onSave: handleSaveSafeAddress,
-            onEdit: settings.clearIssues,
-          }}
         />
         </LpTabPanel>
 
@@ -366,6 +395,20 @@ export default function LpAutomationPage() {
 
         <LpTabPanel id="history" active={activeTab}>
           <LpVersionHistory versions={versions} activeVersion={activeVersion} loading={loading} />
+        </LpTabPanel>
+
+        <LpTabPanel id="settings" active={activeTab}>
+          <LpSettingsPanel
+            settings={settings.settings}
+            loading={settings.loading}
+            saving={settings.saving}
+            saveError={settings.saveError}
+            issues={settings.issues}
+            savedAt={settings.savedAt}
+            disabled={settings.unavailable}
+            onSave={handleSaveSafeAddress}
+            onEdit={settings.clearIssues}
+          />
         </LpTabPanel>
       </div>
 

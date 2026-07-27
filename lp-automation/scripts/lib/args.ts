@@ -33,6 +33,7 @@ const BOOLEAN_FLAGS = new Set([
   'yes',
   'json',
   'revoke',
+  'delta',
   'no-color',
 ]);
 

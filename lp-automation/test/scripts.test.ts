@@ -396,10 +396,11 @@ describe('checkBroadcastFlags', () => {
 // ---------------------------------------------------------------------------
 
 describe('ROBINHOOD_ALLOWLIST', () => {
-  it('matches the off-chain calldata validator, so the two layers cannot drift', () => {
-    const scriptTargets = ROBINHOOD_ALLOWLIST.map((d) => d.address.toLowerCase()).sort();
-    const validatorTargets = [...ROBINHOOD_UNISWAP_V3_TARGETS].map((a) => a.toLowerCase()).sort();
-    expect(scriptTargets).toEqual(validatorTargets);
+  it('includes every Krystal target from the off-chain calldata validator', () => {
+    const scriptTargets = ROBINHOOD_ALLOWLIST.map((d) => d.address.toLowerCase());
+    for (const target of ROBINHOOD_UNISWAP_V3_TARGETS) {
+      expect(scriptTargets).toContain(target.toLowerCase());
+    }
   });
 
   it('carries exactly the three verified selectors, on the right destinations', () => {
@@ -428,10 +429,14 @@ describe('ROBINHOOD_ALLOWLIST', () => {
     expect(OBSERVED_SELECTORS.compound).toBe('0xb88d4fde');
   });
 
-  it('does not include the factory or WETH, which are reference-only', () => {
+  it('includes WETH with approve for zap flows, but not the factory (reference-only)', () => {
     const targets = ROBINHOOD_ALLOWLIST.map((d) => d.address.toLowerCase());
     expect(targets).not.toContain(REFERENCE_CONTRACTS.uniswapV3Factory.toLowerCase());
-    expect(targets).not.toContain(REFERENCE_CONTRACTS.weth.toLowerCase());
+    expect(targets).toContain(REFERENCE_CONTRACTS.weth.toLowerCase());
+    const weth = ROBINHOOD_ALLOWLIST.find((d) =>
+      sameAddress(d.address, REFERENCE_CONTRACTS.weth),
+    );
+    expect(weth?.selectors).toEqual(['0x095ea7b3']);
   });
 
   it('documents every selector it enables', () => {
@@ -450,8 +455,8 @@ describe('ROBINHOOD_ALLOWLIST', () => {
 describe('buildAllowlistPlan', () => {
   const plan = buildAllowlistPlan({ module: MODULE, operator: OPERATOR });
 
-  it('produces exactly 5 transactions: 2 targets, 2 selector batches, 1 operator', () => {
-    expect(plan).toHaveLength(5);
+  it('produces exactly 7 transactions: 3 targets, 3 selector batches, 1 operator', () => {
+    expect(plan).toHaveLength(7);
   });
 
   it('puts setOperator LAST, so an authorized key never faces a half-configured module', () => {
@@ -459,13 +464,15 @@ describe('buildAllowlistPlan', () => {
     expect(decoded).toEqual([
       'setTargetAllowed',
       'setTargetAllowed',
+      'setTargetAllowed',
+      'setSelectorsAllowed',
       'setSelectorsAllowed',
       'setSelectorsAllowed',
       'setOperator',
     ]);
   });
 
-  it('uses the batch setter, keeping owner signatures to 5 instead of 6', () => {
+  it('uses the batch setter, keeping owner signatures to 7 instead of 8', () => {
     const single = plan.filter(
       (p) => decodeFunctionData({ abi: MODULE_ABI, data: p.data }).functionName === 'setSelectorAllowed',
     );
@@ -488,6 +495,7 @@ describe('buildAllowlistPlan', () => {
     expect(targetCalls.map((d) => String((d.args as readonly unknown[])[0]).toLowerCase())).toEqual([
       KRYSTAL_TARGETS_ROBINHOOD_UNISWAP_V3.v3utils,
       KRYSTAL_TARGETS_ROBINHOOD_UNISWAP_V3.positionManager,
+      REFERENCE_CONTRACTS.weth.toLowerCase(),
     ]);
     expect(targetCalls.every((d) => (d.args as readonly unknown[])[1] === true)).toBe(true);
 
@@ -509,10 +517,15 @@ describe('buildAllowlistPlan', () => {
       [OBSERVED_SELECTORS.compound],
       true,
     ]);
+    expect(normalize(selectorCalls[2]!.args as readonly unknown[])).toEqual([
+      REFERENCE_CONTRACTS.weth.toLowerCase(),
+      ['0x095ea7b3'],
+      true,
+    ]);
   });
 
   it('encodes the operator exactly as given', () => {
-    const call = decodeFunctionData({ abi: MODULE_ABI, data: plan[4]!.data });
+    const call = decodeFunctionData({ abi: MODULE_ABI, data: plan[6]!.data });
     const args = call.args as readonly unknown[];
     expect(String(args[0]).toLowerCase()).toBe(OPERATOR);
     expect(args[1]).toBe(true);
@@ -662,8 +675,8 @@ describe('classifyAllowlist', () => {
   it('treats an entirely empty module (freshly deployed) as not-configured, not as clean', () => {
     const findings = classifyAllowlist(expected, { targets: [], selectors: [], operators: [] });
     expect(findings.ok).toBe(false);
-    expect(findings.missingTargets).toHaveLength(2);
-    expect(findings.missingSelectors).toHaveLength(3);
+    expect(findings.missingTargets).toHaveLength(3);
+    expect(findings.missingSelectors).toHaveLength(4);
   });
 });
 

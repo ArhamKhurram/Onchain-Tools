@@ -17,6 +17,8 @@
     "deploy:module": "tsx scripts/deployModule.ts",
     "tx:enable": "tsx scripts/enableModule.ts",
     "tx:allowlist": "tsx scripts/seedAllowlist.ts",
+    "seed:allowlist": "tsx scripts/seedAllowlist.ts",
+    "seed:allowlist:delta": "tsx scripts/seedAllowlist.ts --delta",
     "verify:setup": "tsx scripts/verifySetup.ts",
     "forktest": "tsx scripts/forktest.ts",
     "forktest:compound": "tsx scripts/forktest.ts compound",

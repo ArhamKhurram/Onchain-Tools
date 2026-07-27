@@ -504,7 +504,9 @@ export default function ChatPane({ roomId, paneIndex, paneCount, editMode, varia
   const ringClass = editMode ? 'ring-1 ring-inset ring-discord-blurple/30' : '';
   const theme = useThemeStore((s) => s.theme);
   const paneBg =
-    theme === 'light' ? 'var(--oct-feed-bg)' : activeRoom?.color || 'var(--oct-feed-bg)';
+    theme === 'light'
+      ? 'rgb(var(--oct-feed-bg))'
+      : activeRoom?.color || 'rgb(var(--oct-feed-bg))';
 
   return (
     <div
