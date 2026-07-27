@@ -130,6 +130,8 @@ export class KrystalCalldataBuilder implements CalldataBuilder {
     tickLower: number;
     tickUpper: number;
   }): Promise<PreparedTransaction> {
+    // Rebalance embeds swap min-outs at quote time; stale calldata can revert or
+    // execute at worse prices than the decision assumed.
     return buildAdjustRange(this.options.context, {
       tokenId: request.position.tokenId,
       newTickLower: request.tickLower,

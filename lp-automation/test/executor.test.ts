@@ -47,7 +47,7 @@ function position(): LpPosition {
   };
 }
 
-function preparedTransaction(): PreparedTransaction {
+function preparedTransaction(builtAt = NOW): PreparedTransaction {
   return Object.freeze({
     to: '0x73991a25c818bf1f1128deaab1492d45638de0d3' as Address,
     value: 0n,
@@ -61,7 +61,7 @@ function preparedTransaction(): PreparedTransaction {
       estimateGas: null,
       gasLimit: null,
       usedDefaultGas: false,
-      builtAt: NOW,
+      builtAt,
       txInfo: null,
     },
   }) as PreparedTransaction;
@@ -143,6 +143,7 @@ function executor(
       newId: () => 'audit-1',
       quarantine: () => Quarantine.empty(),
       calldataMaxAgeMs: 30_000,
+      rebalanceCalldataMaxAgeMs: 15_000,
       waitForReceipt: over.waitForReceipt,
     }),
     signer,
@@ -216,5 +217,38 @@ describe('ActionExecutor receipt confirmation', () => {
     expect(result.recorded.error).toContain(TX_HASH);
     expect(audit.outcomes[0]?.txHash).toBe(TX_HASH);
     expect(audit.outcomes[0]?.error).toMatch(/timeout/);
+  });
+});
+
+describe('calldata max age', () => {
+  it('refuses rebalance calldata past the tighter rebalance limit', async () => {
+    const { executor: actionExecutor } = executor();
+
+    const result = await actionExecutor.execute({
+      position: position(),
+      policy: policy(),
+      decision: decision(),
+      action: 'rebalance',
+      transaction: preparedTransaction(NOW - 20_000),
+    });
+
+    expect(result.status).toBe('refused');
+    if (result.status !== 'refused') return;
+    expect(result.refusal.rule).toBe('lifecycle.calldata_stale');
+    expect(result.refusal.reason).toContain('15000ms');
+  });
+
+  it('accepts compound calldata within the general limit but past the rebalance limit', async () => {
+    const { executor: actionExecutor } = executor();
+
+    const result = await actionExecutor.execute({
+      position: position(),
+      policy: policy(),
+      decision: decision(),
+      action: 'compound',
+      transaction: preparedTransaction(NOW - 20_000),
+    });
+
+    expect(result.status).toBe('submitted');
   });
 });
