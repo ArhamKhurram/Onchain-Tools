@@ -7,6 +7,7 @@ import {
   positionPairLabel,
   presentStatus,
   resolveDisplayPnl,
+  resolvePnlBreakdown,
   type LpLineagePnl,
   type LpPositionView,
   type PositionTileModel,
@@ -121,6 +122,7 @@ export default function LpPositionDetail({
   const accrual = feeAccrual(position);
   const closed = coverage === 'closed';
   const displayPnl = resolveDisplayPnl(pnl, position, auditLogAvailable);
+  const pnlBreakdown = resolvePnlBreakdown(pnl, position, auditLogAvailable);
 
   return (
     <div className="fixed inset-0 z-[100] flex" role="dialog" aria-modal="true" aria-label="Position detail">
@@ -237,41 +239,61 @@ export default function LpPositionDetail({
           {!closed && (
             <div className="border-2 border-oct-border bg-oct-surface px-4 py-3">
               <div className="flex items-start justify-between gap-2 mb-3">
-                <h4 className={LP_PANEL_TITLE}>{displayPnl.label}</h4>
-                {displayPnl.hint && (
+                <h4 className={LP_PANEL_TITLE}>
+                  {pnlBreakdown.netReturn ? 'Net return' : displayPnl.label}
+                </h4>
+                {pnlBreakdown.hint && (
                   <p className="font-mono text-[10px] text-oct-muted text-right max-w-[14rem] leading-snug">
-                    {displayPnl.hint}
+                    {pnlBreakdown.hint}
                   </p>
                 )}
               </div>
-              <div className="grid grid-cols-2 sm:grid-cols-3 gap-4">
-                <MoneyCell
-                  label={displayPnl.label}
-                  value={
-                    displayPnl.source === 'audit'
-                      ? formatSignedUsd(displayPnl.valueUsd)
-                      : formatUsdExact(displayPnl.valueUsd)
-                  }
-                  sub={
-                    displayPnl.percent !== null ? formatSignedPercent(displayPnl.percent) : undefined
-                  }
-                />
-                {pnl && displayPnl.source === 'audit' && (
-                  <>
-                    <MoneyCell
-                      label={pnl.costBasisKnown ? 'Cost basis' : `Basis since ${pnl.costBasisSince ?? '?'}`}
-                      value={formatUsdExact(pnl.costBasisUsd)}
-                    />
-                    <MoneyCell label="Gas paid" value={formatUsdExact(pnl.gasPaidUsd)} />
-                  </>
+              <dl className="space-y-2">
+                {pnlBreakdown.lines.map((line) => (
+                  <div key={line.label} className="flex items-baseline justify-between gap-3">
+                    <dt className="font-mono text-[10px] uppercase tracking-[0.12em] text-oct-muted">
+                      {line.label}
+                    </dt>
+                    <dd className="font-mono text-sm tabular-nums text-oct-text">
+                      {formatUsdExact(line.valueUsd)}
+                    </dd>
+                  </div>
+                ))}
+                {pnlBreakdown.netReturn ? (
+                  <div className="flex items-baseline justify-between gap-3 pt-2 border-t-2 border-oct-border">
+                    <dt className="font-mono text-[10px] uppercase tracking-[0.12em] text-oct-muted">
+                      Net return
+                    </dt>
+                    <dd className="text-right">
+                      <p
+                        className={`font-display text-lg tabular-nums leading-tight ${
+                          pnlBreakdown.netReturn.valueUsd < 0
+                            ? 'text-oct-flame'
+                            : pnlBreakdown.netReturn.valueUsd > 0
+                              ? 'text-oct-green'
+                              : 'text-oct-text'
+                        }`}
+                      >
+                        {formatSignedUsd(pnlBreakdown.netReturn.valueUsd)}
+                      </p>
+                      {pnlBreakdown.netReturn.percent !== null && (
+                        <p className="font-mono text-[10px] text-oct-muted tabular-nums">
+                          {formatSignedPercent(pnlBreakdown.netReturn.percent)}
+                        </p>
+                      )}
+                    </dd>
+                  </div>
+                ) : (
+                  <div className="flex items-baseline justify-between gap-3 pt-2 border-t-2 border-oct-border">
+                    <dt className="font-mono text-[10px] uppercase tracking-[0.12em] text-oct-muted">
+                      {displayPnl.label}
+                    </dt>
+                    <dd className="font-display text-lg tabular-nums text-oct-text">
+                      {formatUsdExact(displayPnl.valueUsd)}
+                    </dd>
+                  </div>
                 )}
-                {displayPnl.source === 'indicative' && (
-                  <>
-                    <MoneyCell label="Liquidity value" value={formatUsdExact(position.valueUsd)} />
-                    <MoneyCell label="Unclaimed fees" value={formatUsdExact(position.unclaimedFeesUsd)} />
-                  </>
-                )}
-              </div>
+              </dl>
             </div>
           )}
 
