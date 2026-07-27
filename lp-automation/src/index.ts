@@ -1,4 +1,4 @@
-// Process entry point (LP_AUTOMATION_PLAN.md §10 step 5).
+// Process entry point (LP_AUTOMATION_PLAN.md Â§10 step 5).
 //
 // Startup order, and why it is this order:
 //
@@ -10,7 +10,7 @@
 //   3. Obtain the signer and print its ARM STATE as a single, unmissable line.
 //      Someone reading the first screen of logs must be able to tell whether
 //      this process can spend money without inferring it from anything.
-//   4. Print the resolved policy version and allowlist size — the two numbers
+//   4. Print the resolved policy version and allowlist size â€” the two numbers
 //      that bound what it may do even when armed. An allowlist of 0 means it
 //      can do nothing, and that should be visible rather than surprising.
 //   5. Start the loop, then wait for a signal.
@@ -79,7 +79,7 @@ function safeJson(value: unknown): string {
  * validates the shape it got rather than trusting the module.
  *
  * The expected contract: `src/signer/index.ts` exports a zero-argument factory
- * — `createSignerFromEnv()`, `createSigner()`, or `createTransactionSigner()` —
+ * â€” `createSignerFromEnv()`, `createSigner()`, or `createTransactionSigner()` â€”
  * returning (or resolving to) a `TransactionSigner`.
  */
 async function loadSigner(): Promise<TransactionSigner> {
@@ -109,7 +109,7 @@ async function loadSigner(): Promise<TransactionSigner> {
   const signer = (await (factory as () => unknown | Promise<unknown>)()) as TransactionSigner;
   for (const method of ['getStatus', 'simulate', 'submit'] as const) {
     if (typeof signer?.[method] !== 'function') {
-      throw new Error(`the signer returned by ${specifier} has no ${method}() — refusing to start`);
+      throw new Error(`the signer returned by ${specifier} has no ${method}() â€” refusing to start`);
     }
   }
   return signer;
@@ -133,7 +133,7 @@ export async function run(options: RunOptions = {}): Promise<LifecycleLoop> {
 
   const chain = defineRobinhoodChain({ httpUrl: config.rpc.httpUrl, wsUrl: config.rpc.wsUrl });
   // A PUBLIC client: no account, cannot sign, cannot send. Used only to read
-  // `slot0()` so positions carry an authoritative current tick (plan §3).
+  // `slot0()` so positions carry an authoritative current tick (plan Â§3).
   const publicClient: PublicClient = createPublicClient({
     chain,
     transport: http(config.rpc.httpUrl),
@@ -149,7 +149,7 @@ export async function run(options: RunOptions = {}): Promise<LifecycleLoop> {
   };
 
   // Full pool state for an enter (Zap In): the live tick, the fee unit (which
-  // maps to tick spacing), and the token pair. Same public client — read-only,
+  // maps to tick spacing), and the token pair. Same public client â€” read-only,
   // cannot sign. viem batches these into one multicall.
   const readPoolState = async (
     pool: Address,
@@ -175,28 +175,28 @@ export async function run(options: RunOptions = {}): Promise<LifecycleLoop> {
   const calldataPolicy: CalldataPolicy = {
     chainId: config.chainId,
     platform: config.platform,
-    // Mirrors — does not replace — the module's on-chain allowlist (plan §4).
+    // Mirrors â€” does not replace â€” the module's on-chain allowlist (plan Â§4).
     allowedTargets: ROBINHOOD_UNISWAP_V3_TARGETS,
     expectedFrom: config.safeAddress,
     maxValueWei: config.maxValueWei,
   };
 
-  // Supabase is the policy source the DASHBOARD writes to (plan §9.1), so it
+  // Supabase is the policy source the DASHBOARD writes to (plan Â§9.1), so it
   // takes precedence: if it is configured, the UI is authoritative and a stale
   // local file must not quietly override it. Falls back to the file, then to
-  // DEFAULT_POLICY — whose empty allowlist means "do nothing".
+  // DEFAULT_POLICY â€” whose empty allowlist means "do nothing".
   const supabasePolicySource = createSupabasePolicySource(process.env, config.policyUserId);
   const policySource = supabasePolicySource ?? new FilePolicySource(config.policyFilePath, logger);
   const policySourceLabel = supabasePolicySource
     ? `Supabase (${config.policyUserId})`
     : (config.policyFilePath ?? 'DEFAULT_POLICY (no policy source configured)');
-  // The dashboard's manual action queue (plan §9 point 1). Same Supabase
+  // The dashboard's manual action queue (plan Â§9 point 1). Same Supabase
   // credentials as the policy source, and the same "configured or not at all"
   // rule. Note the direction: this process POLLS the queue. It still has no
-  // inbound surface — do not add one.
+  // inbound surface â€” do not add one.
   //
   // This is the only table this process writes to, and only its status/result
-  // columns. Policy and settings stay read-only, exactly as §9.1 requires.
+  // columns. Policy and settings stay read-only, exactly as Â§9.1 requires.
   const commandSource = createSupabaseCommandSource(process.env, config.policyUserId);
 
   const signer = options.signer ?? (await loadSigner());
@@ -205,7 +205,7 @@ export async function run(options: RunOptions = {}): Promise<LifecycleLoop> {
   const status = await signer.getStatus();
   if (status.armState === 'armed') {
     logger.warn(
-      '*** ARM STATE: ARMED — this process CAN broadcast transactions and spend real funds ***',
+      '*** ARM STATE: ARMED â€” this process CAN broadcast transactions and spend real funds ***',
       {
         operator: status.operatorAddress,
         safe: status.safeAddress,
@@ -217,14 +217,14 @@ export async function run(options: RunOptions = {}): Promise<LifecycleLoop> {
     );
   } else {
     logger.info(
-      '*** ARM STATE: DISARMED — this process will watch, evaluate, simulate and log, ' +
+      '*** ARM STATE: DISARMED â€” this process will watch, evaluate, simulate and log, ' +
         'but CANNOT broadcast ***',
       { operator: status.operatorAddress, safe: status.safeAddress, chainId: status.chainId },
     );
   }
   if (!status.moduleEnabled) {
     logger.error(
-      'the automation module is NOT enabled on the Safe — nothing can execute until it is',
+      'the automation module is NOT enabled on the Safe â€” nothing can execute until it is',
       { safe: status.safeAddress, module: status.moduleAddress },
     );
   }
@@ -250,13 +250,13 @@ export async function run(options: RunOptions = {}): Promise<LifecycleLoop> {
   });
   if ((resolved?.allowedPools.length ?? 0) === 0) {
     logger.warn(
-      'the policy allowlist is EMPTY — no pool is approved, so no action can execute. ' +
+      'the policy allowlist is EMPTY â€” no pool is approved, so no action can execute. ' +
         'This is the safe default; tick a pool in the dashboard to change it.',
     );
   }
   if (config.maxValueWei <= 0n) {
     logger.warn(
-      'LP_MAX_TX_VALUE_WEI is zero — native ETH enter/increase zaps will be refused. ' +
+      'LP_MAX_TX_VALUE_WEI is zero â€” native ETH enter/increase zaps will be refused. ' +
         'Set it to match the Safe module maxValuePerTx cap when using native ETH.',
     );
   }
@@ -290,7 +290,6 @@ export async function run(options: RunOptions = {}): Promise<LifecycleLoop> {
       approvableTokens: DEFAULT_APPROVABLE_TOKENS,
       reader: publicClient,
     },
-    maxValueWei: config.maxValueWei,
     signer,
     audit: new AuditLog(config.auditLogPath),
     waitForReceipt: async (txHash) => {
@@ -349,13 +348,13 @@ async function main(): Promise<void> {
   const shutdown = (signal: string): void => {
     if (shuttingDown) {
       // A second signal from an impatient operator. Say what is being given up
-      // rather than exiting silently — an abandoned in-flight action leaves an
+      // rather than exiting silently â€” an abandoned in-flight action leaves an
       // unresolved intent that the next start will quarantine.
-      logger.error(`${signal} received again — forcing exit; in-flight work is being abandoned`);
+      logger.error(`${signal} received again â€” forcing exit; in-flight work is being abandoned`);
       process.exit(1);
     }
     shuttingDown = true;
-    logger.info(`${signal} received — shutting down`);
+    logger.info(`${signal} received â€” shutting down`);
     loop
       .stop()
       .then(() => {
