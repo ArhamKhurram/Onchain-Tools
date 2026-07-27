@@ -37,6 +37,7 @@ import type {
   SubmitRequest,
   TransactionSigner,
 } from '../src/signer/types.js';
+import { extractLineageLinks } from '../src/audit/pnl.js';
 import { LifecycleLoop } from '../src/lifecycle/loop.js';
 import { PositionLocks } from '../src/lifecycle/locks.js';
 import { Quarantine, deriveLastCompounded } from '../src/lifecycle/unresolved.js';
@@ -268,8 +269,10 @@ class FakeCalldata implements CalldataBuilder {
 class FakeFeed implements PositionFeed {
   constructor(public positions: LpPosition[]) {}
   loads = 0;
+  sequence: (() => LpPosition[]) | null = null;
   async loadPositions(): Promise<LpPosition[]> {
     this.loads += 1;
+    if (this.sequence !== null) return this.sequence();
     return this.positions;
   }
 }
@@ -321,6 +324,8 @@ function harness(
       | { status: 'reverted' }
       | null
     >;
+    lineagePollDelaysMs?: readonly number[];
+    extractRebalanceSuccessor?: (txHash: string) => Promise<string | null>;
   } = {},
 ): Harness {
   const signer = new FakeSigner();
@@ -352,7 +357,14 @@ function harness(
     ...(over.waitForReceipt === undefined ? {} : { waitForReceipt: over.waitForReceipt }),
     // Long enough that no test trips the poll timer by accident; ticks are
     // driven explicitly via `runPositionTick()`.
-    options: { positionPollIntervalMs: 3_600_000, gasCostUsd: 1 },
+    ...(over.extractRebalanceSuccessor === undefined
+      ? {}
+      : { extractRebalanceSuccessor: over.extractRebalanceSuccessor }),
+    options: {
+      positionPollIntervalMs: 3_600_000,
+      gasCostUsd: 1,
+      lineagePollDelaysMs: over.lineagePollDelaysMs ?? [],
+    },
   });
 
   return {
@@ -998,6 +1010,64 @@ describe('the loop never reaches the signer from an observed crossing', () => {
 // rebalance as price kept drifting out. The position sat out of range for 20+
 // minutes. The poll must catch a drifted position with no fresh crossing.
 // ===========================================================================
+
+describe('rebalance lineage linking', () => {
+  it('retries the position feed until Krystal indexes the successor mint', async () => {
+    const old = position({ tokenId: '395774', status: 'out_of_range', currentTick: 200_000 });
+    const successor = position({ tokenId: '396000', valueUsd: 248 });
+    const h = harness({ positions: [old] });
+    let stage = 0;
+    h.feed.sequence = () => {
+      stage += 1;
+      if (stage === 1) return [old];
+      return [old, successor];
+    };
+
+    await h.loop.start();
+    h.watcher().emit(crossing('confirmed'));
+    await h.loop.settle();
+
+    const lineage = h.audit.evaluations.find((entry) => entry.rule === 'lifecycle.rebalance.lineage');
+    expect(lineage).toBeDefined();
+    expect(lineage?.snapshot['oldTokenId']).toBe('395774');
+    expect(lineage?.snapshot['newTokenId']).toBe('396000');
+    expect(lineage?.snapshot['lineageSource']).toBe('feed');
+    expect(h.feed.loads).toBeGreaterThanOrEqual(2);
+
+    const links = extractLineageLinks(
+      h.audit.evaluations.map((entry, index) => ({
+        id: String(index),
+        phase: 'success',
+        timestamp: NOW,
+        action: entry.action,
+        rule: entry.rule,
+        snapshot: entry.snapshot,
+        txHash: null,
+        error: null,
+      })),
+    );
+    expect(links.some((link) => link.oldTokenId === '395774' && link.newTokenId === '396000')).toBe(true);
+    await h.loop.stop();
+  });
+
+  it('falls back to parsing the mint token id from the rebalance receipt', async () => {
+    const old = position({ tokenId: '395774', status: 'out_of_range', currentTick: 200_000 });
+    const h = harness({
+      positions: [old],
+      extractRebalanceSuccessor: async () => '396500',
+    });
+
+    await h.loop.start();
+    h.watcher().emit(crossing('confirmed'));
+    await h.loop.settle();
+
+    const lineage = h.audit.evaluations.find((entry) => entry.rule === 'lifecycle.rebalance.lineage');
+    expect(lineage?.snapshot['newTokenId']).toBe('396500');
+    expect(lineage?.snapshot['lineageSource']).toBe('receipt');
+    expect(lineage?.snapshot['rebalanceTxHash']).toBe('0xdeadbeef');
+    await h.loop.stop();
+  });
+});
 
 describe('rebalance backstop on the slow poll', () => {
   it('rebalances an out-of-range position on a poll tick with NO watcher crossing', async () => {

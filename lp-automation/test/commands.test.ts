@@ -564,6 +564,9 @@ function harness(
       positionPollIntervalMs: 3_600_000,
       commandPollIntervalMs: 3_600_000,
       gasCostUsd: 1,
+      // No real sleeps in tests: a rebalance triggers recordRebalanceLineage,
+      // which otherwise waits on DEFAULT_LINEAGE_POLL_DELAYS_MS (2s+).
+      lineagePollDelaysMs: [],
     },
   });
 

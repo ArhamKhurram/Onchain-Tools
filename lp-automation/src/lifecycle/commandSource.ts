@@ -277,7 +277,7 @@ export function rowToCommand(row: CommandRow): LpCommand {
       action,
       requestedAt,
       tokenInAddress: tokenOut as Address,
-      ...(hasAmount ? { amountIn: row.amount_in } : {}),
+      ...(hasAmount ? { amountIn: row.amount_in as string } : {}),
       ...(hasPercent ? { liquidityPercent } : {}),
       swapSlippage,
     };
