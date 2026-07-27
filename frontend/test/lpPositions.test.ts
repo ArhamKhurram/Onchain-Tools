@@ -3,6 +3,7 @@ import {
   addToAllowlist,
   buildLineageGrid,
   buildLineages,
+  positionKey,
   resolveDisplayPnl,
   canAdmitPool,
   coverageRank,
@@ -343,7 +344,103 @@ describe('summarizePositions', () => {
 
   it('reports an empty list without producing NaN', () => {
     const summary = summarizePositions([], []);
-    expect(summary).toMatchObject({ total: 0, open: 0, valueUsd: 0, uncovered: 0, managed: 0 });
+    expect(summary).toMatchObject({
+      total: 0,
+      open: 0,
+      valueUsd: 0,
+      uncovered: 0,
+      managed: 0,
+      netPnlUsd: null,
+      netPnlKnownCount: 0,
+      netPnlUnknownCount: 0,
+      gasPaidUsd: 0,
+    });
+  });
+
+  it('sums audit net PnL and gas for open positions only', () => {
+    const openA = position({ tokenId: '1', poolAddress: POOL_A, valueUsd: 1_000 });
+    const openB = position({
+      tokenId: '2',
+      poolAddress: POOL_B,
+      valueUsd: 400,
+      isAllowlisted: false,
+      managedByAutomation: false,
+    });
+    const closed = position({ tokenId: '3', status: 'closed', valueUsd: 9_999 });
+
+    const pnlByLineage = {
+      [positionKey(openA)]: {
+        lineageKey: positionKey(openA),
+        headTokenId: '1',
+        memberTokenIds: ['1'],
+        costBasisUsd: 900,
+        costBasisKnown: true,
+        costBasisSince: null,
+        currentValueUsd: 1_000,
+        unclaimedFeesUsd: 10,
+        lifetimeFeesUsd: 20,
+        gasPaidUsd: 1.5,
+        netPnlUsd: 108.5,
+        netPnlPercent: 12.1,
+      },
+      [positionKey(openB)]: {
+        lineageKey: positionKey(openB),
+        headTokenId: '2',
+        memberTokenIds: ['2'],
+        costBasisUsd: null,
+        costBasisKnown: false,
+        costBasisSince: '2026-01-01',
+        currentValueUsd: 400,
+        unclaimedFeesUsd: 4,
+        lifetimeFeesUsd: 0,
+        gasPaidUsd: 0.5,
+        netPnlUsd: null,
+        netPnlPercent: null,
+      },
+      [positionKey(closed)]: {
+        lineageKey: positionKey(closed),
+        headTokenId: '3',
+        memberTokenIds: ['3'],
+        costBasisUsd: 100,
+        costBasisKnown: true,
+        costBasisSince: null,
+        currentValueUsd: 0,
+        unclaimedFeesUsd: 0,
+        lifetimeFeesUsd: 50,
+        gasPaidUsd: 99,
+        netPnlUsd: 500,
+        netPnlPercent: 500,
+      },
+    };
+
+    const summary = summarizePositions([openA, openB, closed], [POOL_A], false, pnlByLineage);
+    expect(summary.netPnlUsd).toBeCloseTo(108.5);
+    expect(summary.netPnlKnownCount).toBe(1);
+    expect(summary.netPnlUnknownCount).toBe(1);
+    expect(summary.gasPaidUsd).toBeCloseTo(2);
+  });
+
+  it('returns null net PnL when no open position has audit return', () => {
+    const open = position({ tokenId: '1' });
+    const summary = summarizePositions([open], [POOL_A], false, {
+      [positionKey(open)]: {
+        lineageKey: positionKey(open),
+        headTokenId: '1',
+        memberTokenIds: ['1'],
+        costBasisUsd: null,
+        costBasisKnown: false,
+        costBasisSince: '2026-01-01',
+        currentValueUsd: 1_000,
+        unclaimedFeesUsd: 10,
+        lifetimeFeesUsd: 0,
+        gasPaidUsd: 0,
+        netPnlUsd: null,
+        netPnlPercent: null,
+      },
+    });
+    expect(summary.netPnlUsd).toBeNull();
+    expect(summary.netPnlKnownCount).toBe(0);
+    expect(summary.netPnlUnknownCount).toBe(1);
   });
 });
 
