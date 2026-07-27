@@ -1,12 +1,12 @@
 import { useMemo, useState } from 'react';
-import { ChevronDown, ChevronRight, Layers, Plus, RefreshCw, ShieldCheck, TriangleAlert } from 'lucide-react';
+import { ChevronDown, ChevronRight, Download, Layers, Plus, RefreshCw, ShieldCheck, TriangleAlert } from 'lucide-react';
 import LpPositionRow from './LpPositionRow';
 import LpPositionDetail from './LpPositionDetail';
 import LpEnterForm from './LpEnterForm';
 import LpInfoTip from './LpInfoTip';
 import type { LpEnterPool } from './enter';
-import { formatUsdExact, shortAddress } from './format';
-import { LP_BTN_GHOST, LP_BTN_PRIMARY, LP_PANEL, LP_PANEL_HEADER, LP_PANEL_TITLE, LP_STAT, LP_STAT_MUTED } from './styles';
+import { formatSignedUsd, formatUsdExact, shortAddress } from './format';
+import { LP_BTN_GHOST, LP_BTN_PRIMARY, LP_MONEY_VALUE, LP_PANEL, LP_PANEL_HEADER, LP_PANEL_TITLE, LP_STAT, LP_STAT_MUTED } from './styles';
 import type { RangeStrategy } from './types';
 import {
   buildLineageGrid,
@@ -19,6 +19,7 @@ import {
 } from './positions';
 import { latestCommandFor, type LpCommandAction } from './commands';
 import { useLpCommands } from '../../hooks/useLpCommands';
+import { downloadLpTaxExport } from '../../hooks/useLpTaxExport';
 
 /**
  * What is actually open, and — the reason this panel exists — whether the
@@ -40,6 +41,85 @@ const INDICATIVE_VALUES_TIP =
 
 const UNCOVERED_MECHANISM_TIP =
   'A pool that never met the TVL and volume filters will never appear in the Pools picker — admit it from the position detail instead. Ticked-but-unsaved pools change nothing until you Save the policy.';
+
+const PORTFOLIO_PNL_TIP =
+  'Net return sums audit-backed PnL for open positions where cost basis is known. Positions without a recorded basis are omitted from the total.';
+
+function PortfolioStat({
+  label,
+  value,
+  sub,
+  signed = false,
+  positive,
+}: {
+  label: string;
+  value: string;
+  sub?: string;
+  signed?: boolean;
+  positive?: boolean | null;
+}) {
+  const tone =
+    signed && positive === true
+      ? 'text-oct-green'
+      : signed && positive === false
+        ? 'text-oct-flame'
+        : 'text-oct-text';
+
+  return (
+    <div className="min-w-0">
+      <p className="font-mono text-[10px] uppercase tracking-[0.12em] text-oct-muted">{label}</p>
+      <p className={`${LP_MONEY_VALUE} text-lg leading-tight ${tone}`}>{value}</p>
+      {sub && <p className="font-mono text-[10px] text-oct-muted leading-snug">{sub}</p>}
+    </div>
+  );
+}
+
+function PortfolioSummaryBanner({
+  summary,
+  auditLogAvailable,
+}: {
+  summary: ReturnType<typeof summarizePositions>;
+  auditLogAvailable: boolean;
+}) {
+  const netPnlPartial =
+    summary.netPnlKnownCount > 0 && summary.netPnlUnknownCount > 0;
+  const netPnlValue =
+    summary.netPnlUsd === null
+      ? '—'
+      : formatSignedUsd(summary.netPnlUsd);
+  const netPnlSub =
+    summary.netPnlUsd === null
+      ? auditLogAvailable
+        ? 'Pending audit basis'
+        : 'Set LP_AUDIT_LOG_PATH'
+      : netPnlPartial
+        ? `${summary.netPnlKnownCount} of ${summary.open} positions`
+        : undefined;
+
+  return (
+    <div className="px-4 py-3 border-b-2 border-oct-border bg-oct-surface grid grid-cols-2 sm:grid-cols-4 gap-x-4 gap-y-3">
+      <PortfolioStat label="Deployed" value={formatUsdExact(summary.valueUsd)} />
+      <PortfolioStat label="Unclaimed fees" value={formatUsdExact(summary.unclaimedFeesUsd)} />
+      <PortfolioStat
+        label="Net return"
+        value={netPnlValue}
+        sub={netPnlSub}
+        signed={summary.netPnlUsd !== null}
+        positive={summary.netPnlUsd === null ? null : summary.netPnlUsd > 0 ? true : summary.netPnlUsd < 0 ? false : null}
+      />
+      <div className="min-w-0 flex items-start gap-1">
+        <PortfolioStat
+          label="Gas paid"
+          value={summary.gasPaidUsd > 0 ? formatUsdExact(summary.gasPaidUsd) : '—'}
+          sub={summary.gasPaidUsd > 0 ? 'Lifetime, open positions' : undefined}
+        />
+        {auditLogAvailable && (
+          <LpInfoTip text={PORTFOLIO_PNL_TIP} label="About portfolio totals" />
+        )}
+      </div>
+    </div>
+  );
+}
 
 function SkippedNotice({ skipped }: { skipped: LpPositionSkip[] }) {
   return (
@@ -117,10 +197,12 @@ export default function LpPositionsPanel({
   const [selectedKey, setSelectedKey] = useState<string | null>(null);
   const [closedFarmsOpen, setClosedFarmsOpen] = useState(false);
   const [showEnter, setShowEnter] = useState(false);
+  const [exporting, setExporting] = useState(false);
+  const [exportError, setExportError] = useState<string | null>(null);
 
   const summary = useMemo(
-    () => summarizePositions(positions, draftAllowlist, policyReadFailed),
-    [positions, draftAllowlist, policyReadFailed],
+    () => summarizePositions(positions, draftAllowlist, policyReadFailed, pnlByLineage),
+    [positions, draftAllowlist, policyReadFailed, pnlByLineage],
   );
 
   const { live, closedOnly } = useMemo(
@@ -164,6 +246,14 @@ export default function LpPositionsPanel({
     commands.clearSubmitFeedback();
   };
 
+  const handleExport = async () => {
+    setExporting(true);
+    setExportError(null);
+    const result = await downloadLpTaxExport('csv');
+    if (!result.ok) setExportError(result.error ?? 'Export failed');
+    setExporting(false);
+  };
+
   return (
     <section className={LP_PANEL}>
       <div className={LP_PANEL_HEADER}>
@@ -194,12 +284,30 @@ export default function LpPositionsPanel({
               Add position
             </button>
           )}
+          {configured && !unavailable && auditLogAvailable && (
+            <button
+              type="button"
+              onClick={() => void handleExport()}
+              className={LP_BTN_GHOST}
+              title="Download LP activity for tax/accounting"
+              disabled={exporting}
+            >
+              <Download size={12} />
+              {exporting ? 'Exporting…' : 'Export CSV'}
+            </button>
+          )}
           <button type="button" onClick={onRefresh} className={LP_BTN_GHOST} title="Re-read positions">
             <RefreshCw size={12} className={loading ? 'animate-spin' : ''} />
             Refresh
           </button>
         </div>
       </div>
+
+      {exportError && (
+        <p className="px-4 py-2 border-b-2 border-oct-border font-mono text-[11px] text-oct-flame">
+          {exportError}
+        </p>
+      )}
 
       {configured && safeAddress && (
         <div className="px-4 py-2 border-b-2 border-oct-border flex flex-wrap items-center gap-x-1.5 gap-y-1">
@@ -249,6 +357,10 @@ export default function LpPositionsPanel({
             Retry
           </button>
         </div>
+      )}
+
+      {configured && !unavailable && !error && summary.open > 0 && (
+        <PortfolioSummaryBanner summary={summary} auditLogAvailable={auditLogAvailable} />
       )}
 
       {configured && !unavailable && !error && summary.open > 0 && (
