@@ -285,3 +285,32 @@ describe('ActionExecutor receipt confirmation', () => {
     );
   });
 });
+
+describe('calldata max age', () => {
+  it('refuses rebalance calldata past the tighter rebalance limit', async () => {
+    const { executor: actionExecutor } = executor();
+    const result = await actionExecutor.execute({
+      position: position(),
+      policy: policy(),
+      decision: decision(),
+      action: 'rebalance',
+      transaction: preparedTransaction(NOW - 20_000),
+    });
+    expect(result.status).toBe('refused');
+    if (result.status !== 'refused') return;
+    expect(result.refusal.rule).toBe('lifecycle.calldata_stale');
+    expect(result.refusal.reason).toContain('15000ms');
+  });
+
+  it('accepts compound calldata within the general limit but past the rebalance limit', async () => {
+    const { executor: actionExecutor } = executor();
+    const result = await actionExecutor.execute({
+      position: position(),
+      policy: policy(),
+      decision: decision(),
+      action: 'compound',
+      transaction: preparedTransaction(NOW - 20_000),
+    });
+    expect(result.status).toBe('submitted');
+  });
+});

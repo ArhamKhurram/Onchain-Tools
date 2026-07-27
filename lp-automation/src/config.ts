@@ -51,6 +51,7 @@ export interface LpAutomationConfig {
   positionPollIntervalMs: number;
   commandPollIntervalMs: number;
   calldataMaxAgeMs: number;
+  rebalanceCalldataMaxAgeMs: number;
   /** Slippage FRACTIONS — 0.005 is 0.5%. See `calldata/lpTxn.ts`. */
   swapSlippage: number;
   liquiditySlippage: number;
@@ -75,6 +76,7 @@ const DEFAULTS = {
   // not apply and it can be tight.
   commandPollIntervalMs: 1_000,
   calldataMaxAgeMs: 30_000,
+  rebalanceCalldataMaxAgeMs: 15_000,
   swapSlippage: 0.005,
   liquiditySlippage: 0.005,
   platform: 'uniswapv3',
@@ -213,6 +215,12 @@ export function parseConfig(env: Record<string, string | undefined>): LpAutomati
       env.LP_CALLDATA_MAX_AGE_MS,
       'LP_CALLDATA_MAX_AGE_MS',
       DEFAULTS.calldataMaxAgeMs,
+      { min: 1_000 },
+    ),
+    rebalanceCalldataMaxAgeMs: readNumber(
+      env.LP_REBALANCE_CALLDATA_MAX_AGE_MS,
+      'LP_REBALANCE_CALLDATA_MAX_AGE_MS',
+      DEFAULTS.rebalanceCalldataMaxAgeMs,
       { min: 1_000 },
     ),
     swapSlippage: readSlippage(env.LP_SWAP_SLIPPAGE, 'LP_SWAP_SLIPPAGE', DEFAULTS.swapSlippage),

@@ -314,6 +314,13 @@ function harness(
     bindings?: Record<string, number>;
     records?: AuditRecord[];
     now?: () => number;
+    waitForReceipt?: (
+      txHash: string,
+    ) => Promise<
+      | { status: 'success'; gasUsed: bigint; effectiveGasPrice: bigint }
+      | { status: 'reverted' }
+      | null
+    >;
   } = {},
 ): Harness {
   const signer = new FakeSigner();
@@ -342,6 +349,7 @@ function harness(
     logger: silentLogger,
     now: over.now ?? ((): number => NOW),
     newId: () => `id-${(counter += 1)}`,
+    ...(over.waitForReceipt === undefined ? {} : { waitForReceipt: over.waitForReceipt }),
     // Long enough that no test trips the poll timer by accident; ticks are
     // driven explicitly via `runPositionTick()`.
     options: { positionPollIntervalMs: 3_600_000, gasCostUsd: 1 },
@@ -558,13 +566,33 @@ describe('only confirmed crossings may broadcast', () => {
     h.watcher().emit(crossing('observed'));
     await h.loop.settle();
 
-    clock = NOW + 120_000; // past the 30s default freshness window
+    clock = NOW + 20_000; // past the 15s rebalance freshness window
     h.calldata.builtAt = clock;
     h.watcher().emit(crossing('confirmed'));
     await h.loop.settle();
 
     expect(h.calldata.rebalanceCalls).toBe(2);
     expect(h.signer.submitted).toHaveLength(1);
+    await h.loop.stop();
+  });
+
+  it('re-quotes once when rebalance receipt reverts', async () => {
+    let receiptCalls = 0;
+    const h = harness({
+      waitForReceipt: async () => {
+        receiptCalls += 1;
+        if (receiptCalls === 1) return { status: 'reverted' };
+        return { status: 'success', gasUsed: 100_000n, effectiveGasPrice: 1_000n };
+      },
+    });
+    await h.loop.start();
+    h.watcher().emit(crossing('observed'));
+    await h.loop.settle();
+    h.watcher().emit(crossing('confirmed'));
+    await h.loop.settle();
+
+    expect(h.calldata.rebalanceCalls).toBe(2);
+    expect(h.signer.submitted).toHaveLength(2);
     await h.loop.stop();
   });
 
