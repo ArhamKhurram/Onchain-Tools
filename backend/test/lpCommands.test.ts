@@ -426,3 +426,24 @@ describe('validateIncreaseInput', () => {
     expect(validateIncreaseInput(TOKEN_ID, increaseBody({ amountIn: '1.5' })).valid).toBe(false);
   });
 });
+
+describe('enrichCommand', () => {
+  it('adds receipt status and explorer URL', async () => {
+    const { deriveReceiptStatus, enrichCommand, txExplorerUrl } = await import('../src/lp/commandEnrichment.js');
+    const row = {
+      id: '1',
+      tokenId: '1001',
+      poolAddress: '0xabc',
+      action: 'compound',
+      status: 'done' as const,
+      requestedAt: '2026-01-01T00:00:00.000Z',
+      claimedAt: null,
+      completedAt: '2026-01-01T00:00:10.000Z',
+      txHash: '0xdeadbeef',
+      error: null,
+    };
+    expect(deriveReceiptStatus(row)).toBe('done');
+    expect(enrichCommand(row).txExplorerUrl).toContain('0xdeadbeef');
+    expect(txExplorerUrl('0xabc')).toContain('/tx/0xabc');
+  });
+});

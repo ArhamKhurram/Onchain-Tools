@@ -610,3 +610,21 @@ describe('feeAccrual', () => {
     expect(describeFeeAccrual(accrual, 'managed')).toContain('no fee figure');
   });
 });
+
+describe('parseHistoryCommand', () => {
+  it('maps on-chain reverts to reverted receipt status', async () => {
+    const { parseHistoryCommand } = await import('../src/components/lp/format');
+    expect(
+      parseHistoryCommand({
+        id: '1',
+        tokenId: '1001',
+        poolAddress: '0xabc',
+        action: 'compound',
+        status: 'failed',
+        requestedAt: '2026-01-01T00:00:00.000Z',
+        txHash: '0xabc',
+        error: 'transaction reverted on chain',
+      })?.receiptStatus,
+    ).toBe('reverted');
+  });
+});

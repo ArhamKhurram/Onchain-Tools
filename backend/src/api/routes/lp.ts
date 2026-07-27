@@ -6,6 +6,7 @@ import { fileURLToPath } from 'url';
 import { createClient, type SupabaseClient } from '@supabase/supabase-js';
 import { isHostedMode } from '../../storage/index.js';
 import { auditLogPathFromEnv, nativeTokenUsdFromEnv, readAuditLog } from '../../lp/auditReader.js';
+import { enrichCommand } from '../../lp/commandEnrichment.js';
 import { buildLineagePnlInputs } from '../../lp/lineagePnl.js';
 import { deriveAllLineagePnl, extractLineageLinks, type LineageLink, type LineagePnl } from '../../lp/pnl.js';
 import { buildTaxExportRows, taxExportRowsToCsv } from '../../lp/taxExport.js';
@@ -2837,7 +2838,7 @@ export function createLpRoutes(): Router {
         });
       }
       const commands = await listCommands(getUserId(req), tokenId.length > 0 ? tokenId : null);
-      res.json({ commands });
+      res.json({ commands: commands.map(enrichCommand) });
     } catch (err) {
       res.status(500).json({ error: safeError(err, 'Failed to load LP commands') });
     }

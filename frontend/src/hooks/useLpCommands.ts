@@ -8,6 +8,7 @@ import {
   type LpCommand,
   type LpCommandAction,
 } from '../components/lp/commands';
+import { parseHistoryCommands, type LpCommandHistoryRow } from '../components/lp/format';
 
 /**
  * `GET /api/lp/commands` + `POST /api/lp/positions/:tokenId/actions`.
@@ -272,4 +273,87 @@ export function useLpCommands(
     refresh,
     clearSubmitFeedback,
   };
+}
+
+export interface UseLpCommandHistoryResult {
+  commands: LpCommandHistoryRow[];
+  loading: boolean;
+  error: string | null;
+  unavailable: boolean;
+  polling: boolean;
+  refresh: () => Promise<void>;
+}
+
+export function useLpCommandHistory(enabled = true): UseLpCommandHistoryResult {
+  const [commands, setCommands] = useState<LpCommandHistoryRow[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [unavailable, setUnavailable] = useState(false);
+
+  const requestId = useRef(0);
+  const mounted = useRef(true);
+
+  useEffect(() => {
+    mounted.current = true;
+    return () => {
+      mounted.current = false;
+    };
+  }, []);
+
+  const refresh = useCallback(async () => {
+    if (!enabled) return;
+    const id = ++requestId.current;
+    setLoading(true);
+    try {
+      const res = await apiFetch(`${API_BASE}/lp/commands`);
+      if (id !== requestId.current || !mounted.current) return;
+      if (res.status === 404 || res.status === 501) {
+        setUnavailable(true);
+        setCommands([]);
+        setError(null);
+        return;
+      }
+      const body = await readJson(res);
+      if (id !== requestId.current || !mounted.current) return;
+      if (!res.ok) {
+        setError(messageFor(res, body));
+        return;
+      }
+      setUnavailable(false);
+      setError(null);
+      setCommands(parseHistoryCommands(body));
+    } catch (err) {
+      if (id !== requestId.current || !mounted.current) return;
+      setError(err instanceof Error ? err.message : 'Failed to load commands');
+    } finally {
+      if (id === requestId.current && mounted.current) setLoading(false);
+    }
+  }, [enabled]);
+
+  useEffect(() => {
+    if (!enabled) {
+      setCommands([]);
+      return;
+    }
+    void refresh();
+  }, [enabled, refresh]);
+
+  const inFlight =
+    enabled && !unavailable && commands.some((c) => c.status === 'pending' || c.status === 'claimed');
+
+  useEffect(() => {
+    if (!inFlight) return;
+    let polls = 0;
+    const timer = window.setInterval(() => {
+      polls += 1;
+      if (polls > MAX_POLLS) {
+        window.clearInterval(timer);
+        return;
+      }
+      void refresh();
+    }, POLL_INTERVAL_MS);
+    return () => window.clearInterval(timer);
+  }, [inFlight, refresh]);
+
+  return { commands, loading, error, unavailable, polling: inFlight, refresh };
 }
