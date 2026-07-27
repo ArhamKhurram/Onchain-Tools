@@ -38,6 +38,7 @@ import {
   LifecycleLoop,
   type Logger,
 } from './lifecycle/index.js';
+import { parseMintedTokenIdFromLogs } from './lifecycle/lineage.js';
 import { createSupabaseCommandSource } from './lifecycle/commandSource.js';
 import { createSupabasePolicySource } from './lifecycle/supabasePolicySource.js';
 import type { Address } from './types.js';
@@ -293,6 +294,21 @@ export async function run(options: RunOptions = {}): Promise<LifecycleLoop> {
       }
     },
     nativeTokenUsd: config.nativeTokenUsd,
+    extractRebalanceSuccessor: async (txHash) => {
+      try {
+        const receipt = await publicClient.getTransactionReceipt({
+          hash: txHash as `0x${string}`,
+        });
+        if (receipt.status !== 'success') return null;
+        return parseMintedTokenIdFromLogs(
+          receipt.logs,
+          ROBINHOOD_UNISWAP_V3_TARGETS.positionManager,
+          config.safeAddress,
+        );
+      } catch {
+        return null;
+      }
+    },
     createWatcher: (callbacks) => new PoolWatcher({ config: config.rpc, callbacks, logger }),
     logger,
     options: {

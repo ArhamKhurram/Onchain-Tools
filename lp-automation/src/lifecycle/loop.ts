@@ -66,6 +66,11 @@ import { ROBINHOOD_CHAIN_ID } from '../types.js';
 import type { Address, AutomationPolicy, Decision, LpPosition, RangeStrategy } from '../types.js';
 import type { CommandResult, CommandSource, LpCommand } from './commandSource.js';
 import { ActionExecutor } from './executor.js';
+import {
+  DEFAULT_LINEAGE_POLL_DELAYS_MS,
+  findRebalanceSuccessor,
+  sleep,
+} from './lineage.js';
 import { PositionLocks } from './locks.js';
 import { rangeFromCenter, recenterRange, type TickRange } from './range.js';
 import { deriveLastCompounded, Quarantine } from './unresolved.js';
@@ -99,6 +104,8 @@ export interface LifecycleOptions {
   commandPollIntervalMs?: number;
   /** Parked calldata older than this is rebuilt rather than submitted. */
   calldataMaxAgeMs?: number;
+  /** Delays between position-feed polls while waiting for Krystal to index a rebalance mint. */
+  lineagePollDelaysMs?: readonly number[];
   /**
    * Operator-supplied gas cost estimate in USD for one lifecycle transaction.
    *
@@ -149,6 +156,8 @@ export interface LifecycleDeps {
     | { status: 'reverted' }
     | null
   >;
+  /** Parse the minted NFT token id from a successful rebalance receipt. */
+  extractRebalanceSuccessor?: (txHash: string) => Promise<string | null>;
   /** Native token USD price — converts receipt gas to `gasSpentUsd`. */
   nativeTokenUsd?: number | null;
   createWatcher: WatcherFactory;
@@ -170,6 +179,9 @@ const DEFAULTS = {
   calldataMaxAgeMs: 30_000,
 } as const;
 
+/** Warm rebalance calldata at this fraction of `rangeExitPercent` (3% when threshold is 5%). */
+const PREWARM_EXIT_FRACTION = 0.6;
+
 export class LifecycleLoop {
   private readonly deps: LifecycleDeps;
   private readonly now: Clock;
@@ -181,6 +193,7 @@ export class LifecycleLoop {
   private readonly commandPollIntervalMs: number;
   private readonly calldataMaxAgeMs: number;
   private readonly gasCostUsd: number | null;
+  private readonly lineagePollDelaysMs: readonly number[];
 
   private quarantine = Quarantine.empty();
   private bundle: PolicyBundle = { policies: [], bindings: {} };
@@ -213,6 +226,7 @@ export class LifecycleLoop {
       deps.options?.commandPollIntervalMs ?? DEFAULTS.commandPollIntervalMs;
     this.calldataMaxAgeMs = deps.options?.calldataMaxAgeMs ?? DEFAULTS.calldataMaxAgeMs;
     this.gasCostUsd = deps.options?.gasCostUsd ?? null;
+    this.lineagePollDelaysMs = deps.options?.lineagePollDelaysMs ?? DEFAULT_LINEAGE_POLL_DELAYS_MS;
 
     this.executor = new ActionExecutor({
       audit: deps.audit,
@@ -651,6 +665,19 @@ export class LifecycleLoop {
       // every tick would double the log for no signal.
       if (position.status === 'out_of_range') {
         await this.logEvaluation(decision);
+      }
+      const exitPercent = decision.snapshot.rangeExitPercent;
+      if (
+        typeof exitPercent === 'number' &&
+        this.shouldPrewarmRebalance(exitPercent, policy.rebalanceTrigger.rangeExitPercent)
+      ) {
+        await this.warmRebalanceCalldata(position, policy, decision, {
+          prewarm: true,
+          reason:
+            `price is ${exitPercent.toFixed(4)}% outside the range, approaching the ` +
+            `${policy.rebalanceTrigger.rangeExitPercent}% threshold; calldata built and parked. ` +
+            `Nothing was broadcast. (${decision.reason})`,
+        });
       }
       return;
     }
@@ -1465,7 +1492,7 @@ export class LifecycleLoop {
             this.lastCompounded.set(position.tokenId, this.now());
           }
           if (action === 'rebalance' && result.recorded.error === null && result.recorded.txHash !== null) {
-            await this.recordRebalanceLineage(position, decision);
+            await this.recordRebalanceLineage(position, decision, result.recorded.txHash);
           }
           this.logger.info('lp-lifecycle: action submitted', {
             tokenId: position.tokenId,
@@ -1516,34 +1543,68 @@ export class LifecycleLoop {
 
   // --- audit helpers -------------------------------------------------------
 
-  private async recordRebalanceLineage(position: LpPosition, decision: Decision): Promise<void> {
+  private async recordRebalanceLineage(
+    position: LpPosition,
+    decision: Decision,
+    txHash: string,
+  ): Promise<void> {
     const oldTokenId = position.tokenId;
     const poolAddress = position.pool.address;
 
-    let positions: LpPosition[];
-    try {
-      positions = await this.deps.positions.loadPositions();
-    } catch (error) {
-      this.logger.warn('lp-lifecycle: could not refresh positions for rebalance lineage', {
-        oldTokenId,
-        error: describe(error),
-      });
-      return;
+    let newTokenId: string | null = null;
+    let remintedValueUsd: number | null = null;
+    let source: 'receipt' | 'feed' | null = null;
+
+    const extractor = this.deps.extractRebalanceSuccessor;
+    if (extractor !== undefined) {
+      try {
+        newTokenId = await extractor(txHash);
+        if (newTokenId !== null) source = 'receipt';
+      } catch (error) {
+        this.logger.warn('lp-lifecycle: could not parse rebalance successor from receipt', {
+          oldTokenId,
+          txHash,
+          error: describe(error),
+        });
+      }
     }
 
-    const successor = positions
-      .filter(
-        (candidate) =>
-          candidate.pool.address.toLowerCase() === poolAddress.toLowerCase() &&
-          candidate.tokenId !== oldTokenId &&
-          candidate.status !== 'closed',
-      )
-      .sort((a, b) => Number.parseInt(b.tokenId, 10) - Number.parseInt(a.tokenId, 10))[0];
+    const pollSchedule = [0, ...this.lineagePollDelaysMs];
+    for (let attempt = 0; attempt < pollSchedule.length; attempt += 1) {
+      const delayMs = pollSchedule[attempt] ?? 0;
+      if (delayMs > 0) await sleep(delayMs);
 
-    if (successor === undefined) {
+      let positions: LpPosition[];
+      try {
+        positions = await this.deps.positions.loadPositions();
+      } catch (error) {
+        this.logger.warn('lp-lifecycle: could not refresh positions for rebalance lineage', {
+          oldTokenId,
+          attempt,
+          error: describe(error),
+        });
+        continue;
+      }
+
+      const successor = findRebalanceSuccessor(positions, oldTokenId, poolAddress);
+      if (successor !== undefined) {
+        if (newTokenId === null) {
+          newTokenId = successor.tokenId;
+          remintedValueUsd = successor.valueUsd;
+          source = 'feed';
+        } else if (remintedValueUsd === null) {
+          const matched = positions.find((candidate) => candidate.tokenId === newTokenId);
+          remintedValueUsd = matched?.valueUsd ?? successor.valueUsd;
+        }
+        break;
+      }
+    }
+
+    if (newTokenId === null) {
       this.logger.warn('lp-lifecycle: rebalance succeeded but no successor position was found', {
         oldTokenId,
         pool: poolAddress,
+        txHash,
       });
       return;
     }
@@ -1552,19 +1613,20 @@ export class LifecycleLoop {
       action: 'none',
       rule: 'lifecycle.rebalance.lineage',
       reason:
-        `rebalance lineage: position #${oldTokenId} was withdrawn and re-minted as #${successor.tokenId}`,
+        `rebalance lineage: position #${oldTokenId} was withdrawn and re-minted as #${newTokenId}`,
       snapshot: {
         oldTokenId,
-        newTokenId: successor.tokenId,
+        newTokenId,
         pool: poolAddress,
         withdrawnValueUsd: position.valueUsd,
-        remintedValueUsd: successor.valueUsd,
+        remintedValueUsd,
         unclaimedFeesUsd: position.unclaimedFeesUsd,
         policyVersion: decision.snapshot.policyVersion,
+        rebalanceTxHash: txHash,
+        ...(source === null ? {} : { lineageSource: source }),
       },
     });
   }
-
   /**
    * Record a decision that produced no action.
    *
