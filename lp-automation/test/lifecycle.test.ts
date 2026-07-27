@@ -1005,3 +1005,69 @@ describe('rebalance backstop on the slow poll', () => {
     await h.loop.stop();
   });
 });
+
+describe('rebalance calldata pre-warm on slow poll', () => {
+  it('warms calldata when out of range but below the rebalance threshold', async () => {
+    const approaching = position({
+      status: 'out_of_range',
+      tickLower: -1000,
+      tickUpper: 0,
+      currentTick: 300,
+    });
+    const h = harness({ positions: [approaching] });
+    await h.loop.start();
+    await h.loop.settle();
+
+    expect(h.calldata.rebalanceCalls).toBe(1);
+    expect(h.signer.submitted).toEqual([]);
+    expect(h.loop.getState().warm).toBe(1);
+    expect(h.audit.rules()).toContain('lifecycle.warm.rebalance.within_tolerance');
+    await h.loop.stop();
+  });
+
+  it('reuses pre-warmed calldata when the threshold is later crossed', async () => {
+    const approaching = position({
+      status: 'out_of_range',
+      tickLower: -1000,
+      tickUpper: 0,
+      currentTick: 300,
+    });
+    const h = harness({ positions: [approaching] });
+    await h.loop.start();
+    await h.loop.settle();
+    expect(h.calldata.rebalanceCalls).toBe(1);
+
+    h.feed.positions = [
+      position({
+        status: 'out_of_range',
+        tickLower: -1000,
+        tickUpper: 0,
+        currentTick: 2000,
+      }),
+    ];
+    await h.loop.runPositionTick();
+    await h.loop.settle();
+
+    expect(h.calldata.rebalanceCalls).toBe(1);
+    expect(h.signer.submitted).toHaveLength(1);
+    expect(h.signer.submitted[0]?.action).toBe('rebalance');
+    await h.loop.stop();
+  });
+
+  it('does not warm when barely outside the range but below the prewarm cutoff', async () => {
+    const barelyOutside = position({
+      status: 'out_of_range',
+      tickLower: -1000,
+      tickUpper: 0,
+      currentTick: 100,
+    });
+    const h = harness({ positions: [barelyOutside] });
+    await h.loop.start();
+    await h.loop.settle();
+
+    expect(h.calldata.rebalanceCalls).toBe(0);
+    expect(h.loop.getState().warm).toBe(0);
+    await h.loop.stop();
+  });
+});
+

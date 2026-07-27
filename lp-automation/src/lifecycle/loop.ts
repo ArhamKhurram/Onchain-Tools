@@ -176,6 +176,9 @@ const DEFAULTS = {
   calldataMaxAgeMs: 30_000,
 } as const;
 
+/** Warm rebalance calldata at this fraction of `rangeExitPercent` (3% when threshold is 5%). */
+const PREWARM_EXIT_FRACTION = 0.6;
+
 export class LifecycleLoop {
   private readonly deps: LifecycleDeps;
   private readonly now: Clock;
@@ -665,6 +668,19 @@ export class LifecycleLoop {
       // every tick would double the log for no signal.
       if (position.status === 'out_of_range') {
         await this.logEvaluation(decision);
+      }
+      const exitPercent = decision.snapshot.rangeExitPercent;
+      if (
+        typeof exitPercent === 'number' &&
+        this.shouldPrewarmRebalance(exitPercent, policy.rebalanceTrigger.rangeExitPercent)
+      ) {
+        await this.warmRebalanceCalldata(position, policy, decision, {
+          prewarm: true,
+          reason:
+            `price is ${exitPercent.toFixed(4)}% outside the range, approaching the ` +
+            `${policy.rebalanceTrigger.rangeExitPercent}% threshold; calldata built and parked. ` +
+            `Nothing was broadcast. (${decision.reason})`,
+        });
       }
       return;
     }
@@ -1517,6 +1533,58 @@ export class LifecycleLoop {
 
     void this.emitActAlerts(request, attempt.value);
     return attempt.value;
+  }
+
+  private shouldPrewarmRebalance(exitPercent: number, threshold: number): boolean {
+    if (!Number.isFinite(threshold) || threshold <= 0) return false;
+    if (!Number.isFinite(exitPercent) || exitPercent <= 0) return false;
+    const prewarmAt = threshold * PREWARM_EXIT_FRACTION;
+    return exitPercent >= prewarmAt && exitPercent <= threshold;
+  }
+
+  private isWarmFresh(tokenId: string): boolean {
+    const parked = this.warm.get(tokenId);
+    if (parked === undefined) return false;
+    return this.now() - parked.transaction.meta.builtAt <= this.calldataMaxAgeMs;
+  }
+
+  private async warmRebalanceCalldata(
+    position: LpPosition,
+    policy: AutomationPolicy,
+    decision: Decision,
+    snapshotExtras: Record<string, unknown> & { reason?: string },
+  ): Promise<void> {
+    if (this.isWarmFresh(position.tokenId)) return;
+    if (this.executor.checkGuards(position, policy) !== null) return;
+
+    const range = recenterRange(position, policy.rebalanceTrigger.rangeStrategy);
+    if (!range.ok) return;
+
+    try {
+      const transaction = await this.deps.calldata.rebalance({
+        position,
+        policy,
+        tickLower: range.range.tickLower,
+        tickUpper: range.range.tickUpper,
+      });
+      this.warm.set(position.tokenId, { action: 'rebalance', transaction, decision });
+      const reason =
+        snapshotExtras.reason ??
+        `calldata built and parked. Nothing was broadcast. (${decision.reason})`;
+      const { reason: _omit, ...extras } = snapshotExtras;
+      await this.logEvaluation({
+        action: 'none',
+        rule: `lifecycle.warm.${decision.rule}`,
+        reason,
+        snapshot: { ...decision.snapshot, ...extras, warmed: true },
+      });
+    } catch (error) {
+      // A failed warm-up costs nothing: the confirmed path rebuilds.
+      this.logger.warn('lp-lifecycle: warm calldata build failed', {
+        tokenId: position.tokenId,
+        error: describe(error),
+      });
+    }
   }
 
   private evaluateOutOfRangeAlert(position: LpPosition): void {
