@@ -269,6 +269,13 @@ export async function run(options: RunOptions = {}): Promise<LifecycleLoop> {
     });
   }
 
+  if (config.maxValueWei <= 0n) {
+    logger.warn(
+      'LP_MAX_TX_VALUE_WEI is zero — native ETH enter/increase zaps will be refused. ' +
+        'Set it to match the Safe module maxValuePerTx cap when using native ETH.',
+    );
+  }
+
   const loop = new LifecycleLoop({
     policySource,
     positions: new KrystalPositionFeed({
@@ -291,6 +298,7 @@ export async function run(options: RunOptions = {}): Promise<LifecycleLoop> {
       approvableTokens: DEFAULT_APPROVABLE_TOKENS,
       reader: publicClient,
     },
+    maxValueWei: config.maxValueWei,
     signer,
     audit: new AuditLog(config.auditLogPath),
     waitForReceipt: async (txHash) => {

@@ -11,7 +11,15 @@
 // and the tick reader is a read-only `eth_call`.
 
 import { readFile } from 'node:fs/promises';
-import { buildAdjustRange, buildCompound, buildSwapAndIncrease, buildSwapAndMint, buildWithdrawAndSwap, type LpTxnContext } from '../calldata/lpTxn.js';
+import {
+  buildAdjustRange,
+  buildCompound,
+  buildSwapAndIncrease,
+  buildSwapAndMint,
+  buildWithdrawAndSwap,
+  type LpTxnContext,
+} from '../calldata/lpTxn.js';
+import { resolveZapTokenIn } from '../calldata/nativeEth.js';
 import type { PreparedTransaction } from '../calldata/types.js';
 import { KrystalFieldError } from '../ingest/krystal/coerce.js';
 import type { KrystalClient } from '../ingest/krystal/client.js';
@@ -142,16 +150,26 @@ export class KrystalCalldataBuilder implements CalldataBuilder {
   enter(request: {
     poolAddress: Address;
     tokenInAddress: Address;
+    poolToken0: Address;
+    poolToken1: Address;
     amountIn: string;
     tickLower: number;
     tickUpper: number;
     swapSlippage?: number;
   }): Promise<PreparedTransaction> {
+    const resolved = resolveZapTokenIn({
+      tokenInAddress: request.tokenInAddress,
+      poolToken0: request.poolToken0,
+      poolToken1: request.poolToken1,
+    });
+    if (!resolved.ok) {
+      throw new Error(resolved.reason);
+    }
     return buildSwapAndMint(this.options.context, {
       poolAddress: request.poolAddress,
       tickLower: request.tickLower,
       tickUpper: request.tickUpper,
-      tokenInAddress: request.tokenInAddress,
+      tokenInAddress: resolved.krystalTokenIn,
       amountIn: request.amountIn,
       swapSlippage: request.swapSlippage ?? this.options.swapSlippage,
       liquiditySlippage: this.options.liquiditySlippage,
@@ -164,9 +182,17 @@ export class KrystalCalldataBuilder implements CalldataBuilder {
     amountIn: string;
     swapSlippage?: number;
   }): Promise<PreparedTransaction> {
+    const resolved = resolveZapTokenIn({
+      tokenInAddress: request.tokenInAddress,
+      poolToken0: request.position.pool.token0.address,
+      poolToken1: request.position.pool.token1.address,
+    });
+    if (!resolved.ok) {
+      throw new Error(resolved.reason);
+    }
     return buildSwapAndIncrease(this.options.context, {
       tokenId: request.position.tokenId,
-      tokenInAddress: request.tokenInAddress,
+      tokenInAddress: resolved.krystalTokenIn,
       amountIn: request.amountIn,
       swapSlippage: request.swapSlippage ?? this.options.swapSlippage,
       liquiditySlippage: this.options.liquiditySlippage,

@@ -27,6 +27,8 @@ const POOL_A = '0xa06671d47e0b5b45f4144bf77149995f0bdb495d';
 const POOL_B = '0xbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb';
 const TOKEN_0 = '0x30db03a051205ccbeb1b6524ddf87fbc6c0127bc';
 const TOKEN_1 = '0x5fc5360d0400a0fd4f2af552add042d716f1d168';
+const SAFE = '0x216f91ce3c1cb358e583441d6179c6c19c834a2e';
+const MODULE = '0xb4acbc08e0e0a2d0e2ea9d1f0d4c0e0f0a0b0c0d';
 
 const context = (allowed: string[] = []): PositionViewContext => ({
   chainId: ROBINHOOD_CHAIN_ID,
@@ -369,8 +371,6 @@ describe('mapUserPositionViews', () => {
 // ---------------------------------------------------------------------------
 
 describe('validateSettingsInput', () => {
-  const SAFE = '0x216f91ce3c1cb358e583441d6179c6c19c834a2e';
-  const MODULE = '0xb4acbc08e0e0a2d0e2ea9d1f0d4c0e0f0a0b0c0d';
 
   it('accepts a well-formed pair', () => {
     const result = validateSettingsInput({ safeAddress: SAFE, moduleAddress: MODULE });

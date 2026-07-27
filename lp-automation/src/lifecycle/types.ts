@@ -132,6 +132,8 @@ export interface CalldataBuilder {
   enter?(request: {
     poolAddress: Address;
     tokenInAddress: Address;
+    poolToken0: Address;
+    poolToken1: Address;
     /** Raw base units, decimal string. Never a JS number — precision loss. */
     amountIn: string;
     tickLower: number;

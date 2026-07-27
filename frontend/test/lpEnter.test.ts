@@ -2,7 +2,9 @@ import { describe, it, expect } from 'vitest';
 import {
   DEFAULT_SWAP_SLIPPAGE,
   MAX_SWAP_SLIPPAGE,
+  NATIVE_ETH_ADDRESS,
   buildEnterPools,
+  depositTokenOptions,
   findEnterPool,
   parseEnterCommand,
   parseSlippagePercent,
@@ -271,6 +273,18 @@ describe('validateEnterForm', () => {
       pool,
     );
     expect(fieldsOf(result.issues)).toContain('rangeStrategy');
+  });
+
+  it('offers native ETH when the pool has a WETH side', () => {
+    const options = depositTokenOptions(pool);
+    expect(options.some((opt) => opt.label === 'ETH' && opt.value === NATIVE_ETH_ADDRESS)).toBe(true);
+  });
+
+  it('queues native ETH with the Krystal sentinel address', () => {
+    const result = validateEnterForm(values({ tokenInAddress: NATIVE_ETH_ADDRESS, amount: '0.01' }), pool);
+    expect(result.issues).toHaveLength(0);
+    expect(result.request?.tokenInAddress).toBe(NATIVE_ETH_ADDRESS);
+    expect(result.request?.amountIn).toBe('10000000000000000');
   });
 });
 

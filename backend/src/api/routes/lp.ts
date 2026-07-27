@@ -44,6 +44,9 @@ import { getUserId, safeError } from '../shared.js';
 
 export const ROBINHOOD_CHAIN_ID = 4663;
 
+/** Krystal native-token sentinel for zap-in with ETH instead of WETH. */
+export const NATIVE_ETH_ADDRESS = '0xeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee';
+
 export type Address = `0x${string}`;
 
 /**

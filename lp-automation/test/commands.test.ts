@@ -34,7 +34,8 @@ import type {
 } from '../src/signer/types.js';
 import { LifecycleLoop, type AllowanceConfig } from '../src/lifecycle/loop.js';
 import type { TransactionReceiptInfo } from '../src/lifecycle/executor.js';
-import { DEFAULT_APPROVABLE_TOKENS, MAX_UINT256 } from '../src/calldata/erc20Approve.js';
+import { DEFAULT_APPROVABLE_TOKENS, MAX_UINT256, ROBINHOOD_WETH } from '../src/calldata/erc20Approve.js';
+import { NATIVE_ETH_ADDRESS } from '../src/calldata/nativeEth.js';
 import type {
   AuditPort,
   CalldataBuilder,
@@ -520,6 +521,7 @@ function harness(
     /** Omit for the default working reader; pass `null` to leave enter unwired. */
     poolState?: PoolStateReader | null;
     waitForReceipt?: (txHash: string) => Promise<TransactionReceiptInfo | null>;
+    maxValueWei?: bigint;
   } = {},
 ): Harness {
   const signer = new FakeSigner();
@@ -548,6 +550,7 @@ function harness(
     commands,
     ...(over.poolState === null ? {} : { poolState: over.poolState ?? fakePoolState }),
     allowance: fakeAllowance,
+    ...(over.maxValueWei === undefined ? {} : { maxValueWei: over.maxValueWei }),
     signer,
     audit,
     ...(over.waitForReceipt === undefined ? {} : { waitForReceipt: over.waitForReceipt }),
@@ -1257,6 +1260,51 @@ describe('enter (Zap In) manual command', () => {
     expect(h.calldata.enterCalls).toBe(0);
     expect(h.signer.submitted).toEqual([]);
     expect(h.commands.last?.error).toContain('not wired');
+    await h.loop.stop();
+  });
+
+  it('accepts native ETH when the pool has WETH and maxValueWei is set', async () => {
+    const wethPoolState: PoolStateReader = {
+      readPoolState: async (): Promise<PoolState> => ({
+        currentTick: 200_000,
+        feeUnits: 10_000,
+        token0: ROBINHOOD_WETH,
+        token1: OTHER_POOL,
+      }),
+    };
+    const h = harness({
+      queued: enterCommand({ tokenInAddress: NATIVE_ETH_ADDRESS }),
+      poolState: wethPoolState,
+      maxValueWei: 10n ** 18n,
+    });
+    await h.loop.start();
+    await h.loop.runCommandTick();
+
+    expect(h.calldata.enterCalls).toBe(1);
+    expect(h.signer.submitted).toHaveLength(1);
+    expect(h.signer.submitted[0]?.action).toBe('enter');
+    await h.loop.stop();
+  });
+
+  it('refuses native ETH when maxValueWei is zero', async () => {
+    const wethPoolState: PoolStateReader = {
+      readPoolState: async (): Promise<PoolState> => ({
+        currentTick: 200_000,
+        feeUnits: 10_000,
+        token0: ROBINHOOD_WETH,
+        token1: OTHER_POOL,
+      }),
+    };
+    const h = harness({
+      queued: enterCommand({ tokenInAddress: NATIVE_ETH_ADDRESS }),
+      poolState: wethPoolState,
+      maxValueWei: 0n,
+    });
+    await h.loop.start();
+    await h.loop.runCommandTick();
+
+    expect(h.calldata.enterCalls).toBe(0);
+    expect(h.commands.last?.error).toContain('LP_MAX_TX_VALUE_WEI');
     await h.loop.stop();
   });
 });
