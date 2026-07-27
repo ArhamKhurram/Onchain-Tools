@@ -1216,14 +1216,20 @@ function fetchUserPositionsRaw(chainId: number, safeAddress: string): Promise<un
 // `20260726170000_lp_automation_settings.sql` for why this is not two more
 // columns on the append-only policy table.
 
+export const MAX_LP_SAFE_ADDRESSES = 2;
+
 export interface LpSettings {
   safeAddress: string | null;
+  safeAddresses: string[];
+  activeSafeAddress: string | null;
   moduleAddress: string | null;
   updatedAt: string | null;
 }
 
 /** A field the client actually sent. `null` clears it; absent leaves it alone. */
-export type SettingsPatch = Partial<Record<'safeAddress' | 'moduleAddress', string | null>>;
+export type SettingsPatch = Partial<
+  Record<'safeAddress' | 'moduleAddress' | 'activeSafeAddress', string | null>
+> & { safeAddresses?: string[] | null };
 
 export interface SettingsValidationResult {
   valid: boolean;
@@ -1233,6 +1239,33 @@ export interface SettingsValidationResult {
 }
 
 const ZERO_ADDRESS = `0x${'0'.repeat(40)}`;
+
+function validateSettingsAddress(value: unknown, field: string, issues: PolicyValidationIssue[]): string | null {
+  if (value === null) return null;
+  if (typeof value !== 'string') { issues.push({ field, message: 'must be a 0x-prefixed 20-byte hex address, or null' }); return null; }
+  const trimmed = value.trim();
+  if (trimmed.length === 0) return null;
+  if (!ADDRESS_PATTERN.test(trimmed)) { issues.push({ field, message: 'must be a 0x-prefixed 20-byte hex address' }); return null; }
+  const lower = trimmed.toLowerCase();
+  if (lower === ZERO_ADDRESS) { issues.push({ field, message: 'must not be the all-zero address' }); return null; }
+  return lower;
+}
+
+export function normalizeLpSafeSettings(input: { safeAddresses: string[]; activeSafeAddress: string | null; }): Pick<LpSettings, 'safeAddresses' | 'activeSafeAddress' | 'safeAddress'> {
+  const seen = new Set<string>();
+  const safeAddresses: string[] = [];
+  for (const raw of input.safeAddresses) {
+    const lower = raw.toLowerCase();
+    if (seen.has(lower)) continue;
+    seen.add(lower);
+    safeAddresses.push(lower);
+    if (safeAddresses.length >= MAX_LP_SAFE_ADDRESSES) break;
+  }
+  let activeSafeAddress = input.activeSafeAddress?.toLowerCase() ?? null;
+  if (activeSafeAddress && !safeAddresses.includes(activeSafeAddress)) activeSafeAddress = safeAddresses[0] ?? null;
+  if (!activeSafeAddress && safeAddresses.length > 0) activeSafeAddress = safeAddresses[0]!;
+  return { safeAddresses, activeSafeAddress, safeAddress: activeSafeAddress };
+}
 
 /**
  * Validate a `PUT /settings` body. Never throws; accumulates issues like
@@ -1256,7 +1289,7 @@ export function validateSettingsInput(input: unknown): SettingsValidationResult 
   }
 
   const patch: SettingsPatch = {};
-  for (const field of ['safeAddress', 'moduleAddress'] as const) {
+  for (const field of ['safeAddress', 'moduleAddress', 'activeSafeAddress'] as const) {
     if (!(field in input) || input[field] === undefined) continue;
 
     const value = input[field];
@@ -1297,7 +1330,23 @@ export function validateSettingsInput(input: unknown): SettingsValidationResult 
 
     patch[field] = lower;
   }
-
+  if ('safeAddresses' in input && input.safeAddresses !== undefined) {
+    const raw = input.safeAddresses;
+    if (raw === null) patch.safeAddresses = [];
+    else if (!Array.isArray(raw)) issues.push({ field: 'safeAddresses', message: 'must be an array of addresses, or null' });
+    else {
+      if (raw.length > MAX_LP_SAFE_ADDRESSES) issues.push({ field: 'safeAddresses', message: `at most ${MAX_LP_SAFE_ADDRESSES} Safe addresses` });
+      const normalized: string[] = [];
+      const seen = new Set<string>();
+      raw.forEach((entry, index) => {
+        const addr = validateSettingsAddress(entry, `safeAddresses[${index}]`, issues);
+        if (!addr || seen.has(addr)) return;
+        seen.add(addr);
+        normalized.push(addr);
+      });
+      if (issues.every((issue) => !issue.field.startsWith('safeAddresses'))) patch.safeAddresses = normalized;
+    }
+  }
   return { valid: issues.length === 0, issues, patch };
 }
 
@@ -2048,18 +2097,18 @@ async function appendPolicy(userId: string, policy: AutomationPolicy): Promise<S
 
 interface SettingsRow {
   safe_address: string | null;
+  safe_addresses: string[] | null;
+  active_safe_address: string | null;
   module_address: string | null;
   updated_at: string | null;
 }
 
-const EMPTY_SETTINGS: LpSettings = { safeAddress: null, moduleAddress: null, updatedAt: null };
+const EMPTY_SETTINGS: LpSettings = { safeAddress: null, safeAddresses: [], activeSafeAddress: null, moduleAddress: null, updatedAt: null };
 
 function rowToSettings(row: SettingsRow): LpSettings {
-  return {
-    safeAddress: row.safe_address,
-    moduleAddress: row.module_address,
-    updatedAt: row.updated_at,
-  };
+  const safeAddresses = row.safe_addresses?.length ? row.safe_addresses : row.safe_address ? [row.safe_address] : [];
+  const activeSafeAddress = row.active_safe_address ?? row.safe_address ?? safeAddresses[0] ?? null;
+  return { ...normalizeLpSafeSettings({ safeAddresses, activeSafeAddress }), moduleAddress: row.module_address, updatedAt: row.updated_at };
 }
 
 /** No row yet is a normal state — an account that has not deployed a Safe. */
@@ -2069,7 +2118,7 @@ async function readSettings(userId: string): Promise<LpSettings> {
     if (!db) throw new Error('Supabase is not configured.');
     const { data, error } = await db
       .from(SETTINGS_TABLE)
-      .select('safe_address, module_address, updated_at')
+      .select('safe_address, safe_addresses, active_safe_address, module_address, updated_at')
       .eq('user_id', userId)
       .maybeSingle();
     if (error) throw new Error(`Failed to load LP settings: ${error.message}`);

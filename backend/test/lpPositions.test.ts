@@ -7,6 +7,8 @@ import {
   mapUserPositionViews,
   sumUsdQuotes,
   validateSettingsInput,
+  normalizeLpSafeSettings,
+  MAX_LP_SAFE_ADDRESSES,
   type PositionViewContext,
 } from '../src/api/routes/lp';
 
@@ -435,5 +437,20 @@ describe('validateSettingsInput', () => {
     const result = validateSettingsInput({ safeAddress: SAFE, sneakyFutureField: true });
     expect(result.valid).toBe(true);
     expect(Object.keys(result.patch)).toEqual(['safeAddress']);
+  });
+
+  it('accepts safeAddresses', () => {
+    const second = '0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa';
+    expect(validateSettingsInput({ safeAddresses: [SAFE, second] }).patch.safeAddresses).toEqual([SAFE, second]);
+  });
+
+  it(`rejects more than ${MAX_LP_SAFE_ADDRESSES} safes`, () => {
+    expect(validateSettingsInput({ safeAddresses: [SAFE, MODULE, '0xcccccccccccccccccccccccccccccccccccccccc'] }).valid).toBe(false);
+  });
+});
+
+describe('normalizeLpSafeSettings', () => {
+  it('caps at two', () => {
+    expect(normalizeLpSafeSettings({ safeAddresses: [SAFE, MODULE, '0xcccccccccccccccccccccccccccccccccccccccc'], activeSafeAddress: MODULE }).safeAddresses).toHaveLength(2);
   });
 });

@@ -35,17 +35,18 @@ function str(value: unknown): string | null {
   return typeof value === 'string' && value.trim() !== '' ? value : null;
 }
 
+function parseAddressList(value: unknown): string[] {
+  if (!Array.isArray(value)) return [];
+  return value.filter((e): e is string => typeof e === 'string' && e.trim() !== '').map((e) => e.trim().toLowerCase());
+}
+
 function parseSettings(body: unknown): LpSettings {
   const record = (body && typeof body === 'object' ? body : {}) as Record<string, unknown>;
-  const nested =
-    record.settings && typeof record.settings === 'object'
-      ? (record.settings as Record<string, unknown>)
-      : record;
-  return {
-    safeAddress: str(nested.safeAddress),
-    moduleAddress: str(nested.moduleAddress),
-    updatedAt: str(nested.updatedAt),
-  };
+  const nested = record.settings && typeof record.settings === 'object' ? (record.settings as Record<string, unknown>) : record;
+  const safeAddresses = parseAddressList(nested.safeAddresses);
+  const activeSafeAddress = str(nested.activeSafeAddress) ?? str(nested.safeAddress);
+  const safeAddress = activeSafeAddress ?? safeAddresses[0] ?? null;
+  return { safeAddress, safeAddresses: safeAddresses.length ? safeAddresses : safeAddress ? [safeAddress] : [], activeSafeAddress: safeAddress, moduleAddress: str(nested.moduleAddress), updatedAt: str(nested.updatedAt) };
 }
 
 export interface LpSettingsSaveResult {

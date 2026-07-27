@@ -240,12 +240,18 @@ export interface LpPositionsResponse {
 /** `GET /api/lp/settings` */
 export interface LpSettings {
   safeAddress: string | null;
+  safeAddresses: string[];
+  activeSafeAddress: string | null;
   moduleAddress: string | null;
   updatedAt: string | null;
 }
 
+export const MAX_LP_SAFE_ADDRESSES = 2;
+
 export interface LpSettingsPatch {
-  safeAddress?: string;
+  safeAddress?: string | null;
+  safeAddresses?: string[] | null;
+  activeSafeAddress?: string | null;
   moduleAddress?: string;
 }
 
