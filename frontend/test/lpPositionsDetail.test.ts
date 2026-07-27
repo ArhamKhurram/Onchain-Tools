@@ -23,11 +23,14 @@ import {
 } from '../src/components/lp/commands';
 import {
   buildPositionGrid,
+  costBasisLabel,
   findTile,
   isPoolInDraft,
   positionKey,
   removeFromAllowlist,
   addToAllowlist,
+  resolvePnlBreakdown,
+  type LpLineagePnl,
   type LpPositionView,
   type PositionCoverage,
 } from '../src/components/lp/positions';
@@ -65,6 +68,74 @@ const command = (over: Partial<LpCommand> = {}): LpCommand => ({
   txHash: null,
   error: null,
   ...over,
+});
+
+const auditPnl = (over: Partial<LpLineagePnl> = {}): LpLineagePnl => ({
+  lineageKey: `${POOL_A}:1001`,
+  headTokenId: '1001',
+  memberTokenIds: ['1001'],
+  costBasisUsd: 50,
+  costBasisKnown: true,
+  costBasisSince: null,
+  currentValueUsd: 59,
+  unclaimedFeesUsd: 0.01,
+  lifetimeFeesUsd: 0.5,
+  gasPaidUsd: 2,
+  netPnlUsd: 7.01,
+  netPnlPercent: 14.02,
+  ...over,
+});
+
+// --- PnL breakdown ----------------------------------------------------------
+
+describe('resolvePnlBreakdown', () => {
+  it('lists cost basis, value, fees, gas, and net return when audit PnL is available', () => {
+    const breakdown = resolvePnlBreakdown(auditPnl(), position(), true);
+    expect(breakdown.source).toBe('audit');
+    expect(breakdown.lines.map((line) => line.label)).toEqual([
+      'Cost basis',
+      'Current value',
+      'Unclaimed fees',
+      'Gas paid',
+    ]);
+    expect(breakdown.lines.map((line) => line.valueUsd)).toEqual([50, 59, 0.01, 2]);
+    expect(breakdown.netReturn?.valueUsd).toBeCloseTo(7.01);
+    expect(breakdown.netReturn?.percent).toBeCloseTo(14.02);
+    expect(breakdown.hint).toContain('cost basis');
+  });
+
+  it('labels approximate basis when cost basis is not fully known', () => {
+    const breakdown = resolvePnlBreakdown(
+      auditPnl({ costBasisKnown: false, costBasisSince: '2026-07-01' }),
+      position(),
+      true,
+    );
+    expect(breakdown.lines[0]?.label).toBe('Basis since 2026-07-01');
+    expect(costBasisLabel({ costBasisKnown: false, costBasisSince: '2026-07-01' })).toBe(
+      'Basis since 2026-07-01',
+    );
+  });
+
+  it('falls back to indicative value and fees when net return is unavailable', () => {
+    const breakdown = resolvePnlBreakdown(
+      auditPnl({ netPnlUsd: null, netPnlPercent: null, costBasisSince: '2026-07-01' }),
+      position({ valueUsd: 59.41, unclaimedFeesUsd: 0.01 }),
+      true,
+    );
+    expect(breakdown.source).toBe('indicative');
+    expect(breakdown.netReturn).toBeNull();
+    expect(breakdown.lines).toEqual([
+      { label: 'Current value', valueUsd: 59.41 },
+      { label: 'Unclaimed fees', valueUsd: 0.01 },
+    ]);
+    expect(breakdown.hint).toContain('Net return pending');
+  });
+
+  it('explains when the audit log is not configured', () => {
+    const breakdown = resolvePnlBreakdown(null, position({ valueUsd: 59.41, unclaimedFeesUsd: 0.01 }), false);
+    expect(breakdown.source).toBe('indicative');
+    expect(breakdown.hint).toContain('LP_AUDIT_LOG_PATH');
+  });
 });
 
 // --- Grid derivation --------------------------------------------------------
