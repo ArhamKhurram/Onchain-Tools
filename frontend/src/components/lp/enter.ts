@@ -26,6 +26,13 @@ export const DEFAULT_SWAP_SLIPPAGE = 0.005;
 /** Hard cap enforced by the backend — 5%. */
 export const MAX_SWAP_SLIPPAGE = 0.05;
 
+/** Krystal native-token sentinel — pay with ETH instead of WETH. */
+export const NATIVE_ETH_ADDRESS = '0xeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee';
+
+export function isNativeEthTokenIn(address: string): boolean {
+  return address.toLowerCase() === NATIVE_ETH_ADDRESS;
+}
+
 export interface LpEnterPoolToken {
   symbol: string;
   address: string;
@@ -226,6 +233,31 @@ export function findEnterPool(pools: readonly LpEnterPool[], address: string): L
   return pools.find((pool) => pool.address === needle) ?? null;
 }
 
+/** Deposit token picker options — adds native ETH when the pool has a WETH side. */
+export function depositTokenOptions(pool: LpEnterPool): { value: string; label: string }[] {
+  const options = [
+    { value: pool.token0.address, label: pool.token0.symbol },
+    { value: pool.token1.address, label: pool.token1.symbol },
+  ];
+  const hasWeth = options.some((opt) => opt.label.toUpperCase() === 'WETH');
+  if (hasWeth && !options.some((opt) => isNativeEthTokenIn(opt.value))) {
+    options.push({ value: NATIVE_ETH_ADDRESS, label: 'ETH' });
+  }
+  return options;
+}
+
+function resolveDepositToken(pool: LpEnterPool, tokenInAddress: string): LpEnterPoolToken | null {
+  const needle = normalizeAddress(tokenInAddress);
+  if (!needle) return null;
+  if (isNativeEthTokenIn(needle)) {
+    const weth = [pool.token0, pool.token1].find((t) => t.symbol.toUpperCase() === 'WETH');
+    return weth ?? null;
+  }
+  if (normalizeAddress(pool.token0.address) === needle) return pool.token0;
+  if (normalizeAddress(pool.token1.address) === needle) return pool.token1;
+  return null;
+}
+
 // --- Form validation --------------------------------------------------------
 
 export interface LpEnterFormValues {
@@ -260,16 +292,18 @@ export function validateEnterForm(
   }
 
   let tokenIn: LpEnterPoolToken | null = null;
+  let tokenInAddress: string | null = null;
   if (pool) {
     const needle = normalizeAddress(values.tokenInAddress);
     if (!needle) {
       issues.push({ field: 'tokenInAddress', message: 'Select the token to deposit.' });
-    } else if (normalizeAddress(pool.token0.address) === needle) {
-      tokenIn = pool.token0;
-    } else if (normalizeAddress(pool.token1.address) === needle) {
-      tokenIn = pool.token1;
     } else {
-      issues.push({ field: 'tokenInAddress', message: 'Token must be one of the pool’s two tokens.' });
+      tokenIn = resolveDepositToken(pool, needle);
+      if (!tokenIn) {
+        issues.push({ field: 'tokenInAddress', message: 'Token must be one of the pool’s two tokens or native ETH (WETH pools).' });
+      } else {
+        tokenInAddress = isNativeEthTokenIn(needle) ? NATIVE_ETH_ADDRESS : tokenIn.address;
+      }
     }
   }
 
@@ -293,7 +327,7 @@ export function validateEnterForm(
     issues.push({ field: 'rangeStrategy', message: "Range must be 'narrow', 'wide' or 'full'." });
   }
 
-  if (issues.length > 0 || !pool || !tokenIn || amountIn === null) {
+  if (issues.length > 0 || !pool || !tokenIn || amountIn === null || !tokenInAddress) {
     return { issues, request: null };
   }
 
@@ -301,7 +335,7 @@ export function validateEnterForm(
     issues,
     request: {
       poolAddress: pool.address,
-      tokenInAddress: tokenIn.address,
+      tokenInAddress,
       amountIn,
       rangeStrategy: values.rangeStrategy,
       swapSlippage,

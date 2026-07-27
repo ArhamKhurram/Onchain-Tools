@@ -14,6 +14,7 @@ import {
 import {
   DEFAULT_SWAP_SLIPPAGE,
   MAX_SWAP_SLIPPAGE,
+  depositTokenOptions,
   enterIssuesByField,
   findEnterPool,
   validateEnterForm,
@@ -119,10 +120,7 @@ export default function LpEnterForm({
 
   const tokenOptions = useMemo(() => {
     if (!selectedPool) return [];
-    return [
-      { value: selectedPool.token0.address, label: selectedPool.token0.symbol },
-      { value: selectedPool.token1.address, label: selectedPool.token1.symbol },
-    ];
+    return depositTokenOptions(selectedPool);
   }, [selectedPool]);
 
   const selectedToken = useMemo(() => {

@@ -246,6 +246,13 @@ describe('validateEnterInput — the happy path', () => {
     });
   });
 
+  it('accepts the native ETH sentinel as tokenInAddress', () => {
+    const native = '0xeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee';
+    const result = validateEnterInput(enterBody({ tokenInAddress: native }));
+    expect(result.valid).toBe(true);
+    expect(result.request?.tokenInAddress).toBe(native);
+  });
+
   it('accepts each range strategy and a slippage at the ceiling', () => {
     for (const rangeStrategy of ['narrow', 'wide', 'full'] as const) {
       const result = validateEnterInput(enterBody({ rangeStrategy, swapSlippage: 0.05 }));

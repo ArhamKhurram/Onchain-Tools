@@ -8,6 +8,8 @@ import { normalizeAddress } from './selection';
 import {
   DEFAULT_SWAP_SLIPPAGE,
   MAX_SWAP_SLIPPAGE,
+  NATIVE_ETH_ADDRESS,
+  isNativeEthTokenIn,
   parseSlippagePercent,
   toBaseUnits,
   type LpEnterFieldIssue,
@@ -40,6 +42,17 @@ export interface LpIncreaseFormValues {
 function poolToken(position: LpPositionView, address: string): LpEnterPoolToken | null {
   const needle = normalizeAddress(address);
   if (!needle) return null;
+  if (isNativeEthTokenIn(needle)) {
+    const t0 = position.token0;
+    const t1 = position.token1;
+    if (t0?.symbol?.toUpperCase() === 'WETH' && typeof t0.decimals === 'number') {
+      return { symbol: t0.symbol, address: t0.address, decimals: t0.decimals };
+    }
+    if (t1?.symbol?.toUpperCase() === 'WETH' && typeof t1.decimals === 'number') {
+      return { symbol: t1.symbol, address: t1.address, decimals: t1.decimals };
+    }
+    return null;
+  }
   const t0 = position.token0;
   const t1 = position.token1;
   if (t0 && normalizeAddress(t0.address) === needle && typeof t0.decimals === 'number') {
@@ -49,6 +62,21 @@ function poolToken(position: LpPositionView, address: string): LpEnterPoolToken 
     return { symbol: t1.symbol || '???', address: t1.address, decimals: t1.decimals };
   }
   return null;
+}
+
+export function increaseDepositTokenOptions(position: LpPositionView): { value: string; label: string }[] {
+  const options: { value: string; label: string }[] = [];
+  if (position.token0?.address) {
+    options.push({ value: position.token0.address, label: position.token0.symbol || '???' });
+  }
+  if (position.token1?.address) {
+    options.push({ value: position.token1.address, label: position.token1.symbol || '???' });
+  }
+  const hasWeth = options.some((opt) => opt.label.toUpperCase() === 'WETH');
+  if (hasWeth && !options.some((opt) => isNativeEthTokenIn(opt.value))) {
+    options.push({ value: NATIVE_ETH_ADDRESS, label: 'ETH' });
+  }
+  return options;
 }
 
 export function validateIncreaseForm(
@@ -73,6 +101,11 @@ export function validateIncreaseForm(
     issues.push({ field: 'tokenInAddress', message: 'Select the token to deposit.' });
   }
 
+  const tokenInAddress =
+    tokenIn && isNativeEthTokenIn(normalizeAddress(values.tokenInAddress) ?? '')
+      ? NATIVE_ETH_ADDRESS
+      : tokenIn?.address ?? null;
+
   let amountIn: string | null = null;
   if (tokenIn) {
     const converted = toBaseUnits(values.amount, tokenIn.decimals);
@@ -87,7 +120,7 @@ export function validateIncreaseForm(
   if (!slippage.ok) issues.push({ field: 'swapSlippage', message: slippage.error });
   else swapSlippage = slippage.fraction;
 
-  if (issues.length > 0 || !tokenIn || amountIn === null) {
+  if (issues.length > 0 || !tokenIn || amountIn === null || !tokenInAddress) {
     return { issues, request: null };
   }
 
@@ -95,7 +128,7 @@ export function validateIncreaseForm(
     issues,
     request: {
       poolAddress,
-      tokenInAddress: tokenIn.address,
+      tokenInAddress,
       amountIn,
       swapSlippage,
     },

@@ -59,6 +59,7 @@ import type {
   WatchedRange,
 } from '../ingest/rpc/types.js';
 import type { Erc20ReadClient } from '../calldata/erc20Approve.js';
+import { resolveZapTokenIn } from '../calldata/nativeEth.js';
 import { ensureErc20Allowance, type EnsureAllowanceResult } from './allowance.js';
 import type { TransactionSigner } from '../signer/types.js';
 import { isPoolAllowed } from '../policy/pools.js';
@@ -141,6 +142,8 @@ export interface LifecycleDeps {
    * those actions refuse with a recorded reason rather than failing at simulation.
    */
   allowance?: AllowanceConfig;
+  /** Per-transaction native value cap (wei). Native ETH zaps refuse when zero. */
+  maxValueWei?: bigint;
   /** Wait for a mined receipt after broadcast (chain confirmation + gas for PnL). */
   waitForReceipt?: (
     txHash: string,
@@ -1149,13 +1152,21 @@ export class LifecycleLoop {
       return failure(reason);
     }
 
-    // The input token must be one side of the pool. Krystal would otherwise have
-    // to route a swap we never priced, and the operator picked from the pair.
-    if (tokenIn !== state.token0 && tokenIn !== state.token1) {
-      const reason =
-        `token ${tokenIn} is not in pool ${command.poolAddress} ` +
-        `(${state.token0} / ${state.token1}); refusing to enter.`;
+    const resolved = resolveZapTokenIn({
+      tokenInAddress: tokenIn,
+      poolToken0: state.token0,
+      poolToken1: state.token1,
+    });
+    if (!resolved.ok) {
+      const reason = `${resolved.reason}; refusing to enter.`;
       await this.recordRefusal(enterDecision(command, policy), { rule: 'lifecycle.token_not_in_pool', reason });
+      return failure(reason);
+    }
+    if (resolved.isNative && (this.deps.maxValueWei ?? 0n) <= 0n) {
+      const reason =
+        'native ETH zap refused: LP_MAX_TX_VALUE_WEI is zero, so no native value may leave the Safe. ' +
+        'Set it to match the module maxValuePerTx cap.';
+      await this.recordRefusal(enterDecision(command, policy), { rule: 'lifecycle.native_value_cap', reason });
       return failure(reason);
     }
 
@@ -1176,21 +1187,23 @@ export class LifecycleLoop {
     });
     const swapSlippage = command.swapSlippage;
 
-    const allowance = await this.ensureZapAllowance({
-      token: tokenIn,
-      amountRequired: BigInt(amountIn),
-      position,
-      policy,
-      commandId: command.id,
-      refusalDecision: enterDecision(command, policy, {
-        tickLower: range.range.tickLower,
-        tickUpper: range.range.tickUpper,
-        strategy,
-        currentTick: state.currentTick,
-      }),
-    });
-    if (!allowance.ok) {
-      return failure(allowance.reason);
+    if (!resolved.isNative) {
+      const allowance = await this.ensureZapAllowance({
+        token: resolved.poolTokenAddress,
+        amountRequired: BigInt(amountIn),
+        position,
+        policy,
+        commandId: command.id,
+        refusalDecision: enterDecision(command, policy, {
+          tickLower: range.range.tickLower,
+          tickUpper: range.range.tickUpper,
+          strategy,
+          currentTick: state.currentTick,
+        }),
+      });
+      if (!allowance.ok) {
+        return failure(allowance.reason);
+      }
     }
 
     const result = await this.actZap({
@@ -1201,6 +1214,8 @@ export class LifecycleLoop {
       build: () =>
         buildEnter.call(this.deps.calldata, {
           poolAddress: command.poolAddress,
+          poolToken0: state.token0,
+          poolToken1: state.token1,
           tokenInAddress: tokenIn,
           amountIn,
           tickLower: range.range.tickLower,
@@ -1245,12 +1260,25 @@ export class LifecycleLoop {
       return failure(reason);
     }
 
-    if (tokenIn !== position.pool.token0.address && tokenIn !== position.pool.token1.address) {
-      const reason =
-        `token ${tokenIn} is not in pool ${position.pool.address} ` +
-        `(${position.pool.token0.address} / ${position.pool.token1.address}); refusing to increase.`;
+    const resolved = resolveZapTokenIn({
+      tokenInAddress: tokenIn,
+      poolToken0: position.pool.token0.address,
+      poolToken1: position.pool.token1.address,
+    });
+    if (!resolved.ok) {
+      const reason = `${resolved.reason}; refusing to increase.`;
       await this.recordRefusal(increaseDecision(command, position, policy), {
         rule: 'lifecycle.token_not_in_pool',
+        reason,
+      });
+      return failure(reason);
+    }
+    if (resolved.isNative && (this.deps.maxValueWei ?? 0n) <= 0n) {
+      const reason =
+        'native ETH zap refused: LP_MAX_TX_VALUE_WEI is zero, so no native value may leave the Safe. ' +
+        'Set it to match the module maxValuePerTx cap.';
+      await this.recordRefusal(increaseDecision(command, position, policy), {
+        rule: 'lifecycle.native_value_cap',
         reason,
       });
       return failure(reason);
@@ -1259,16 +1287,18 @@ export class LifecycleLoop {
     const decision = increaseDecision(command, position, policy);
     const swapSlippage = command.swapSlippage;
 
-    const allowance = await this.ensureZapAllowance({
-      token: tokenIn,
-      amountRequired: BigInt(amountIn),
-      position,
-      policy,
-      commandId: command.id,
-      refusalDecision: decision,
-    });
-    if (!allowance.ok) {
-      return failure(allowance.reason);
+    if (!resolved.isNative) {
+      const allowance = await this.ensureZapAllowance({
+        token: resolved.poolTokenAddress,
+        amountRequired: BigInt(amountIn),
+        position,
+        policy,
+        commandId: command.id,
+        refusalDecision: decision,
+      });
+      if (!allowance.ok) {
+        return failure(allowance.reason);
+      }
     }
 
     const result = await this.actZap({

@@ -4,6 +4,7 @@ import { normalizeAddress } from './selection';
 import { LP_BTN, LP_BTN_PRIMARY, LP_HELP, LP_INPUT } from './styles';
 import {
   DEFAULT_SWAP_SLIPPAGE,
+  increaseDepositTokenOptions,
   increaseIssuesByField,
   validateIncreaseForm,
   type LpIncreaseFormValues,
@@ -42,12 +43,7 @@ export default function LpIncreaseForm({
 
   const increase = useLpIncrease({ onSuccess: onSubmitted });
 
-  const tokens = useMemo(() => {
-    const list = [];
-    if (token0?.address) list.push(token0);
-    if (token1?.address) list.push(token1);
-    return list;
-  }, [token0, token1]);
+  const tokens = useMemo(() => increaseDepositTokenOptions(position), [position]);
 
   const fieldErrors = useMemo(
     () => ({ ...clientIssues, ...increaseIssuesByField(increase.issues) }),
@@ -77,7 +73,7 @@ export default function LpIncreaseForm({
       <div className="border-2 border-oct-yellow bg-oct-surface-raised px-3 py-2 flex items-center gap-2">
         <Check size={13} className="text-oct-yellow shrink-0" />
         <p className="font-mono text-[11px] text-oct-yellow">
-          Add liquidity queued — the worker will approve WETH if needed, then zap in. Nothing signed in this browser.
+          Add liquidity queued — the worker will approve WETH if needed (or send native ETH), then zap in. Nothing signed in this browser.
         </p>
       </div>
     );
@@ -90,8 +86,8 @@ export default function LpIncreaseForm({
         <p className="font-mono text-[11px] uppercase tracking-[0.12em] text-oct-text">Add liquidity</p>
       </div>
       <p className={LP_HELP}>
-        Queues a zap-increase through the automation worker — same path as compound/rebalance. The worker
-        broadcasts a one-time WETH approve to Krystal if your Safe has not done that yet.
+        Queues a zap-increase through the automation worker — same path as compound/rebalance. Choose WETH
+        (requires a one-time approve) or native ETH (worker sends value via the module cap).
       </p>
 
       {blocked && blockedReason && (
@@ -106,20 +102,20 @@ export default function LpIncreaseForm({
 
       <div className="flex flex-wrap gap-2">
         {tokens.map((token) => {
-          const selected = normalizeAddress(values.tokenInAddress) === normalizeAddress(token.address);
+          const selected = normalizeAddress(values.tokenInAddress) === normalizeAddress(token.value);
           return (
             <button
-              key={token.address}
+              key={token.value}
               type="button"
               disabled={disabled}
-              onClick={() => setValues((prev) => ({ ...prev, tokenInAddress: token.address }))}
+              onClick={() => setValues((prev) => ({ ...prev, tokenInAddress: token.value }))}
               className={`${LP_BTN} px-2 py-1 text-[10px] ${
                 selected
                   ? 'border-oct-accent text-oct-accent bg-oct-accent-dim'
                   : 'border-oct-border-bright text-oct-muted'
               }`}
             >
-              {token.symbol || shortAddr(token.address)}
+              {token.label || shortAddr(token.value)}
             </button>
           );
         })}
