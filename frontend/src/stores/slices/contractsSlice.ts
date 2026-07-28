@@ -72,6 +72,9 @@ export const createContractsSlice: StateCreator<AppState, [], [], ContractsSlice
     enrichContract: (entry) => {
       resolvePendingEnrichment(entry);
       const key = entry.address.toLowerCase();
+      // A Rick embed is the call itself, so it may replace an MC@call that a
+      // Dex/GMGN fallback recorded first. Every other source only fills a gap.
+      const rickWins = entry.enrichmentSource === 'rick';
       const metadataOnly = (c: ContractEntry): Partial<ContractEntry> => ({
         tokenName: c.tokenName ?? entry.tokenName,
         tokenSymbol: c.tokenSymbol ?? entry.tokenSymbol,
@@ -94,8 +97,10 @@ export const createContractsSlice: StateCreator<AppState, [], [], ContractsSlice
             tokenSymbol: entry.tokenSymbol ?? c.tokenSymbol,
             tokenPair: entry.tokenPair ?? c.tokenPair,
             description: entry.description ?? c.description,
-            fdvAtCall: c.fdvAtCall ?? entry.fdvAtCall,
-            fdvAtCallDisplay: c.fdvAtCallDisplay ?? entry.fdvAtCallDisplay,
+            fdvAtCall: rickWins ? entry.fdvAtCall ?? c.fdvAtCall : c.fdvAtCall ?? entry.fdvAtCall,
+            fdvAtCallDisplay: rickWins
+              ? entry.fdvAtCallDisplay ?? c.fdvAtCallDisplay
+              : c.fdvAtCallDisplay ?? entry.fdvAtCallDisplay,
             liquidityUsd: entry.liquidityUsd ?? c.liquidityUsd,
             liquidityDisplay: entry.liquidityDisplay ?? c.liquidityDisplay,
             volumeUsd: entry.volumeUsd ?? c.volumeUsd,

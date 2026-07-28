@@ -7,6 +7,13 @@ import { Api } from 'teleproto/tl/index.js';
 import type { TelegramChat, TelegramSender, TelegramRawMessage, TelegramMedia, TelegramButton } from './types.js';
 import { rewriteReferralLinks } from '../utils/contract.js';
 
+/** How often to prove the update stream is still alive. */
+const HEALTH_CHECK_INTERVAL_MS = 60_000;
+/** A health check that hangs this long counts as a dead connection. */
+const HEALTH_CHECK_TIMEOUT_MS = 15_000;
+const RECONNECT_BASE_DELAY_MS = 5_000;
+const RECONNECT_MAX_DELAY_MS = 5 * 60_000;
+
 export class TelegramClientWrapper extends EventEmitter {
   private client: GramJSClient;
   private session: StringSession;
@@ -15,6 +22,12 @@ export class TelegramClientWrapper extends EventEmitter {
   private chatCache = new Map<string, TelegramChat>();
   private senderCache = new Map<string, TelegramSender>();
   private connected = false;
+  private handlersWired = false;
+  private disposed = false;
+  private healthTimer: ReturnType<typeof setInterval> | null = null;
+  private reconnectTimer: ReturnType<typeof setTimeout> | null = null;
+  private reconnectAttempts = 0;
+  private reconnecting = false;
 
   constructor(apiId: number, apiHash: string, sessionString: string) {
     super();
@@ -30,6 +43,7 @@ export class TelegramClientWrapper extends EventEmitter {
     try {
       await this.client.connect();
       this.connected = true;
+      this.reconnectAttempts = 0;
 
       const me = await this.client.getMe() as Api.User;
       console.log(`[Telegram] Connected as ${me.firstName} (@${me.username ?? 'no-username'})`);
@@ -41,17 +55,98 @@ export class TelegramClientWrapper extends EventEmitter {
       });
 
       this.setupEventHandlers();
+      this.startHealthCheck();
       // Prime the entity/chat cache once so resolveChat's getEntity can resolve
       // channels. teleproto's UpdateManager keeps the update stream live on its
       // own, so no recurring polling is needed.
       await this.client.getDialogs({ limit: 200 }).catch(() => {});
     } catch (err: any) {
       console.error('[Telegram] Connection failed:', err.message);
+      this.connected = false;
+      // teleproto gives up after its own retries, and a laptop sleep or a
+      // network blip can kill the socket without any error surfacing. Keep
+      // trying in the background instead of going quiet until a restart.
+      this.scheduleReconnect();
       this.emit('fatal', new Error(`Telegram connection failed: ${err.message}`));
     }
   }
 
+  /**
+   * teleproto can drop the update stream silently — the socket looks fine, the
+   * client reports connected, and messages simply stop arriving. Poll a cheap
+   * authenticated call so a dead connection is detected and rebuilt.
+   */
+  private startHealthCheck(): void {
+    if (this.healthTimer || this.disposed) return;
+    this.healthTimer = setInterval(() => {
+      void this.runHealthCheck();
+    }, HEALTH_CHECK_INTERVAL_MS);
+    this.healthTimer.unref?.();
+  }
+
+  private async runHealthCheck(): Promise<void> {
+    if (this.disposed || this.reconnecting || !this.connected) return;
+    try {
+      await Promise.race([
+        this.client.invoke(new Api.updates.GetState()),
+        new Promise((_resolve, reject) =>
+          setTimeout(() => reject(new Error('health check timed out')), HEALTH_CHECK_TIMEOUT_MS),
+        ),
+      ]);
+    } catch (err: any) {
+      console.warn(`[Telegram] Health check failed (${err.message}); reconnecting.`);
+      this.connected = false;
+      this.emit('disconnected');
+      this.scheduleReconnect();
+    }
+  }
+
+  private scheduleReconnect(): void {
+    if (this.disposed || this.reconnectTimer || this.reconnecting) return;
+    const delay = Math.min(
+      RECONNECT_BASE_DELAY_MS * 2 ** this.reconnectAttempts,
+      RECONNECT_MAX_DELAY_MS,
+    );
+    this.reconnectAttempts++;
+    this.reconnectTimer = setTimeout(() => {
+      this.reconnectTimer = null;
+      void this.reconnect();
+    }, delay);
+    this.reconnectTimer.unref?.();
+  }
+
+  private async reconnect(): Promise<void> {
+    if (this.disposed || this.reconnecting) return;
+    this.reconnecting = true;
+    try {
+      await this.client.disconnect().catch(() => {});
+      await this.client.connect();
+      const me = await this.client.getMe() as Api.User;
+      this.connected = true;
+      this.reconnectAttempts = 0;
+      // Handlers live on the client instance, which we reuse, so setupEventHandlers
+      // no-ops here rather than duplicating every message.
+      this.setupEventHandlers();
+      this.startHealthCheck();
+      console.log(`[Telegram] Reconnected as ${me.firstName} (@${me.username ?? 'no-username'})`);
+      this.emit('ready', {
+        id: me.id.toString(),
+        username: me.username ?? null,
+        firstName: me.firstName ?? '',
+      });
+    } catch (err: any) {
+      console.error('[Telegram] Reconnect failed:', err.message);
+      this.connected = false;
+      this.scheduleReconnect();
+    } finally {
+      this.reconnecting = false;
+    }
+  }
+
   private setupEventHandlers(): void {
+    if (this.handlersWired) return;
+    this.handlersWired = true;
+
     this.client.addEventHandler(async (event) => {
       try {
         const message = event.message;
@@ -625,7 +720,16 @@ export class TelegramClientWrapper extends EventEmitter {
   }
 
   disconnect(): void {
+    this.disposed = true;
     this.connected = false;
+    if (this.healthTimer) {
+      clearInterval(this.healthTimer);
+      this.healthTimer = null;
+    }
+    if (this.reconnectTimer) {
+      clearTimeout(this.reconnectTimer);
+      this.reconnectTimer = null;
+    }
     this.client.disconnect().catch(() => {});
   }
 }
