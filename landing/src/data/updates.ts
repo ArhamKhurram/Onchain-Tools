@@ -7,6 +7,14 @@ export interface UpdateEntry {
 /** Public update log — newest first. */
 export const UPDATES: UpdateEntry[] = [
   {
+    date: '2026-07-29',
+    fixed: [
+      '**MC@call on Telegram scans** — Telegram calls now record a market cap. Enrichment fallbacks were dropping it because that field was reserved for Rick embeds, which only exist on Discord, so every TG scan showed a blank FDV in the contract feed and a `—` in the Radar MC@call and × columns. A Rick embed still wins the moment it lands',
+      '**Telegram no longer goes quiet** — a network blip, a laptop sleep, or an idle connection could silently kill the update stream, so messages just stopped arriving until you restarted. The connection is now health-checked every minute and rebuilt with backoff, and the status dot reflects the real state instead of staying green',
+      '**Self-hosted lockdown** — the local backend listened on every network interface with no authentication, which on shared or public Wi-Fi was enough for someone to pull your Discord tokens and Telegram sessions straight off the port. It now binds to your machine only. Set `OCT_HOST` if you deliberately need LAN access',
+    ],
+  },
+  {
     date: '2026-07-25',
     added: [
       '**FOMO live trade feed** — individual buy/sell swaps from traders you track stream to the live feed over WebSocket; the backend polls each FOMO wallet once and fans out to every subscriber',

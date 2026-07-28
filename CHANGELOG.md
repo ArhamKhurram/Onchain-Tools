@@ -2,6 +2,13 @@
 
 All notable changes to Trenchcord are documented here.
 
+## 2026-07-29
+
+### Fixed
+- **MC@call on Telegram scans** — Telegram calls now record a market cap. The DexScreener/GMGN fallback stripped FDV from its patch because that field was reserved for Rick embeds, and Rick only exists on Discord — so every TG scan showed a blank FDV in the contract feed and a `—` in the Radar MC@call and × columns. A Rick embed is still authoritative and now overrides a fallback reading if it lands late
+- **Telegram no longer goes quiet** — a network blip, a laptop sleep, or an idle connection could silently kill the update stream, so messages stopped arriving until you restarted. The connection is now health-checked every minute and rebuilt with exponential backoff, and `isConnected()` (the sidebar dot) reflects the real state instead of staying green forever
+- **Self-hosted lockdown** — the local backend listened on every network interface with no authentication, so on shared or public Wi-Fi anyone who could reach the port could read your Discord tokens and Telegram session strings. Local mode now binds to `127.0.0.1`; hosted mode still binds `0.0.0.0` for Railway. Set `OCT_HOST` to opt out on a trusted network
+
 ## 2026-07-14
 
 ### Added
