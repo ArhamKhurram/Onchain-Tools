@@ -142,6 +142,10 @@ dist
 backend/data/*
 !backend/data/config.default.json
 
+# LP automation runtime state: the audit trail of every position action
+# (config.ts auditLogPath) plus pm2/worker logs. Same wholesale rule as above.
+lp-automation/data/
+
 # Discord / tweet posting drafts (local only)
 posts/
 
