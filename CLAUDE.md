@@ -33,7 +33,7 @@ The switch is read in exactly two places:
 ## Monorepo layout (npm workspaces)
 
 Root `package.json` declares
-`workspaces: [packages/*, backend, frontend, landing, fomo-worker, lp-automation]`.
+`workspaces: [packages/*, backend, frontend, landing, fomo-worker]`.
 `desktop` is not a workspace (invoked via `npm --prefix desktop`).
 
 - `backend/` (`oct-backend`) — Express + WebSocket server → **Railway**.
@@ -41,14 +41,6 @@ Root `package.json` declares
 - `landing/` — React + Vite marketing site, served at `/` → **Vercel**.
 - `fomo-worker/` (`oct-fomo-worker`) — always-on Playwright worker for the
   Cloudflare-gated FOMO API → **VPS**. Its `dist/` is gitignored; `src/` is tracked.
-- `lp-automation/` (`oct-lp-automation`) — autonomous Uniswap V3 LP position
-  manager for Robinhood Chain → **Railway** (`ponslive-worker`, no public
-  networking). **Holds a signing key over real funds**, which is exactly why it is
-  a separate process rather than a backend module like the Discord bot: the
-  backend ingests arbitrary Discord/Telegram input, and a bug there must not be
-  able to reach a signer. Read `LP_AUTOMATION_PLAN.md` §4 before touching
-  `contracts/` or anything that builds a transaction. Its Solidity is tested by
-  Foundry in CI only — `npm run test` does not cover it.
 - `desktop/` — Electron shell bundling backend + frontend.
 - `supabase/` — migrations + generated `database.types.ts`.
 - `scripts/` — `dev-local.mjs` (runs the three dev servers) and Vercel output merge.
@@ -58,8 +50,8 @@ Root `package.json` declares
 ```bash
 npm install              # installs all workspaces
 npm run dev              # backend + frontend + landing together
-npm run typecheck        # backend + frontend + lp-automation (tsc --noEmit)
-npm run test             # backend + frontend + lp-automation (vitest)
+npm run typecheck        # backend + frontend (tsc --noEmit)
+npm run test             # backend + frontend (vitest)
 npm run build            # backend + frontend
 npm run build:vercel     # landing + frontend, merged for Vercel
 npm run build:railway    # backend only
@@ -71,9 +63,10 @@ done.** `strict: true` is on everywhere. Coverage is unit tests over pure functi
 only — there are no integration or end-to-end tests, so the compiler still carries
 most of the weight on anything involving I/O.
 
-The `lp-automation` Solidity is **not** covered by `npm run test`. It runs under
-Foundry in CI (`.github/workflows/ci.yml`, job `contracts`), which is its only
-automated verification — treat a red run there as blocking.
+**LP automation does not live on this branch.** The `lp-automation/` workspace,
+its dashboard page, its `/api/lp` routes and its Foundry CI job are on `LP-Feats`
+(and `dev`, which integrates both). Don't re-add them here — see the branch
+topology below.
 
 ---
 
@@ -225,8 +218,30 @@ into the planned structure over adding more to them:
 
 ## Working in this repo
 
-- **Branch/deploy flow:** feature branch → PR → CI (`.github/workflows/ci.yml`) must be
-  green → merge to `dev` (staging) → `main` (production, auto-deploys to Railway + Vercel).
-  Do not push straight to `main`.
+### Branch topology
+
+Three long-lived branches. **`dev` is an integration branch that nothing merges
+out of** — it exists to prove the two halves still compose.
+
+```
+                    non-LP work
+                         │
+main      ───●───────────●────────────●─────►   production (Railway + Vercel), no LP
+              ╲           ╲            ╲
+               ╲ merge     ╲ merge      ╲ merge
+dev       ───────●───────────●────────────●─►   everything (main ∪ LP-Feats)
+              ╱           ╱            ╱
+             ╱ merge     ╱ merge      ╱
+LP-Feats  ───●───────────●────────────●─────►   lp-automation + LP dashboard only
+```
+
+- **Non-LP feature** → PR into `main` → then merge `main` down into `dev`.
+- **LP feature** → PR into `LP-Feats` → then merge `LP-Feats` down into `dev`.
+- **Never merge `dev` into `main`.** It would drag `lp-automation/` back in. This
+  is why the old `feature → dev → main` promotion flow no longer applies.
+- Do not push straight to `main`; PR + green CI first.
+
+`main` deploys to Railway (backend) and Vercel (frontend + landing). `dev` and
+`LP-Feats` deploy nowhere — they are for CI and local work.
 - **Before finishing any change:** `npm run typecheck` (and the relevant `build`).
 - **Docs:** update `IDEAS.md` when scoping features, `CHANGELOG.md` when shipping.
