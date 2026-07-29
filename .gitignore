@@ -142,9 +142,12 @@ dist
 backend/data/*
 !backend/data/config.default.json
 
-# LP automation runtime state: the audit trail of every position action
-# (config.ts auditLogPath) plus pm2/worker logs. Same wholesale rule as above.
-lp-automation/data/
+# LP automation lives on `LP-Feats`/`dev`, not here. The whole directory is
+# ignored on main so that switching to one of those branches and back — which
+# leaves behind node_modules, Foundry caches, forge-std and a real .env — can
+# never stage any of it onto main. That workspace's own .gitignore went with it,
+# so this is the only thing standing in for it.
+lp-automation/
 
 # Discord / tweet posting drafts (local only)
 posts/

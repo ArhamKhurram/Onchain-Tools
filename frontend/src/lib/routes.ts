@@ -5,7 +5,6 @@ export const routes = {
   wallets: '/wallets',
   portfolio: '/portfolio',
   callers: '/callers',
-  lpAutomation: '/lp',
   workspace: '/workspace',
   settings: '/settings',
   login: '/login',

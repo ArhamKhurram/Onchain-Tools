@@ -18,7 +18,6 @@ const NAV: { to: string; label: string; end?: boolean }[] = [
   { to: routes.wallets, label: 'Wallets' },
   { to: routes.portfolio, label: 'Portfolio' },
   { to: routes.callers, label: 'Callers' },
-  { to: routes.lpAutomation, label: 'LP' },
   { to: routes.workspace, label: 'Workspace' },
   { to: routes.settings, label: 'Settings' },
 ];
