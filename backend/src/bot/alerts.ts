@@ -1,4 +1,4 @@
-// Outpost bot alert DMs (DISCORD_BOT_PLAN.md Phase 3).
+// Outpost bot alert DMs (see docs/architecture/discord-bot.md).
 //
 // Every alert in OCT funnels through WsServer.broadcastAlert, so this subscribes
 // to that single seam rather than touching the six emission sites. For each

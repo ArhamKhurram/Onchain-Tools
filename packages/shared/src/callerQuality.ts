@@ -1,5 +1,5 @@
 /**
- * Caller quality — the slop filter (IDEAS.md "Caller quality").
+ * Caller quality — the slop filter (docs/roadmap/ "Caller quality").
  *
  * Two independent layers, both resolved here so backend and frontend can never
  * disagree about what a caller is worth:
@@ -10,7 +10,7 @@
  *     performed. Only shown once there's enough history to mean anything.
  *
  * This module stays a *display and filter* input. It must never be folded into
- * the convergence score — see the design-principle note in IDEAS.md. Two
+ * the convergence score — see the design-principle note in docs/roadmap/. Two
  * independent signals agreeing is only meaningful while they stay independent.
  */
 

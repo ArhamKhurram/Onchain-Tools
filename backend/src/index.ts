@@ -664,7 +664,7 @@ if (isHostedMode()) {
   );
 }
 
-// Machine-auth bot API (DISCORD_BOT_PLAN.md). Mounted BEFORE the user-auth /api
+// Machine-auth bot API (see docs/architecture/discord-bot.md). Mounted BEFORE the user-auth /api
 // router so bot traffic authenticates via OCT_BOT_API_KEY, not Supabase JWTs.
 // The hosted-mode /api rate limiter above still covers this prefix.
 app.use('/api/v1/bot', requireBotAuth, createBotRouter());

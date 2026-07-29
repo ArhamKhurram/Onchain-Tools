@@ -2,6 +2,11 @@
 
 Working guide for this repository. Read this before making changes.
 
+Full developer documentation (architecture, ADRs, API reference, database
+schema, test plan, operations runbook, roadmap) lives at
+https://arhamkhurram.github.io/Onchain-Tools/ — this file stays a terse
+operating summary; anything long-form belongs there instead.
+
 Onchain Tools (OCT) is a real-time crypto intelligence console: it ingests Discord
 and Telegram streams, detects + enriches contract addresses, tracks fomo.family
 traders, and raises convergence/missed-runner alerts. It ships as a web console, a
@@ -197,7 +202,7 @@ if any `VITE_SUPABASE_SERVICE*` key is present (guards against leaking the servi
 - **Provider split** (GMGN = enrichment/missed-runner, Birdeye = portfolio) is intentional.
 - **Signals stay independent.** Convergence, FOMO buys, and missed-runner are distinct
   signals by design — route/display them together but never fuse the underlying
-  detections. See the design-principle note in `IDEAS.md`.
+  detections. See the design-principle note in the [roadmap](https://arhamkhurram.github.io/Onchain-Tools/roadmap/).
 - **`dist/` is gitignored** in every workspace; commit `src/` only.
 - **Two Supabase projects** — dev (`zcvubfadvdwjxgodznxh`) and prod
   (`vmlxyqzjdaegkfylxfka`). Verify migrations against the right one.
@@ -208,12 +213,16 @@ if any `VITE_SUPABASE_SERVICE*` key is present (guards against leaking the servi
 
 ## Known oversized files (refactor targets)
 
-These are being split incrementally — see `REFACTOR.md` for the plan. Prefer extracting
-into the planned structure over adding more to them:
+These are being split incrementally — see the
+[tech debt plan](https://arhamkhurram.github.io/Onchain-Tools/architecture/tech-debt/)
+for the full detail. Prefer extracting into the planned structure over adding
+more to them:
 
 - `frontend/src/components/GlobalSettings.tsx` (~2.9k) · `Message.tsx` (~1.5k) · `RoomConfig.tsx` (~1k)
-- `backend/src/api/routes.ts` (~1.5k, all routes in one file) · `storage/supabase.ts` (~1k)
-- `frontend/src/stores/appStore.ts` (~1.3k)
+
+`backend/src/api/routes.ts` and `storage/supabase.ts` have already been split
+(`routes/*.ts`, `storage/supabase/*.ts`); `frontend/src/stores/appStore.ts` is
+already sliced.
 
 ---
 
@@ -245,7 +254,8 @@ LP-Feats  ───●───────────●───────�
 `main` deploys to Railway (backend) and Vercel (frontend + landing). `dev` and
 `LP-Feats` deploy nowhere — they are for CI and local work.
 - **Before finishing any change:** `npm run typecheck` (and the relevant `build`).
-- **Docs:** update `IDEAS.md` when scoping features, `CHANGELOG.md` when shipping.
+- **Docs:** update the [roadmap](https://arhamkhurram.github.io/Onchain-Tools/roadmap/)
+  when scoping features, `CHANGELOG.md` when shipping.
 
 ### Discord announcements (automatic)
 

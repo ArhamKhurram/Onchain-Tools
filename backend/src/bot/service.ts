@@ -1,4 +1,4 @@
-// Outpost bot service layer (DISCORD_BOT_PLAN.md §3). The single home for
+// Outpost bot service layer (see docs/architecture/discord-bot.md). The single home for
 // bot-shaped data: called directly by the in-process slash-command handlers
 // (Phase 2) and by the /api/v1/bot HTTP routes. Pure mappers are exported for
 // unit tests; fetchers reuse OCT's shared FOMO client + caches so bot traffic

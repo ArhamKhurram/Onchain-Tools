@@ -53,7 +53,7 @@ npm run typecheck
 npm run test
 ```
 
-Plus the relevant `build`. Update `IDEAS.md` when scoping features and
-`CHANGELOG.md` when shipping (which also
+Plus the relevant `build`. Update the [Roadmap](../../roadmap/) when scoping
+features and `CHANGELOG.md` when shipping (which also
 [announces to Discord](../../operations/announcements/) — and the in-app
 modal needs `frontend/src/data/updates.ts` updated too).

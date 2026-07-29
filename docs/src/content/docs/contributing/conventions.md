@@ -40,19 +40,20 @@ architecture page behind them — follow the links before "fixing" one.
 
 ## Known oversized files (refactor targets)
 
-Being split incrementally — see `REFACTOR.md` in the repo. Prefer extracting
-into the planned structure over adding more to them:
+Being split incrementally — see [Tech debt](../../architecture/tech-debt/) for
+the full plan. Prefer extracting into the planned structure over adding more to
+them:
 
 - `frontend/src/components/GlobalSettings.tsx` (~2.9k) · `Message.tsx`
   (~1.5k) · `RoomConfig.tsx` (~1k)
-- `backend/src/storage/supabase.ts` internals (~1k)
+- `backend/src/api/routes.ts` and `backend/src/storage/supabase.ts` — already
+  split into `routes/*.ts` / `storage/supabase/*.ts`, done.
 - `frontend/src/stores/appStore.ts` — already sliced; keep new state in the
-  right slice. (`backend/src/api/routes.ts` has been split into
-  `routes/*.ts` — done.)
+  right slice.
 
 ## Docs upkeep
 
-- `IDEAS.md` — when scoping features.
+- [Roadmap](../../roadmap/) — when scoping features.
 - `CHANGELOG.md` — when shipping (drives the Discord announcement).
 - `frontend/src/data/updates.ts` — the in-app announcement modal.
 - This site (`docs/`) — when architecture or APIs change; diagrams are

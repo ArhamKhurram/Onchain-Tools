@@ -10,6 +10,17 @@ web console, a marketing landing site, and an optional desktop app.
 
 ---
 
+## Full documentation
+
+**https://arhamkhurram.github.io/Onchain-Tools/**
+
+Architecture (C4 diagrams, sequence/state diagrams), architecture decision
+records, REST + WebSocket API reference, database schema, test plan, the
+operations runbook, and the roadmap all live there. This README stays a quick
+orientation for cloning and running the project — everything else has moved.
+
+---
+
 ## What's in the box
 
 OCT is an **npm-workspaces monorepo**. Each workspace is independently deployable:
@@ -20,40 +31,10 @@ OCT is an **npm-workspaces monorepo**. Each workspace is independently deployabl
 | `frontend/`     | `oct-console`      | React 19 + Vite console (served at `/dashboard`)       | Vercel     |
 | `landing/`      | —                  | React + Vite marketing site (served at `/`)            | Vercel     |
 | `fomo-worker/`  | `oct-fomo-worker`  | Always-on Playwright worker for Cloudflare-gated FOMO API | VPS     |
+| `docs/`         | `oct-docs`         | This documentation site (Astro Starlight)               | GitHub Pages |
 | `desktop/`      | —                  | Electron wrapper (bundles backend + frontend)          | local pack |
 
-`supabase/` holds migrations and generated types. `scripts/` holds dev/build helpers.
-
-### High-level architecture
-
-```
-                 Discord (user token)        Telegram (MTProto)
-                        │                            │
-      ┌─────────────────┴────────────────────────────┴───────────────┐
-      │  backend  (Express + ws)                                       │
-      │   ingest → contract detect → enrich (GMGN → DexScreener)       │
-      │          → store → broadcast over /ws                          │
-      │   pollers: FOMO fan-out · missed-runner                        │
-      └───────────────┬───────────────────────────┬──────────────────┘
-          REST /api   │            WS /ws          │   HTTP (secret)
-                      ▼                            ▼        ▼
-                  frontend (console) ◀── live ──┐    fomo-worker (VPS)
-                      │                          │    stealth Chromium →
-                      └── Supabase (auth + RLS data)   prod-api.fomo.family
-```
-
-**Two deployment modes**, switched by a single env flag:
-
-- **Local** (`OCT_MODE=local`, default) — single user, JSON-file storage
-  (`backend/data/`), one global Discord/Telegram connection, no auth. This is
-  what the desktop app runs.
-- **Hosted** (`OCT_MODE=hosted`) — multi-tenant. Supabase auth + row-level
-  security, per-user gateway pools, encrypted tokens at rest. In hosted mode the
-  **Discord gateway runs in the browser** so a user's Discord token never touches
-  the server; the backend still supplies Telegram, FOMO, and enrichment streams.
-
-For the full internal map (data flow, module responsibilities, conventions), see
-[`CLAUDE.md`](CLAUDE.md).
+`supabase/` holds migrations. `scripts/` holds dev/build helpers.
 
 ---
 
@@ -75,58 +56,23 @@ npm run dev
 - Backend API/WS → http://localhost:3001
 
 Run pieces individually with `npm run dev:backend` / `dev:frontend` / `dev:landing`.
-
-### Configuration
-
-Each app reads its own `.env` (copy from the checked-in `.env.example`):
-
-- **`backend/.env`** — mode, CORS origins, Supabase service key, `TOKEN_ENCRYPTION_KEY`,
-  and integration keys (FOMO, `BIRDEYE_API_KEY`, `GMGN_API_KEY`, `HELIUS_API_KEY`, …).
-  See [`backend/.env.example`](backend/.env.example) — it documents every variable.
-- **`frontend/.env`** — `VITE_API_URL` (backend origin, used for both REST and WS),
-  `VITE_SUPABASE_URL`, `VITE_SUPABASE_ANON_KEY`. Only `VITE_`-prefixed (publishable)
-  values belong here — the app throws if a service-role key is present.
-
-> Two Supabase projects are used: `onchain-tools-dev` and `onchain-tools` (prod).
-> Never point a dev build at the prod anon key by accident.
+Full setup, configuration, and the command reference:
+[Getting Started](https://arhamkhurram.github.io/Onchain-Tools/getting-started/setup/).
 
 ---
 
-## Common scripts (run from repo root)
+## Contributing
 
-| Command                     | Does                                                        |
-| --------------------------- | ---------------------------------------------------------- |
-| `npm run dev`               | Backend + frontend + landing together (`scripts/dev-local`) |
-| `npm run typecheck`         | Typecheck backend + frontend                                |
-| `npm run build`             | Build backend + frontend                                    |
-| `npm run build:vercel`      | Build landing + frontend and merge output (Vercel)          |
-| `npm run build:railway`     | Build backend only (Railway)                                |
-| `npm run dev:desktop`       | Run the Electron desktop shell                              |
-| `npm run pack:desktop`      | Package the desktop app                                     |
+[`CLAUDE.md`](CLAUDE.md) — architecture, conventions, and gotchas for
+contributors (and coding agents). Before finishing any change:
 
-Per-workspace commands use npm's `-w` flag, e.g. `npm run typecheck -w backend`.
+```bash
+npm run typecheck
+```
 
----
+```bash
+npm run test
+```
 
-## Deployment
-
-- **Backend → Railway.** Nixpacks builds the backend and installs Chromium + system
-  libs for Playwright (`nixpacks.toml`). Start command `npm run start -w backend`,
-  health check `/health`.
-- **Frontend + landing → Vercel.** `build:vercel` builds both and merges them so the
-  landing serves at `/` and the console at `/dashboard` (`vercel.json` rewrites).
-  WebSockets do **not** run on Vercel, so `VITE_API_URL` must point at the Railway
-  backend, not the Vercel URL.
-- **fomo-worker → VPS.** See [`fomo-worker/README.md`](fomo-worker/README.md). When
-  `FOMO_PROXY_URL` + `FOMO_WORKER_SECRET` are set on the backend, the backend proxies
-  FOMO calls to the worker instead of launching Playwright itself.
-
-CI (`.github/workflows/ci.yml`) typechecks and builds every workspace on each PR.
-
----
-
-## Documentation map
-
-- [`CLAUDE.md`](CLAUDE.md) — architecture, conventions, and gotchas for contributors (and agents).
-- [`IDEAS.md`](IDEAS.md) — backlog, planned work, and design principles.
-- [`CHANGELOG.md`](CHANGELOG.md) — shipped changes.
+Branch topology, working conventions, and known refactor targets:
+[Contributing](https://arhamkhurram.github.io/Onchain-Tools/contributing/branching/).
