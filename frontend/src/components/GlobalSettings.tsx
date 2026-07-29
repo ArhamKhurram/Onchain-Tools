@@ -5,6 +5,7 @@ import { useSettingsForm } from './settings/useSettingsForm';
 import TokensSection from './settings/sections/TokensSection';
 import GeneralSection from './settings/sections/GeneralSection';
 import ContractsSection from './settings/sections/ContractsSection';
+import CallerQualitySection from './settings/sections/CallerQualitySection';
 import SoundsSection from './settings/sections/SoundsSection';
 import PushoverSection from './settings/sections/PushoverSection';
 import DiscordBotSection from './settings/sections/DiscordBotSection';
@@ -109,6 +110,7 @@ export default function GlobalSettings() {
             {section === 'tokens' && <TokensSection form={form} />}
             {section === 'general' && <GeneralSection form={form} />}
             {section === 'contracts' && <ContractsSection form={form} />}
+            {section === 'callerquality' && <CallerQualitySection form={form} />}
             {section === 'sounds' && <SoundsSection form={form} />}
             {section === 'pushover' && <PushoverSection form={form} />}
           {section === 'discordbot' && <DiscordBotSection form={form} />}

@@ -7,6 +7,18 @@ export interface UpdateEntry {
 /** Public update log — newest first. */
 export const UPDATES: UpdateEntry[] = [
   {
+    date: '2026-07-30',
+    added: [
+      '**Caller quality — the slop filter** — rank contract calls by who sent them. Right-click any name to mute, normal, or trust them, globally or in one room only, so a caller can be slop in `#prosp` and fine everywhere else',
+      '**Earned caller scores** — every caller is scored on their own calls: the market cap when *they* posted, against the highest that token has reached since. Five people calling the same CA called it at five different market caps, and the scoreboard knows the difference. Callers stay unrated until they have 10 scored calls, so nobody gets branded off three data points',
+      '**Quality on the feed and Radar** — the contract feed and Radar can filter and rank by caller; Radar gets a sortable `Caller` column. The chat feed just colours the username — reordering chat would break reply context',
+      '**Settings → Caller Quality** — manage your tiers and see the scoreboard: median multiple, 2x hit rate, and how many calls each score rests on',
+    ],
+    fixed: [
+      '**Muted never means invisible** — muted callers collapse behind a counter you can expand, and still count toward Radar mention totals. A caller you have written off can still be first on a runner, and you should be able to find that out',
+    ],
+  },
+  {
     date: '2026-07-29',
     fixed: [
       '**MC@call on Telegram scans** — Telegram calls now record a market cap. Enrichment fallbacks were dropping it because that field was reserved for Rick embeds, which only exist on Discord, so every TG scan showed a blank FDV in the contract feed and a `—` in the Radar MC@call and × columns. A Rick embed still wins the moment it lands',

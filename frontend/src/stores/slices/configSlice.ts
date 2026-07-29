@@ -1,5 +1,5 @@
 import type { StateCreator } from 'zustand';
-import type { Room, AppConfig } from '../../types';
+import type { Room, AppConfig, CallerTier } from '../../types';
 import type { AppState } from '../appStore';
 import { isDemoMode, createDemoOverrides } from '../../demo/demoStore';
 import { apiFetch, API_BASE, MAX_PANES, savePaneRoomIds } from '../appStore.helpers';
@@ -12,9 +12,10 @@ export interface ConfigSlice {
 
   importSettings: (raw: unknown) => Promise<{ success: boolean; error?: string }>;
   fetchConfig: () => Promise<void>;
-  updateConfig: (data: Partial<Pick<AppConfig, 'globalHighlightedUsers' | 'contractDetection' | 'guildColors' | 'dmColors' | 'telegramColors' | 'enabledGuilds' | 'evmAddressColor' | 'solAddressColor' | 'openInDiscordApp' | 'openInTelegramApp' | 'hiddenUsers' | 'messageSounds' | 'soundSettings' | 'channelSounds' | 'pushover' | 'missedRunner' | 'contractLinkTemplates' | 'contractClickAction' | 'showFullContractAddress' | 'autoOpenHighlightedContracts' | 'signalConvergenceWindowMinutes' | 'globalKeywordPatterns' | 'keywordAlertsEnabled' | 'desktopNotifications' | 'toastAlertsEnabled' | 'toastPosition' | 'mentionsUserEnabled' | 'mentionsRoleEnabled' | 'mentionsHereEnabled' | 'mentionsEveryoneEnabled' | 'badgeClickAction' | 'chattingEnabled' | 'messageDisplay' | 'compactModeAvatars' | 'roleColors' | 'mobileZoomScale' | 'splitLayout' | 'seenAnnouncements' | 'discordProxyUrl' | 'workspaceLayout' | 'discordBotDm'>>) => Promise<void>;
+  updateConfig: (data: Partial<Pick<AppConfig, 'globalHighlightedUsers' | 'contractDetection' | 'guildColors' | 'dmColors' | 'telegramColors' | 'enabledGuilds' | 'evmAddressColor' | 'solAddressColor' | 'openInDiscordApp' | 'openInTelegramApp' | 'hiddenUsers' | 'messageSounds' | 'soundSettings' | 'channelSounds' | 'pushover' | 'missedRunner' | 'contractLinkTemplates' | 'contractClickAction' | 'showFullContractAddress' | 'autoOpenHighlightedContracts' | 'signalConvergenceWindowMinutes' | 'globalKeywordPatterns' | 'keywordAlertsEnabled' | 'desktopNotifications' | 'toastAlertsEnabled' | 'toastPosition' | 'mentionsUserEnabled' | 'mentionsRoleEnabled' | 'mentionsHereEnabled' | 'mentionsEveryoneEnabled' | 'badgeClickAction' | 'chattingEnabled' | 'messageDisplay' | 'compactModeAvatars' | 'roleColors' | 'mobileZoomScale' | 'splitLayout' | 'seenAnnouncements' | 'discordProxyUrl' | 'workspaceLayout' | 'discordBotDm' | 'callerTiers' | 'callerTierShowMuted' | 'callerQualityRanking'>>) => Promise<void>;
   hideUser: (guildId: string | null, channelId: string, userId: string, displayName: string) => Promise<void>;
   unhideUser: (guildId: string | null, channelId: string, userId: string) => Promise<void>;
+  setCallerTier: (key: string, displayName: string, tier: CallerTier, roomId?: string) => Promise<void>;
   openConfigModal: (room?: Room, tab?: 'channels' | 'users' | 'filter' | 'keywords' | 'global') => void;
   closeConfigModal: () => void;
 }
@@ -159,6 +160,21 @@ export const createConfigSlice: StateCreator<AppState, [], [], ConfigSlice> = (s
         hiddenUsers[key] = filtered;
       }
       await get().updateConfig({ hiddenUsers });
+    },
+
+    // Setting a caller back to `normal` removes the entry rather than storing it:
+    // an explicit "normal" and no entry mean the same thing, and keeping rows for
+    // every caller you ever right-clicked would bloat the config for nothing.
+    setCallerTier: async (key, displayName, tier, roomId) => {
+      const config = get().config;
+      if (!config) return;
+      const rest = (config.callerTiers ?? []).filter(
+        (e) => !(e.key === key && (e.roomId ?? undefined) === roomId),
+      );
+      const callerTiers = tier === 'normal'
+        ? rest
+        : [...rest, { key, displayName, tier, ...(roomId ? { roomId } : {}) }];
+      await get().updateConfig({ callerTiers });
     },
 
     openConfigModal: (room, tab) => set({ configModalOpen: true, editingRoom: room ?? null, configModalTab: tab ?? null }),

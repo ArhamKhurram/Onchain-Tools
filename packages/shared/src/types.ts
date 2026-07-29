@@ -291,6 +291,19 @@ export interface WorkspacePanelLegacy {
 
 export type WorkspaceLayoutPersisted = WorkspaceLayout | WorkspacePanelLegacy[];
 
+export type CallerTier = 'muted' | 'normal' | 'trusted';
+
+/** A manual caller-quality override. See `callerQuality.ts` for how it resolves. */
+export interface CallerTierEntry {
+  /** Canonical `discord:<id>` / `telegram:<id>` key. */
+  key: string;
+  displayName: string;
+  tier: CallerTier;
+  /** Omitted = applies everywhere. A room entry beats a global one. */
+  roomId?: string;
+  note?: string;
+}
+
 export interface AppConfig {
   discordTokens: string[];
   rooms: Room[];
@@ -305,6 +318,15 @@ export interface AppConfig {
   openInDiscordApp: boolean;
   openInTelegramApp: boolean;
   hiddenUsers: Record<string, { userId: string; displayName: string }[]>;
+  /**
+   * Caller quality tiers (see `callerQuality.ts`). Manual overrides on top of
+   * the earned score — an entry with no `roomId` applies everywhere.
+   */
+  callerTiers?: CallerTierEntry[];
+  /** Show muted callers' contracts collapsed rather than hiding them outright. */
+  callerTierShowMuted?: boolean;
+  /** Rank the contract feed and Radar by caller quality instead of time only. */
+  callerQualityRanking?: boolean;
   messageSounds: boolean;
   soundSettings: SoundSettings;
   channelSounds: Record<string, SoundConfig>;

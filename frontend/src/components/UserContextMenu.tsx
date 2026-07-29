@@ -1,5 +1,9 @@
 import { useEffect, useRef } from 'react';
-import { EyeOff, Copy, MessageSquare, Star, StarOff } from 'lucide-react';
+import { EyeOff, Copy, MessageSquare, Star, StarOff, VolumeX, Volume2, TrendingUp } from 'lucide-react';
+import type { CallerTier } from '../types';
+import { BAND_LABELS } from '@oct/shared';
+import type { CallerQuality } from '../hooks/useCallerQuality';
+import { formatMultiple, formatRate } from '../utils/callerBandStyle';
 
 interface UserContextMenuProps {
   userId: string;
@@ -12,6 +16,8 @@ interface UserContextMenuProps {
   position: { x: number; y: number };
   isHighlighted?: boolean;
   onToggleHighlight?: () => void;
+  callerQuality?: CallerQuality;
+  onSetCallerTier?: (tier: CallerTier) => void;
   onHide: () => void;
   onCopyId: () => void;
   onClose: () => void;
@@ -26,6 +32,8 @@ export default function UserContextMenu({
   position,
   isHighlighted,
   onToggleHighlight,
+  callerQuality,
+  onSetCallerTier,
   onHide,
   onCopyId,
   onClose,
@@ -79,6 +87,53 @@ export default function UserContextMenu({
       <div className="px-2 py-1.5 text-xs text-discord-text-muted truncate border-b border-white/[0.06] mb-1">
         {displayName}
       </div>
+
+      {callerQuality && (
+        <>
+          {/* The numbers behind the band, so a mute is an informed decision
+              rather than a vibe. Only shown once there's a real sample. */}
+          {callerQuality.score && callerQuality.score.rated > 0 && (
+            <div className="px-2 py-1 text-[10px] text-discord-text-muted leading-relaxed">
+              <div className="flex items-center gap-1">
+                <TrendingUp size={11} className="shrink-0" />
+                <span>
+                  {BAND_LABELS[callerQuality.band]} · {callerQuality.score.rated} rated
+                </span>
+              </div>
+              <div className="pl-4">
+                med {formatMultiple(callerQuality.score.medianMultiple)} · 2x{' '}
+                {formatRate(callerQuality.score.hitRate2x)} · slop{' '}
+                {formatRate(callerQuality.score.slopRate)}
+              </div>
+            </div>
+          )}
+
+          {onSetCallerTier && (
+            <div className="flex gap-1 px-2 py-1">
+              {([
+                { tier: 'muted' as const, label: 'Mute', Icon: VolumeX },
+                { tier: 'normal' as const, label: 'Normal', Icon: Volume2 },
+                { tier: 'trusted' as const, label: 'Trust', Icon: Star },
+              ]).map(({ tier, label, Icon }) => (
+                <button
+                  key={tier}
+                  onClick={() => { onSetCallerTier(tier); onClose(); }}
+                  className={`flex-1 flex items-center justify-center gap-1 px-1.5 py-1 text-[11px] rounded-sm transition-colors ${
+                    callerQuality.tier === tier
+                      ? 'bg-discord-blurple text-white'
+                      : 'text-discord-header-secondary hover:bg-discord-blurple/40 hover:text-white'
+                  }`}
+                  title={`Set ${displayName} to ${label.toLowerCase()}`}
+                >
+                  <Icon size={12} className="shrink-0" />
+                  {label}
+                </button>
+              ))}
+            </div>
+          )}
+          <div className="border-t border-white/[0.06] my-1 mx-[-2px]" />
+        </>
+      )}
 
       <button
         onClick={() => { onHide(); onClose(); }}

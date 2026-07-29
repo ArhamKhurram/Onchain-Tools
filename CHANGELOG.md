@@ -2,6 +2,20 @@
 
 All notable changes to Trenchcord are documented here.
 
+## 2026-07-30
+
+### Added
+- **Caller quality — the slop filter** — rank contract calls by who sent them. Two layers:
+  - **Manual tiers** — right-click any name in a chat feed to set `mute` / `normal` / `trust`. Tiers apply globally or per room, and a room tier beats the global one, so a caller can be slop in one room and fine in another. When several rooms match at once the most restrictive wins, so a mute is never silently overridden.
+  - **Earned scores** — each caller is scored on their own calls: the market cap at the moment *they* posted, against the highest that token has reached since. Five people calling the same CA called it at five different market caps, and they're scored accordingly. Posting the same CA ten times counts once. Callers stay `unrated` below 10 scored calls rather than showing a number built on noise.
+- **Where it shows** — the contract feed and Radar filter and rank by quality; the chat feed only colours the username, since reordering chat would break reply context. Radar gains a sortable `Caller` column. Settings → Caller Quality manages tiers and shows the scoreboard.
+- **Token peak sampler** — a background pass records each token's high-water market cap, which is what scoring reads. Scoring against *current* market cap would mark down every caller whose token ran and then bled, which is nearly all of them. Runs in both hosted and local mode, so the desktop app scores callers too.
+
+### Notes
+- Muted callers are collapsed behind a counter, not deleted, and still count toward Radar mention totals — a caller you've written off can still be first on a runner, and you should be able to find that out.
+- Caller quality is a display and filter layer only. It is deliberately **not** folded into the convergence score: two independent signals agreeing is only meaningful while they stay independent.
+- New Supabase migration: `20260729120000_token_peaks.sql`.
+
 ## 2026-07-29
 
 ### Fixed
