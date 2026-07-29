@@ -10,6 +10,7 @@ import {
   resolveNetworkId,
 } from '../../bot/service.js';
 import { AnnounceError, postAnnouncement, type AnnounceKind } from '../../bot/announce.js';
+import { deliverReleaseNotes } from '../../bot/releaseNotes.js';
 import { getBotClient } from '../../bot/index.js';
 
 // Versioned bot API (DISCORD_BOT_PLAN.md §3) — mounted at /api/v1/bot behind
@@ -105,7 +106,7 @@ export function createBotRouter(): Router {
   // itself right after shipping a change and calls this directly (authenticated
   // by the same OCT_BOT_API_KEY as the rest of this router — no new secret).
   router.post('/announce', async (req, res) => {
-    const { title, description, kind, imageUrl, linkUrl } = req.body ?? {};
+    const { title, description, kind, imageUrl, linkUrl, dmOptIns } = req.body ?? {};
     if (typeof title !== 'string' || !title.trim()) {
       return res.status(400).json({ error: 'title is required.' });
     }
@@ -116,15 +117,25 @@ export function createBotRouter(): Router {
       return res.status(400).json({ error: 'kind must be "site" or "bot".' });
     }
 
+    const payload = {
+      title: title.trim(),
+      description: description.trim(),
+      kind: (kind as AnnounceKind | undefined) ?? 'site',
+      imageUrl: typeof imageUrl === 'string' && imageUrl.trim() ? imageUrl.trim() : null,
+      linkUrl: typeof linkUrl === 'string' && linkUrl.trim() ? linkUrl.trim() : null,
+    };
+
     try {
-      const result = await postAnnouncement(getBotClient(), {
-        title: title.trim(),
-        description: description.trim(),
-        kind: (kind as AnnounceKind | undefined) ?? 'site',
-        imageUrl: typeof imageUrl === 'string' && imageUrl.trim() ? imageUrl.trim() : null,
-        linkUrl: typeof linkUrl === 'string' && linkUrl.trim() ? linkUrl.trim() : null,
-      });
-      res.json({ posted: true, channelId: result.channelId });
+      const result = await postAnnouncement(getBotClient(), payload);
+
+      // Opt-in DM fan-out, off unless asked for. Runs after the channel post so a
+      // DM failure can never cost you the announcement itself, and only reaches
+      // users who enabled the releaseNotes trigger — see bot/releaseNotes.ts.
+      const dm = dmOptIns === true
+        ? await deliverReleaseNotes(getBotClient(), payload)
+        : null;
+
+      res.json({ posted: true, channelId: result.channelId, ...(dm ? { dm } : {}) });
     } catch (err) {
       if (err instanceof AnnounceError) {
         const status =
