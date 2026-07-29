@@ -225,8 +225,35 @@ into the planned structure over adding more to them:
 
 ## Working in this repo
 
-- **Branch/deploy flow:** feature branch → PR → CI (`.github/workflows/ci.yml`) must be
-  green → merge to `dev` (staging) → `main` (production, auto-deploys to Railway + Vercel).
-  Do not push straight to `main`.
+### Branch topology
+
+**You are on `dev`** — the integration branch. It carries *both* halves and
+**nothing merges out of it**; it exists to prove they still compose.
+
+```
+                    non-LP work
+                         │
+main      ───●───────────●────────────●─────►   production, NO lp-automation
+              ╲           ╲            ╲
+               ╲ merge     ╲ merge      ╲ merge
+dev       ───────●───────────●────────────●─►   YOU ARE HERE (main ∪ LP-Feats)
+              ╱           ╱            ╱
+             ╱ merge     ╱ merge      ╱
+LP-Feats  ───●───────────●────────────●─────►   lp-automation + LP dashboard
+```
+
+- **Non-LP feature** → PR into `main` → merge `main` down into `dev`.
+- **LP feature** → PR into `LP-Feats` → merge `LP-Feats` down into `dev`.
+- **Never merge `dev` into `main`** — it would re-add `lp-automation/` to
+  production. The old `feature → dev → main` promotion no longer applies.
+- Do not push straight to `main`; PR + green CI first.
+
+Only `main` deploys (Railway backend, Vercel frontend + landing). `dev` and
+`LP-Feats` are for CI and local work.
+
+The commit that removed LP from `main` was merged here with `-s ours`, so git
+already considers it merged. Ordinary `main → dev` merges from here are clean —
+if one ever proposes deleting `lp-automation/` again, something has gone wrong;
+do not accept it.
 - **Before finishing any change:** `npm run typecheck` (and the relevant `build`).
 - **Docs:** update `IDEAS.md` when scoping features, `CHANGELOG.md` when shipping.
