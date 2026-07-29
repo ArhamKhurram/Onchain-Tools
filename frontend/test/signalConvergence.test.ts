@@ -1,4 +1,4 @@
-import { describe, it, expect } from 'vitest';
+﻿import { describe, it, expect } from 'vitest';
 import {
   isFomoBuySide,
   addressesMatch,
@@ -26,6 +26,7 @@ const trade = (over: Partial<FomoTrade> = {}): FomoTrade =>
   ({
     side: 'buy',
     tokenAddress: '0xabcdef0000000000000000000000000000000001',
+    occurredAt: T0,
     receivedAt: T0,
     key: 'k1',
     fomoUserId: 'u1',
@@ -66,23 +67,30 @@ describe('getSignalConvergenceWindowMs', () => {
 
 describe('findConvergenceForContract', () => {
   it('returns the trade when a matching buy lands inside the window', () => {
-    const t = trade({ receivedAt: T0 + 5 * 60_000 });
+    const t = trade({ occurredAt: T0 + 5 * 60_000 });
     expect(findConvergenceForContract(contract(), [t])).toBe(t);
   });
 
   it('returns null when the buy is outside the window', () => {
-    const t = trade({ receivedAt: T0 + 40 * 60_000 });
+    const t = trade({ occurredAt: T0 + 40 * 60_000 });
     expect(findConvergenceForContract(contract(), [t])).toBeNull();
   });
 
   it('ignores non-buy sides', () => {
-    const t = trade({ side: 'sell', receivedAt: T0 });
+    const t = trade({ side: 'sell', occurredAt: T0 });
     expect(findConvergenceForContract(contract(), [t])).toBeNull();
   });
 
   it('ignores trades for a different token', () => {
     const t = trade({ tokenAddress: '0xdead0000000000000000000000000000000beef0' });
     expect(findConvergenceForContract(contract(), [t])).toBeNull();
+  });
+
+  // Replayed history is stamped with this session's arrival time. Keying on that
+  // would make every day-old trade converge with whatever was called at reload.
+  it('keys on when the trade happened, not when it reached this session', () => {
+    const stale = trade({ occurredAt: T0 - 26 * 3_600_000, receivedAt: T0 });
+    expect(findConvergenceForContract(contract(), [stale])).toBeNull();
   });
 
   it('returns null for a contract with an unparseable timestamp', () => {
@@ -97,3 +105,4 @@ describe('convergenceKey', () => {
     );
   });
 });
+

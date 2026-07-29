@@ -238,6 +238,108 @@ export async function deliverRecentTradesToUser(
   return delivered;
 }
 
+/** A stored trade replayed to the client, carrying the time it actually happened. */
+export interface DeliveredTrade {
+  fomoUserId: string | null;
+  fomoHandle: string | null;
+  displayName: string | null;
+  side: string | null;
+  tokenAddress: string | null;
+  tokenSymbol: string | null;
+  networkId: number | null;
+  usdValue: number | null;
+  tradeId: string | null;
+  /** ms epoch of the trade event, not of this request. */
+  occurredAt: number;
+}
+
+export const MAX_TRADE_HISTORY = 500;
+
+/**
+ * The user's own delivered trades, newest first.
+ *
+ * Reads the delivery log rather than the event table directly — a user should
+ * only ever see trades that were actually fanned out to them, not every swap in
+ * the shared store. Filtering and ordering stay on `delivered_at` because it is
+ * the indexed column on this table; the event's `created_at` still comes back as
+ * `occurredAt` so the row renders when the trade happened.
+ */
+export async function loadDeliveredTrades(
+  db: SupabaseClient,
+  userId: string,
+  sinceIso: string,
+  limit: number,
+): Promise<DeliveredTrade[]> {
+  const { data, error } = await db
+    .from('fomo_trade_deliveries')
+    .select(
+      'delivered_at, fomo_trade_events!inner(fomo_user_id, fomo_handle, side, token_address, token_symbol, network_id, usd_value, trade_id, created_at)',
+    )
+    .eq('user_id', userId)
+    .gte('delivered_at', sinceIso)
+    .order('delivered_at', { ascending: false })
+    .limit(Math.min(limit, MAX_TRADE_HISTORY));
+
+  if (error) {
+    console.error('[FomoDispatch] Trade history query failed:', error.message);
+    return [];
+  }
+
+  const out: DeliveredTrade[] = [];
+  for (const row of data ?? []) {
+    // PostgREST types an embedded row as an array; !inner guarantees exactly one.
+    const event = (Array.isArray(row.fomo_trade_events)
+      ? row.fomo_trade_events[0]
+      : row.fomo_trade_events) as Record<string, unknown> | undefined;
+    if (!event) continue;
+
+    out.push({
+      fomoUserId: (event.fomo_user_id as string | null) ?? null,
+      fomoHandle: (event.fomo_handle as string | null) ?? null,
+      // Not stored on the event row — the client falls back to the handle.
+      displayName: null,
+      side: (event.side as string | null) ?? null,
+      tokenAddress: (event.token_address as string | null) ?? null,
+      tokenSymbol: (event.token_symbol as string | null) ?? null,
+      networkId: event.network_id != null ? Number(event.network_id) : null,
+      usdValue: event.usd_value != null ? Number(event.usd_value) : null,
+      tradeId: (event.trade_id as string | null) ?? null,
+      occurredAt: new Date(
+        (event.created_at as string | undefined) ?? (row.delivered_at as string),
+      ).getTime(),
+    });
+  }
+  return out;
+}
+
+/**
+ * Drop trade events past the retention window. Deliveries cascade on the FK, so
+ * this cleans both tables.
+ *
+ * Retention is deliberately longer than the window the console asks for. The
+ * unique index on `trade_id` is what stops a trade being dispatched twice, so
+ * deleting a row also drops its dedup guard — keeping a margin means a trader's
+ * activity cursor would have to rewind by days before a stale trade could
+ * re-deliver as new.
+ */
+export async function pruneTradeEvents(
+  db: SupabaseClient,
+  retentionDays: number,
+): Promise<number> {
+  const cutoff = new Date(Date.now() - retentionDays * 86_400_000).toISOString();
+  const { data, error } = await db
+    .from('fomo_trade_events')
+    .delete()
+    .lt('created_at', cutoff)
+    .select('id');
+
+  if (error) {
+    console.error('[FomoDispatch] Retention sweep failed:', error.message);
+    return 0;
+  }
+  return data?.length ?? 0;
+}
+
 async function notifyPushover(userId: string, trade: NormalizedTrade): Promise<void> {
   try {
     const config = await getStorageProvider().getConfig(userId);

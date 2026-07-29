@@ -2,6 +2,16 @@
 
 All notable changes to Trenchcord are documented here.
 
+## 2026-07-30
+
+### Fixed
+- **FOMO Live starts empty on every reload** — the feed was WebSocket-only, so it showed nothing but whatever arrived since you opened the page. The trades were being stored the whole time; nothing read them back. The console now replays your last 24 hours on load (`GET /api/fomo/trades`) and merges live frames on top, deduped by trade id.
+- **Replayed trades show when they happened** — the live WS frame carries no timestamp, so the feed stamped arrival time. Rows now carry the stored event time, and a day of backfill no longer renders as if it all happened at page load.
+- **Stale trades can no longer fake a convergence** — signal convergence compared a trade's *arrival* time against the contract call. With history replay that would have matched every day-old buy against whatever was called at reload, firing false convergence alerts on every refresh. It now compares when the trade actually happened.
+
+### Added
+- **FOMO trade retention** — a sweeper prunes `fomo_trade_events` past a retention window (default 7 days, `FOMO_TRADE_RETENTION_DAYS`); deliveries cascade. The log is a firehose of every swap by every tracked trader, so it grew without bound. Retention is deliberately longer than the 24h the console asks for: deleting an event also drops the unique `trade_id` that stops it being dispatched twice.
+
 ## 2026-07-29
 
 ### Added

@@ -7,6 +7,14 @@ export interface UpdateEntry {
 /** Public update log — newest first. */
 export const UPDATES: UpdateEntry[] = [
   {
+    date: '2026-07-30',
+    fixed: [
+      '**FOMO Live no longer starts empty** — the trade feed was live-only, so a reload wiped it and you saw nothing but whatever came in since. The trades were stored the whole time; nothing was reading them back. Your last 24 hours now replay on load, with live trades merging in on top',
+      '**Replayed trades show their real time** — a day of backfilled trades used to render as if it all happened the moment you refreshed',
+      '**No more phantom convergences on reload** — signal convergence matched on when a trade *reached* you rather than when it happened, so replayed history would have collided with anything called around page load',
+    ],
+  },
+  {
     date: '2026-07-29',
     added: [
       '**Caller quality — the slop filter** — rank contract calls by who sent them. Right-click any name to mute, normal, or trust them, globally or in one room only, so a caller can be slop in `#prosp` and fine everywhere else',

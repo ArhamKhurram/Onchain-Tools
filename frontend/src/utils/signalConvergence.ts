@@ -38,7 +38,10 @@ export function findConvergenceForTrade(
 ): ContractEntry | null {
   if (!isFomoBuySide(trade.side) || !trade.tokenAddress) return null;
 
-  const tradeTime = trade.receivedAt;
+  // occurredAt, not receivedAt: a replayed trade is stamped with its arrival in
+  // this session, so comparing arrival times would make every day-old trade look
+  // simultaneous with whatever was called around the page load.
+  const tradeTime = trade.occurredAt;
   const token = normalizeAddress(trade.tokenAddress);
 
   for (const contract of contracts) {
@@ -63,7 +66,7 @@ export function findConvergenceForContract(
   for (const trade of trades) {
     if (!isFomoBuySide(trade.side)) continue;
     if (!addressesMatch(contract.address, trade.tokenAddress)) continue;
-    if (Math.abs(trade.receivedAt - contractTime) <= windowMs) {
+    if (Math.abs(trade.occurredAt - contractTime) <= windowMs) {
       return trade;
     }
   }
