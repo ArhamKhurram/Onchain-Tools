@@ -145,6 +145,42 @@ export function buildTokenCandidates(contracts: ContractEntry[]): TokenCandidate
   return out;
 }
 
+/**
+ * Row for the missed_runner_alerts upsert. token_address must be lowercased —
+ * the table's unique key (user_id, token_address) and its lowercase CHECK
+ * constraint both assume it (migration 20260729130000).
+ */
+export function buildMissedRunnerAlertRow(
+  userId: string,
+  token: TokenCandidate,
+  mcNow: number,
+  multiplier: number,
+  cooldownHours: number,
+  now: number = Date.now(),
+): {
+  user_id: string;
+  token_address: string;
+  triggered_at: string;
+  cooldown_until: string;
+  mc_at_call: number;
+  mc_now: number;
+  multiplier: number;
+  channel_name: string | null;
+  token_symbol: string | null;
+} {
+  return {
+    user_id: userId,
+    token_address: token.address.toLowerCase(),
+    triggered_at: new Date(now).toISOString(),
+    cooldown_until: new Date(now + cooldownHours * 3_600_000).toISOString(),
+    mc_at_call: token.mcAtCall,
+    mc_now: mcNow,
+    multiplier,
+    channel_name: token.channelName ?? null,
+    token_symbol: token.tokenSymbol ?? null,
+  };
+}
+
 export function formatMissedRunnerAge(firstSeenAt: string): string {
   const mins = Math.floor((Date.now() - new Date(firstSeenAt).getTime()) / 60_000);
   if (mins < 60) return `${Math.max(1, mins)}m`;
@@ -219,7 +255,7 @@ class MissedRunnerPoller {
       .from('missed_runner_alerts')
       .select('cooldown_until')
       .eq('user_id', userId)
-      .ilike('token_address', tokenAddress)
+      .eq('token_address', tokenAddress.toLowerCase())
       .maybeSingle();
     if (error || !data) return false;
     return new Date(data.cooldown_until).getTime() > Date.now();
@@ -233,19 +269,15 @@ class MissedRunnerPoller {
     cooldownHours: number,
   ): Promise<boolean> {
     if (!this.db) return false;
-    const cooldownUntil = new Date(Date.now() + cooldownHours * 3_600_000).toISOString();
-    const { error } = await this.db.from('missed_runner_alerts').insert({
-      user_id: userId,
-      token_address: token.address.toLowerCase(),
-      mc_at_call: token.mcAtCall,
-      mc_now: mcNow,
-      multiplier,
-      channel_name: token.channelName ?? null,
-      token_symbol: token.tokenSymbol ?? null,
-      cooldown_until: cooldownUntil,
-    });
+    // Upsert, not insert: a (user_id, token_address) row already exists after
+    // the first alert, and a plain insert would 23505 against the unique key
+    // forever after — the row must be refreshed to re-arm the cooldown.
+    const { error } = await this.db
+      .from('missed_runner_alerts')
+      .upsert(buildMissedRunnerAlertRow(userId, token, mcNow, multiplier, cooldownHours), {
+        onConflict: 'user_id,token_address',
+      });
     if (error) {
-      if ((error as { code?: string }).code === '23505') return false;
       console.error('[MissedRunnerPoller] Failed to record alert:', error.message);
       return false;
     }

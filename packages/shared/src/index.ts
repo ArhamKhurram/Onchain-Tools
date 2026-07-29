@@ -58,6 +58,9 @@ export type {
   PeakLookup,
 } from './callerQuality.js';
 
+// Generated Supabase schema types (see database.types.ts header for regen).
+export type { Database, Json, Tables, TablesInsert, TablesUpdate } from './database.types.js';
+
 // Runtime consts (values) from the shared type module.
 export { PUSHOVER_SOUNDS, GatewayOpcodes } from './types.js';
 

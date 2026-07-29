@@ -17,6 +17,7 @@ import { readFileSync, writeFileSync, existsSync } from 'fs';
 import { join, dirname } from 'path';
 import { fileURLToPath } from 'url';
 import { createClient } from '@supabase/supabase-js';
+import type { Database } from '@oct/shared';
 import { isHostedMode } from '../storage/index.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -37,7 +38,7 @@ function serviceClient() {
   const url = process.env.SUPABASE_URL;
   const key = process.env.SUPABASE_SERVICE_KEY ?? process.env.SUPABASE_SERVICE_ROLE_KEY;
   if (!url || !key) return null;
-  return createClient(url, key, { auth: { persistSession: false } });
+  return createClient<Database>(url, key, { auth: { persistSession: false } });
 }
 
 // --- local JSON backing -----------------------------------------------------

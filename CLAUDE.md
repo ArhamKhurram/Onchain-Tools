@@ -50,7 +50,8 @@ Root `package.json` declares
   `contracts/` or anything that builds a transaction. Its Solidity is tested by
   Foundry in CI only — `npm run test` does not cover it.
 - `desktop/` — Electron shell bundling backend + frontend.
-- `supabase/` — migrations + generated `database.types.ts`.
+- `supabase/` — migrations. (The generated Supabase types live in
+  `packages/shared/src/database.types.ts` so backend + frontend can import them.)
 - `scripts/` — `dev-local.mjs` (runs the three dev servers) and Vercel output merge.
 
 ### Commands (from repo root)

@@ -163,3 +163,6 @@ supabase/.branches/
 
 # GMGN signing keys (never commit)
 gmgn_*.pem
+
+# Astro build cache (docs site)
+docs/.astro/

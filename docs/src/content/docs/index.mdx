@@ -1,0 +1,62 @@
+---
+title: Onchain Tools — Developer Docs
+description: Architecture, API reference, data model, and operations manual for Onchain Tools (OCT).
+template: splash
+hero:
+  tagline: Real-time crypto intelligence console — Discord/Telegram ingest, contract detection & enrichment, trader tracking, and convergence alerts.
+  actions:
+    - text: Architecture overview
+      link: ./architecture/overview/
+      icon: open-book
+      variant: primary
+    - text: API reference
+      link: ./api/rest/
+      icon: seti:json
+      variant: minimal
+---
+
+import { Card, CardGrid } from '@astrojs/starlight/components';
+
+## What is OCT?
+
+Onchain Tools ingests Discord and Telegram streams in real time, detects and
+enriches contract addresses, tracks fomo.family traders, and raises
+convergence and missed-runner alerts. It ships three ways: a hosted web
+console, a marketing/landing site, and an Electron desktop app.
+
+<CardGrid stagger>
+  <Card title="System design (SDD)" icon="open-book">
+    Structural components, data models, and system flows — organized around
+    the C4 model. Start at the [architecture overview](./architecture/overview/).
+  </Card>
+  <Card title="Decisions (ADRs)" icon="pencil">
+    Why the system is shaped the way it is: [two deployment modes](./adr/001-two-modes/),
+    the [browser Discord gateway](./adr/002-browser-gateway/), the
+    [enrichment provider split](./adr/003-provider-split/), and more.
+  </Card>
+  <Card title="API reference" icon="seti:json">
+    [REST endpoints](./api/rest/), the [WebSocket protocol](./api/websocket/),
+    and [authentication](./api/authentication/) in both deployment modes.
+  </Card>
+  <Card title="Data model" icon="seti:db">
+    The [Supabase schema and ERD](./data/schema/), plus the
+    [storage abstraction](./data/storage/) that keeps local mode on JSON files.
+  </Card>
+  <Card title="Operations" icon="setting">
+    The [runbook](./operations/runbook/) for Railway, Vercel, and the VPS
+    worker; the [environment variable reference](./operations/environments/);
+    and the [announcement pipeline](./operations/announcements/).
+  </Card>
+  <Card title="Contributing" icon="git-branch">
+    The [branch topology](./contributing/branching/) (`main` / `dev` /
+    `LP-Feats`) and [working conventions](./contributing/conventions/).
+  </Card>
+</CardGrid>
+
+## The one concept to internalize first
+
+Almost every branch in this codebase keys off **local vs hosted mode**. Local
+mode is a single implicit user with JSON-file storage and no auth (the desktop
+app). Hosted mode is multi-tenant on Supabase with bearer-token auth (the
+Railway + Vercel deployment). Read [Two deployment modes](./architecture/two-modes/)
+before touching anything else.

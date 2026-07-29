@@ -3,7 +3,7 @@
   "version": "1.1.1",
   "private": true,
   "license": "AGPL-3.0-only",
-  "workspaces": ["packages/*", "backend", "frontend", "landing", "fomo-worker", "lp-automation"],
+"workspaces": ["packages/*", "backend", "frontend", "landing", "fomo-worker", "lp-automation", "docs"],
   "scripts": {
     "dev": "node scripts/dev-local.mjs",
     "dev:backend": "npm run dev -w backend",
@@ -20,6 +20,8 @@
     "typecheck": "npm run build:shared && npm run typecheck -w backend && npm run typecheck -w frontend && npm run typecheck -w lp-automation",
     "test": "npm run build:shared && npm run test -w backend && npm run test -w frontend && npm run test -w lp-automation",
     "prepare": "npm run build:shared",
+    "docs:dev": "npm run dev -w docs",
+    "docs:build": "npm run build -w docs",
     "dev:desktop": "npm --prefix desktop run start",
     "pack:desktop": "npm run build:shared && npm run build:backend && npm run build:frontend && npm --prefix desktop run pack",
     "build:desktop": "npm run build:shared && npm run build:backend && npm run build:frontend && npm --prefix desktop run dist"
