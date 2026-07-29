@@ -72,6 +72,19 @@ export default function DiscordBotSection({ form }: { form: SettingsForm }) {
               label="Missed runner"
             />
           </div>
+
+          <div className="mt-4 pt-4 border-t border-discord-divider">
+            <Toggle
+              value={discordBotDm.triggers.releaseNotes}
+              onChange={(v) => setTrigger('releaseNotes', v)}
+              label="Release notes"
+            />
+            <p className="text-xs text-discord-text-muted mt-1.5">
+              Get a DM when OCT ships an update. This one isn't a market signal, so it's
+              separate from the alerts above — leaving it off doesn't affect them.
+            </p>
+          </div>
+
           <p className="text-xs text-discord-text-muted mt-3">
             Signal-convergence alerts aren't available over DM yet — they're raised in the browser
             rather than on the server. Use Pushover for those.
