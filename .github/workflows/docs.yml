@@ -1,0 +1,67 @@
+name: Docs
+
+# Builds the Starlight developer docs (docs/) and publishes them to GitHub
+# Pages at https://arhamkhurram.github.io/Onchain-Tools/.
+#
+# Fires only when docs content (or this workflow) changes on main; run it by
+# hand from the Actions tab to force a republish.
+#
+# One-time repo setup: Settings → Pages → Source: "GitHub Actions".
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'docs/**'
+      - '.github/workflows/docs.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: docs-pages
+  cancel-in-progress: true
+
+jobs:
+  build:
+    name: Build docs
+    runs-on: ubuntu-latest
+    env:
+      # Same as ci.yml: fomo-worker's Playwright postinstall would pull ~150 MB
+      # of Chromium the docs build never uses.
+      PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD: '1'
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: npm
+
+      - name: Install (workspaces)
+        run: npm ci
+
+      - name: Build docs site
+        run: npm run build -w docs
+
+      - name: Upload Pages artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: docs/dist
+
+  deploy:
+    name: Deploy to GitHub Pages
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Deploy
+        id: deployment
+        uses: actions/deploy-pages@v4
