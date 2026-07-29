@@ -12,7 +12,6 @@ All notable changes to Trenchcord are documented here.
 
 ### Added
 - **The Outpost bot is live** — the Discord bot now runs in production: slash commands (`/token`, `/holders`, `/leaderboard`, `/tracked`, `/wallet`) in the server and in DMs, plus opt-in DM alerts for your highlights, keywords, contract scans, and missed runners (Settings → Notifications → Discord DMs).
-- **Developer docs** — the full architecture, API reference, database schema, and operations runbook are now published at https://arhamkhurram.github.io/Onchain-Tools/ — diagrams and the design decisions behind them included.
 - **FOMO trade retention** — a sweeper prunes `fomo_trade_events` past a retention window (default 7 days, `FOMO_TRADE_RETENTION_DAYS`); deliveries cascade. The log is a firehose of every swap by every tracked trader, so it grew without bound. Retention is deliberately longer than the 24h the console asks for: deleting an event also drops the unique `trade_id` that stops it being dispatched twice.
 
 ## 2026-07-29
