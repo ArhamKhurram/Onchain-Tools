@@ -1,2 +1,12 @@
 # Auto detect text files and perform LF normalization
 * text=auto
+
+# Executable scripts must stay LF even on Windows checkouts.
+#
+# `text=auto` above converts to CRLF in the working tree on Windows. For a file
+# starting with `#!/usr/bin/env node` that is not cosmetic: bundlers strip the
+# shebang up to the first `\n`, and the leftover `\r` parses as an invalid
+# token. It cost a green-on-CI/red-on-Windows test failure once — CI is Linux,
+# so nothing there ever sees it.
+*.mjs text eol=lf
+*.sh  text eol=lf

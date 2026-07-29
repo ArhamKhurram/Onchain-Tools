@@ -1,12 +1,12 @@
 import { describe, it, expect } from 'vitest';
-// @ts-expect-error — plain .mjs script, no type declarations by design.
+// @ts-expect-error — plain .mjs module, no type declarations by design.
 import {
   parseChangelog,
   newestEntry,
   formatDescription,
   buildPayload,
   headingIsNewInDiff,
-} from '../../scripts/announce-changelog.mjs';
+} from '../../scripts/lib/changelog.mjs';
 
 const SAMPLE = `# Changelog
 
