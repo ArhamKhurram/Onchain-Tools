@@ -257,3 +257,22 @@ if one ever proposes deleting `lp-automation/` again, something has gone wrong;
 do not accept it.
 - **Before finishing any change:** `npm run typecheck` (and the relevant `build`).
 - **Docs:** update `IDEAS.md` when scoping features, `CHANGELOG.md` when shipping.
+
+### Discord announcements (automatic)
+
+Adding a new `## <date>` section to `CHANGELOG.md` and merging it to `main`
+posts that entry to the Discord announcements channel — no manual step.
+
+`.github/workflows/announce.yml` → `scripts/announce-changelog.mjs` → the
+existing `POST /api/v1/bot/announce`, which renders the branded Components V2
+container via the already-connected bot client. No webhook, no second Discord
+login, no new secret beyond the bot key.
+
+It is **event-driven, not scheduled**: it fires on pushes to `main` that touch
+`CHANGELOG.md`, and no-ops unless the push actually *added* a dated heading —
+so rewording a shipped entry doesn't re-announce the release. Run it by hand
+(Actions → Announce) with `dry_run` to preview, or `force` to backfill.
+
+Requires two repo secrets: `OCT_BOT_API_KEY` (same value as the backend env)
+and `OCT_API_BASE` (the Railway URL). Optional repo variable
+`ANNOUNCE_LINK_URL` sets the "Open →" target.
