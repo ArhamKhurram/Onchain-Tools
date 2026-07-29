@@ -197,6 +197,13 @@ export interface DiscordBotTriggers {
   contract: boolean;
   keyword: boolean;
   missedRunner: boolean;
+  /**
+   * Product release notes. Unlike the others this is not a market signal, so it
+   * is a separate opt-in rather than something bundled into the alert toggles —
+   * somebody who wants contract scans in their DMs has not thereby asked for
+   * changelog posts.
+   */
+  releaseNotes: boolean;
 }
 
 export interface DiscordBotDmConfig {

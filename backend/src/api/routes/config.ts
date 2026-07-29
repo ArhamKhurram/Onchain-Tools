@@ -108,6 +108,7 @@ export function createConfigRoutes(ctx: RouterContext): Router {
             contract: Boolean(discordBotDm.triggers?.contract),
             keyword: Boolean(discordBotDm.triggers?.keyword),
             missedRunner: Boolean(discordBotDm.triggers?.missedRunner),
+            releaseNotes: Boolean(discordBotDm.triggers?.releaseNotes),
           },
         },
       }),

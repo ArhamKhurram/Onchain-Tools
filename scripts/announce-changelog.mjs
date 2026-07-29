@@ -21,6 +21,11 @@
  * Flags:
  *   --dry-run   print the payload, post nothing
  *   --force     post even if the top entry's date is not new in this push
+ *   --dm        also DM users who opted into release notes (default: off)
+ *
+ * --dm is opt-out by default on purpose. The channel post is public and cheap
+ * to get wrong; a DM fan-out is not, so it takes an explicit flag even though
+ * the server side already refuses to DM anyone who hasn't opted in.
  */
 
 import { readFileSync } from 'fs';
@@ -42,6 +47,7 @@ async function main() {
   const args = new Set(process.argv.slice(2));
   const dryRun = args.has('--dry-run');
   const force = args.has('--force');
+  const dm = args.has('--dm');
 
   const entry = newestEntry(readFileSync('CHANGELOG.md', 'utf-8'));
   if (!entry) {
@@ -55,10 +61,10 @@ async function main() {
   }
 
   const linkUrl = process.env.ANNOUNCE_LINK_URL?.trim() || DEFAULT_LINK;
-  const payload = buildPayload(entry, { linkUrl });
+  const payload = { ...buildPayload(entry, { linkUrl }), ...(dm ? { dmOptIns: true } : {}) };
 
   if (dryRun) {
-    console.log('[announce] Dry run — would post:\n');
+    console.log(`[announce] Dry run — would post${dm ? ' and DM opt-ins' : ''}:\n`);
     console.log(JSON.stringify(payload, null, 2));
     return;
   }
