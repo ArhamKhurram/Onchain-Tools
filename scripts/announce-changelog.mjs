@@ -16,7 +16,7 @@
  * Env:
  *   OCT_BOT_API_KEY   required — same key the rest of the bot API uses
  *   OCT_API_BASE      required — e.g. https://onchain-tools-production.up.railway.app
- *   ANNOUNCE_LINK_URL optional — "Open →" target; defaults to the repo changelog
+ *   ANNOUNCE_LINK_URL optional — "Open →" target; defaults to the landing changelog
  *
  * Flags:
  *   --dry-run   print the payload, post nothing
@@ -32,7 +32,10 @@ import { readFileSync } from 'fs';
 import { execSync } from 'child_process';
 import { newestEntry, buildPayload, headingIsNewInDiff } from './lib/changelog.mjs';
 
-const DEFAULT_LINK = 'https://github.com/ArhamKhurram/Onchain-Tools/blob/main/CHANGELOG.md';
+// Announcements are user-facing: the fallback must never point at the repo
+// (dev-only, and the URL carries a personal username). ANNOUNCE_LINK_URL
+// still overrides for a custom domain.
+const DEFAULT_LINK = 'https://onchain-tools-mern.vercel.app/#changelog';
 
 function changelogDiff() {
   // CI checks out with fetch-depth 2 so HEAD~1 exists for a push build.
