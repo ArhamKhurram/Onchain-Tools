@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { RefreshCw, Copy, Check, Users, ChevronUp, ChevronDown } from 'lucide-react';
+import { RefreshCw, Copy, Check, Users, ChevronUp, ChevronDown, Eye, EyeOff } from 'lucide-react';
 import { useAppStore } from '../../stores/appStore';
 import { useFomoHolderOverlap } from '../../hooks/useFomoHolderOverlap';
 import SignalConvergenceBadge from '../SignalConvergenceBadge';
@@ -16,6 +16,9 @@ import {
   type RadarColumnId,
 } from './radarColumns';
 import { isHostedMode, getAccessToken } from '../../lib/supabase';
+import { useCallerQuality, type CallerQuality } from '../../hooks/useCallerQuality';
+import { BAND_DOT_CLASS, BAND_TEXT_CLASS, BAND_TITLE } from '../../utils/callerBandStyle';
+import { BAND_LABELS, type CallerBand } from '@oct/shared';
 import type { ContractEntry } from '../../types';
 
 const API_BASE = import.meta.env.VITE_API_URL
@@ -46,6 +49,11 @@ interface RadarRow {
   timestamps: number[];
   mcAtCall?: number;
   mcAtCallDisplay?: string;
+  /** Best band among the callers who posted this token. */
+  bestBand?: CallerBand;
+  bestRank: number;
+  /** Every caller on this token is muted — the row is pure slop by your own rules. */
+  allMuted: boolean;
 }
 
 interface LiveMc {
@@ -99,7 +107,10 @@ function platformMeta(chain: 'evm' | 'sol', evmChain?: string): { label: string;
   return { label, dot };
 }
 
-function buildRadar(contracts: ContractEntry[]): RadarRow[] {
+function buildRadar(
+  contracts: ContractEntry[],
+  qualityForContract?: (entry: ContractEntry) => CallerQuality,
+): RadarRow[] {
   const map = new Map<string, RadarRow>();
   for (const c of contracts) {
     const key = c.address.toLowerCase();
@@ -119,9 +130,25 @@ function buildRadar(contracts: ContractEntry[]): RadarRow[] {
         firstSeenAt: ts,
         lastMentionAt: ts,
         timestamps: [],
+        bestRank: -Infinity,
+        allMuted: true,
       };
       map.set(key, row);
     }
+
+    // A token is only as good as its best caller: one trusted name calling it
+    // matters more than five muted ones also calling it.
+    if (qualityForContract) {
+      const q = qualityForContract(c);
+      if (q.rank > row.bestRank) {
+        row.bestRank = q.rank;
+        row.bestBand = q.band;
+      }
+      if (q.tier !== 'muted') row.allMuted = false;
+    } else {
+      row.allMuted = false;
+    }
+
     row.mentions += 1;
     row.timestamps.push(ts);
     row.callers.add(c.authorId);
@@ -171,6 +198,7 @@ type SortKey =
   | 'mcAtCall'
   | 'mcNow'
   | 'mult'
+  | 'quality'
   | 'recent';
 
 type SortDir = 'asc' | 'desc';
@@ -340,6 +368,15 @@ export default function RadarTable({ embedded: _embedded = false }: { embedded?:
   const [sortDir, setSortDir] = useState<SortDir>('desc');
   const [copiedAddr, setCopiedAddr] = useState<string | null>(null);
   const [visibleColumns, setVisibleColumns] = useState<Set<RadarColumnId>>(() => loadVisibleRadarColumns());
+  const [revealMuted, setRevealMuted] = useState(false);
+  const { qualityForContract, showMuted } = useCallerQuality();
+
+  // Counted off the unfiltered set so the toggle still shows a number once the
+  // rows it refers to have been filtered out.
+  const mutedOnlyCount = useMemo(
+    () => buildRadar(contracts, qualityForContract).filter((r) => r.allMuted).length,
+    [contracts, qualityForContract],
+  );
 
   const activeColumns = useMemo(
     () => RADAR_COLUMN_ORDER.filter((col) => visibleColumns.has(col)),
@@ -372,7 +409,11 @@ export default function RadarTable({ embedded: _embedded = false }: { embedded?:
   }, [fetchContracts]);
 
   const rows = useMemo(() => {
-    const all = buildRadar(contracts);
+    const all = buildRadar(contracts, qualityForContract).filter(
+      // Mentions still count muted callers inside the row; what's dropped here is
+      // a token *only* muted callers ever touched.
+      (r) => !r.allMuted || !showMuted || revealMuted,
+    );
     const filtered =
       windowFilter === 'all'
         ? all
@@ -447,13 +488,19 @@ export default function RadarTable({ embedded: _embedded = false }: { embedded?:
         case 'mult':
           result = cmpNum(multA, multB);
           break;
+        case 'quality':
+          result = cmpNum(a.bestRank, b.bestRank);
+          break;
         default:
           result = 0;
       }
       if (result !== 0) return result;
       return b.lastMentionAt - a.lastMentionAt;
     });
-  }, [contracts, windowFilter, mentionWindow, sortKey, sortDir, liveMc, overlaps]);
+  }, [
+    contracts, windowFilter, mentionWindow, sortKey, sortDir, liveMc, overlaps,
+    qualityForContract, showMuted, revealMuted,
+  ]);
 
   const refreshOne = async (address: string, evmChain?: string) => {
     setRefreshingRow(address.toLowerCase());
@@ -540,6 +587,21 @@ export default function RadarTable({ embedded: _embedded = false }: { embedded?:
           onVisibleColumnsChange={handleVisibleColumnsChange}
         />
         <div className="flex-1" />
+        {showMuted && mutedOnlyCount > 0 && (
+          <button
+            type="button"
+            onClick={() => setRevealMuted((v) => !v)}
+            className={`flex items-center gap-1.5 px-2 py-1 rounded-cockpit text-xs font-bold uppercase border-2 transition-colors ${
+              revealMuted
+                ? 'bg-oct-accent text-white border-black'
+                : 'text-oct-muted border-oct-border-bright hover:text-oct-text hover:border-oct-text'
+            }`}
+            title="Tokens only muted callers have posted"
+          >
+            {revealMuted ? <Eye size={12} /> : <EyeOff size={12} />}
+            {mutedOnlyCount} muted
+          </button>
+        )}
         <span className="font-mono text-[11px] text-oct-muted">
           {rows.length} tokens
         </span>
@@ -736,6 +798,22 @@ export default function RadarTable({ embedded: _embedded = false }: { embedded?:
                               </span>
                             ) : (
                               <span className="text-oct-muted">—</span>
+                            )}
+                          </td>
+                        );
+                      case 'quality':
+                        return (
+                          <td key={col} className="px-3 py-2 text-right whitespace-nowrap">
+                            {r.bestBand && r.bestBand !== 'unrated' ? (
+                              <span
+                                className={`inline-flex items-center gap-1 text-[11px] font-bold uppercase ${BAND_TEXT_CLASS[r.bestBand]}`}
+                                title={BAND_TITLE[r.bestBand]}
+                              >
+                                <span className={`w-1.5 h-1.5 rounded-full ${BAND_DOT_CLASS[r.bestBand]}`} />
+                                {BAND_LABELS[r.bestBand]}
+                              </span>
+                            ) : (
+                              <span className="text-oct-muted text-[11px]">—</span>
                             )}
                           </td>
                         );

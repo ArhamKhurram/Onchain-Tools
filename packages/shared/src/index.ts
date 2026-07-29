@@ -34,6 +34,30 @@ export type {
   BotWalletProfile,
 } from './bot.js';
 
+// Caller quality — slop filter + earned ranking (IDEAS.md).
+export {
+  MIN_RATED_CALLS,
+  SLOP_MULTIPLE,
+  BAND_LABELS,
+  callerKey,
+  parseCallerKey,
+  contractCallerKey,
+  resolveCallerTier,
+  median,
+  bandFromRates,
+  scoreCaller,
+  buildCallerScores,
+  effectiveBand,
+  callerRank,
+} from './callerQuality.js';
+export type {
+  CallerPlatform,
+  CallerBand,
+  RatedCall,
+  CallerScore,
+  PeakLookup,
+} from './callerQuality.js';
+
 // Runtime consts (values) from the shared type module.
 export { PUSHOVER_SOUNDS, GatewayOpcodes } from './types.js';
 
@@ -77,6 +101,8 @@ export type {
   SoundType,
   SoundConfig,
   SoundSettings,
+  CallerTier,
+  CallerTierEntry,
   AppConfig,
   // workspace layout
   WorkspacePanelType,

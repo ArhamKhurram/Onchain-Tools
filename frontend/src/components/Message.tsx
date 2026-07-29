@@ -1,6 +1,8 @@
 import { useState, memo } from 'react';
 import { Eye, MessageSquareReply } from 'lucide-react';
-import type { FrontendMessage, ContractLinkTemplates, ContractClickAction, BadgeClickAction, HighlightMode, MessageDisplay } from '../types';
+import type { FrontendMessage, ContractLinkTemplates, ContractClickAction, BadgeClickAction, HighlightMode, MessageDisplay, CallerTier } from '../types';
+import type { CallerQuality } from '../hooks/useCallerQuality';
+import { BAND_NAME_COLOR } from '../utils/callerBandStyle';
 import { useAppStore } from '../stores/appStore';
 import { AuthImage, AuthVideo, AuthAudio } from './AuthMedia';
 import ImageLightbox from './ImageLightbox';
@@ -38,9 +40,12 @@ interface MessageProps {
   onQuickReply?: (channelId: string) => void;
   chattingEnabled?: boolean;
   roleColors?: boolean;
+  /** Caller quality for this author, if scoring is available. */
+  callerQuality?: CallerQuality;
+  onSetCallerTier?: (key: string, displayName: string, tier: CallerTier) => void;
 }
 
-function Message({ message, isCompact, messageDisplay = 'default', compactModeAvatars = true, guildColor, highlightMode = 'background', highlightColor, disableEmbeds, evmAddressColor, solAddressColor, contractLinkTemplates, contractClickAction, showFullContractAddress = false, openInDiscordApp, openInTelegramApp, badgeClickAction, onHideUser, onToggleHighlight, isUserHighlighted, onFocus, isFocused, onQuickReply, chattingEnabled, roleColors = true }: MessageProps) {
+function Message({ message, isCompact, messageDisplay = 'default', compactModeAvatars = true, guildColor, highlightMode = 'background', highlightColor, disableEmbeds, evmAddressColor, solAddressColor, contractLinkTemplates, contractClickAction, showFullContractAddress = false, openInDiscordApp, openInTelegramApp, badgeClickAction, onHideUser, onToggleHighlight, isUserHighlighted, onFocus, isFocused, onQuickReply, chattingEnabled, roleColors = true, callerQuality, onSetCallerTier }: MessageProps) {
   const [lightboxSrc, setLightboxSrc] = useState<string | null>(null);
   const addrColors: AddressColors = { evm: evmAddressColor ?? '#fee75c', sol: solAddressColor ?? '#14f195' };
   const templates: ContractLinkTemplates = contractLinkTemplates ?? DEFAULT_LINK_TEMPLATES;
@@ -66,6 +71,13 @@ function Message({ message, isCompact, messageDisplay = 'default', compactModeAv
   const resolvedHighlightColor = highlightColor || '#5865f2';
   const hasCustomColor = !!highlightColor;
   const effectiveHighlighted = message.isHighlighted || isUserHighlighted;
+
+  // An explicit highlight is a deliberate choice and outranks the earned band;
+  // the band only colours names the user hasn't already claimed.
+  const bandNameColor = callerQuality ? BAND_NAME_COLOR[callerQuality.band] : null;
+  const authorNameColor = effectiveHighlighted
+    ? resolvedHighlightColor
+    : (bandNameColor ?? (roleColors && message.author.roleColor ? message.author.roleColor : '#f2f3f5'));
 
   const highlightClass = effectiveHighlighted
     ? useUsernameHighlight
@@ -211,7 +223,7 @@ function Message({ message, isCompact, messageDisplay = 'default', compactModeAv
             )}
             <span
               className="font-medium text-[0.9375rem] hover:underline cursor-pointer mr-1"
-              style={{ color: effectiveHighlighted ? resolvedHighlightColor : (roleColors && message.author.roleColor ? message.author.roleColor : '#f2f3f5') }}
+              style={{ color: authorNameColor }}
               onClick={handleNameClick}
               title={`${message.author.username} (${message.author.id})`}
             >
@@ -425,6 +437,10 @@ function Message({ message, isCompact, messageDisplay = 'default', compactModeAv
               const highlightKey = isTelegram && message.author.username ? `@${message.author.username}` : message.author.id;
               onToggleHighlight(highlightKey, message.author.displayName);
             } : undefined}
+            callerQuality={callerQuality}
+            onSetCallerTier={onSetCallerTier && callerQuality
+              ? (tier) => onSetCallerTier(callerQuality.key, message.author.displayName, tier)
+              : undefined}
             onHide={() => onHideUser?.(message.guildId, message.channelId, message.author.id, message.author.displayName)}
             onCopyId={copyUserId}
             onClose={() => setContextMenu(null)}
@@ -634,7 +650,7 @@ function Message({ message, isCompact, messageDisplay = 'default', compactModeAv
         <div className="flex items-baseline gap-1 flex-wrap leading-[1.375rem]">
           <span
             className="font-medium text-base hover:underline cursor-pointer relative mr-1"
-            style={{ color: effectiveHighlighted ? resolvedHighlightColor : (roleColors && message.author.roleColor ? message.author.roleColor : '#f2f3f5') }}
+            style={{ color: authorNameColor }}
             onClick={handleNameClick}
             title={`${message.author.username} (${message.author.id})`}
           >

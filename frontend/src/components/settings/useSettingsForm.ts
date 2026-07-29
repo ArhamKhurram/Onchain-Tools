@@ -1,7 +1,7 @@
 import { useState, useEffect, useMemo, useRef, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAppStore } from '../../stores/appStore';
-import type { SolPlatform, EvmPlatform, ContractClickAction, BadgeClickAction, KeywordPattern, KeywordMatchMode, SoundSettings, SoundType, SoundConfig, PushoverPriority, PushoverSound, PushoverTriggers, PushoverFilters, MessageDisplay, SplitLayout, MissedRunnerConfig, MissedRunnerNotifyVia, ToastPosition, DiscordBotDmConfig } from '../../types';
+import type { SolPlatform, EvmPlatform, ContractClickAction, BadgeClickAction, KeywordPattern, KeywordMatchMode, SoundSettings, SoundType, SoundConfig, PushoverPriority, PushoverSound, PushoverTriggers, PushoverFilters, MessageDisplay, SplitLayout, MissedRunnerConfig, MissedRunnerNotifyVia, ToastPosition, DiscordBotDmConfig, CallerTierEntry } from '../../types';
 import type { Section } from './constants';
 import { defaultSoundConfig, defaultTriggers, defaultFilters, defaultMissedRunner, defaultDiscordBotDm } from './constants';
 import { apiBase, authedFetch } from './fields';
@@ -104,6 +104,9 @@ export function useSettingsForm() {
   const [contractClickAction, setContractClickAction] = useState<ContractClickAction>('copy_open');
   const [showFullContractAddress, setShowFullContractAddress] = useState(false);
   const [autoOpenHighlightedContracts, setAutoOpenHighlightedContracts] = useState(false);
+  const [callerTiers, setCallerTiers] = useState<CallerTierEntry[]>([]);
+  const [callerTierShowMuted, setCallerTierShowMuted] = useState(true);
+  const [callerQualityRanking, setCallerQualityRanking] = useState(false);
   const [signalConvergenceWindowMinutes, setSignalConvergenceWindowMinutes] = useState(30);
   const [globalKeywordPatterns, setGlobalKeywordPatterns] = useState<KeywordPattern[]>([]);
   const [keywordAlertsEnabled, setKeywordAlertsEnabled] = useState(true);
@@ -188,6 +191,9 @@ export function useSettingsForm() {
       setContractClickAction(config.contractClickAction ?? 'copy_open');
       setShowFullContractAddress(config.showFullContractAddress ?? false);
       setAutoOpenHighlightedContracts(config.autoOpenHighlightedContracts ?? false);
+      setCallerTiers(config.callerTiers ?? []);
+      setCallerTierShowMuted(config.callerTierShowMuted ?? true);
+      setCallerQualityRanking(config.callerQualityRanking ?? false);
       setSignalConvergenceWindowMinutes(config.signalConvergenceWindowMinutes ?? 30);
       setGlobalKeywordPatterns(config.globalKeywordPatterns ?? []);
       setKeywordAlertsEnabled(config.keywordAlertsEnabled ?? true);
@@ -282,9 +288,12 @@ export function useSettingsForm() {
       compactModeAvatars !== (config.compactModeAvatars ?? true) ||
       roleColors !== (config.roleColors ?? true) ||
       mobileZoomScale !== (config.mobileZoomScale ?? 1) ||
-      splitLayout !== (config.splitLayout === 'grid' ? 'grid' : 'row')
+      splitLayout !== (config.splitLayout === 'grid' ? 'grid' : 'row') ||
+      callerTierShowMuted !== (config.callerTierShowMuted ?? true) ||
+      callerQualityRanking !== (config.callerQualityRanking ?? false) ||
+      JSON.stringify(callerTiers) !== JSON.stringify(config.callerTiers ?? [])
     );
-  }, [config, globalUsers, contractDetection, guildColors, dmColors, telegramColors, enabledGuilds, evmAddressColor, solAddressColor,
+  }, [callerTiers, callerTierShowMuted, callerQualityRanking, config, globalUsers, contractDetection, guildColors, dmColors, telegramColors, enabledGuilds, evmAddressColor, solAddressColor,
     openInDiscordApp, openInTelegramApp, messageSounds, soundSettings, channelSounds, pushoverEnabled, pushoverAppToken, pushoverUserKey, pushoverPriority, pushoverSound, pushoverTriggers, pushoverFilters, discordBotDm,
     missedRunnerEnabled, missedRunnerMultiplier, missedRunnerLookbackHours, missedRunnerCooldownHours, missedRunnerMinMcAtCall, missedRunnerNotifyVia,
     solPlatform, evmPlatform, customSolUrl, customEvmUrl, contractClickAction, showFullContractAddress, autoOpenHighlightedContracts, signalConvergenceWindowMinutes,
@@ -339,6 +348,9 @@ export function useSettingsForm() {
         contractClickAction,
         showFullContractAddress,
         autoOpenHighlightedContracts,
+        callerTiers,
+        callerTierShowMuted,
+        callerQualityRanking,
         signalConvergenceWindowMinutes,
         globalKeywordPatterns,
         keywordAlertsEnabled,
@@ -502,7 +514,8 @@ export function useSettingsForm() {
     setMissedRunnerNotifyVia, missedRunnerTestAddress, setMissedRunnerTestAddress, missedRunnerTestForce, setMissedRunnerTestForce, missedRunnerTestLoading,
     setMissedRunnerTestLoading, missedRunnerTestResult, setMissedRunnerTestResult, solPlatform, setSolPlatform, evmPlatform,
     setEvmPlatform, customSolUrl, setCustomSolUrl, customEvmUrl, setCustomEvmUrl, contractClickAction,
-    setContractClickAction, showFullContractAddress, setShowFullContractAddress, autoOpenHighlightedContracts, setAutoOpenHighlightedContracts, signalConvergenceWindowMinutes,
+    setContractClickAction, showFullContractAddress, setShowFullContractAddress, autoOpenHighlightedContracts, setAutoOpenHighlightedContracts,
+    callerTiers, setCallerTiers, callerTierShowMuted, setCallerTierShowMuted, callerQualityRanking, setCallerQualityRanking, signalConvergenceWindowMinutes,
     setSignalConvergenceWindowMinutes, globalKeywordPatterns, setGlobalKeywordPatterns, keywordAlertsEnabled, setKeywordAlertsEnabled, desktopNotifications,
     setDesktopNotifications, toastAlertsEnabled, setToastAlertsEnabled, toastPosition, setToastPosition, mentionsUserEnabled,
     setMentionsUserEnabled, mentionsRoleEnabled, setMentionsRoleEnabled, mentionsHereEnabled, setMentionsHereEnabled, mentionsEveryoneEnabled,

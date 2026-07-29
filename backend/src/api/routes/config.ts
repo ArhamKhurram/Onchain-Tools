@@ -1,7 +1,56 @@
 import { Router } from 'express';
+import { parseCallerKey, type CallerTier, type CallerTierEntry } from '@oct/shared';
 import { isHostedMode } from '../../storage/index.js';
 import type { RouterContext } from '../context.js';
 import { getUserId, safeError } from '../shared.js';
+
+const CALLER_TIERS: CallerTier[] = ['muted', 'normal', 'trusted'];
+/** Bounded so a client can't grow the config blob without limit. */
+const MAX_CALLER_TIER_ENTRIES = 2000;
+const MAX_CALLER_FIELD_LEN = 200;
+
+function trimTo(value: unknown, max: number): string {
+  return typeof value === 'string' ? value.slice(0, max) : '';
+}
+
+/**
+ * Caller tiers come straight from the client and are rendered back in the
+ * console, so validate rather than trusting the shape. Entries with an
+ * unparseable key or unknown tier are dropped, not coerced — a silently
+ * rewritten mute is worse than a missing one.
+ */
+function sanitizeCallerTiers(input: unknown): CallerTierEntry[] {
+  if (!Array.isArray(input)) return [];
+  const seen = new Set<string>();
+  const out: CallerTierEntry[] = [];
+
+  for (const raw of input.slice(0, MAX_CALLER_TIER_ENTRIES)) {
+    if (!raw || typeof raw !== 'object') continue;
+    const candidate = raw as Record<string, unknown>;
+
+    const key = trimTo(candidate.key, MAX_CALLER_FIELD_LEN);
+    if (!parseCallerKey(key)) continue;
+
+    const tier = candidate.tier as CallerTier;
+    if (!CALLER_TIERS.includes(tier)) continue;
+
+    const roomId = trimTo(candidate.roomId, MAX_CALLER_FIELD_LEN);
+    // One entry per (caller, scope); a later duplicate replaces the earlier one.
+    const dedupeKey = `${key}::${roomId}`;
+    if (seen.has(dedupeKey)) continue;
+    seen.add(dedupeKey);
+
+    out.push({
+      key,
+      displayName: trimTo(candidate.displayName, MAX_CALLER_FIELD_LEN) || key,
+      tier,
+      ...(roomId ? { roomId } : {}),
+      ...(candidate.note ? { note: trimTo(candidate.note, MAX_CALLER_FIELD_LEN) } : {}),
+    });
+  }
+
+  return out;
+}
 
 // Global config get/put plus settings export/import.
 export function createConfigRoutes(ctx: RouterContext): Router {
@@ -17,7 +66,7 @@ export function createConfigRoutes(ctx: RouterContext): Router {
 
   router.put('/config', async (req, res) => {
     const userId = getUserId(req);
-    const { globalHighlightedUsers, contractDetection, guildColors, dmColors, telegramColors, enabledGuilds, hiddenUsers, evmAddressColor, solAddressColor, openInDiscordApp, openInTelegramApp, messageSounds, soundSettings, channelSounds, pushover, missedRunner, contractLinkTemplates, contractClickAction, showFullContractAddress, autoOpenHighlightedContracts, signalConvergenceWindowMinutes, globalKeywordPatterns, keywordAlertsEnabled, desktopNotifications, toastAlertsEnabled, toastPosition, mentionsUserEnabled, mentionsRoleEnabled, mentionsHereEnabled, mentionsEveryoneEnabled, badgeClickAction, chattingEnabled, messageDisplay, compactModeAvatars, roleColors, mobileZoomScale, splitLayout, paneRoomIds, paneLocks, gridMirror, seenAnnouncements, discordProxyUrl, workspaceLayout, discordBotDm } = req.body;
+    const { globalHighlightedUsers, contractDetection, guildColors, dmColors, telegramColors, enabledGuilds, hiddenUsers, callerTiers, callerTierShowMuted, callerQualityRanking, evmAddressColor, solAddressColor, openInDiscordApp, openInTelegramApp, messageSounds, soundSettings, channelSounds, pushover, missedRunner, contractLinkTemplates, contractClickAction, showFullContractAddress, autoOpenHighlightedContracts, signalConvergenceWindowMinutes, globalKeywordPatterns, keywordAlertsEnabled, desktopNotifications, toastAlertsEnabled, toastPosition, mentionsUserEnabled, mentionsRoleEnabled, mentionsHereEnabled, mentionsEveryoneEnabled, badgeClickAction, chattingEnabled, messageDisplay, compactModeAvatars, roleColors, mobileZoomScale, splitLayout, paneRoomIds, paneLocks, gridMirror, seenAnnouncements, discordProxyUrl, workspaceLayout, discordBotDm } = req.body;
 
     // The Discord proxy only makes sense in local mode (the connection leaves the
     // user's own machine). In hosted mode the server IP is fixed, and honouring a
@@ -39,6 +88,9 @@ export function createConfigRoutes(ctx: RouterContext): Router {
       ...(telegramColors !== undefined && { telegramColors }),
       ...(enabledGuilds !== undefined && { enabledGuilds }),
       ...(hiddenUsers !== undefined && { hiddenUsers }),
+      ...(callerTiers !== undefined && { callerTiers: sanitizeCallerTiers(callerTiers) }),
+      ...(callerTierShowMuted !== undefined && { callerTierShowMuted: Boolean(callerTierShowMuted) }),
+      ...(callerQualityRanking !== undefined && { callerQualityRanking: Boolean(callerQualityRanking) }),
       ...(evmAddressColor !== undefined && { evmAddressColor }),
       ...(solAddressColor !== undefined && { solAddressColor }),
       ...(openInDiscordApp !== undefined && { openInDiscordApp }),

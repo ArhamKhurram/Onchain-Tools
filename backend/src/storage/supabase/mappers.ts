@@ -13,6 +13,9 @@ export const DEFAULT_SETTINGS: Omit<AppConfig, 'discordTokens' | 'rooms'> = {
   openInDiscordApp: false,
   openInTelegramApp: false,
   hiddenUsers: {},
+  callerTiers: [],
+  callerTierShowMuted: true,
+  callerQualityRanking: false,
   messageSounds: false,
   soundSettings: {
     highlight: { enabled: true, volume: 80, useCustom: false },

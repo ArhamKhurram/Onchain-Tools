@@ -39,6 +39,7 @@ import { sendPushover } from './utils/pushover.js';
 import { broadcastFrontendAlerts } from './utils/frontendAlerts.js';
 import { startFomoPoller } from './fomo/poller.js';
 import { startMissedRunnerPoller } from './alerts/missedRunnerPoller.js';
+import { startTokenPeakSampler } from './alerts/tokenPeakSampler.js';
 import type { DiscordMessage, PushoverConfig, FrontendMessage, ContractLinkTemplates } from './discord/types.js';
 import type { ContractEnrichmentPatch } from './utils/contractLog.js';
 
@@ -688,6 +689,11 @@ httpServer.listen(PORT, HOST, async () => {
   // account (FOMO_REFRESH_TOKEN) or Supabase, so this never crashes the server.
   startFomoPoller(wsServer);
   startMissedRunnerPoller(wsServer);
+
+  // Records token high-water market caps, which caller quality scores read.
+  // Runs in both modes — local keeps peaks in a JSON file so the desktop app
+  // scores callers too.
+  startTokenPeakSampler();
 
   // In-process Outpost Discord bot. Self-gates on DISCORD_BOT_TOKEN and swallows
   // its own failures, so it can never take the backend down.

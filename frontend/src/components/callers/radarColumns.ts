@@ -8,6 +8,7 @@ export type RadarColumnId =
   | 'mcAtCall'
   | 'mcNow'
   | 'mult'
+  | 'quality'
   | 'firstCaller';
 
 export const RADAR_COLUMN_ORDER: RadarColumnId[] = [
@@ -20,6 +21,7 @@ export const RADAR_COLUMN_ORDER: RadarColumnId[] = [
   'mcAtCall',
   'mcNow',
   'mult',
+  'quality',
   'firstCaller',
 ];
 
@@ -33,6 +35,7 @@ export const RADAR_COLUMN_LABELS: Record<RadarColumnId, string> = {
   mcAtCall: 'MC@call',
   mcNow: 'MC now',
   mult: '×',
+  quality: 'Caller',
   firstCaller: 'First caller',
 };
 

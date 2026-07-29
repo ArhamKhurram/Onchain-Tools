@@ -3,6 +3,8 @@ import { useAppStore } from '../stores/appStore';
 import { useThemeStore } from '../stores/themeStore';
 import Message from './Message';
 import ChatInput from './ChatInput';
+import { useCallerQuality } from '../hooks/useCallerQuality';
+import { callerKey } from '@oct/shared';
 import { Hash, MessageCircle, Settings, ArrowDown, Filter, EyeOff, X, Trash2, Eye, Search, ChevronUp, ChevronDown, Send, AtSign, GripVertical, Plus, Rows2, Columns2, ArrowLeft, ArrowRight, Lock, Unlock, ExternalLink } from 'lucide-react';
 
 const MAX_PANES = 4;
@@ -67,6 +69,8 @@ export default function ChatPane({ roomId, paneIndex, paneCount, editMode, varia
   const dmChannels = useAppStore((s) => s.dmChannels);
   const hideUser = useAppStore((s) => s.hideUser);
   const unhideUser = useAppStore((s) => s.unhideUser);
+  const setCallerTier = useAppStore((s) => s.setCallerTier);
+  const { qualityFor } = useCallerQuality();
   const setPaneRoom = useAppStore((s) => s.setPaneRoom);
   const swapPanes = useAppStore((s) => s.swapPanes);
   const addPane = useAppStore((s) => s.addPane);
@@ -886,6 +890,11 @@ export default function ChatPane({ roomId, paneIndex, paneCount, editMode, varia
                     onQuickReply={handleQuickReply}
                     chattingEnabled={chattingEnabled}
                     roleColors={config?.roleColors ?? true}
+                    callerQuality={qualityFor(
+                      callerKey(msg.source === 'telegram' ? 'telegram' : 'discord', msg.author.id),
+                      activeRoom ? [activeRoom.id] : [],
+                    )}
+                    onSetCallerTier={setCallerTier}
                   />
                 </div>
               );
