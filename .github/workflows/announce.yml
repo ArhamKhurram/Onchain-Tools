@@ -1,0 +1,56 @@
+name: Announce
+
+# Posts the newest CHANGELOG.md entry to the Discord announcements channel.
+#
+# Fires on pushes to main that touch CHANGELOG.md, and skips itself unless the
+# push actually ADDED a new `## <date>` section — so fixing a typo in an entry
+# that already shipped does not re-announce it to everyone.
+#
+# Requires two repo secrets:
+#   OCT_BOT_API_KEY  — same key the bot API already uses (backend env)
+#   OCT_API_BASE     — https://onchain-tools-production.up.railway.app
+#
+# Delivery goes through POST /api/v1/bot/announce on the running backend, which
+# posts via the already-connected bot client. No second Discord login, no webhook.
+
+on:
+  push:
+    branches: [main]
+    paths: ['CHANGELOG.md']
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: 'Print the payload without posting'
+        type: boolean
+        default: true
+      force:
+        description: 'Post even if the top entry is not new in this push (use for a backfill)'
+        type: boolean
+        default: false
+
+jobs:
+  announce:
+    name: Post changelog to Discord
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          # HEAD~1 must exist so the script can tell a new entry from an edit.
+          fetch-depth: 2
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Announce
+        env:
+          OCT_BOT_API_KEY: ${{ secrets.OCT_BOT_API_KEY }}
+          OCT_API_BASE: ${{ secrets.OCT_API_BASE }}
+          ANNOUNCE_LINK_URL: ${{ vars.ANNOUNCE_LINK_URL }}
+        run: |
+          FLAGS=""
+          if [ "${{ inputs.dry_run }}" = "true" ]; then FLAGS="$FLAGS --dry-run"; fi
+          if [ "${{ inputs.force }}" = "true" ]; then FLAGS="$FLAGS --force"; fi
+          node scripts/announce-changelog.mjs $FLAGS
