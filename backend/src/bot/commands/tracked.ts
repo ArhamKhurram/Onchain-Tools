@@ -50,7 +50,7 @@ export const tracked: BotCommand = {
 
   async execute(interaction) {
     // User-scoped data: always ephemeral so a tracked-trader list never leaks
-    // into a public channel (DISCORD_BOT_PLAN.md §2d).
+    // into a public channel (see docs/architecture/discord-bot.md).
     await interaction.deferReply({ flags: MessageFlags.Ephemeral });
 
     try {

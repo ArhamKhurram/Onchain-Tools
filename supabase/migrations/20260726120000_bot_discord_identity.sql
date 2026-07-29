@@ -2,7 +2,7 @@
 --
 -- Users who signed in with Discord already have their Discord identity stored by
 -- Supabase in auth.identities, so the bot needs no linking flow (see
--- DISCORD_BOT_PLAN.md §2c). PostgREST does not expose the auth schema, so this
+-- docs/architecture/discord-bot.md). PostgREST does not expose the auth schema, so this
 -- SECURITY DEFINER wrapper gives the backend (service role only) a narrow
 -- read: one Discord id in, one user id out. It exposes nothing else about
 -- auth.identities.

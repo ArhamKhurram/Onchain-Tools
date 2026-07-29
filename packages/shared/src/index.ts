@@ -1,7 +1,7 @@
 // @oct/shared — code shared across the OCT workspaces (backend, frontend,
 // fomo-worker). Keyword matching + contract detection logic, plus the canonical
 // shared TYPE definitions (previously duplicated between backend and frontend).
-// See REFACTOR.md / IDEAS.md.
+// See docs/architecture/tech-debt.md and docs/roadmap/.
 export { matchKeywords } from './keyword.js';
 export {
   SOL_ADDRESS_REGEX,
@@ -19,7 +19,7 @@ export type { ContractDetectionResult } from './contract.js';
 export { processDiscordMessage } from './message.js';
 export type { MessageProcessorContext, MessageGateway } from './message.js';
 
-// Bot API contract (DISCORD_BOT_PLAN.md).
+// Bot API contract (see docs/architecture/discord-bot.md).
 export type {
   BotNetworkId,
   BotTokenInfo,
@@ -34,7 +34,7 @@ export type {
   BotWalletProfile,
 } from './bot.js';
 
-// Caller quality — slop filter + earned ranking (IDEAS.md).
+// Caller quality — slop filter + earned ranking (docs/roadmap/).
 export {
   MIN_RATED_CALLS,
   SLOP_MULTIPLE,

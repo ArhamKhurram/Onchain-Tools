@@ -4,7 +4,7 @@ import { commands } from './commands/index.js';
 import { createAlertDmListener } from './alerts.js';
 import { handleInteraction } from './interactions.js';
 
-// In-process Outpost bot (DISCORD_BOT_PLAN.md §1). Runs inside the OCT backend
+// In-process Outpost bot (see docs/architecture/discord-bot.md). Runs inside the OCT backend
 // rather than as a separate service: command handlers call bot/service.ts
 // directly, so there is no HTTP hop and no second deploy target.
 //

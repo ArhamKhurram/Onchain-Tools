@@ -8,7 +8,7 @@
  * poller: missed-runner only walks users who have that alert *enabled* and only
  * over their configured lookback, so piggybacking would silently make caller
  * scores depend on an unrelated alert setting. Same cadence, separate concerns —
- * consistent with the "keep the signals separate" principle in IDEAS.md.
+ * consistent with the "keep the signals separate" principle — see docs/roadmap/.
  */
 
 import { getFomoServiceClient } from '../fomo/store.js';

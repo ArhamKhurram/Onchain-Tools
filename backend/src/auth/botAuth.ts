@@ -1,7 +1,7 @@
 import { timingSafeEqual } from 'crypto';
 import type { Request, Response, NextFunction } from 'express';
 
-// Machine auth for the /api/v1/bot surface (DISCORD_BOT_PLAN.md §2b).
+// Machine auth for the /api/v1/bot surface (see docs/architecture/discord-bot.md).
 // One shared service secret — the fomo-worker pattern — validated with a
 // constant-time compare. Mounted ONLY on /api/v1/bot, before the user-auth
 // /api router, so bot traffic never touches Supabase JWT verification.
