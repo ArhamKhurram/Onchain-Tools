@@ -62,7 +62,8 @@ export default function FomoTradeFeed({ embedded = false }: { embedded?: boolean
             </div>
             <p className="text-oct-text font-bold uppercase mb-1">Waiting for activity</p>
             <p className="text-sm text-oct-muted max-w-xs">
-              Trades from the traders you track appear here live while you're connected.
+              Trades from the traders you track appear here live, and the last 24 hours
+              are replayed when you open the console.
             </p>
           </div>
         ) : (
@@ -129,7 +130,7 @@ function FomoTradeRow({ trade }: { trade: FomoTrade }) {
       </div>
       <div className="text-right shrink-0">
         <div className="font-mono font-bold text-oct-text tabular-nums">{formatUsd(trade.usdValue)}</div>
-        <div className="text-xs text-oct-muted font-mono tabular-nums">{formatTime(trade.receivedAt)}</div>
+        <div className="text-xs text-oct-muted font-mono tabular-nums">{formatTime(trade.occurredAt)}</div>
       </div>
     </li>
   );

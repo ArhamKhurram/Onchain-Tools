@@ -38,6 +38,7 @@ import type { MessageProcessorContext } from './utils/messageProcessor.js';
 import { sendPushover } from './utils/pushover.js';
 import { broadcastFrontendAlerts } from './utils/frontendAlerts.js';
 import { startFomoPoller } from './fomo/poller.js';
+import { startFomoRetentionSweeper } from './fomo/retention.js';
 import { startMissedRunnerPoller } from './alerts/missedRunnerPoller.js';
 import { startTokenPeakSampler } from './alerts/tokenPeakSampler.js';
 import type { DiscordMessage, PushoverConfig, FrontendMessage, ContractLinkTemplates } from './discord/types.js';
@@ -688,6 +689,9 @@ httpServer.listen(PORT, HOST, async () => {
   // Global FOMO fan-out poller. Self-gates: idle without a shared FOMO service
   // account (FOMO_REFRESH_TOKEN) or Supabase, so this never crashes the server.
   startFomoPoller(wsServer);
+  // Keeps the FOMO trade log from growing without bound; the console only ever
+  // replays the last day of it.
+  startFomoRetentionSweeper();
   startMissedRunnerPoller(wsServer);
 
   // Records token high-water market caps, which caller quality scores read.

@@ -20,12 +20,25 @@ export interface FomoTradeEvent {
   tradeId: string | null;
 }
 
-// A trade held in client state. The WS payload carries no timestamp, so the
-// arrival time is stamped on receipt; `key` gives React a stable list key even
-// when tradeId is missing (backend can't dedup those, but we still render them).
+// A trade held in client state.
+//
+// `occurredAt` is when the trade actually happened and is what the feed renders.
+// Live WS frames carry no timestamp, so for those it is stamped on arrival —
+// effectively the trade time, since the poller pushes within seconds. Replayed
+// history carries the stored event's real time, which matters: without it a
+// day's backfill would all render at the moment you reloaded the page.
+//
+// `key` gives React a stable list key even when tradeId is missing (the backend
+// can't dedup those, but we still render them).
 export interface FomoTrade extends FomoTradeEvent {
+  occurredAt: number;
   receivedAt: number;
   key: string;
+}
+
+/** A trade replayed from GET /api/fomo/trades. */
+export interface FomoTradeHistoryEntry extends FomoTradeEvent {
+  occurredAt: number;
 }
 
 export interface FomoLeaderboardEntry {
