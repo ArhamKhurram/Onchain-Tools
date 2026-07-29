@@ -1,5 +1,5 @@
 // Bot-facing DTO contract — shared by the in-process Outpost bot handlers and
-// the /api/v1/bot HTTP routes (see DISCORD_BOT_PLAN.md). These are deliberately
+// the /api/v1/bot HTTP routes (see docs/architecture/discord-bot.md). These are deliberately
 // bot-shaped: short, embed-friendly fields, never raw internal types.
 
 /** FOMO network ids the bot understands (subset OCT supports). */

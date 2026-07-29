@@ -4,7 +4,7 @@
 // frontend/src/discord/contractDetect.ts, and frontend/src/utils/contractUrl.ts,
 // which were byte-identical for these units. The platform/template types below
 // are local shared copies of the ones in backend/src/discord/types.ts and
-// frontend/src/types/index.ts (identical). See REFACTOR.md / IDEAS.md.
+// frontend/src/types/index.ts (identical). See docs/architecture/tech-debt.md and docs/roadmap/.
 
 import type { ContractLinkTemplates } from './types.js';
 

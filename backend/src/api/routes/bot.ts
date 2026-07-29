@@ -13,7 +13,7 @@ import { AnnounceError, postAnnouncement, type AnnounceKind } from '../../bot/an
 import { deliverReleaseNotes } from '../../bot/releaseNotes.js';
 import { getBotClient } from '../../bot/index.js';
 
-// Versioned bot API (DISCORD_BOT_PLAN.md §3) — mounted at /api/v1/bot behind
+// Versioned bot API (see docs/architecture/discord-bot.md) — mounted at /api/v1/bot behind
 // requireBotAuth, BEFORE the user-auth /api router. Thin adapters over
 // bot/service.ts; responses are the @oct/shared bot DTOs.
 

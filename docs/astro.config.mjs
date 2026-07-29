@@ -32,6 +32,7 @@ export default defineConfig({
       sidebar: [
         { label: 'Getting Started', autogenerate: { directory: 'getting-started' } },
         { label: 'Architecture', autogenerate: { directory: 'architecture' } },
+        { label: 'Roadmap', autogenerate: { directory: 'roadmap' } },
         { label: 'Decisions (ADRs)', autogenerate: { directory: 'adr' }, collapsed: true },
         { label: 'API Reference', autogenerate: { directory: 'api' } },
         { label: 'Data Model', autogenerate: { directory: 'data' } },

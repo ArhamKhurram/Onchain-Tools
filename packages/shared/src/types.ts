@@ -2,7 +2,7 @@
 // frontend). These were previously duplicated (and drifting) between
 // backend/src/discord/types.ts and frontend/src/types/index.ts (plus a few
 // smaller files). They are moved here VERBATIM so both consumers import one
-// canonical copy. See REFACTOR.md / IDEAS.md.
+// canonical copy. See docs/architecture/tech-debt.md and docs/roadmap/.
 
 // ---------------------------------------------------------------------------
 // Discord raw gateway/REST types
@@ -184,7 +184,7 @@ export type ToastPosition =
   | 'center';
 
 /**
- * Outpost bot DM alerts. Personal DMs only (DISCORD_BOT_PLAN.md §2c) — the bot
+ * Outpost bot DM alerts. Personal DMs only (see docs/architecture/discord-bot.md) — the bot
  * sends to the Discord account linked to this OCT account, so no channel config.
  *
  * NOTE: signal-convergence is intentionally absent. Those alerts are generated
