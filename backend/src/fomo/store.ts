@@ -6,12 +6,13 @@
 // client, mirroring the pattern already used in api/routes.ts.
 
 import { createClient, type SupabaseClient } from '@supabase/supabase-js';
+import type { Database } from '@oct/shared';
 
 // FomoTrackedUserRow is now canonical in @oct/shared as FomoTrackedUser;
 // re-export under the backend's historical name so importers keep working.
 export type { FomoTrackedUser as FomoTrackedUserRow } from '@oct/shared';
 
-let _client: SupabaseClient | null = null;
+let _client: SupabaseClient<Database> | null = null;
 
 function resolveSupabaseServiceConfig(): { url: string; key: string } | null {
   const url = process.env.SUPABASE_URL?.trim();
@@ -28,11 +29,11 @@ function resolveSupabaseServiceConfig(): { url: string; key: string } | null {
  * fomo_* table access. Returns null when Supabase is not configured (e.g. local
  * mode), so callers can degrade gracefully instead of throwing.
  */
-export function getFomoServiceClient(): SupabaseClient | null {
+export function getFomoServiceClient(): SupabaseClient<Database> | null {
   if (_client) return _client;
   const cfg = resolveSupabaseServiceConfig();
   if (!cfg) return null;
-  _client = createClient(cfg.url, cfg.key, { auth: { persistSession: false } });
+  _client = createClient<Database>(cfg.url, cfg.key, { auth: { persistSession: false } });
   return _client;
 }
 

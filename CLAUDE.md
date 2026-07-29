@@ -42,7 +42,8 @@ Root `package.json` declares
 - `fomo-worker/` (`oct-fomo-worker`) — always-on Playwright worker for the
   Cloudflare-gated FOMO API → **VPS**. Its `dist/` is gitignored; `src/` is tracked.
 - `desktop/` — Electron shell bundling backend + frontend.
-- `supabase/` — migrations + generated `database.types.ts`.
+- `supabase/` — migrations. (The generated Supabase types live in
+  `packages/shared/src/database.types.ts` so backend + frontend can import them.)
 - `scripts/` — `dev-local.mjs` (runs the three dev servers) and Vercel output merge.
 
 ### Commands (from repo root)

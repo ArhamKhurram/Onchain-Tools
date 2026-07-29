@@ -1,4 +1,5 @@
 import { createClient } from '@supabase/supabase-js';
+import type { Database, Json } from '@oct/shared';
 import { isHostedMode } from './index.js';
 import type { TokenEnrichment } from '../utils/rickEmbedParser.js';
 import type { EnrichmentSource } from '../utils/enrichmentMerge.js';
@@ -41,7 +42,7 @@ function serviceClient() {
   const url = process.env.SUPABASE_URL;
   const key = process.env.SUPABASE_SERVICE_KEY;
   if (!url || !key) throw new Error('Supabase service credentials required');
-  return createClient(url, key, { auth: { persistSession: false } });
+  return createClient<Database>(url, key, { auth: { persistSession: false } });
 }
 
 function formatCompact(n: number): string {
@@ -154,7 +155,9 @@ export async function upsertCatalogFromEnrichment(
     enriched_at: now,
     source: enrichment.enrichmentSource,
     confidence: options?.confidence ?? null,
-    raw: options?.raw ?? null,
+    // The callers pass provider payloads that are JSON by construction; the
+    // column is jsonb, so narrow the `unknown` at this one seam.
+    raw: (options?.raw ?? null) as Json,
     updated_at: now,
   };
 
