@@ -2,7 +2,7 @@
 
 All notable changes to Trenchcord are documented here.
 
-## 2026-07-30
+## 2026-07-29
 
 ### Added
 - **Caller quality — the slop filter** — rank contract calls by who sent them. Two layers:
@@ -15,8 +15,6 @@ All notable changes to Trenchcord are documented here.
 - Muted callers are collapsed behind a counter, not deleted, and still count toward Radar mention totals — a caller you've written off can still be first on a runner, and you should be able to find that out.
 - Caller quality is a display and filter layer only. It is deliberately **not** folded into the convergence score: two independent signals agreeing is only meaningful while they stay independent.
 - New Supabase migration: `20260729120000_token_peaks.sql`.
-
-## 2026-07-29
 
 ### Fixed
 - **MC@call on Telegram scans** — Telegram calls now record a market cap. The DexScreener/GMGN fallback stripped FDV from its patch because that field was reserved for Rick embeds, and Rick only exists on Discord — so every TG scan showed a blank FDV in the contract feed and a `—` in the Radar MC@call and × columns. A Rick embed is still authoritative and now overrides a fallback reading if it lands late
