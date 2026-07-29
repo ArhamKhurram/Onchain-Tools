@@ -1,0 +1,76 @@
+name: Draft release notes
+
+# Fires the "Release notes drafter" Claude routine when a PR merges into main.
+#
+# The routine's API trigger does not fire itself — it exposes a URL that
+# something has to call. This is that something. The routine then reads the PR
+# and posts its draft back as a PR comment.
+#
+# Requires one repo secret:
+#   ROUTINE_FIRE_TOKEN — generated in the routine's "Call via API" trigger
+#
+# Deliberately does NOT announce anything. The Discord post comes from
+# CHANGELOG.md via announce.yml, so there is exactly one source of truth for
+# what shipped; this only produces a draft for a human to accept.
+
+on:
+  pull_request:
+    types: [closed]
+    branches: [main]
+  workflow_dispatch:
+    inputs:
+      pr_number:
+        description: 'PR number to draft notes for (manual test)'
+        required: true
+        type: string
+
+concurrency:
+  group: draft-release-notes-${{ github.event.pull_request.number || inputs.pr_number }}
+  cancel-in-progress: false
+
+jobs:
+  fire:
+    name: Fire the routine
+    # `closed` also fires for PRs closed without merging — those shipped nothing.
+    if: github.event_name == 'workflow_dispatch' || github.event.pull_request.merged == true
+    runs-on: ubuntu-latest
+    steps:
+      - name: Fire routine
+        env:
+          FIRE_URL: https://api.anthropic.com/v1/claude_code/routines/trig_01CWbU6L5ZPNNGsy8FmR4ZRg/fire
+          TOKEN: ${{ secrets.ROUTINE_FIRE_TOKEN }}
+          PR_NUMBER: ${{ github.event.pull_request.number || inputs.pr_number }}
+          PR_TITLE: ${{ github.event.pull_request.title }}
+          REPO: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+
+          if [ -z "${TOKEN:-}" ]; then
+            echo "::error::ROUTINE_FIRE_TOKEN is not set on this repo."
+            exit 1
+          fi
+
+          PROMPT="Pull request #${PR_NUMBER} was just merged into main on ${REPO}"
+          if [ -n "${PR_TITLE:-}" ]; then PROMPT="${PROMPT}: ${PR_TITLE}"; fi
+          PROMPT="${PROMPT}. Draft the release-notes entry and post it as a comment on that PR."
+
+          BODY=$(jq -n --arg p "$PROMPT" '{prompt: $p}')
+          echo "Firing routine for PR #${PR_NUMBER}"
+
+          # Capture status and body separately so a non-2xx prints the API's own
+          # error instead of failing with no explanation.
+          HTTP=$(curl -sS -o response.txt -w '%{http_code}' -X POST "$FIRE_URL" \
+            -H "Authorization: Bearer ${TOKEN}" \
+            -H 'Content-Type: application/json' \
+            -d "$BODY")
+
+          echo "HTTP ${HTTP}"
+          echo "--- response ---"
+          cat response.txt || true
+          echo
+          echo "----------------"
+
+          if [ "$HTTP" -lt 200 ] || [ "$HTTP" -ge 300 ]; then
+            echo "::error::Routine fire failed with HTTP ${HTTP} (see response above)."
+            exit 1
+          fi
