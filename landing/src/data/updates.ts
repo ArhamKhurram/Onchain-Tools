@@ -7,6 +7,29 @@ export interface UpdateEntry {
 /** Public update log — newest first. */
 export const UPDATES: UpdateEntry[] = [
   {
+    date: '2026-07-30',
+    fixed: [
+      '**FOMO Live no longer starts empty** — the trade feed was live-only, so a reload wiped it and you saw nothing but whatever came in since. The trades were stored the whole time; nothing was reading them back. Your last 24 hours now replay on load, with live trades merging in on top',
+      '**Replayed trades show their real time** — a day of backfilled trades used to render as if it all happened the moment you refreshed',
+      '**No more phantom convergences on reload** — signal convergence matched on when a trade *reached* you rather than when it happened, so replayed history would have collided with anything called around page load',
+    ],
+  },
+  {
+    date: '2026-07-29',
+    added: [
+      '**Caller quality — the slop filter** — rank contract calls by who sent them. Right-click any name to mute, normal, or trust them, globally or in one room only, so a caller can be slop in `#prosp` and fine everywhere else',
+      '**Earned caller scores** — every caller is scored on their own calls: the market cap when *they* posted, against the highest that token has reached since. Five people calling the same CA called it at five different market caps, and the scoreboard knows the difference. Callers stay unrated until they have 10 scored calls, so nobody gets branded off three data points',
+      '**Quality on the feed and Radar** — the contract feed and Radar can filter and rank by caller; Radar gets a sortable `Caller` column. The chat feed just colours the username — reordering chat would break reply context',
+      '**Settings → Caller Quality** — manage your tiers and see the scoreboard: median multiple, 2x hit rate, and how many calls each score rests on',
+    ],
+    fixed: [
+      '**Muted never means invisible** — muted callers collapse behind a counter you can expand, and still count toward Radar mention totals. A caller you have written off can still be first on a runner, and you should be able to find that out',
+      '**MC@call on Telegram scans** — Telegram calls now record a market cap. Enrichment fallbacks were dropping it because that field was reserved for Rick embeds, which only exist on Discord, so every TG scan showed a blank FDV in the contract feed and a `—` in the Radar MC@call and × columns. A Rick embed still wins the moment it lands',
+      '**Telegram no longer goes quiet** — a network blip, a laptop sleep, or an idle connection could silently kill the update stream, so messages just stopped arriving until you restarted. The connection is now health-checked every minute and rebuilt with backoff, and the status dot reflects the real state instead of staying green',
+      '**Self-hosted lockdown** — the local backend listened on every network interface with no authentication, which on shared or public Wi-Fi was enough for someone to pull your Discord tokens and Telegram sessions straight off the port. It now binds to your machine only. Set `OCT_HOST` if you deliberately need LAN access',
+    ],
+  },
+  {
     date: '2026-07-25',
     added: [
       '**FOMO live trade feed** — individual buy/sell swaps from traders you track stream to the live feed over WebSocket; the backend polls each FOMO wallet once and fans out to every subscriber',

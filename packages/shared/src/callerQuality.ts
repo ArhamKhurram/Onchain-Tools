@@ -1,0 +1,271 @@
+/**
+ * Caller quality — the slop filter (IDEAS.md "Caller quality").
+ *
+ * Two independent layers, both resolved here so backend and frontend can never
+ * disagree about what a caller is worth:
+ *
+ *  1. **Manual tier** — you mark a caller muted / normal / trusted, globally or
+ *     per room. Always wins, because it's a deliberate statement.
+ *  2. **Earned band** — derived from how that caller's own past calls actually
+ *     performed. Only shown once there's enough history to mean anything.
+ *
+ * This module stays a *display and filter* input. It must never be folded into
+ * the convergence score — see the design-principle note in IDEAS.md. Two
+ * independent signals agreeing is only meaningful while they stay independent.
+ */
+
+import type { ContractEntry, CallerTier, CallerTierEntry } from './types.js';
+
+export type { CallerTier, CallerTierEntry };
+
+export type CallerPlatform = 'discord' | 'telegram';
+
+/** Earned quality, derived from call history. `unrated` = not enough history. */
+export type CallerBand = 'unrated' | 'slop' | 'mixed' | 'solid' | 'elite';
+
+/** Below this many rated calls a caller stays `unrated` rather than showing noise. */
+export const MIN_RATED_CALLS = 10;
+
+/** A call that never cleared this multiple counts as slop. */
+export const SLOP_MULTIPLE = 1.2;
+
+export function callerKey(platform: CallerPlatform, authorId: string): string {
+  return `${platform}:${authorId}`;
+}
+
+export function parseCallerKey(key: string): { platform: CallerPlatform; authorId: string } | null {
+  const idx = key.indexOf(':');
+  if (idx <= 0) return null;
+  const platform = key.slice(0, idx);
+  const authorId = key.slice(idx + 1);
+  if (platform !== 'discord' && platform !== 'telegram') return null;
+  if (!authorId) return null;
+  return { platform, authorId };
+}
+
+/**
+ * Resolve the manual tier for a caller in a given context.
+ *
+ * A room-scoped entry beats a global one, so "slop in #prosp, fine elsewhere"
+ * is expressible. `roomIds` is the set of rooms the message/contract landed in —
+ * a contract can belong to several, and any room-scoped mute applies.
+ */
+export function resolveCallerTier(
+  entries: CallerTierEntry[] | undefined,
+  key: string,
+  roomIds: string[] = [],
+): CallerTier {
+  if (!entries?.length) return 'normal';
+
+  const forCaller = entries.filter((e) => e.key === key);
+  if (forCaller.length === 0) return 'normal';
+
+  const roomSet = new Set(roomIds);
+  const scoped = forCaller.filter((e) => e.roomId && roomSet.has(e.roomId));
+  if (scoped.length > 0) {
+    // Several rooms can match at once; the most restrictive wins so a mute is
+    // never silently overridden by a trust in another room.
+    return scoped.some((e) => e.tier === 'muted')
+      ? 'muted'
+      : scoped.some((e) => e.tier === 'trusted')
+        ? 'trusted'
+        : 'normal';
+  }
+
+  const global = forCaller.find((e) => !e.roomId);
+  return global?.tier ?? 'normal';
+}
+
+// ---------------------------------------------------------------------------
+// Earned score
+// ---------------------------------------------------------------------------
+
+/** One scored call: the caller's own MC@call against the token's peak since. */
+export interface RatedCall {
+  address: string;
+  /** peakMc / mcAtCall. Only present when both numbers are usable. */
+  multiple: number;
+  timestamp: string;
+}
+
+export interface CallerScore {
+  key: string;
+  displayName: string;
+  /** Every call we have, including ones we couldn't rate. */
+  calls: number;
+  /** Calls with a usable MC@call *and* a peak — the scoring sample. */
+  rated: number;
+  medianMultiple?: number;
+  bestMultiple?: number;
+  hitRate2x?: number;
+  hitRate5x?: number;
+  /** Share of rated calls that never cleared SLOP_MULTIPLE. */
+  slopRate?: number;
+  callsPerDay?: number;
+  band: CallerBand;
+}
+
+export function median(values: number[]): number | undefined {
+  if (values.length === 0) return undefined;
+  const sorted = [...values].sort((a, b) => a - b);
+  const mid = Math.floor(sorted.length / 2);
+  return sorted.length % 2 === 0 ? (sorted[mid - 1] + sorted[mid]) / 2 : sorted[mid];
+}
+
+/**
+ * Band a caller from their rates.
+ *
+ * Hit rate leads because it answers the question that matters — did their calls
+ * actually run — and slop rate demotes, so someone who lands one 50x in a sea of
+ * zeros doesn't read as elite off the median alone.
+ */
+export function bandFromRates(rated: number, hitRate2x: number, slopRate: number): CallerBand {
+  if (rated < MIN_RATED_CALLS) return 'unrated';
+  if (slopRate >= 0.8 || hitRate2x < 0.05) return 'slop';
+  if (hitRate2x >= 0.4 && slopRate <= 0.4) return 'elite';
+  if (hitRate2x >= 0.2 && slopRate <= 0.6) return 'solid';
+  return 'mixed';
+}
+
+export function scoreCaller(
+  key: string,
+  displayName: string,
+  calls: number,
+  ratedCalls: RatedCall[],
+  windowDays: number,
+): CallerScore {
+  const rated = ratedCalls.length;
+  const base: CallerScore = { key, displayName, calls, rated, band: 'unrated' };
+  if (windowDays > 0) base.callsPerDay = calls / windowDays;
+  if (rated === 0) return base;
+
+  const multiples = ratedCalls.map((c) => c.multiple);
+  const hits2x = multiples.filter((m) => m >= 2).length / rated;
+  const hits5x = multiples.filter((m) => m >= 5).length / rated;
+  const slop = multiples.filter((m) => m < SLOP_MULTIPLE).length / rated;
+
+  return {
+    ...base,
+    medianMultiple: median(multiples),
+    bestMultiple: Math.max(...multiples),
+    hitRate2x: hits2x,
+    hitRate5x: hits5x,
+    slopRate: slop,
+    band: bandFromRates(rated, hits2x, slop),
+  };
+}
+
+export function contractCallerKey(entry: ContractEntry): string {
+  const platform: CallerPlatform =
+    entry.source === 'telegram' || entry.messageId.startsWith('tg_') ? 'telegram' : 'discord';
+  return callerKey(platform, entry.authorId);
+}
+
+/** Peak MC seen for an address since it was first called, keyed lowercase. */
+export type PeakLookup = (address: string) => number | undefined;
+
+/**
+ * Turn a user's contract log into per-caller scores.
+ *
+ * Two things this deliberately does:
+ *
+ * - **Attributes per row, not per token.** Five people calling the same CA
+ *   called it at five different market caps; each is scored against their own
+ *   row's `fdvAtCall`, never the token's earliest. (Telegram rows only started
+ *   carrying `fdvAtCall` with the Jul 29 MC@call fix — before that every TG
+ *   caller scored as unrated.)
+ * - **Counts a caller/token pair once.** Posting the same CA ten times is one
+ *   call, otherwise spamming inflates the sample it's judged on.
+ */
+export function buildCallerScores(
+  contracts: ContractEntry[],
+  peakFor: PeakLookup,
+  windowDays: number,
+): CallerScore[] {
+  interface Acc {
+    displayName: string;
+    /** address -> that caller's earliest row for it */
+    firstByAddress: Map<string, ContractEntry>;
+  }
+  const byCaller = new Map<string, Acc>();
+
+  for (const entry of contracts) {
+    if (!entry.authorId) continue;
+    const key = contractCallerKey(entry);
+    let acc = byCaller.get(key);
+    if (!acc) {
+      acc = { displayName: entry.authorName, firstByAddress: new Map() };
+      byCaller.set(key, acc);
+    }
+    if (entry.authorName) acc.displayName = entry.authorName;
+
+    const addr = entry.address.toLowerCase();
+    const prior = acc.firstByAddress.get(addr);
+    if (!prior || new Date(entry.timestamp).getTime() < new Date(prior.timestamp).getTime()) {
+      acc.firstByAddress.set(addr, entry);
+    }
+  }
+
+  const out: CallerScore[] = [];
+  for (const [key, acc] of byCaller) {
+    const ratedCalls: RatedCall[] = [];
+    for (const [addr, entry] of acc.firstByAddress) {
+      const mcAtCall = entry.fdvAtCall;
+      if (mcAtCall == null || mcAtCall <= 0) continue;
+      const peak = peakFor(addr);
+      if (peak == null || peak <= 0) continue;
+      ratedCalls.push({
+        address: entry.address,
+        // A peak below the call is possible when the call itself was the top;
+        // floor at the call so a flat token reads as 1x, not a negative signal.
+        multiple: Math.max(peak, mcAtCall) / mcAtCall,
+        timestamp: entry.timestamp,
+      });
+    }
+    out.push(scoreCaller(key, acc.displayName, acc.firstByAddress.size, ratedCalls, windowDays));
+  }
+
+  return out.sort((a, b) => b.rated - a.rated || b.calls - a.calls);
+}
+
+// ---------------------------------------------------------------------------
+// Display + ordering
+// ---------------------------------------------------------------------------
+
+/**
+ * What a row should actually show, once the manual tier has had its say.
+ * A manual tier is a deliberate statement and overrides the earned band.
+ */
+export function effectiveBand(tier: CallerTier, band: CallerBand | undefined): CallerBand {
+  if (tier === 'muted') return 'slop';
+  if (tier === 'trusted') return 'elite';
+  return band ?? 'unrated';
+}
+
+const BAND_RANK: Record<CallerBand, number> = {
+  elite: 4,
+  solid: 3,
+  mixed: 2,
+  unrated: 1,
+  slop: 0,
+};
+
+/**
+ * Sort weight for the contract feed and Radar. Higher floats up.
+ * A manual tier pins the extremes so an explicit trust always outranks an
+ * earned band, and a mute always sinks.
+ */
+export function callerRank(tier: CallerTier, band: CallerBand | undefined): number {
+  if (tier === 'trusted') return 100;
+  if (tier === 'muted') return -100;
+  return BAND_RANK[band ?? 'unrated'];
+}
+
+/** Tailwind-agnostic colour tokens; the console maps these to its palette. */
+export const BAND_LABELS: Record<CallerBand, string> = {
+  elite: 'Elite',
+  solid: 'Solid',
+  mixed: 'Mixed',
+  unrated: 'Unrated',
+  slop: 'Slop',
+};

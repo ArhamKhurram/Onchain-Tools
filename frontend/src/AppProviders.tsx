@@ -40,6 +40,7 @@ export default function AppProviders({ children }: { children: React.ReactNode }
   const fetchConfig = useAppStore((s) => s.fetchConfig);
   const fetchDMChannels = useAppStore((s) => s.fetchDMChannels);
   const fetchContracts = useAppStore((s) => s.fetchContracts);
+  const loadFomoTradeHistory = useAppStore((s) => s.loadFomoTradeHistory);
   const previewMode = useAppStore((s) => s.previewMode);
   const rooms = useAppStore((s) => s.rooms);
   const setActiveRoom = useAppStore((s) => s.setActiveRoom);
@@ -76,8 +77,11 @@ export default function AppProviders({ children }: { children: React.ReactNode }
     if (isHostedMode && !isAuthenticated) return;
     if (authStatus?.configured || previewMode || isAuthenticated) {
       fetchContracts();
+      // Replay the last 24h so the FOMO feed isn't empty on every reload; live
+      // WS frames merge in on top. No-ops without FOMO storage configured.
+      void loadFomoTradeHistory();
     }
-  }, [ready, isAuthenticated, authStatus?.configured, previewMode, fetchContracts]);
+  }, [ready, isAuthenticated, authStatus?.configured, previewMode, fetchContracts, loadFomoTradeHistory]);
 
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {

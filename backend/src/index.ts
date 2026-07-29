@@ -30,7 +30,7 @@ import { UserGatewayPool } from './gateway/userGatewayPool.js';
 import { buildContractUrl, detectEvmChainFromContent, extractEvmChainFromGmgnLinks, resolveEvmChainFromApi } from './utils/contract.js';
 import { tryParseTokenEnrichment, buildRickReplyContext } from './utils/rickEmbedParser.js';
 import { enrichToken, persistEnrichment } from './utils/tokenSnapshot.js';
-import { needsMetadataFallback, metadataOnlyEnrichmentPatch } from './utils/enrichmentMerge.js';
+import { needsMetadataFallback } from './utils/enrichmentMerge.js';
 import { cacheDiscordMessage } from './utils/messageReplyCache.js';
 import type { TokenEnrichment } from './utils/rickEmbedParser.js';
 import { processDiscordMessage } from './utils/messageProcessor.js';
@@ -38,13 +38,24 @@ import type { MessageProcessorContext } from './utils/messageProcessor.js';
 import { sendPushover } from './utils/pushover.js';
 import { broadcastFrontendAlerts } from './utils/frontendAlerts.js';
 import { startFomoPoller } from './fomo/poller.js';
+import { startFomoRetentionSweeper } from './fomo/retention.js';
 import { startMissedRunnerPoller } from './alerts/missedRunnerPoller.js';
+import { startTokenPeakSampler } from './alerts/tokenPeakSampler.js';
 import type { DiscordMessage, PushoverConfig, FrontendMessage, ContractLinkTemplates } from './discord/types.js';
 import type { ContractEnrichmentPatch } from './utils/contractLog.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const PORT = parseInt(process.env.PORT ?? '3001', 10);
 const LOCAL_USER_ID = 'local';
+
+// Local mode has no auth at all — every request is the implicit `local` user, and
+// the API hands out Discord tokens and Telegram session strings. Binding to every
+// interface would put those on the LAN, so local mode listens on loopback only.
+// Hosted mode runs behind Railway's proxy and must accept traffic on 0.0.0.0.
+// `OCT_HOST` is the deliberate opt-out for anyone self-hosting on a trusted network.
+const HOST = process.env.OCT_HOST
+  ?? process.env.TRENCHCORD_HOST
+  ?? (isHostedMode() ? '0.0.0.0' : '127.0.0.1');
 
 const gatewayPool = new UserGatewayPool();
 
@@ -115,8 +126,8 @@ function backfillEvmChainsFromApi(
   }
 }
 
-function enrichmentToPatch(e: TokenEnrichment, opts?: { metadataOnly?: boolean }): ContractEnrichmentPatch {
-  const patch: ContractEnrichmentPatch = {
+function enrichmentToPatch(e: TokenEnrichment): ContractEnrichmentPatch {
+  return {
     tokenName: e.tokenName,
     tokenSymbol: e.tokenSymbol,
     tokenPair: e.tokenPair,
@@ -133,7 +144,6 @@ function enrichmentToPatch(e: TokenEnrichment, opts?: { metadataOnly?: boolean }
     enrichmentSource: e.enrichmentSource,
     enrichedAt: new Date().toISOString(),
   };
-  return opts?.metadataOnly ? metadataOnlyEnrichmentPatch(patch) : patch;
 }
 
 async function applyTokenEnrichment(
@@ -141,13 +151,12 @@ async function applyTokenEnrichment(
   userId: string,
   enrichment: TokenEnrichment,
   options?: { channelId?: string; messageId?: string },
-  patchOpts?: { metadataOnly?: boolean },
 ): Promise<void> {
   const storage = getStorageProvider();
   const updated = await storage.enrichContract(
     userId,
     enrichment.address,
-    enrichmentToPatch(enrichment, patchOpts),
+    enrichmentToPatch(enrichment),
     options,
   );
   if (updated) {
@@ -160,7 +169,13 @@ async function applyTokenEnrichment(
   }
 }
 
-/** Schedule DexScreener fallback if Rick doesn't enrich within a few seconds. */
+/**
+ * Schedule a DexScreener/GMGN fallback if Rick doesn't enrich within a few seconds.
+ *
+ * The patch carries FDV: Telegram has no Rick, so this is the only place a
+ * Telegram scan ever gets an MC-at-call. `mergeEnrichmentPatch` keeps a Rick
+ * embed authoritative if one lands before or after this runs.
+ */
 function scheduleDexFallback(
   wsServer: WsServer,
   userId: string,
@@ -181,7 +196,7 @@ function scheduleDexFallback(
       if (!hit) return;
       const enrichment = await enrichToken(address, hit.evmChain);
       if (!enrichment) return;
-      await applyTokenEnrichment(wsServer, userId, enrichment, { channelId, messageId }, { metadataOnly: true });
+      await applyTokenEnrichment(wsServer, userId, enrichment, { channelId, messageId });
     } catch (err) {
       console.error('[App] Dex fallback failed:', (err as Error).message);
     }
@@ -664,14 +679,25 @@ app.get('*', (_req, res) => {
   res.sendFile(path.join(frontendDist, 'index.html'));
 });
 
-httpServer.listen(PORT, async () => {
-  console.log(`[App] Server running on http://localhost:${PORT}`);
-  console.log(`[App] Mode: ${isHostedMode() ? 'hosted' : 'local'}`);
+httpServer.listen(PORT, HOST, async () => {
+  console.log(`[App] Server running on http://${HOST === '0.0.0.0' ? 'localhost' : HOST}:${PORT}`);
+  console.log(`[App] Mode: ${isHostedMode() ? 'hosted' : 'local'} (bound to ${HOST})`);
+  if (!isHostedMode() && HOST !== '127.0.0.1' && HOST !== 'localhost') {
+    console.warn(`[App] WARNING: local mode is listening on ${HOST} with no authentication. Anyone who can reach this port can read your Discord tokens and Telegram sessions.`);
+  }
 
   // Global FOMO fan-out poller. Self-gates: idle without a shared FOMO service
   // account (FOMO_REFRESH_TOKEN) or Supabase, so this never crashes the server.
   startFomoPoller(wsServer);
+  // Keeps the FOMO trade log from growing without bound; the console only ever
+  // replays the last day of it.
+  startFomoRetentionSweeper();
   startMissedRunnerPoller(wsServer);
+
+  // Records token high-water market caps, which caller quality scores read.
+  // Runs in both modes — local keeps peaks in a JSON file so the desktop app
+  // scores callers too.
+  startTokenPeakSampler();
 
   // In-process Outpost Discord bot. Self-gates on DISCORD_BOT_TOKEN and swallows
   // its own failures, so it can never take the backend down.

@@ -4,13 +4,6 @@ export type EnrichmentSource = 'rick' | 'dexscreener' | 'gmgn';
 
 const SECONDARY_SOURCES = new Set<EnrichmentSource>(['dexscreener', 'gmgn']);
 
-export function metadataOnlyEnrichmentPatch(
-  patch: ContractEnrichmentPatch,
-): ContractEnrichmentPatch {
-  const { fdvAtCall: _fdv, fdvAtCallDisplay: _display, ...rest } = patch;
-  return rest;
-}
-
 export function needsMetadataFallback(entry: {
   tokenSymbol?: string;
   tokenName?: string;
@@ -23,13 +16,21 @@ function stripFdvFromPatch(patch: ContractEnrichmentPatch): ContractEnrichmentPa
   return rest;
 }
 
-/** Merge a secondary enrichment patch into an existing row without overwriting Rick metrics. */
+/**
+ * Merge an enrichment patch into an existing row.
+ *
+ * MC-at-call is a point-in-time number, so the rules are ordered by authority:
+ *  1. Rick already enriched the row -> a later DexScreener/GMGN patch may only
+ *     fill in metadata Rick left blank.
+ *  2. The patch is from Rick -> it wins outright, including FDV, because Rick's
+ *     embed is the call itself and a fallback may have gotten there first.
+ *  3. Otherwise -> keep whatever FDV we already recorded (the earliest reading
+ *     is the closest to the call), but let everything else refresh.
+ */
 export function mergeEnrichmentPatch(
   existing: ContractEnrichmentPatch & { enrichmentSource?: EnrichmentSource; fdvAtCall?: number; fdvAtCallDisplay?: string },
   patch: ContractEnrichmentPatch,
 ): ContractEnrichmentPatch {
-  const preserveFdv = existing.fdvAtCall != null;
-
   if (
     existing.enrichmentSource === 'rick'
     && patch.enrichmentSource
@@ -49,6 +50,7 @@ export function mergeEnrichmentPatch(
     ...patch,
     enrichedAt: patch.enrichedAt ?? new Date().toISOString(),
   };
-  if (preserveFdv) return stripFdvFromPatch(merged);
-  return merged;
+
+  if (patch.enrichmentSource === 'rick') return merged;
+  return existing.fdvAtCall != null ? stripFdvFromPatch(merged) : merged;
 }

@@ -190,8 +190,12 @@ if any `VITE_SUPABASE_SERVICE*` key is present (guards against leaking the servi
 ## Conventions & gotchas
 
 - **Dual env branding.** Vars are read as `OCT_*` with `TRENCHCORD_*` fallbacks
-  (`OCT_MODE`, `OCT_DATA_DIR`, `OCT_FRONTEND_DIST`). The project was renamed from
-  "Trenchcord" — keep both when touching env reads.
+  (`OCT_MODE`, `OCT_DATA_DIR`, `OCT_FRONTEND_DIST`, `OCT_HOST`). The project was renamed
+  from "Trenchcord" — keep both when touching env reads.
+- **Local mode binds loopback.** Local mode has no auth (every request is `local`) and the
+  API serves Discord tokens and Telegram session strings, so `index.ts` listens on
+  `127.0.0.1`; hosted mode listens on `0.0.0.0` for Railway. `OCT_HOST` overrides both.
+  Don't widen the local bind without adding authentication.
 - **Never clobber injected secrets.** `index.ts` loads `.env` with `override:false` so
   Railway/Vercel-injected vars win. Don't change this.
 - **WebSockets don't run on Vercel.** `VITE_API_URL` must point at the Railway backend,

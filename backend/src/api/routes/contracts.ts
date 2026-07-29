@@ -1,6 +1,6 @@
 import { Router } from 'express';
 import { tryParseTokenEnrichment, buildRickReplyContext } from '../../utils/rickEmbedParser.js';
-import { needsMetadataFallback, metadataOnlyEnrichmentPatch } from '../../utils/enrichmentMerge.js';
+import { needsMetadataFallback } from '../../utils/enrichmentMerge.js';
 import { enrichToken, getTokenSnapshot, persistEnrichment } from '../../utils/tokenSnapshot.js';
 import type { RouterContext } from '../context.js';
 import { getUserId, safeError } from '../shared.js';
@@ -77,11 +77,13 @@ export function createContractsRoutes(ctx: RouterContext): Router {
           if (!hit) return;
           const enrichment = await enrichToken(address, hit.evmChain ?? evmChain);
           if (!enrichment) return;
-          const updated = await storage.enrichContract(userId, enrichment.address, metadataOnlyEnrichmentPatch({
+          const updated = await storage.enrichContract(userId, enrichment.address, {
             tokenName: enrichment.tokenName,
             tokenSymbol: enrichment.tokenSymbol,
             tokenPair: enrichment.tokenPair,
             description: enrichment.description,
+            fdvAtCall: enrichment.fdvAtCall,
+            fdvAtCallDisplay: enrichment.fdvAtCallDisplay,
             liquidityUsd: enrichment.liquidityUsd,
             liquidityDisplay: enrichment.liquidityDisplay,
             volumeUsd: enrichment.volumeUsd,
@@ -91,7 +93,7 @@ export function createContractsRoutes(ctx: RouterContext): Router {
             evmChain: enrichment.evmChain,
             enrichmentSource: enrichment.enrichmentSource,
             enrichedAt: new Date().toISOString(),
-          }), { channelId, messageId: entry.messageId });
+          }, { channelId, messageId: entry.messageId });
           if (updated) {
             wsServer.broadcastContractEnrichment(updated, userId);
             void persistEnrichment(enrichment, enrichment.evmChain ?? hit.evmChain ?? evmChain);
@@ -204,11 +206,13 @@ export function createContractsRoutes(ctx: RouterContext): Router {
         return res.json({ applied: false });
       }
 
-      const updated = await storage.enrichContract(userId, enrichment.address, metadataOnlyEnrichmentPatch({
+      const updated = await storage.enrichContract(userId, enrichment.address, {
         tokenName: enrichment.tokenName,
         tokenSymbol: enrichment.tokenSymbol,
         tokenPair: enrichment.tokenPair,
         description: enrichment.description,
+        fdvAtCall: enrichment.fdvAtCall,
+        fdvAtCallDisplay: enrichment.fdvAtCallDisplay,
         liquidityUsd: enrichment.liquidityUsd,
         liquidityDisplay: enrichment.liquidityDisplay,
         volumeUsd: enrichment.volumeUsd,
@@ -218,7 +222,7 @@ export function createContractsRoutes(ctx: RouterContext): Router {
         evmChain: enrichment.evmChain,
         enrichmentSource: enrichment.enrichmentSource,
         enrichedAt: new Date().toISOString(),
-      }), { channelId, messageId });
+      }, { channelId, messageId });
 
       if (updated) {
         wsServer.broadcastContractEnrichment(updated, userId);
@@ -234,21 +238,21 @@ export function createContractsRoutes(ctx: RouterContext): Router {
         applied: true,
         enrichment: {
           address: enrichment.address,
-          ...metadataOnlyEnrichmentPatch({
-            tokenName: enrichment.tokenName,
-            tokenSymbol: enrichment.tokenSymbol,
-            tokenPair: enrichment.tokenPair,
-            description: enrichment.description,
-            liquidityUsd: enrichment.liquidityUsd,
-            liquidityDisplay: enrichment.liquidityDisplay,
-            volumeUsd: enrichment.volumeUsd,
-            volumeDisplay: enrichment.volumeDisplay,
-            priceUsd: enrichment.priceUsd,
-            tokenAge: enrichment.tokenAge,
-            evmChain: enrichment.evmChain,
-            enrichmentSource: enrichment.enrichmentSource,
-            enrichedAt: new Date().toISOString(),
-          }),
+          tokenName: enrichment.tokenName,
+          tokenSymbol: enrichment.tokenSymbol,
+          tokenPair: enrichment.tokenPair,
+          description: enrichment.description,
+          fdvAtCall: enrichment.fdvAtCall,
+          fdvAtCallDisplay: enrichment.fdvAtCallDisplay,
+          liquidityUsd: enrichment.liquidityUsd,
+          liquidityDisplay: enrichment.liquidityDisplay,
+          volumeUsd: enrichment.volumeUsd,
+          volumeDisplay: enrichment.volumeDisplay,
+          priceUsd: enrichment.priceUsd,
+          tokenAge: enrichment.tokenAge,
+          evmChain: enrichment.evmChain,
+          enrichmentSource: enrichment.enrichmentSource,
+          enrichedAt: new Date().toISOString(),
         },
       });
     } catch (err) {

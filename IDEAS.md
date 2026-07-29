@@ -14,6 +14,20 @@ _(Nothing actively in flight — pick from Planned next.)_
 
 ## Planned next
 
+### Caller quality — follow-ups
+Phases 1 and 2 shipped Jul 30 (see below). Remaining:
+- **Backfill.** Scores only start accumulating once the peak sampler has been
+  running — a token called before the first pass has no peak, so early scores are
+  thin. Consider a one-off backfill over recent contracts.
+- **Peak fidelity.** The sampler polls every 3 min, so a spike between passes is
+  missed. Fine for banding, wrong for anything that claims to be an exact ATH —
+  don't surface `bestMultiple` as a precise number without fixing this.
+- **Per-room scores.** Scores are currently global per caller. A caller can be
+  sharp in one room and noise in another; the manual tier covers that case by
+  hand today.
+- **Radar `allMuted` cost.** `buildRadar` runs twice per render (once for the
+  muted counter). Fine at 2 000 contracts, worth memoising if the cap rises.
+
 ### FOMO prod reliability rework
 Prod FOMO works locally but breaks on Railway: Cloudflare blocks datacenter IPs
 (`upstream 0`), leaderboard/holders fail without warm browser session, and API
@@ -58,6 +72,24 @@ VPS + caching, not account rotation.
 ---
 
 ## Recently shipped (Jul 2026)
+
+### Caller quality — slop filter + ranking (Phases 1–2)
+Requested by clipped re: CAs in `#prosp`. Rank contract calls by who sent them.
+- **Manual tiers** — `callerTiers` in config: `muted` / `normal` / `trusted`, global
+  or per room, room beating global; most restrictive wins when several rooms match.
+  Set from `UserContextMenu`, managed in Settings → Caller Quality.
+- **Earned scores** — `packages/shared/src/callerQuality.ts` (pure, unit-tested):
+  median multiple, 2x/5x hit rates, slop rate, banded `slop → elite`. Attribution is
+  **per row** against each caller's own `fdvAtCall`, and one caller/token pair counts
+  once. `unrated` below 10 scored calls.
+- **Peak input** — `tokenPeakSampler` + `tokenPeakStore` record each token's
+  high-water MC (`token_peaks`, migration `20260729120000`). Kept as its own loop
+  rather than hooked into `missedRunnerPoller`, whose walk is gated on that alert
+  being enabled — piggybacking would make scores depend on an unrelated setting.
+  Local mode backs it with a JSON file so the desktop app scores too.
+- **Surfaces** — contract feed + Radar filter and rank; chat only colours the
+  username. `GET /api/callers/scores`, derived on read with a 2-min cache.
+- Stayed a display/filter layer — deliberately not folded into convergence.
 
 ### Token enrichment pipeline (Phase 1–2)
 - **Rick + Dex merge fix** — Dex/GMGN fallbacks now run when `tokenSymbol` is missing, even

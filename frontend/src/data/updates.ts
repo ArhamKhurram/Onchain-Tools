@@ -24,6 +24,13 @@ export interface UpdateSlide {
  */
 export const UPDATE_SLIDES: UpdateSlide[] = [
   {
+    id: 'slide-2026-07-29-caller-quality',
+    title: 'Caller Quality',
+    description:
+      'Right-click any name to mute the slop or trust the callers worth watching — everywhere, or in one room only. Callers also earn a score from their own calls: the market cap when they posted against the token’s peak since. The contract feed and Radar can rank on it; muted callers collapse behind a counter rather than disappearing.',
+    variant: 'feed',
+  },
+  {
     id: 'slide-2026-07-25-notification-history',
     title: 'Notification History',
     description:

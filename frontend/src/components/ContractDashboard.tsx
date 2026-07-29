@@ -1,6 +1,8 @@
 import { useEffect, useState, useMemo } from 'react';
-import { Search, ExternalLink, Copy, Check, Trash2, LayoutGrid, List, X, MessageSquare, PanelLeftOpen, Send } from 'lucide-react';
+import { Search, ExternalLink, Copy, Check, Trash2, LayoutGrid, List, X, MessageSquare, PanelLeftOpen, Send, Eye, EyeOff } from 'lucide-react';
 import { useAppStore } from '../stores/appStore';
+import { useCallerQuality, type CallerQuality } from '../hooks/useCallerQuality';
+import { BAND_DOT_CLASS, BAND_TITLE, bandIsNotable } from '../utils/callerBandStyle';
 import { buildContractUrl } from '../utils/contractUrl';
 import { contractAttribution, isTelegramContract, openContractSource } from '../utils/contractSource';
 import ConfirmModal from './ConfirmModal';
@@ -58,6 +60,8 @@ export default function ContractDashboard({ embedded = false }: ContractDashboar
   const [copiedAddr, setCopiedAddr] = useState<string | null>(null);
   const [viewMode, setViewMode] = useState<ViewMode>('table');
   const [showDeleteAll, setShowDeleteAll] = useState(false);
+  const [revealMuted, setRevealMuted] = useState(false);
+  const { qualityForContract, rankingEnabled, showMuted } = useCallerQuality();
 
   useEffect(() => {
     fetchContracts();
@@ -82,6 +86,29 @@ export default function ContractDashboard({ embedded = false }: ContractDashboar
     }
     return result;
   }, [contracts, chainFilter, search]);
+
+  const { visible, mutedCount } = useMemo(() => {
+    const withQuality = filtered.map((entry) => ({ entry, quality: qualityForContract(entry) }));
+    const muted = withQuality.filter((r) => r.quality.tier === 'muted');
+
+    // A muted caller can still be first on a runner, so the default is to collapse
+    // them behind a counter rather than drop them — you can always look.
+    let rows = showMuted && !revealMuted
+      ? withQuality.filter((r) => r.quality.tier !== 'muted')
+      : withQuality;
+    if (!showMuted) rows = withQuality.filter((r) => r.quality.tier !== 'muted');
+
+    if (rankingEnabled) {
+      rows = [...rows].sort(
+        (a, b) =>
+          b.quality.rank - a.quality.rank ||
+          new Date(b.entry.timestamp).getTime() - new Date(a.entry.timestamp).getTime(),
+      );
+    }
+    return { visible: rows, mutedCount: muted.length };
+  }, [filtered, qualityForContract, rankingEnabled, showMuted, revealMuted]);
+
+  const filteredEntries = useMemo(() => visible.map((r) => r.entry), [visible]);
 
   const handleCopy = (addr: string) => {
     navigator.clipboard.writeText(addr);
@@ -127,7 +154,7 @@ export default function ContractDashboard({ embedded = false }: ContractDashboar
             </button>
           )}
           <h2 className="text-oct-text font-extrabold uppercase text-base sm:text-lg">Contract Feed</h2>
-          <span className="text-oct-muted text-xs sm:text-sm font-mono">{filtered.length}</span>
+          <span className="text-oct-muted text-xs sm:text-sm font-mono">{filteredEntries.length}</span>
           <div className="flex-1" />
           {contracts.length > 0 && (
             <button
@@ -193,6 +220,21 @@ export default function ContractDashboard({ embedded = false }: ContractDashboar
               className="bg-oct-surface border-2 border-oct-border rounded-cockpit pl-7 pr-3 py-1 text-sm text-oct-text placeholder-oct-muted w-full focus:outline-none focus:border-oct-accent"
             />
           </div>
+
+          {showMuted && mutedCount > 0 && (
+            <button
+              onClick={() => setRevealMuted((v) => !v)}
+              className={`flex items-center gap-1 px-2 py-1 rounded-cockpit text-xs font-bold uppercase border-2 transition-colors shrink-0 ${
+                revealMuted
+                  ? 'border-oct-accent bg-oct-accent text-white'
+                  : 'border-oct-border text-oct-muted hover:text-oct-text'
+              }`}
+              title={revealMuted ? 'Hide muted callers again' : 'Show contracts from muted callers'}
+            >
+              {revealMuted ? <Eye size={12} /> : <EyeOff size={12} />}
+              <span>{mutedCount} muted</span>
+            </button>
+          )}
         </div>
       </div>
 
@@ -201,16 +243,21 @@ export default function ContractDashboard({ embedded = false }: ContractDashboar
         className="flex-1 min-h-0 overflow-y-auto overscroll-contain"
         style={{ overflowAnchor: 'none' }}
       >
-        {filtered.length === 0 ? (
+        {filteredEntries.length === 0 ? (
           <div className="flex items-center justify-center h-full text-oct-muted text-sm">
-            {contracts.length === 0 ? 'No contracts detected yet' : 'No contracts match your filters'}
+            {contracts.length === 0
+              ? 'No contracts detected yet'
+              : mutedCount > 0
+                ? 'Every match is from a muted caller'
+                : 'No contracts match your filters'}
           </div>
         ) : viewMode === 'table' ? (
           <div className="divide-y divide-oct-border/50">
-            {filtered.map((entry, i) => (
+            {visible.map(({ entry, quality }, i) => (
               <ContractRow
                 key={`${entry.messageId}-${entry.address}-${i}`}
                 entry={entry}
+                quality={quality}
                 evmColor={evmColor}
                 solColor={solColor}
                 showFull={showFull}
@@ -224,7 +271,7 @@ export default function ContractDashboard({ embedded = false }: ContractDashboar
           </div>
         ) : (
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-2 sm:gap-3 p-3 sm:p-4">
-            {filtered.map((entry, i) => (
+            {visible.map(({ entry }, i) => (
               <ContractCard
                 key={`${entry.messageId}-${entry.address}-${i}`}
                 entry={entry}
@@ -258,6 +305,7 @@ export default function ContractDashboard({ embedded = false }: ContractDashboar
 
 interface ContractItemProps {
   entry: ContractEntry;
+  quality?: CallerQuality;
   evmColor: string;
   solColor: string;
   showFull?: boolean;
@@ -270,6 +318,7 @@ interface ContractItemProps {
 
 function ContractRow({
   entry,
+  quality,
   evmColor,
   solColor,
   showFull = false,
@@ -280,6 +329,7 @@ function ContractRow({
   onDelete,
 }: ContractItemProps) {
   const color = entry.chain === 'evm' ? evmColor : solColor;
+  const isMuted = quality?.tier === 'muted';
   const chainLabel = entry.chain === 'evm' && entry.evmChain
     ? (EVM_CHAIN_LABELS[entry.evmChain] ?? entry.evmChain.toUpperCase())
     : entry.chain.toUpperCase();
@@ -289,8 +339,18 @@ function ContractRow({
   const { trade: convergenceTrade, windowMinutes } = useConvergenceForContract(entry);
 
   return (
-    <div className="flex flex-col gap-1 px-3 sm:px-4 py-2.5 hover:bg-oct-surface-raised/40 transition-colors group border-b border-oct-border/60">
+    <div
+      className={`flex flex-col gap-1 px-3 sm:px-4 py-2.5 hover:bg-oct-surface-raised/40 transition-colors group border-b border-oct-border/60 ${
+        isMuted ? 'opacity-45 hover:opacity-100' : ''
+      }`}
+    >
       <div className="flex items-center gap-2 sm:gap-3 min-w-0">
+        {quality && bandIsNotable(quality.band) && (
+          <span
+            className={`w-1.5 h-1.5 rounded-full shrink-0 ${BAND_DOT_CLASS[quality.band]}`}
+            title={BAND_TITLE[quality.band]}
+          />
+        )}
         <span
           className="text-[10px] font-bold px-1.5 py-0.5 rounded-cockpit shrink-0 uppercase font-mono"
           style={{ backgroundColor: colorWithExtraAlpha(color, 0.125), color }}

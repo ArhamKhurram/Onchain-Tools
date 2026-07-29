@@ -24,7 +24,7 @@ import {
 } from './store.js';
 import type { FomoClientLike } from './types.js';
 import type { WsServer } from '../ws/server.js';
-import { deliverRecentTradesToUser } from './dispatch.js';
+import { deliverRecentTradesToUser, loadDeliveredTrades, MAX_TRADE_HISTORY } from './dispatch.js';
 
 function getUserId(req: any): string {
   return req.userId ?? 'local';
@@ -264,6 +264,31 @@ export function createFomoRouter(wsServer: WsServer): Router {
       res.json(resolved);
     } catch (err: any) {
       res.status(500).json({ error: safeError(err, 'Failed to resolve FOMO user') });
+    }
+  });
+
+  // GET /api/fomo/trades?hours=24 — replay the user's recent delivered trades.
+  //
+  // The live feed is WebSocket-only, so before this the panel started empty on
+  // every reload and showed just whatever arrived since. Trades were being
+  // stored all along; nothing was reading them back.
+  router.get('/trades', async (req, res) => {
+    const userId = getUserId(req);
+    const db = getFomoServiceClient();
+    if (!db) return res.status(503).json({ error: 'FOMO tracking is not available (storage not configured).' });
+
+    const hours = Math.max(1, Math.min(168, Number.parseInt(req.query.hours as string, 10) || 24));
+    const limit = Math.max(
+      1,
+      Math.min(MAX_TRADE_HISTORY, Number.parseInt(req.query.limit as string, 10) || MAX_TRADE_HISTORY),
+    );
+
+    try {
+      const since = new Date(Date.now() - hours * 3_600_000).toISOString();
+      const trades = await loadDeliveredTrades(db, userId, since, limit);
+      res.json({ hours, count: trades.length, trades });
+    } catch (err: any) {
+      res.status(500).json({ error: safeError(err, 'Failed to load FOMO trade history') });
     }
   });
 

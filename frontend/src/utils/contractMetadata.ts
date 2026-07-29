@@ -45,14 +45,20 @@ export function mergeEnrichmentIntoEntry(
     };
   }
 
+  // MC@call: the earliest reading we have wins, except a Rick embed — that is
+  // the call itself, so it overrides an FDV a Dex/GMGN fallback got in first.
+  const rickWins = patch.enrichmentSource === 'rick';
+
   return {
     ...entry,
     tokenName: patch.tokenName ?? entry.tokenName,
     tokenSymbol: patch.tokenSymbol ?? entry.tokenSymbol,
     tokenPair: patch.tokenPair ?? entry.tokenPair,
     description: patch.description ?? entry.description,
-    fdvAtCall: entry.fdvAtCall ?? patch.fdvAtCall,
-    fdvAtCallDisplay: entry.fdvAtCallDisplay ?? patch.fdvAtCallDisplay,
+    fdvAtCall: rickWins ? patch.fdvAtCall ?? entry.fdvAtCall : entry.fdvAtCall ?? patch.fdvAtCall,
+    fdvAtCallDisplay: rickWins
+      ? patch.fdvAtCallDisplay ?? entry.fdvAtCallDisplay
+      : entry.fdvAtCallDisplay ?? patch.fdvAtCallDisplay,
     liquidityUsd: patch.liquidityUsd ?? entry.liquidityUsd,
     liquidityDisplay: patch.liquidityDisplay ?? entry.liquidityDisplay,
     volumeUsd: patch.volumeUsd ?? entry.volumeUsd,

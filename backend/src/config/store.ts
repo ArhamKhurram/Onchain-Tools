@@ -28,6 +28,9 @@ const DEFAULT_CONFIG: AppConfig = {
   openInDiscordApp: false,
   openInTelegramApp: false,
   hiddenUsers: {},
+  callerTiers: [],
+  callerTierShowMuted: true,
+  callerQualityRanking: false,
   messageSounds: false,
   soundSettings: {
     highlight: { ...DEFAULT_SOUND_CONFIG },
