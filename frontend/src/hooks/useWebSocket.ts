@@ -189,7 +189,12 @@ export function useWebSocket() {
             const { channelId, messageId, emoji, delta } = incoming.data;
             updateReaction(channelId, messageId, emoji, delta);
           } else if (incoming.type === 'contract') {
-            if (skipDiscordWs) return;
+            // Not gated on skipDiscordWs: this is the backend confirming a
+            // scan was logged (Telegram is always detected server-side; a
+            // browser-gateway Discord scan echoes back the same POST) — not
+            // a raw Discord message, so it's authoritative either way.
+            // addContract() dedupes by messageId+address, so this is a
+            // no-op for scans the browser gateway already added locally.
             const entry = incoming.data as ContractEntry;
             addContract(entry);
           } else if (incoming.type === 'contract_enrichment') {

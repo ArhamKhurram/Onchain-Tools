@@ -1,7 +1,5 @@
 import type { ContractEntry } from '../types';
 
-const SECONDARY_SOURCES = new Set(['dexscreener', 'gmgn']);
-
 /** Fields copied from a prior detection of the same token address. */
 export type ContractMetadata = Pick<
   ContractEntry,
@@ -24,51 +22,6 @@ export type ContractMetadata = Pick<
 
 export function hasContractMetadata(entry: ContractEntry): boolean {
   return !!(entry.tokenSymbol || entry.tokenName);
-}
-
-export function mergeEnrichmentIntoEntry(
-  entry: ContractEntry,
-  patch: Partial<ContractEntry>,
-): ContractEntry {
-  if (
-    entry.enrichmentSource === 'rick'
-    && patch.enrichmentSource
-    && SECONDARY_SOURCES.has(patch.enrichmentSource)
-  ) {
-    return {
-      ...entry,
-      tokenName: entry.tokenName ?? patch.tokenName,
-      tokenSymbol: entry.tokenSymbol ?? patch.tokenSymbol,
-      tokenPair: entry.tokenPair ?? patch.tokenPair,
-      evmChain: entry.evmChain ?? patch.evmChain,
-      enrichedAt: patch.enrichedAt ?? entry.enrichedAt,
-    };
-  }
-
-  // MC@call: the earliest reading we have wins, except a Rick embed — that is
-  // the call itself, so it overrides an FDV a Dex/GMGN fallback got in first.
-  const rickWins = patch.enrichmentSource === 'rick';
-
-  return {
-    ...entry,
-    tokenName: patch.tokenName ?? entry.tokenName,
-    tokenSymbol: patch.tokenSymbol ?? entry.tokenSymbol,
-    tokenPair: patch.tokenPair ?? entry.tokenPair,
-    description: patch.description ?? entry.description,
-    fdvAtCall: rickWins ? patch.fdvAtCall ?? entry.fdvAtCall : entry.fdvAtCall ?? patch.fdvAtCall,
-    fdvAtCallDisplay: rickWins
-      ? patch.fdvAtCallDisplay ?? entry.fdvAtCallDisplay
-      : entry.fdvAtCallDisplay ?? patch.fdvAtCallDisplay,
-    liquidityUsd: patch.liquidityUsd ?? entry.liquidityUsd,
-    liquidityDisplay: patch.liquidityDisplay ?? entry.liquidityDisplay,
-    volumeUsd: patch.volumeUsd ?? entry.volumeUsd,
-    volumeDisplay: patch.volumeDisplay ?? entry.volumeDisplay,
-    priceUsd: patch.priceUsd ?? entry.priceUsd,
-    tokenAge: patch.tokenAge ?? entry.tokenAge,
-    enrichmentSource: patch.enrichmentSource ?? entry.enrichmentSource,
-    enrichedAt: patch.enrichedAt ?? entry.enrichedAt,
-    evmChain: patch.evmChain ?? entry.evmChain,
-  };
 }
 
 /** Fill missing enrichment on a new row from an earlier row with the same address. */

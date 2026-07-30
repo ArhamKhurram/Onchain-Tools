@@ -5,6 +5,7 @@ All notable changes to Trenchcord are documented here.
 ## 2026-07-30
 
 ### Fixed
+- **Contract scans show up immediately again** — a scan could take up to a minute or two to appear in the feed after its toast fired, because the row was held back until Rick (or a DexScreener/GMGN lookup) finished enriching it. Scans now appear the instant they're detected and fill in with token info moments later, matching the toast.
 - **Missed-runner alerts fire again after their cooldown** — the first alert for a token was silently also the last: once its cooldown lapsed, the dedupe record could never be refreshed, so that token could never alert you again. The record now updates in place and the cooldown re-arms the way the setting says it should.
 - **FOMO Live starts empty on every reload** — the feed was WebSocket-only, so it showed nothing but whatever arrived since you opened the page. The trades were being stored the whole time; nothing read them back. The console now replays your last 24 hours on load (`GET /api/fomo/trades`) and merges live frames on top, deduped by trade id.
 - **Replayed trades show when they happened** — the live WS frame carries no timestamp, so the feed stamped arrival time. Rows now carry the stored event time, and a day of backfill no longer renders as if it all happened at page load.

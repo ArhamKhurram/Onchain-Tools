@@ -137,7 +137,9 @@ Rank contract calls by who sent them.
   Latest column (last mention time).
 - **Code-splitting** — lazy routes, lazy `GlobalSettings`, vendor manualChunks
   (~150 kB main chunk).
-- **Contract feed** — 30s Rick wait queue; Dex/catalog fallbacks; client-gateway
+- **Contract feed** — scans now show immediately on detection and enrich in
+  place (Rick, then the backend's own Dex/GMGN fallback) rather than holding
+  the row invisible for up to 30s+; Dex/catalog fallbacks; client-gateway
   persistence; ticker in feed rows.
 - **Landing** — reskin; `/dashboard` split routing; Updates changelog section;
   footer/nav polish.
