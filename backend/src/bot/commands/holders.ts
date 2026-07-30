@@ -9,6 +9,7 @@ import { anywhere } from './context.js';
 import { DEFAULT_NETWORK_ID, getBotHolders, resolveNetworkId } from '../service.js';
 import { describeServiceError } from '../errors.js';
 import {
+  botFooter,
   BRAND,
   compactUsd,
   makeContainer,
@@ -69,7 +70,7 @@ function buildComponents(data: BotHoldersResponse, page: number, interactionId: 
   ].filter(Boolean) as ReturnType<typeof makeText>[];
 
   const body = rows.length ? [makeText(rows.join('\n')), makeSeparator(2)] : [makeText('No holders found.')];
-  const footer = makeText(`-# Page **${page + 1} of ${totalPages}** · Outpost 👀`);
+  const footer = makeText(botFooter(`Page **${page + 1} of ${totalPages}**`));
 
   return {
     components: [

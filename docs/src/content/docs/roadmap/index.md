@@ -153,7 +153,7 @@ Rank contract calls by who sent them.
 - **Hosted mode** — Supabase auth, RLS, Railway backend + Vercel frontend split.
 - **Browser-side Discord gateway** — client-gateway mode; OAuth callback fix. See
   [ADR-002](../adr/002-browser-gateway/).
-- **Outpost Discord bot** — in-process bot, opt-in DM alerts, `/api/v1/bot`
+- **OCT Discord bot** — in-process bot, opt-in DM alerts, `/api/v1/bot`
   machine-auth surface. See [Discord bot](../architecture/discord-bot/) and
   [ADR-006](../adr/006-in-process-bot/).
 - **Developer docs** — this site.

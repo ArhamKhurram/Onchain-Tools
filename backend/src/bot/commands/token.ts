@@ -3,6 +3,7 @@ import { anywhere } from './context.js';
 import { getBotSnapshot } from '../service.js';
 import { describeServiceError } from '../errors.js';
 import {
+  botFooter,
   BRAND,
   compactUsd,
   makeContainer,
@@ -65,7 +66,7 @@ export const token: BotCommand = {
             makeSeparator(1),
             ...(lines.length ? lines : [makeText('_No market data available._')]),
             makeText(
-              `-# Source: ${snap.source ?? 'unknown'}${snap.stale ? ' (stale)' : ''} · Outpost 👀`,
+              botFooter(`Source: ${snap.source ?? 'unknown'}${snap.stale ? ' (stale)' : ''}`),
             ),
           ]),
         ],

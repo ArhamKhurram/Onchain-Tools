@@ -1,11 +1,11 @@
 ---
-title: Outpost Discord bot
+title: OCT Discord bot
 description: The in-process bot — commands, DM alerts, announcements, and tenancy.
 sidebar:
   order: 6
 ---
 
-Outpost runs **in-process with the backend** ([ADR-006](../../adr/006-in-process-bot/)):
+The bot runs **in-process with the backend** ([ADR-006](../../adr/006-in-process-bot/)):
 command handlers call `bot/service.ts` directly — no HTTP hop, no second
 deploy target. It self-gates on `DISCORD_BOT_TOKEN` and swallows every
 failure path, so a bot problem can never take down feed ingestion, the API,

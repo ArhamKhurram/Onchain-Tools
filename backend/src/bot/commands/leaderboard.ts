@@ -9,6 +9,7 @@ import { anywhere } from './context.js';
 import { getBotLeaderboard } from '../service.js';
 import { describeServiceError } from '../errors.js';
 import {
+  botFooter,
   BRAND,
   compactUsd,
   makeContainer,
@@ -43,7 +44,7 @@ function buildComponents(data: BotLeaderboardResponse, page: number, interaction
         makeText(`**Window:** ${windowLabel} · **${data.entries.length}** traders`),
         makeSeparator(1),
         ...(rows.length ? [makeText(rows.join('\n')), makeSeparator(2)] : [makeText('No leaderboard entries found.')]),
-        makeText(`-# Page **${page + 1} of ${totalPages}** · Outpost 👀`),
+        makeText(botFooter(`Page **${page + 1} of ${totalPages}**`)),
       ]),
       ...(totalPages > 1 ? [makeNavRow('leaderboard', interactionId, page, totalPages)] : []),
     ],

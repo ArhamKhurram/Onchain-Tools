@@ -16,6 +16,20 @@ export const BRAND = {
  * for anything meant to look like it came from the site, e.g. announcements. */
 export const SITE_ACCENT = 0xff2a2a;
 
+/**
+ * Bot signature shown at the foot of every response.
+ *
+ * One constant rather than a literal per command: it was previously repeated in
+ * seven files, all still reading "Outpost" after the Discord app was renamed to
+ * onchain-tools. Change it here and every surface follows.
+ */
+export const BOT_SIGNATURE = 'OCT 👀';
+
+/** `-# … · OCT 👀` — the standard small-print footer line. */
+export function botFooter(prefix?: string): string {
+  return prefix ? `-# ${prefix} · ${BOT_SIGNATURE}` : `-# ${BOT_SIGNATURE}`;
+}
+
 export function makeNavRow(prefix: string, interactionId: string, page: number, totalPages: number) {
   return new ActionRowBuilder<ButtonBuilder>().addComponents(
     new ButtonBuilder()

@@ -153,7 +153,7 @@ export class WsServer {
   }
 
   /**
-   * Side-channel observers for alerts (the Outpost bot's DM delivery uses this).
+   * Side-channel observers for alerts (the OCT bot's DM delivery uses this).
    * Every alert in the app funnels through broadcastAlert, so this is the one
    * seam an extra delivery channel needs — no changes at the call sites.
    * Observers are best-effort: they must never block or break the WS broadcast.

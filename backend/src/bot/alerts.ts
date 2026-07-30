@@ -1,4 +1,4 @@
-// Outpost bot alert DMs (see docs/architecture/discord-bot.md).
+// OCT bot alert DMs (see docs/architecture/discord-bot.md).
 //
 // Every alert in OCT funnels through WsServer.broadcastAlert, so this subscribes
 // to that single seam rather than touching the six emission sites. For each
@@ -16,7 +16,7 @@ import type { DiscordBotTriggers } from '@oct/shared';
 import type { FrontendMessage } from '../discord/types.js';
 import { getStorageProvider } from '../storage/index.js';
 import { resolveDiscordIdByOctUser } from './identity.js';
-import { BRAND, makeContainer, makeSeparator, makeText, shortAddress } from './layout.js';
+import { BRAND, botFooter, makeContainer, makeSeparator, makeText, shortAddress } from './layout.js';
 
 const DISCORD_CANNOT_DM = 50007; // "Cannot send messages to this user"
 
@@ -95,7 +95,7 @@ export function buildAlertDm(alert: AlertLike) {
         ? [makeText(body.length > 400 ? `>>> ${body.slice(0, 397)}...` : `>>> ${body}`)]
         : []),
       ...(addressLines ? [makeText(`**Contracts:** ${addressLines}`)] : []),
-      makeText('-# Manage these in OCT → Settings → Discord Bot · Outpost 👀'),
+      makeText(botFooter('Manage these in OCT → Settings → Discord Bot')),
     ]),
   ];
 }
@@ -126,7 +126,7 @@ export function createAlertDmListener(getClient: () => Client | null) {
       if (err?.code === DISCORD_CANNOT_DM) {
         console.warn(
           '[BotAlerts] Cannot DM this user — Discord requires that they share a server with the bot ' +
-            '(or have DMs open). Ask them to join the Outpost server.',
+            '(or have DMs open). Ask them to join the OCT server.',
         );
         return;
       }

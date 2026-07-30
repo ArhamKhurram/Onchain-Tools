@@ -20,7 +20,7 @@ flowchart LR
   uc4["Spot signal convergence"]
   uc5["Catch missed runners"]
   uc6["Rank callers<br/>(quality bands)"]
-  uc7["Use Outpost bot<br/>(slash commands, DMs)"]
+  uc7["Use the OCT bot<br/>(slash commands, DMs)"]
 
   trader --> uc1
   trader --> uc2

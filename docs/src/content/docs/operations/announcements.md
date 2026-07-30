@@ -14,7 +14,7 @@ sequenceDiagram
   participant GH as announce.yml
   participant S as scripts/announce-changelog.mjs
   participant API as POST /api/v1/bot/announce (Railway)
-  participant Bot as Outpost bot client
+  participant Bot as OCT bot client
   participant D as Discord channel
 
   Dev->>GH: push touches CHANGELOG.md
