@@ -1,14 +1,16 @@
 import { useEffect, useRef } from 'react';
 import { useAppStore, IS_POPOUT } from '../stores/appStore';
-import { playHighlightSound, playContractAlertSound, playKeywordAlertSound, playSound } from '../utils/notificationSound';
+import { playHighlightSound, playContractAlertSound, playKeywordAlertSound, playFomoTradeSound, playSound } from '../utils/notificationSound';
 import { buildContractUrl } from '../utils/contractUrl';
 import { showDesktopNotification } from '../utils/desktopNotification';
+import { fomoTradeDisplay, buildFomoTradeAlertMessage } from '../utils/fomoTradeDisplay';
 import { isDemoMode } from '../demo/demoStore';
 import { isHostedMode, getSupabase } from '../lib/supabase';
 import { isClientGatewayMode } from '../discord/clientGateway';
 import { hasLocalDiscordTokens } from '../discord/tokenStore';
 import { buildStreamMessage, STREAM_POOL } from '../demo/demoData';
 import type { WsIncoming, Alert, FrontendMessage, ContractEntry } from '../types';
+import type { FomoTradeEvent } from '../types/fomo';
 
 let idCounter = 0;
 
@@ -214,7 +216,25 @@ export function useWebSocket() {
             fetchHistory();
             checkAuth();
           } else if (incoming.type === 'fomo_trade') {
-            addFomoTrade(incoming.data);
+            // `notify` is a delivery-time flag, not part of the trade itself
+            // (backfilled/replayed trades never carry it) — strip it before
+            // storing so it never leaks into the feed's persisted shape.
+            const { notify, ...tradeData } = incoming.data as FomoTradeEvent & { notify?: boolean };
+            addFomoTrade(tradeData);
+
+            if (notify && !IS_POPOUT) {
+              const cfg = useAppStore.getState().config;
+              const display = fomoTradeDisplay(tradeData, cfg?.contractLinkTemplates);
+              const alert: Alert = {
+                id: `fomo-trade-alert-${++idCounter}`,
+                type: 'fomo_trade',
+                message: buildFomoTradeAlertMessage(tradeData, display),
+                reason: `${tradeData.displayName || (tradeData.fomoHandle ? `@${tradeData.fomoHandle}` : 'Tracked trader')} ${tradeData.side === 'sell' ? 'sold' : 'bought'} ${display.tokenLabel}`,
+                timestamp: Date.now(),
+              };
+              addAlert(alert);
+              if (cfg?.messageSounds) playFomoTradeSound(cfg.soundSettings?.fomoTrade);
+            }
           } else if (incoming.type === 'gateway_auth_failed') {
             if (!skipDiscordWs) {
               setGatewayAuthError(

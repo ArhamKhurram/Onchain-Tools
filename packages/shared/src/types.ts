@@ -240,7 +240,7 @@ export interface ContractLinkTemplates {
   evmPlatform: EvmPlatform;
 }
 
-export type SoundType = 'highlight' | 'contractAlert' | 'keywordAlert';
+export type SoundType = 'highlight' | 'contractAlert' | 'keywordAlert' | 'fomoTrade';
 
 export interface SoundConfig {
   enabled: boolean;

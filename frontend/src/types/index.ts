@@ -110,7 +110,7 @@ export interface ReactionUser {
 
 export interface Alert {
   id: string;
-  type: 'highlighted_user' | 'contract_address' | 'keyword_match' | 'signal_convergence' | 'missed_runner';
+  type: 'highlighted_user' | 'contract_address' | 'keyword_match' | 'signal_convergence' | 'missed_runner' | 'fomo_trade';
   message: FrontendMessage;
   reason: string;
   timestamp: number;

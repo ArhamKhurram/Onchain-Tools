@@ -9,7 +9,7 @@ import type { WsServer } from '../ws/server.js';
 import { getStorageProvider } from '../storage/index.js';
 import { sendPushover } from '../utils/pushover.js';
 import type { NormalizedTrade } from './store.js';
-import { resolveTradeTokenSymbol } from './tokenSymbol.js';
+import { resolveTradeTokenInfo } from './tokenInfo.js';
 
 export interface ActivityCursorRow {
   fomo_user_id: string;
@@ -71,6 +71,9 @@ export async function ensureTradeEventStored(
     side: trade.side,
     token_address: trade.tokenAddress,
     token_symbol: trade.tokenSymbol,
+    token_name: trade.tokenName,
+    market_cap: trade.marketCap,
+    market_cap_display: trade.marketCapDisplay,
     network_id: trade.networkId,
     usd_value: trade.usdValue,
     raw: trade.raw,
@@ -97,7 +100,10 @@ export async function ensureTradeEventStored(
   return existing.data?.id ?? null;
 }
 
-export function buildFomoTradePayload(trade: NormalizedTrade): Record<string, unknown> {
+export function buildFomoTradePayload(
+  trade: NormalizedTrade,
+  options?: { notify?: boolean },
+): Record<string, unknown> {
   return {
     type: 'fomo_trade',
     data: {
@@ -107,9 +113,16 @@ export function buildFomoTradePayload(trade: NormalizedTrade): Record<string, un
       side: trade.side,
       tokenAddress: trade.tokenAddress,
       tokenSymbol: trade.tokenSymbol,
+      tokenName: trade.tokenName,
+      marketCap: trade.marketCap,
+      marketCapDisplay: trade.marketCapDisplay,
       networkId: trade.networkId,
       usdValue: trade.usdValue,
       tradeId: trade.tradeId,
+      // Only true for a genuinely live dispatch to a subscriber who opted in
+      // (fanOutTradeEvent, below) — never set on backfill/replay, which can
+      // deliver dozens of trades at once and must never toast/sound for them.
+      notify: !!options?.notify,
     },
   };
 }
@@ -139,7 +152,6 @@ export async function fanOutTradeEvent(
     : []);
   if (recipients.length === 0) return 0;
 
-  const payload = buildFomoTradePayload(trade);
   let delivered = 0;
 
   for (const tracker of recipients) {
@@ -155,7 +167,10 @@ export async function fanOutTradeEvent(
       continue;
     }
 
-    wsServer.sendToUser(tracker.user_id, payload);
+    // notify_pushover is really "notify me about this trader" — it now also
+    // gates the in-app toast/sound, not just Pushover, so there's one toggle
+    // per tracked trader instead of two near-duplicate ones.
+    wsServer.sendToUser(tracker.user_id, buildFomoTradePayload(trade, { notify: tracker.notify_pushover }));
     delivered++;
     if (tracker.notify_pushover) {
       await notifyPushover(tracker.user_id, trade);
@@ -191,7 +206,7 @@ export async function deliverRecentTradesToUser(
 ): Promise<number> {
   const { data: events, error } = await db
     .from('fomo_trade_events')
-    .select('id, fomo_user_id, fomo_handle, side, token_address, token_symbol, network_id, usd_value, trade_id, raw')
+    .select('id, fomo_user_id, fomo_handle, side, token_address, token_symbol, token_name, market_cap, market_cap_display, network_id, usd_value, trade_id, raw')
     .eq('fomo_user_id', fomoUserId)
     .order('created_at', { ascending: false })
     .limit(limit);
@@ -211,6 +226,9 @@ export async function deliverRecentTradesToUser(
       side: event.side as NormalizedTrade['side'],
       tokenAddress: event.token_address,
       tokenSymbol: event.token_symbol,
+      tokenName: event.token_name ?? null,
+      marketCap: event.market_cap != null ? Number(event.market_cap) : null,
+      marketCapDisplay: event.market_cap_display ?? null,
       networkId: event.network_id != null ? Number(event.network_id) : null,
       usdValue: event.usd_value != null ? Number(event.usd_value) : null,
       raw: event.raw,
@@ -227,10 +245,11 @@ export async function deliverRecentTradesToUser(
       continue;
     }
 
-    // Rows stored before symbol resolution existed (or whose lookup failed then)
-    // still carry a null symbol — resolve on the way out so replayed trades read
-    // the same as live ones.
-    const enriched = await resolveTradeTokenSymbol(trade);
+    // Rows stored before this info was resolved (or whose lookup failed then)
+    // still carry nulls — resolve on the way out so replayed trades read the
+    // same as live ones. resolveTradeTokenInfo no-ops once all three fields
+    // are already present, so this never overwrites a real trade-time snapshot.
+    const enriched = await resolveTradeTokenInfo(trade);
     wsServer.sendToUser(octUserId, buildFomoTradePayload(enriched));
     delivered++;
   }
@@ -246,6 +265,9 @@ export interface DeliveredTrade {
   side: string | null;
   tokenAddress: string | null;
   tokenSymbol: string | null;
+  tokenName: string | null;
+  marketCap: number | null;
+  marketCapDisplay: string | null;
   networkId: number | null;
   usdValue: number | null;
   tradeId: string | null;
@@ -273,7 +295,7 @@ export async function loadDeliveredTrades(
   const { data, error } = await db
     .from('fomo_trade_deliveries')
     .select(
-      'delivered_at, fomo_trade_events!inner(fomo_user_id, fomo_handle, side, token_address, token_symbol, network_id, usd_value, trade_id, created_at)',
+      'delivered_at, fomo_trade_events!inner(fomo_user_id, fomo_handle, side, token_address, token_symbol, token_name, market_cap, market_cap_display, network_id, usd_value, trade_id, created_at)',
     )
     .eq('user_id', userId)
     .gte('delivered_at', sinceIso)
@@ -301,6 +323,9 @@ export async function loadDeliveredTrades(
       side: (event.side as string | null) ?? null,
       tokenAddress: (event.token_address as string | null) ?? null,
       tokenSymbol: (event.token_symbol as string | null) ?? null,
+      tokenName: (event.token_name as string | null) ?? null,
+      marketCap: event.market_cap != null ? Number(event.market_cap) : null,
+      marketCapDisplay: (event.market_cap_display as string | null) ?? null,
       networkId: event.network_id != null ? Number(event.network_id) : null,
       usdValue: event.usd_value != null ? Number(event.usd_value) : null,
       tradeId: (event.trade_id as string | null) ?? null,

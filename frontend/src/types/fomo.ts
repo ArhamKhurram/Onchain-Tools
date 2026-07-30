@@ -15,6 +15,9 @@ export interface FomoTradeEvent {
   side: string | null;
   tokenAddress: string | null;
   tokenSymbol: string | null;
+  tokenName: string | null;
+  marketCap: number | null;
+  marketCapDisplay: string | null;
   networkId: number | null;
   usdValue: number | null;
   tradeId: string | null;

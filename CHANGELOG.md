@@ -12,6 +12,7 @@ All notable changes to Trenchcord are documented here.
 - **Stale trades can no longer fake a convergence** — signal convergence compared a trade's *arrival* time against the contract call. With history replay that would have matched every day-old buy against whatever was called at reload, firing false convergence alerts on every refresh. It now compares when the trade actually happened.
 
 ### Added
+- **FOMO trades now show what was actually bought, and can alert you** — trades only ever carried a bare address (and sometimes a ticker); they now show the token's name and market cap too. Each tracked trader also gets a toast and a dedicated sound (Settings → Sounds & Notifications → FOMO Trade) on their trades — the same toggle you already use for Pushover on that trader now covers this too, so there's nothing new to configure.
 - **The Outpost bot is live** — the Discord bot now runs in production: slash commands (`/token`, `/holders`, `/leaderboard`, `/tracked`, `/wallet`) in the server and in DMs, plus opt-in DM alerts for your highlights, keywords, contract scans, and missed runners (Settings → Notifications → Discord DMs).
 - **FOMO trade retention** — a sweeper prunes `fomo_trade_events` past a retention window (default 7 days, `FOMO_TRADE_RETENTION_DAYS`); deliveries cascade. The log is a firehose of every swap by every tracked trader, so it grew without bound. Retention is deliberately longer than the 24h the console asks for: deleting an event also drops the unique `trade_id` that stops it being dispatched twice.
 
