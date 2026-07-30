@@ -3,7 +3,6 @@ import type { ContractEntry } from '../../types';
 import type { AppState } from '../appStore';
 import { isDemoMode, createDemoOverrides } from '../../demo/demoStore';
 import { hydrateContractFromCatalog } from '../../utils/contractMetadata';
-import { resolvePendingEnrichment } from '../../discord/contractPendingQueue';
 import { apiFetch, API_BASE, MAX_CONTRACTS, mergeContractLists, deriveAddressChains } from '../appStore.helpers';
 
 export interface ContractsSlice {
@@ -31,6 +30,16 @@ export const createContractsSlice: StateCreator<AppState, [], [], ContractsSlice
 
     addContract: (entry, opts) => {
       set((state) => {
+        // A scan can reach the store twice — the browser gateway adds it the
+        // instant it's detected, and the backend echoes the same log back
+        // over /ws (also needed for Telegram, whose detection never goes
+        // through the client at all). Same messageId+address means same
+        // scan; don't duplicate the row.
+        const alreadyShown = state.contracts.some(
+          (c) => c.messageId === entry.messageId && c.address.toLowerCase() === entry.address.toLowerCase(),
+        );
+        if (alreadyShown) return state;
+
         const hydrated = opts?.skipCatalogHydrate
           ? entry
           : hydrateContractFromCatalog(entry, state.contracts);
@@ -70,7 +79,6 @@ export const createContractsSlice: StateCreator<AppState, [], [], ContractsSlice
     },
 
     enrichContract: (entry) => {
-      resolvePendingEnrichment(entry);
       const key = entry.address.toLowerCase();
       // A Rick embed is the call itself, so it may replace an MC@call that a
       // Dex/GMGN fallback recorded first. Every other source only fills a gap.
