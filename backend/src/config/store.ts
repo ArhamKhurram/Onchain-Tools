@@ -36,6 +36,7 @@ const DEFAULT_CONFIG: AppConfig = {
     highlight: { ...DEFAULT_SOUND_CONFIG },
     contractAlert: { ...DEFAULT_SOUND_CONFIG },
     keywordAlert: { ...DEFAULT_SOUND_CONFIG },
+    fomoTrade: { ...DEFAULT_SOUND_CONFIG },
   },
   channelSounds: {},
   pushover: {
@@ -106,7 +107,7 @@ class ConfigStore {
         if (!parsed.soundSettings) {
           parsed.soundSettings = { ...DEFAULT_CONFIG.soundSettings };
         } else {
-          for (const key of ['highlight', 'contractAlert', 'keywordAlert'] as const) {
+          for (const key of ['highlight', 'contractAlert', 'keywordAlert', 'fomoTrade'] as const) {
             parsed.soundSettings[key] = { ...DEFAULT_SOUND_CONFIG, ...parsed.soundSettings[key] };
           }
         }

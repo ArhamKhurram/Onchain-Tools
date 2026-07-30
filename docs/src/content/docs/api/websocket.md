@@ -70,7 +70,7 @@ broadcasting to every connected socket.
 | `gateway_ready` | `{ data: { username } }` | Discord gateway connected — client refetches guilds/DMs/history. |
 | `gateway_auth_failed` | `{ error, tokenIndex, tokenInvalid, tokenBlocked }` | A Discord token failed auth, or the IP is blocked. |
 | `telegram_ready` | `{ data: { username, firstName } }` | Telegram connected — client refetches chats/history. |
-| `fomo_trade` | `{ data: { fomoUserId, fomoHandle, side, tokenAddress, tokenSymbol, networkId, usdValue, tradeId } }` | A tracked trader's trade, delivered per-user via `sendToUser`. |
+| `fomo_trade` | `{ data: { fomoUserId, fomoHandle, side, tokenAddress, tokenSymbol, tokenName, marketCap, marketCapDisplay, networkId, usdValue, tradeId, notify } }` | A tracked trader's trade, delivered per-user via `sendToUser`. `tokenName`/`marketCap` are resolved from the token catalog (same enrichment as contract calls), not from FOMO's own payload — null until resolved. `notify` is true only for a live dispatch to a subscriber with `notify_pushover` on; backfill/replay always sets it false so reconnecting or newly tracking a trader can't fire a burst of toasts. |
 
 New frame types enter through two escape hatches only: `broadcastRaw(msg,
 userId?)` (used for the `*_ready` / auth-failure frames) and

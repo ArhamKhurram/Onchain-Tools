@@ -1,10 +1,14 @@
 import { buildContractUrl, chainSlugFromNetworkId } from '@oct/shared';
-import type { ContractLinkTemplates } from '../types';
-import type { FomoTrade } from '../types/fomo';
+import type { ContractLinkTemplates, FrontendMessage } from '../types';
+import type { FomoTradeEvent } from '../types/fomo';
 
 export interface FomoTradeDisplay {
   /** Headline token label — `$SYMBOL`, else a shortened address, else a placeholder. */
   tokenLabel: string;
+  /** Full token name for a tooltip/secondary line, when resolved. */
+  tokenName: string | null;
+  /** Pre-formatted compact market cap (e.g. "$1.2M"), when resolved. */
+  marketCapLabel: string | null;
   /** `abcd…wxyz` secondary context; null when there's no address. */
   shortAddress: string | null;
   /** Full address for tooltips/copy. */
@@ -23,7 +27,7 @@ export interface FomoTradeDisplay {
  * token catalog; this falls back gracefully when that hasn't happened yet.
  */
 export function fomoTradeDisplay(
-  trade: FomoTrade,
+  trade: FomoTradeEvent,
   templates?: ContractLinkTemplates | null,
 ): FomoTradeDisplay {
   const address = trade.tokenAddress?.trim() || null;
@@ -44,10 +48,51 @@ export function fomoTradeDisplay(
 
   return {
     tokenLabel: symbol ? `$${symbol.toUpperCase()}` : (shortAddress ?? 'Unknown token'),
+    tokenName: trade.tokenName?.trim() || null,
+    marketCapLabel: trade.marketCapDisplay?.trim() || null,
     shortAddress,
     address,
     chainSlug,
     chartUrl,
     hasSymbol: !!symbol,
+  };
+}
+
+function formatTradeUsd(value: number | null): string {
+  if (value == null) return '';
+  const amount = Math.abs(value) >= 1000 ? Math.round(value).toLocaleString() : value.toFixed(2);
+  return ` ($${amount})`;
+}
+
+/**
+ * Synthesize a chat-message-shaped alert so a FOMO buy/sell can flow through
+ * the same toast/notification-history pipeline as every other alert type
+ * (mirrors buildMissedRunnerMessage on the backend, which does the same for
+ * missed-runner alerts).
+ */
+export function buildFomoTradeAlertMessage(
+  trade: FomoTradeEvent,
+  display: FomoTradeDisplay,
+): FrontendMessage {
+  const who = trade.displayName || (trade.fomoHandle ? `@${trade.fomoHandle}` : 'A tracked trader');
+  const sideLabel = trade.side === 'sell' ? 'sold' : 'bought';
+  const mc = display.marketCapLabel ? ` · MC ${display.marketCapLabel}` : '';
+
+  return {
+    id: `fomo-trade-${trade.tradeId ?? Date.now()}`,
+    channelId: 'fomo-trade',
+    guildId: null,
+    channelName: 'FOMO',
+    guildName: null,
+    author: { id: 'oct-fomo', username: 'OCT', displayName: 'FOMO Trade', avatar: null },
+    content: `${who} ${sideLabel} ${display.tokenLabel}${formatTradeUsd(trade.usdValue)}${mc}`,
+    timestamp: new Date().toISOString(),
+    attachments: [],
+    embeds: [],
+    isHighlighted: false,
+    hasContractAddress: !!trade.tokenAddress,
+    contractAddresses: trade.tokenAddress ? [trade.tokenAddress] : [],
+    mentions: {},
+    platformUrl: display.chartUrl ?? undefined,
   };
 }
