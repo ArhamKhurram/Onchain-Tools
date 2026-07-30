@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { fomoTradeDisplay } from '../src/utils/fomoTradeDisplay';
+import { fomoTradeDisplay, buildFomoTradeAlertMessage } from '../src/utils/fomoTradeDisplay';
 import type { FomoTrade } from '../src/types/fomo';
 import type { ContractLinkTemplates } from '../src/types';
 
@@ -74,5 +74,55 @@ describe('fomoTradeDisplay', () => {
   it('omits the chart link when no templates are configured', () => {
     expect(fomoTradeDisplay(trade(), null).chartUrl).toBeNull();
     expect(fomoTradeDisplay(trade(), undefined).chartUrl).toBeNull();
+  });
+
+  it('exposes tokenName and marketCapLabel when resolved', () => {
+    const d = fomoTradeDisplay(trade({ tokenName: 'Test Alpha', marketCapDisplay: '$1.2M' } as Partial<FomoTrade>), templates);
+    expect(d.tokenName).toBe('Test Alpha');
+    expect(d.marketCapLabel).toBe('$1.2M');
+  });
+
+  it('treats missing/blank tokenName and marketCapDisplay as null', () => {
+    const d = fomoTradeDisplay(trade({ tokenName: '  ', marketCapDisplay: null } as Partial<FomoTrade>), templates);
+    expect(d.tokenName).toBeNull();
+    expect(d.marketCapLabel).toBeNull();
+  });
+});
+
+describe('buildFomoTradeAlertMessage', () => {
+  it('names the trader, side, token, and USD value in the content', () => {
+    const t = trade({ tokenSymbol: 'TA', usdValue: 1791 });
+    const msg = buildFomoTradeAlertMessage(t, fomoTradeDisplay(t, templates));
+    expect(msg.content).toContain('Vee');
+    expect(msg.content).toContain('bought');
+    expect(msg.content).toContain('$TA');
+    expect(msg.content).toContain('$1,791');
+  });
+
+  it('says "sold" for a sell side', () => {
+    const t = trade({ side: 'sell' });
+    const msg = buildFomoTradeAlertMessage(t, fomoTradeDisplay(t, templates));
+    expect(msg.content).toContain('sold');
+  });
+
+  it('falls back to the handle, then a generic label, when displayName is absent', () => {
+    const withHandle = trade({ displayName: null });
+    expect(buildFomoTradeAlertMessage(withHandle, fomoTradeDisplay(withHandle, templates)).content).toContain('@vee');
+
+    const anonymous = trade({ displayName: null, fomoHandle: null });
+    expect(buildFomoTradeAlertMessage(anonymous, fomoTradeDisplay(anonymous, templates)).content).toContain('A tracked trader');
+  });
+
+  it('appends market cap when resolved', () => {
+    const t = trade({ marketCapDisplay: '$1.2M' } as Partial<FomoTrade>);
+    expect(buildFomoTradeAlertMessage(t, fomoTradeDisplay(t, templates)).content).toContain('MC $1.2M');
+  });
+
+  it('carries the chart URL as platformUrl and the address as a contract address', () => {
+    const t = trade();
+    const msg = buildFomoTradeAlertMessage(t, fomoTradeDisplay(t, templates));
+    expect(msg.platformUrl).toContain(SOL_ADDR);
+    expect(msg.contractAddresses).toEqual([SOL_ADDR]);
+    expect(msg.hasContractAddress).toBe(true);
   });
 });

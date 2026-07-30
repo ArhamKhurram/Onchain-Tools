@@ -86,6 +86,11 @@ const BUILT_IN_SOUNDS: Record<SoundType, { tones: [number, number, number][]; ty
     type: 'sine',
     baseVolume: 0.16,
   },
+  fomoTrade: {
+    tones: [[660, 0, 0.09], [990, 0.1, 0.14]],
+    type: 'sawtooth',
+    baseVolume: 0.16,
+  },
 };
 
 export function playSound(soundType: SoundType, soundConfig?: SoundConfig) {
@@ -120,6 +125,10 @@ export function playContractAlertSound(soundConfig?: SoundConfig) {
 
 export function playKeywordAlertSound(soundConfig?: SoundConfig) {
   playSound('keywordAlert', soundConfig);
+}
+
+export function playFomoTradeSound(soundConfig?: SoundConfig) {
+  playSound('fomoTrade', soundConfig);
 }
 
 export function previewSound(soundType: SoundType, soundConfig: SoundConfig) {

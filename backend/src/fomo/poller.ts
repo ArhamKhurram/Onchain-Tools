@@ -9,7 +9,7 @@ import type { WsServer } from '../ws/server.js';
 import { ensureSharedFomoClientReady } from './client.js';
 import type { FomoClientLike } from './types.js';
 import { syncAllTrackedFollows } from './follows.js';
-import { resolveTradeTokenSymbol } from './tokenSymbol.js';
+import { resolveTradeTokenInfo } from './tokenInfo.js';
 import {
   loadActivityCursors,
   storeAndFanOutTrade,
@@ -242,9 +242,9 @@ class FomoPoller {
     }
 
     for (const trade of fresh.reverse()) {
-      // FOMO identifies tokens by address only; fill in the symbol from OCT's
-      // token catalog so the live feed shows what was actually traded.
-      const enriched = await resolveTradeTokenSymbol(trade);
+      // FOMO identifies tokens by address only; fill in symbol/name/market cap
+      // from OCT's token catalog so the live feed shows what was actually traded.
+      const enriched = await resolveTradeTokenInfo(trade);
       await storeAndFanOutTrade(this.db!, this.wsServer, enriched);
     }
 

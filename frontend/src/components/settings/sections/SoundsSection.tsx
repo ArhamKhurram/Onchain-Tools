@@ -136,6 +136,7 @@ export default function SoundsSection({ form }: { form: SettingsForm }) {
                             ['highlight', 'Highlighted User'],
                             ['contractAlert', 'Contract Alert'],
                             ['keywordAlert', 'Keyword Match'],
+                            ['fomoTrade', 'FOMO Trade'],
                           ] as [SoundType, string][]).map(([type, label]) => {
                             const sc = soundSettings[type];
                             return (

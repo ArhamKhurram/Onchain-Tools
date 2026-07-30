@@ -125,6 +125,10 @@ Rank contract calls by who sent them.
   → route trades to OCT users who track that FOMO user.
 - **UI:** Wallets → FOMO tab — track list, live trade feed, leaderboard, Pushover
   bell per row.
+- **Token info + in-app alerts** — trades now carry `tokenName`/`marketCap`
+  (resolved from the token catalog, not FOMO's own payload) and a dedicated
+  toast + sound (`SoundSettings.fomoTrade`), gated by the same per-tracker
+  toggle that already drove Pushover.
 - **Leaderboard** — top traders (24h / all-time); one-click track.
 - **Holder overlap** — Radar shows how many tracked FOMO traders hold each contract.
 - **Signal convergence v1** — in-app alert when a contract call and a FOMO buy hit
@@ -191,10 +195,11 @@ config, one inbox — **not fuse** the underlying detections. Combine the
 touches signal generation.
 :::
 
-### Per-tracked-user notification rules (beyond Pushover on/off)
+### Per-tracked-user notification rules (beyond notify on/off)
 
-Filters per tracked FOMO user: buys only, min $ size threshold, specific chains,
-custom sound. Routes through existing Pushover triggers.
+Filters per tracked FOMO user: buys only, min $ size threshold, specific chains.
+`notify_pushover` is currently one on/off gate driving both Pushover and the
+in-app toast/sound together; these would need their own sub-toggles.
 
 ### Signal convergence v2
 

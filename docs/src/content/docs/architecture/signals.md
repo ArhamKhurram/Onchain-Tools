@@ -56,6 +56,21 @@ sequenceDiagram
   end
 ```
 
+Each trade is resolved against OCT's token catalog (`fomo/tokenInfo.ts`,
+`resolveTradeTokenInfo`) before dispatch — the same GMGN/DexScreener
+enrichment contract calls use — so `tokenName`/`marketCap`/`marketCapDisplay`
+are attached alongside the bare `tokenAddress`/`tokenSymbol` FOMO itself
+provides. Market cap is a snapshot of when the trade happened (persisted,
+never overwritten on replay), matching `contracts.fdv_at_call`.
+
+`fomo_tracked_users.notify_pushover` is the single per-tracker gate for both
+Pushover **and** the in-app toast/sound (`SoundSettings.fomoTrade`) — one
+toggle means "notify me about this trader," not two near-duplicate ones. The
+WS payload carries a `notify` flag set only on a genuinely live dispatch to
+an opted-in subscriber; backfill/replay (`deliverRecentTradesToUser`, and the
+`GET /api/fomo/trades` REST history on page load) never sets it, so opening
+the console or newly tracking a trader can't fire a burst of toasts.
+
 The interval is adaptive: `10 s` while any authenticated WS client is
 connected, `60 s` idle. On reload the console backfills 24 h of trades from
 `GET /api/fomo/trades` (read from the *delivery* log, so a user only sees
@@ -119,7 +134,7 @@ reordering chat would break reply context. Quality is a display/filter layer
 | Keyword match | ✔ | ✔ | ✔ | `alert` |
 | Contract detected | ✔ | ✔ | ✔ | `alert` + `contract` |
 | Missed runner | ✔ | ✔ | ✔ | `alert` |
-| FOMO trade | feed | per-trader `notify_pushover` | — | `fomo_trade` |
+| FOMO trade | ✔ (per-tracker) | per-tracker `notify_pushover` | — | `fomo_trade` |
 | Convergence | ✔ (client) | ✔ (via REST) | — | client-only |
 
 Bot DMs ride the `WsServer.onAlert` seam and are gated per user per trigger

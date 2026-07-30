@@ -62,6 +62,10 @@ export interface NormalizedTrade {
   side: string | null;
   tokenAddress: string | null;
   tokenSymbol: string | null;
+  /** Filled in by resolveTradeTokenInfo (fomo/tokenInfo.ts); FOMO's own payload never carries these. */
+  tokenName: string | null;
+  marketCap: number | null;
+  marketCapDisplay: string | null;
   networkId: number | null;
   usdValue: number | null;
   raw: unknown;
@@ -150,6 +154,10 @@ export function normalizeTrade(raw: any): NormalizedTrade {
     side: (firstString(r.side, r.type, r.action, r.direction, r.activityType) ?? '').toLowerCase() || null,
     tokenAddress: firstString(token.address, r.tokenAddress, r.token_address, r.contractAddress, r.inTokenAddress, r.outTokenAddress),
     tokenSymbol: firstString(token.symbol, token.ticker, r.tokenSymbol, r.ticker),
+    // FOMO never provides these; resolveTradeTokenInfo fills them in downstream.
+    tokenName: null,
+    marketCap: null,
+    marketCapDisplay: null,
     networkId: firstNumber(token.networkId, r.networkId, r.network_id, r.chainId, r.inNetworkId, r.outNetworkId),
     usdValue: firstNumber(r.usdValue, r.valueUsd, r.value_usd, r.amountUsd, r.usdAmount, r.humanUsdAmountIn, r.humanUsdAmountOut),
     raw,
@@ -213,8 +221,12 @@ export function normalizeUserActivity(
     side,
     tokenAddress,
     // Best-effort from the payload; when FOMO omits it the poller backfills the
-    // symbol from OCT's token catalog (see resolveTradeTokenSymbol).
+    // symbol from OCT's token catalog (see resolveTradeTokenInfo).
     tokenSymbol: pickActivitySymbol(r, subject),
+    // FOMO never provides these; resolveTradeTokenInfo fills them in downstream.
+    tokenName: null,
+    marketCap: null,
+    marketCapDisplay: null,
     networkId,
     usdValue: firstNumber(r.humanUsdAmountIn, r.humanUsdAmountOut),
     raw,

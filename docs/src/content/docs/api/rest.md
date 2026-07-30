@@ -82,7 +82,7 @@ applied, including `keywordPatterns`, `highlightMode`,
 
 | Method & path | Purpose |
 | --- | --- |
-| `POST /api/sounds/:soundType` | Upload an alert sound (multipart `file`, ≤2 MB, `.mp3/.wav/.ogg/.webm/.m4a`). `soundType` ∈ `highlight`, `contractAlert`, `keywordAlert`. |
+| `POST /api/sounds/:soundType` | Upload an alert sound (multipart `file`, ≤2 MB, `.mp3/.wav/.ogg/.webm/.m4a`). `soundType` ∈ `highlight`, `contractAlert`, `keywordAlert`, `fomoTrade`. |
 | `DELETE /api/sounds/:soundType` | Remove it. |
 | `POST /api/channel-sounds/:channelId` · `DELETE …` | Per-channel variants (`channelId` must be numeric). |
 

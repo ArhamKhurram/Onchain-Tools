@@ -168,6 +168,7 @@ export const DEMO_CONFIG: AppConfig = {
     highlight: { enabled: true, volume: 80, useCustom: false },
     contractAlert: { enabled: true, volume: 80, useCustom: false },
     keywordAlert: { enabled: true, volume: 80, useCustom: false },
+    fomoTrade: { enabled: true, volume: 80, useCustom: false },
   },
   pushover: { enabled: false, appToken: '', userKey: '', priority: 0, sound: 'pushover', triggers: { highlightedUser: false, highlightedUserContract: false, contract: false, keyword: false, signalConvergence: false, missedRunner: false }, filters: { userIds: [], channelIds: [], guildIds: [] } },
   missedRunner: { enabled: false, minMultiplier: 1.5, lookbackHours: 24, cooldownHours: 24, notifyVia: 'toast' },

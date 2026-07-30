@@ -88,10 +88,9 @@ function FomoTradeRow({ trade }: { trade: FomoTrade }) {
 
   // Symbol is the headline; the address stays visible as secondary context so a
   // token is always identifiable even before enrichment resolves a symbol.
-  const { tokenLabel, shortAddress, address, chainSlug, chartUrl, hasSymbol } = fomoTradeDisplay(
-    trade,
-    config?.contractLinkTemplates,
-  );
+  const { tokenLabel, tokenName, marketCapLabel, shortAddress, address, chainSlug, chartUrl, hasSymbol } =
+    fomoTradeDisplay(trade, config?.contractLinkTemplates);
+  const tokenTitle = [tokenName, address].filter(Boolean).join(' · ') || undefined;
 
   return (
     <li className="flex items-center gap-3 px-4 py-2.5 hover:bg-oct-surface-raised/60 transition-colors">
@@ -108,19 +107,24 @@ function FomoTradeRow({ trade }: { trade: FomoTrade }) {
               target="_blank"
               rel="noopener noreferrer"
               onClick={(e) => e.stopPropagation()}
-              title={address ?? undefined}
+              title={tokenTitle}
               className="font-mono font-bold text-oct-text hover:text-oct-accent hover:underline truncate"
             >
               {tokenLabel}
             </a>
           ) : (
-            <span className="font-mono font-bold text-oct-text truncate" title={address ?? undefined}>
+            <span className="font-mono font-bold text-oct-text truncate" title={tokenTitle}>
               {tokenLabel}
             </span>
           )}
           {hasSymbol && shortAddress && (
             <span className="font-mono text-oct-muted/70 shrink-0" title={address ?? undefined}>
               {shortAddress}
+            </span>
+          )}
+          {marketCapLabel && (
+            <span className="font-mono font-bold text-oct-muted shrink-0" title="Market cap">
+              MC {marketCapLabel}
             </span>
           )}
           {chainSlug && (
