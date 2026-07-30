@@ -1,6 +1,6 @@
 ---
 title: 'ADR-006: In-process Discord bot'
-description: Outpost runs inside the backend process rather than as a separate service.
+description: The OCT bot runs inside the backend process rather than as a separate service.
 sidebar:
   order: 6
   label: '006 — In-process bot'
@@ -10,7 +10,7 @@ sidebar:
 
 ## Context
 
-The Outpost bot needs the same data the backend already holds: FOMO client,
+The OCT bot needs the same data the backend already holds: FOMO client,
 token snapshots, storage, and the live alert stream. Running it as a separate
 microservice would require an HTTP surface for all of that, a second deploy
 target, and a forwarding channel for alerts.

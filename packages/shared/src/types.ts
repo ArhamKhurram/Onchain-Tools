@@ -184,7 +184,7 @@ export type ToastPosition =
   | 'center';
 
 /**
- * Outpost bot DM alerts. Personal DMs only (see docs/architecture/discord-bot.md) — the bot
+ * OCT bot DM alerts. Personal DMs only (see docs/architecture/discord-bot.md) — the bot
  * sends to the Discord account linked to this OCT account, so no channel config.
  *
  * NOTE: signal-convergence is intentionally absent. Those alerts are generated
@@ -339,7 +339,7 @@ export interface AppConfig {
   channelSounds: Record<string, SoundConfig>;
   pushover: PushoverConfig;
   missedRunner: MissedRunnerConfig;
-  /** Outpost Discord bot DM alerts (opt-in). */
+  /** OCT Discord bot DM alerts (opt-in). */
   discordBotDm?: DiscordBotDmConfig;
   contractLinkTemplates: ContractLinkTemplates;
   contractClickAction: ContractClickAction;

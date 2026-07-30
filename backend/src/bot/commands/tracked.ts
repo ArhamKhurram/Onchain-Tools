@@ -3,7 +3,7 @@ import type { BotTrackedResponse } from '@oct/shared';
 import { anywhere } from './context.js';
 import { getBotTracked } from '../service.js';
 import { describeServiceError } from '../errors.js';
-import { BRAND, makeContainer, makeSeparator, makeText, noticeCard } from '../layout.js';
+import { BRAND, botFooter, makeContainer, makeSeparator, makeText, noticeCard } from '../layout.js';
 import type { BotCommand } from './types.js';
 
 const MAX_LISTED = 25;
@@ -15,7 +15,7 @@ function buildComponents(data: BotTrackedResponse) {
       makeContainer(BRAND.blurple, [
         makeText('# 👛 Your tracked traders'),
         makeText("You aren't tracking any FOMO traders yet."),
-        makeText('-# Add them in OCT → Wallets → FOMO, or with `/leaderboard`. · Outpost 👀'),
+        makeText(botFooter('Add them in OCT → Wallets → FOMO, or with `/leaderboard`.')),
       ]),
     ];
   }
@@ -36,7 +36,7 @@ function buildComponents(data: BotTrackedResponse) {
       makeSeparator(1),
       makeText(rows.join('\n')),
       ...(overflow > 0 ? [makeText(`-# …and ${overflow} more.`)] : []),
-      makeText('-# Only you can see this · Outpost 👀'),
+      makeText(botFooter('Only you can see this')),
     ]),
   ];
 }

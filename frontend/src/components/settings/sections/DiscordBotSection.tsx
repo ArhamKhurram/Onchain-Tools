@@ -2,7 +2,7 @@ import { Bot } from 'lucide-react';
 import { Toggle } from '../fields';
 import type { SettingsForm } from '../useSettingsForm';
 
-// Outpost bot DM alerts. Personal DMs only — the bot messages the Discord
+// OCT bot DM alerts. Personal DMs only — the bot messages the Discord
 // account linked to this OCT account, so there are no channels to configure.
 export default function DiscordBotSection({ form }: { form: SettingsForm }) {
   const { discordBotDm, setDiscordBotDm } = form;
@@ -21,7 +21,7 @@ export default function DiscordBotSection({ form }: { form: SettingsForm }) {
             <div>
               <h4 className="text-xs sm:text-sm font-semibold text-white">Alert DMs</h4>
               <p className="text-sm text-discord-text-muted mt-1">
-                The Outpost bot sends alerts straight to your Discord DMs. It messages the Discord
+                The OCT bot sends alerts straight to your Discord DMs. It messages the Discord
                 account you signed into OCT with — nothing is posted to any server.
               </p>
             </div>

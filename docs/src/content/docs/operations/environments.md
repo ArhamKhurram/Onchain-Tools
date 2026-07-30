@@ -54,7 +54,7 @@ rather than crashing.
 | `ALCHEMY_API_KEY` | EVM `balanceOf` (falls back to public RPCs). |
 | `MISSED_RUNNER_POLL_INTERVAL_MS` | Poller interval (default 180 000). |
 
-## Outpost bot
+## OCT Discord bot
 
 | Variable | Purpose |
 | --- | --- |

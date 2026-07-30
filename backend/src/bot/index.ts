@@ -4,7 +4,7 @@ import { commands } from './commands/index.js';
 import { createAlertDmListener } from './alerts.js';
 import { handleInteraction } from './interactions.js';
 
-// In-process Outpost bot (see docs/architecture/discord-bot.md). Runs inside the OCT backend
+// In-process OCT bot (see docs/architecture/discord-bot.md). Runs inside the OCT backend
 // rather than as a separate service: command handlers call bot/service.ts
 // directly, so there is no HTTP hop and no second deploy target.
 //
@@ -25,7 +25,7 @@ export function isBotEnabled(): boolean {
 export function startBot(wsServer?: WsServer): void {
   const token = process.env.DISCORD_BOT_TOKEN?.trim();
   if (!token) {
-    console.log('[Bot] DISCORD_BOT_TOKEN not set; Outpost bot disabled.');
+    console.log('[Bot] DISCORD_BOT_TOKEN not set; OCT bot disabled.');
     return;
   }
 
@@ -35,7 +35,7 @@ export function startBot(wsServer?: WsServer): void {
 
     bot.once(Events.ClientReady, (ready) => {
       console.log(
-        `[Bot] Outpost online as ${ready.user.tag} (${commands.length} commands registered in-process).`,
+        `[Bot] OCT bot online as ${ready.user.tag} (${commands.length} commands registered in-process).`,
       );
     });
 

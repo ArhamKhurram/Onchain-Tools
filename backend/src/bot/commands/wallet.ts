@@ -3,7 +3,7 @@ import type { BotWalletProfile } from '@oct/shared';
 import { anywhere } from './context.js';
 import { getBotWallet } from '../service.js';
 import { describeServiceError } from '../errors.js';
-import { BRAND, makeContainer, makeSeparator, makeText, noticeCard, pnlBadge, usd } from '../layout.js';
+import { BRAND, botFooter, makeContainer, makeSeparator, makeText, noticeCard, pnlBadge, usd } from '../layout.js';
 import type { BotCommand } from './types.js';
 
 // Public trader lookup — wallets + current holdings + PnL. Ported from the
@@ -27,7 +27,7 @@ function buildComponents(profile: BotWalletProfile) {
       makeSeparator(2),
       makeText(`**Portfolio PnL:** ${pnlBadge(portfolioPnlUsd)}`),
       ...(livePerpPnlUsd !== 0 ? [makeText(`**Live Perp PnL:** ${pnlBadge(livePerpPnlUsd)}`)] : []),
-      makeText('-# Outpost 👀'),
+      makeText(botFooter()),
     ]),
   ];
 }

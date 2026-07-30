@@ -62,7 +62,7 @@ broadcasting to every connected socket.
 | `message` | `{ data: FrontendMessage, roomIds }` | New Discord/Telegram message. Room-filtered. |
 | `message_update` | `{ data: { messageId, channelId, embeds?, content?, … }, roomIds }` | Message edited. Room-filtered. |
 | `message_delete` | `{ data: { messageId, channelId }, roomIds }` | Message deleted. Room-filtered. |
-| `alert` | `{ data: { type, message, reason } }` | Toast alert. Inner `type` ∈ `highlighted_user`, `contract_address`, `keyword_match`, `missed_runner` (plus a client-only `signal_convergence`). Also fans out to `onAlert` listeners — the seam the Outpost bot uses for DM delivery. |
+| `alert` | `{ data: { type, message, reason } }` | Toast alert. Inner `type` ∈ `highlighted_user`, `contract_address`, `keyword_match`, `missed_runner` (plus a client-only `signal_convergence`). Also fans out to `onAlert` listeners — the seam the OCT bot uses for DM delivery. |
 | `reaction_update` | `{ data: { channelId, messageId, emoji, delta } }` | Reaction count changed. |
 | `contract` | `{ data: ContractEntry }` | New contract detected and logged. |
 | `contract_enrichment` | `{ data: ContractEntry }` | Token metadata attached to a logged contract. |

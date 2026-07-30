@@ -150,7 +150,7 @@ only, never enrichment ([ADR-003](../../adr/003-provider-split/)).
 
 ## Bot API (`routes/bot.ts`, mounted at `/api/v1/bot` — bot API key)
 
-Machine-to-machine surface for external bot consumers; the in-process Outpost
+Machine-to-machine surface for external bot consumers; the in-process OCT
 bot calls the service layer directly and skips HTTP entirely.
 
 | Method & path | Purpose |

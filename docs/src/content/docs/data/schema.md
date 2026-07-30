@@ -143,7 +143,7 @@ poller/fan-out work; browser clients go through these policies:
 
 Notable functions: `oct_user_id_by_discord_id(text)` (`SECURITY DEFINER`,
 service-role only) maps a Discord user id to an OCT user via
-`auth.identities` — this is how the Outpost bot resolves tenancy.
+`auth.identities` — this is how the OCT bot resolves tenancy.
 
 ## Two Supabase projects
 

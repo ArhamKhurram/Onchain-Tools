@@ -1,6 +1,6 @@
 import { MessageFlags, SlashCommandBuilder } from 'discord.js';
 import { anywhere } from './context.js';
-import { BRAND, makeContainer, makeText } from '../layout.js';
+import { BRAND, botFooter, makeContainer, makeText } from '../layout.js';
 import type { BotCommand } from './types.js';
 
 // Liveness probe: proves the in-process bot is wired to the OCT backend.
@@ -16,7 +16,7 @@ export const ping: BotCommand = {
         makeContainer(BRAND.green, [
           makeText('# 🛰️ OCT Bot'),
           makeText(`Online — gateway latency \`${latency}ms\`.`),
-          makeText('-# Running in-process with the OCT backend · Outpost 👀'),
+          makeText(botFooter('Running in-process with the OCT backend')),
         ]),
       ],
     });
