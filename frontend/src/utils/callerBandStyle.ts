@@ -32,6 +32,19 @@ export const BAND_TITLE: Record<CallerBand, string> = {
   slop: 'Mostly slop — few calls have gone anywhere',
 };
 
+/**
+ * Background + text pair for the small badge shown next to a name in the feed.
+ * Only defined for the bands worth flagging (see `bandIsNotable`) — `mixed`
+ * and `unrated` intentionally render no badge.
+ */
+export const BAND_BADGE_CLASS: Record<CallerBand, string> = {
+  elite: 'bg-oct-green/15 text-oct-green',
+  solid: 'bg-oct-live/15 text-oct-live',
+  mixed: '',
+  unrated: '',
+  slop: 'bg-oct-muted/15 text-oct-muted',
+};
+
 /** Only bands worth drawing attention to get a marker; the rest stay quiet. */
 export function bandIsNotable(band: CallerBand): boolean {
   return band === 'elite' || band === 'solid' || band === 'slop';
