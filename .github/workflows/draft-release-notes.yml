@@ -59,8 +59,12 @@ jobs:
 
           # Capture status and body separately so a non-2xx prints the API's own
           # error instead of failing with no explanation.
+          # anthropic-version is required on every api.anthropic.com call — the
+          # first run returned HTTP 400 "anthropic-version: header is required".
+          # The Bearer token was already accepted, so only this was missing.
           HTTP=$(curl -sS -o response.txt -w '%{http_code}' -X POST "$FIRE_URL" \
             -H "Authorization: Bearer ${TOKEN}" \
+            -H 'anthropic-version: 2023-06-01' \
             -H 'Content-Type: application/json' \
             -d "$BODY")
 
