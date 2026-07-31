@@ -155,6 +155,11 @@ posts/
 # Cursor AI files
 .cursor/
 
+# Claude Code local files — worktrees (.claude/worktrees/*), session data, and
+# launch.json. Machine-specific; ignored wholesale so a git worktree living
+# under .claude/ can never be accidentally staged onto a branch.
+.claude/
+
 # onchain-tools specifics
 .vercel/
 .trenchcord-import/

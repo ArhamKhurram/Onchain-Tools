@@ -5,7 +5,8 @@ import AppShell from './layout/AppShell';
 
 const DashboardPage = lazy(() => import('./pages/DashboardPage'));
 const FeedPage = lazy(() => import('./pages/FeedPage'));
-const WalletsPage = lazy(() => import('./pages/WalletsPage'));
+const DirectoryPage = lazy(() => import('./pages/DirectoryPage'));
+const FomoPage = lazy(() => import('./pages/FomoPage'));
 const PortfolioPage = lazy(() => import('./pages/PortfolioPage'));
 const CallersPage = lazy(() => import('./pages/CallersPage'));
 const WorkspacePage = lazy(() => import('./pages/WorkspacePage'));
@@ -31,9 +32,12 @@ export default function App() {
             <Route path="/" element={<AppShell />}>
               <Route index element={<DashboardPage />} />
               <Route path="feed" element={<FeedPage />} />
-              <Route path="wallets" element={<WalletsPage />} />
-              <Route path="portfolio" element={<PortfolioPage />} />
               <Route path="callers" element={<CallersPage />} />
+              <Route path="fomo" element={<FomoPage />} />
+              <Route path="directory" element={<DirectoryPage />} />
+              {/* Renamed from /wallets — keep old links working. */}
+              <Route path="wallets" element={<Navigate to="/directory" replace />} />
+              <Route path="portfolio" element={<PortfolioPage />} />
               <Route path="workspace" element={<WorkspacePage />} />
               <Route path="settings" element={<SettingsPage />} />
               <Route path="login" element={<LoginPage />} />

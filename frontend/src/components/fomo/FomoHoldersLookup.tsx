@@ -1,6 +1,6 @@
-// Workspace panel: paste a token address, get its top FOMO holders. Same board
-// the contract-row drawer renders, driven by an explicit submit rather than a
-// selection.
+// Paste a token address, get its top FOMO holders. Same board the contract-row
+// drawer renders, driven by an explicit submit rather than a selection. Used as
+// the FOMO → Holders tab and as the Workspace "Token lookup" panel.
 //
 // Submit-driven on purpose — each lookup is a round trip to the single-tab
 // Chromium worker, so search-as-you-type would hammer it.
@@ -8,9 +8,9 @@
 import { useState, type FormEvent } from 'react';
 import { Search } from 'lucide-react';
 import { useFomoHolders } from '../../hooks/useFomoLookup';
-import FomoHoldersBoard from '../fomo/FomoHoldersBoard';
+import FomoHoldersBoard from './FomoHoldersBoard';
 
-export default function WorkspaceTokenLookup() {
+export default function FomoHoldersLookup() {
   const [input, setInput] = useState('');
   const [submitted, setSubmitted] = useState<string | null>(null);
   const { data, loading, error, refresh } = useFomoHolders(submitted);

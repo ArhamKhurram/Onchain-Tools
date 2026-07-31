@@ -1,9 +1,9 @@
 // Look up any FOMO trader by handle or display name and show their public
 // wallets, holdings and PnL — the console's read of the Discord /wallet command.
 //
-// Distinct from FomoTracker: that manages *your* tracked traders (a Supabase
-// write). This is a read-only probe of anyone on fomo.family, so nothing here
-// persists.
+// Distinct from the Tracking tab (FomoTrackedList): that manages *your* tracked
+// traders (a Supabase write). This is a read-only probe of anyone on
+// fomo.family, so nothing here persists.
 
 import { useState, type FormEvent } from 'react';
 import { Check, Copy, Search, Wallet } from 'lucide-react';
