@@ -1,5 +1,13 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { mapHolders, mapTokenInfo, resolveNetworkId, DEFAULT_NETWORK_ID } from '../src/bot/service';
+import {
+  mapHolders,
+  mapTokenInfo,
+  resolveNetworkId,
+  DEFAULT_NETWORK_ID,
+  EVM_NETWORK_IDS,
+  candidateNetworkIds,
+  isEvmAddress,
+} from '../src/bot/service';
 import { requireBotAuth } from '../src/auth/botAuth';
 
 const SOL_NET = 1399811149;
@@ -80,6 +88,50 @@ describe('mapHolders', () => {
   it('returns [] for an empty/foreign payload', () => {
     expect(mapHolders({}, ADDR, SOL_NET)).toEqual([]);
     expect(mapHolders({ responseObject: [] }, ADDR, SOL_NET)).toEqual([]);
+  });
+  it('falls back to the first entry only when not strict', () => {
+    // Regression: probing several networks in one batch must not attribute
+    // BSC's holders to Ethereum just because Ethereum had no entry.
+    expect(mapHolders(hodlersFixture, ADDR, 1)).toHaveLength(3);
+    expect(mapHolders(hodlersFixture, ADDR, 1, true)).toEqual([]);
+  });
+});
+
+describe('candidateNetworkIds — chain detection for /holders', () => {
+  const EVM_TOKEN = '0xfe189e97832da1573e4e4ff034f4ffc3a15c7777';
+
+  it('recognises EVM vs base58 addresses', () => {
+    expect(isEvmAddress(EVM_TOKEN)).toBe(true);
+    expect(isEvmAddress(` ${EVM_TOKEN.toUpperCase().replace('0X', '0x')} `)).toBe(true);
+    expect(isEvmAddress(ADDR)).toBe(false);
+    expect(isEvmAddress('0xnothex')).toBe(false);
+  });
+
+  it('probes every EVM chain for an 0x address, never Solana', () => {
+    const ids = candidateNetworkIds(EVM_TOKEN);
+    expect(ids).toEqual([...EVM_NETWORK_IDS]);
+    expect(ids).not.toContain(DEFAULT_NETWORK_ID);
+  });
+
+  it('keeps a base58 address on Solana alone', () => {
+    expect(candidateNetworkIds(ADDR)).toEqual([DEFAULT_NETWORK_ID]);
+  });
+
+  it('picks the chain that actually has holders', () => {
+    // What FOMO returns for 0xfe18…7777: holders on BSC, empty on the rest.
+    const batch = {
+      responseObject: [
+        { tokenAddress: EVM_TOKEN, networkId: 56, topHolders: [{ user: { userHandle: 'loganlim_x' }, value: 10, pnl: 1 }] },
+        { tokenAddress: EVM_TOKEN, networkId: 1, topHolders: [], totalHolders: 0 },
+        { tokenAddress: EVM_TOKEN, networkId: 8453, topHolders: [], totalHolders: 0 },
+        { tokenAddress: EVM_TOKEN, networkId: 143, topHolders: [], totalHolders: 0 },
+      ],
+    };
+    const winner = candidateNetworkIds(EVM_TOKEN)
+      .map((id) => ({ id, holders: mapHolders(batch, EVM_TOKEN, id, true) }))
+      .reduce((best, cur) => (cur.holders.length > best.holders.length ? cur : best));
+    expect(winner.id).toBe(56);
+    expect(winner.holders[0].name).toBe('loganlim_x');
   });
 });
 

@@ -2,6 +2,13 @@
 
 All notable changes to Trenchcord are documented here.
 
+## 2026-07-31
+
+### Fixed
+- **FOMO data stopped loading after the worker had been up a few days** — holder overlap, the live trade poll and the bot's FOMO commands were all timing out. The worker keeps one browser tab open on fomo.family to get past Cloudflare, and after six days that tab had grown to 577 MB on a 1 GB box — enough to push it into constant swapping, where the same request took anywhere from 2 to 105 seconds. The tab is now recycled periodically, which keeps memory flat and response times steady at ~2s. Nothing was wrong with the FOMO login; no credentials needed rotating.
+- **`/holders` found nothing for BNB Chain, Ethereum and Base tokens** — the command assumed Solana whenever you didn't pass `network`, so any `0x…` address came back "No holders found". It now reads the chain off the address and checks every EVM chain FOMO indexes in a single request, so `/holders 0xfe18…7777` just works. Passing `network` explicitly still overrides it.
+- **FOMO outages are no longer silent** — a stalled worker used to tie up requests for five minutes and log only `fetch failed`. Requests now time out in 45s and say what actually went wrong.
+
 ## 2026-07-30
 
 ### Fixed

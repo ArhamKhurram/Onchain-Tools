@@ -6,7 +6,7 @@ import {
 } from 'discord.js';
 import type { BotHoldersResponse } from '@oct/shared';
 import { anywhere } from './context.js';
-import { DEFAULT_NETWORK_ID, getBotHolders, resolveNetworkId } from '../service.js';
+import { getBotHolders, resolveNetworkId } from '../service.js';
 import { describeServiceError } from '../errors.js';
 import {
   botFooter,
@@ -98,7 +98,7 @@ export const holders: BotCommand = {
       .addStringOption((o) =>
         o
           .setName('network')
-          .setDescription('Chain slug (sol, eth, bsc, base, hood) or FOMO network id — default Solana')
+          .setDescription('Chain slug (sol, eth, bsc, base, hood) or FOMO network id — detected from the address if omitted')
           .setRequired(false),
       ),
   ),
@@ -108,9 +108,11 @@ export const holders: BotCommand = {
 
     const tokenAddress = interaction.options.getString('token_address', true).trim();
     const networkInput = interaction.options.getString('network');
-    const networkId = networkInput ? resolveNetworkId(networkInput) : DEFAULT_NETWORK_ID;
+    // No explicit network → let getBotHolders infer it from the address.
+    // Defaulting to Solana here made every `0x…` token report zero holders.
+    const networkId = networkInput ? resolveNetworkId(networkInput) : null;
 
-    if (!networkId) {
+    if (networkInput && !networkId) {
       await interaction.editReply({
         flags: MessageFlags.IsComponentsV2,
         components: noticeCard(
