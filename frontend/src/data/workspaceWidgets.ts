@@ -24,6 +24,7 @@ export const WORKSPACE_WIDGETS: WorkspaceWidgetDef[] = [
   { type: 'radar', label: 'Radar', description: 'Token mention aggregation and overlap' },
   { type: 'fomo-feed', label: 'FOMO live', description: 'Live buys and sells from tracked traders' },
   { type: 'fomo-leaderboard', label: 'FOMO leaderboard', description: 'Top traders on fomo.family' },
+  { type: 'token-lookup', label: 'Token lookup', description: 'Top FOMO holders for any token address' },
 ];
 
 export function widgetLabel(type: WorkspacePanelType): string {
