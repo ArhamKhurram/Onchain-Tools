@@ -71,7 +71,7 @@ session if not (see `backend/.env.example` for the cookie procedure).
 | Backend liveness | `GET https://<railway-host>/health` → `{"status":"ok"}` |
 | Provider env | `GET /api/portfolio/status` (public probe) |
 | FOMO pipeline | `GET /api/fomo/status` (poller active, last poll, last error, worker health) |
-| Bot | Railway logs: `[Bot] Outpost online as …` vs `DISCORD_BOT_TOKEN not set` |
+| Bot | Railway logs: `[Bot] OCT bot online as …` vs `DISCORD_BOT_TOKEN not set` |
 | Worker | `GET http://<vps>:3100/health` |
 
 Railway logs are the primary observability surface — there is no external

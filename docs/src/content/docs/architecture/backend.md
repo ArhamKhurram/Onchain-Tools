@@ -52,7 +52,7 @@ flowchart TB
     api["api/routes/* (composition root routes.ts)"]
     storage["storage/StorageProvider<br/>json | supabase"]
     auth["auth/middleware + botAuth + encryption"]
-    bot["bot/* (Outpost, in-process)"]
+    bot["bot/* (OCT bot, in-process)"]
   end
 
   dgw --> proc
@@ -111,7 +111,7 @@ sequenceDiagram
     P->>W: broadcastContractEnrichment
   end
   P->>W: broadcastAlert (highlight/keyword/contract)
-  Note over W: onAlert seam → Outpost bot DMs
+  Note over W: onAlert seam → OCT bot DMs
   P->>W: broadcastMessage
 ```
 

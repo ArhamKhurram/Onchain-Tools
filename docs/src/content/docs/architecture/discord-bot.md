@@ -1,11 +1,11 @@
 ---
-title: Outpost Discord bot
+title: OCT Discord bot
 description: The in-process bot — commands, DM alerts, announcements, and tenancy.
 sidebar:
   order: 6
 ---
 
-Outpost runs **in-process with the backend** ([ADR-006](../../adr/006-in-process-bot/)):
+The bot runs **in-process with the backend** ([ADR-006](../../adr/006-in-process-bot/)):
 command handlers call `bot/service.ts` directly — no HTTP hop, no second
 deploy target. It self-gates on `DISCORD_BOT_TOKEN` and swallows every
 failure path, so a bot problem can never take down feed ingestion, the API,
@@ -14,6 +14,20 @@ or the WS.
 Intents: `Guilds` only — slash commands, no message content, no privileged
 intents.
 
+:::note[The FOMO commands are retired]
+`/holders`, `/leaderboard`, `/tracked` and `/wallet` were removed once the
+console reached parity (contract-row holders drawer, Workspace token lookup,
+Wallets → Trader Lookup, and the existing FOMO leaderboard + tracker). The
+surviving commands are `/ping` and `/token`, the latter reading OCT's own
+enrichment catalog rather than FOMO.
+
+**The bot itself is unaffected** — DM alerts, release notes and the announce
+API all continue. `bot/service.ts` keeps `getBotHolders`/`getBotWallet`/
+`getBotLeaderboard`/`getBotTracked`: the `/api/v1/bot` routes still expose
+them, and the console's `/api/fomo/hodlers/top` + `/api/fomo/wallet` are built
+on the first two.
+:::
+
 ## Component view
 
 ```mermaid
@@ -21,7 +35,7 @@ flowchart TB
   subgraph botpkg["backend/src/bot/"]
     idx["index.ts<br/>startBot / stopBot / getBotClient"]
     inter["interactions.ts<br/>dispatch via commandMap"]
-    cmds["commands/*<br/>ping · token · holders ·<br/>leaderboard · tracked · wallet · context"]
+    cmds["commands/*<br/>ping · token · context"]
     svc["service.ts<br/>BotServiceError, resolveNetworkId,<br/>getBotHolders / Leaderboard / Tracked / Wallet / Snapshot"]
     alerts["alerts.ts<br/>createAlertDmListener,<br/>shouldDmAlert, buildAlertDm"]
     ident["identity.ts<br/>resolveOctUserByDiscordId (cached)"]
@@ -53,14 +67,14 @@ sequenceDiagram
   participant D as Discord
   participant B as Bot client (in-process)
   participant S as bot/service.ts
-  participant F as FOMO client
-  U->>D: /leaderboard
+  participant T as utils/tokenSnapshot
+  U->>D: /token address chain
   D->>B: InteractionCreate
   B->>B: commandMap lookup, defer reply
-  B->>S: getBotLeaderboard(window, limit)
-  S->>F: ensureSharedFomoClientReady → getLeaderboard
-  F-->>S: entries (TTL-cached 5 min)
-  S-->>B: BotLeaderboardResponse
+  B->>S: getBotSnapshot(chain, address)
+  S->>T: getTokenSnapshot (GMGN → DexScreener, catalog-backed)
+  T-->>S: snapshot (or stale catalog entry)
+  S-->>B: BotSnapshotResponse
   B->>D: editReply (branded Components V2 container)
 ```
 
@@ -73,8 +87,12 @@ Errors map through `BotServiceError` codes (`not_configured`, `upstream`,
 The bot is DM-first and multi-tenant-aware: a Discord user maps to an OCT
 account via the Supabase **Discord OAuth identity** — the `SECURITY DEFINER`
 function `oct_user_id_by_discord_id` reads `auth.identities` (service-role
-only, cached in `identity.ts`). Commands that need user data (`/tracked`)
-return `not_linked` if the Discord account has no linked OCT login.
+only, cached in `identity.ts`), returning `not_linked` when a Discord account
+has no linked OCT login.
+
+No surviving slash command needs user data — `/tracked` was the only one, and
+it retired with the other FOMO commands. The mapping still backs alert-DM
+delivery and `GET /api/v1/bot/fomo/tracked`.
 
 ## Alert DMs (opt-in)
 
@@ -100,6 +118,12 @@ calls.
 Slash commands are registered out-of-band with
 `npm run bot:deploy -w backend` (`bot/deployCommands.ts`) — instant to
 `DISCORD_DEV_GUILD_ID` when set, `-- --global` for global rollout.
+
+The script `PUT`s the whole `commands` array, which replaces the registered
+set rather than merging into it. **Removing a command from
+`commands/index.ts` is therefore only half the job** — until `bot:deploy`
+runs, Discord still advertises it and users get "application did not respond"
+on a handler that no longer exists. Global propagation can take up to an hour.
 
 :::note[Hosting]
 The bot lives wherever the backend runs with `DISCORD_BOT_TOKEN` set — in

@@ -20,7 +20,7 @@ C4Context
   title System context — Onchain Tools
   Person(trader, "Trader", "Watches feeds, tracks callers and wallets, receives alerts")
   System(oct, "Onchain Tools", "Real-time crypto intelligence console")
-  System_Ext(discord, "Discord", "Message source (user gateway) + Outpost bot surface")
+  System_Ext(discord, "Discord", "Message source (user gateway) + OCT bot surface")
   System_Ext(telegram, "Telegram", "Message source (MTProto)")
   System_Ext(fomo, "fomo.family", "Trader leaderboard + swap feed (Cloudflare-gated API)")
   System_Ext(dex, "Market data", "GMGN, DexScreener, Birdeye, Helius, Alchemy")
@@ -48,7 +48,7 @@ flowchart TB
   end
 
   subgraph railway["Railway"]
-    backend["Backend (oct-backend)<br/><i>Express + WebSocket</i><br/>ingest, enrichment, alerts,<br/>REST /api, WS /ws, Outpost bot"]
+    backend["Backend (oct-backend)<br/><i>Express + WebSocket</i><br/>ingest, enrichment, alerts,<br/>REST /api, WS /ws, OCT bot"]
   end
 
   subgraph vps["VPS"]
@@ -75,7 +75,7 @@ flowchart TB
   backend -- "HTTP + shared secret" --> worker
   worker --> fomoapi
   backend --> providers
-  backend -- "gateway (local mode)<br/>+ Outpost bot" --> discord
+  backend -- "gateway (local mode)<br/>+ OCT bot" --> discord
   backend -- "MTProto" --> telegram
 ```
 

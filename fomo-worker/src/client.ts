@@ -14,6 +14,19 @@ const BASE = 'https://prod-api.fomo.family';
 const PRIVY_SESSIONS_URL = 'https://auth.privy.io/api/v1/sessions';
 const DEBUG = process.env.DEBUG === 'true';
 
+// The fomo.family SPA is a live app — sockets, timers, a growing React tree —
+// so a tab left open for days climbs past 500 MB RSS. On a 1 GB VPS that ends
+// in continuous swapping, which turns a 2s /hodlers/top into a 100s one and
+// surfaces on Railway as `fetch failed`. Recycling the tab bounds that: the
+// persistent context keeps the cookies, so a fresh tab needs no re-auth.
+function envInt(name: string, fallback: number): number {
+  const raw = Number(process.env[name]);
+  return Number.isFinite(raw) && raw >= 0 ? raw : fallback;
+}
+
+const PAGE_MAX_AGE_MS = envInt('FOMO_PAGE_MAX_AGE_MS', 30 * 60 * 1000);
+const PAGE_MAX_CALLS = envInt('FOMO_PAGE_MAX_CALLS', 200);
+
 const USER_AGENT =
   'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36';
 
@@ -56,8 +69,12 @@ export class FomoBrowserClient {
   private context: BrowserContext | null = null;
   private page: Page | null = null;
   private browserInit: Promise<Page> | null = null;
+  private recycleInit: Promise<void> | null = null;
   private jwt: string | null = null;
   private profileDir: string;
+  private pageOpenedAt = 0;
+  private callsOnPage = 0;
+  private inFlight = 0;
   lastCallAt: Date | null = null;
   lastCallPath: string | null = null;
   lastError: string | null = null;
@@ -74,6 +91,15 @@ export class FomoBrowserClient {
 
   get jwtReady(): boolean {
     return !!this.jwt;
+  }
+
+  /** Seconds the current tab has been open — health-check signal that recycling runs. */
+  get pageAgeSec(): number | null {
+    return this.pageOpenedAt ? Math.floor((Date.now() - this.pageOpenedAt) / 1000) : null;
+  }
+
+  get callsSincePageOpen(): number {
+    return this.callsOnPage;
   }
 
   setRefreshToken(token: string): void {
@@ -109,12 +135,16 @@ export class FomoBrowserClient {
         '--disable-infobars',
         '--no-sandbox',
         '--disable-setuid-sandbox',
+        // Memory guards for the 1 GB VPS — see the recycling note above.
+        '--disable-dev-shm-usage',
+        '--renderer-process-limit=1',
+        '--js-flags=--max-old-space-size=256',
+        '--mute-audio',
       ],
     });
 
     try {
       const page = context.pages()[0] ?? (await context.newPage());
-      await page.setViewportSize({ width: 1280, height: 800 });
 
       const cookies = this.buildCookies();
       if (cookies.length > 0) {
@@ -122,26 +152,74 @@ export class FomoBrowserClient {
         await context.addCookies(cookies as any);
       }
 
-      debug('Navigating to https://fomo.family ...');
-      try {
-        const response = await page.goto('https://fomo.family', {
-          waitUntil: 'domcontentloaded',
-          timeout: 60000,
-        });
-        debug(`Navigation status: ${response?.status()}`);
-      } catch (err) {
-        console.warn(
-          '[FomoWorker] Initial navigation did not settle (continuing):',
-          (err as Error)?.message,
-        );
-      }
+      await this.preparePage(page);
 
       this.context = context;
       this.page = page;
+      this.pageOpenedAt = Date.now();
+      this.callsOnPage = 0;
       return page;
     } catch (error) {
       await context.close().catch(() => undefined);
       throw error;
+    }
+  }
+
+  /** Size a tab and park it on the fomo.family origin so in-page fetch carries its cookies. */
+  private async preparePage(page: Page): Promise<void> {
+    await page.setViewportSize({ width: 1280, height: 800 });
+    debug('Navigating to https://fomo.family ...');
+    try {
+      const response = await page.goto('https://fomo.family', {
+        waitUntil: 'domcontentloaded',
+        timeout: 60000,
+      });
+      debug(`Navigation status: ${response?.status()}`);
+    } catch (err) {
+      console.warn(
+        '[FomoWorker] Navigation did not settle (continuing):',
+        (err as Error)?.message,
+      );
+    }
+  }
+
+  private pageIsStale(): boolean {
+    if (!this.page) return false;
+    if (PAGE_MAX_CALLS > 0 && this.callsOnPage >= PAGE_MAX_CALLS) return true;
+    if (PAGE_MAX_AGE_MS > 0 && Date.now() - this.pageOpenedAt >= PAGE_MAX_AGE_MS) return true;
+    return false;
+  }
+
+  /** Swap in a fresh tab, dropping the old renderer's accumulated heap. */
+  private async recyclePage(): Promise<void> {
+    if (this.recycleInit) return this.recycleInit;
+
+    this.recycleInit = (async () => {
+      const context = this.context;
+      if (!context) return;
+
+      const stale = this.page;
+      debug(`Recycling tab after ${this.callsOnPage} call(s), age ${this.pageAgeSec}s.`);
+
+      // Open the replacement before closing the old tab: closing the last page
+      // of a persistent context can take the context down with it.
+      const fresh = await context.newPage();
+      await this.preparePage(fresh);
+      this.page = fresh;
+      this.pageOpenedAt = Date.now();
+      this.callsOnPage = 0;
+
+      try {
+        await stale?.close();
+      } catch {
+        /* ignore */
+      }
+    })();
+
+    try {
+      await this.recycleInit;
+    } finally {
+      this.recycleInit = null;
     }
   }
 
@@ -225,63 +303,99 @@ export class FomoBrowserClient {
     this.context = null;
     this.page = null;
     this.jwt = null;
+    this.pageOpenedAt = 0;
+    this.callsOnPage = 0;
+    this.inFlight = 0;
   }
 
   async call<T = any>(
     apiPath: string,
     opts: { method?: string; body?: string | null } = {},
   ): Promise<FomoCallResult<T>> {
-    const page = await this.ensureBrowser();
+    await this.ensureBrowser();
     const method = opts.method || 'GET';
     const body = opts.body || null;
+
+    // Never hand out a tab a recycle is about to close.
+    while (this.recycleInit) {
+      await this.recycleInit.catch(() => undefined);
+    }
+
+    // Only recycle when nothing is mid-evaluate: the poller fires ~20 calls at
+    // once, and closing the tab under them fails every one with "Target page,
+    // context or browser has been closed". The thresholds are not deadlines,
+    // so waiting for the next idle moment costs nothing.
+    if (this.pageIsStale() && this.inFlight === 0) {
+      try {
+        await this.recyclePage();
+      } catch (err) {
+        // A failed recycle is not worth failing the call over — the old tab
+        // still works, it is just fatter than we would like.
+        console.warn('[FomoWorker] Tab recycle failed (keeping current tab):', (err as Error)?.message);
+      }
+    }
 
     if (!this.jwt) {
       await retry(() => this.refreshJwt(), 3, 1500);
     }
 
+    // Claim the tab only after every await above has settled, so no concurrent
+    // recycle can slip in between reading this.page and page.evaluate.
+    const page = this.page ?? (await this.ensureBrowser());
+    this.inFlight += 1;
+    this.callsOnPage += 1;
     this.lastCallPath = apiPath;
     this.lastCallAt = new Date();
 
-    const result = (await page.evaluate(
-      async ({ url, method, body, jwt }: { url: string; method: string; body: string | null; jwt: string }) => {
-        const headers: Record<string, string> = {
-          'x-supported-chains': '1,56,143,8453,1399811149',
-        };
-        if (jwt) headers.authorization = `Bearer ${jwt}`;
-        if (method === 'POST' || method === 'PUT' || method === 'PATCH') {
-          headers['content-type'] = 'application/json';
-        }
-
-        try {
-          const res = await fetch(url, { method, headers, body: body ?? undefined, cache: 'no-store' });
-          const text = await res.text();
-          let json: any = null;
-          try {
-            json = JSON.parse(text);
-          } catch {
-            /* not json */
-          }
-          return { status: res.status, text, json };
-        } catch (err: any) {
-          return {
-            status: 0,
-            text: '',
-            json: null,
-            errorName: err?.name ?? 'Error',
-            errorMessage: err?.message ?? String(err),
-            errorStack: err?.stack ?? '',
+    let result: FomoCallResult<T>;
+    try {
+      result = (await page.evaluate(
+        async ({ url, method, body, jwt }: { url: string; method: string; body: string | null; jwt: string }) => {
+          const headers: Record<string, string> = {
+            'x-supported-chains': '1,56,143,8453,1399811149',
           };
-        }
-      },
-      { url: `${BASE}${apiPath}`, method, body, jwt: this.jwt! },
-    )) as FomoCallResult<T>;
+          if (jwt) headers.authorization = `Bearer ${jwt}`;
+          if (method === 'POST' || method === 'PUT' || method === 'PATCH') {
+            headers['content-type'] = 'application/json';
+          }
+
+          try {
+            const res = await fetch(url, { method, headers, body: body ?? undefined, cache: 'no-store' });
+            const text = await res.text();
+            let json: any = null;
+            try {
+              json = JSON.parse(text);
+            } catch {
+              /* not json */
+            }
+            return { status: res.status, text, json };
+          } catch (err: any) {
+            return {
+              status: 0,
+              text: '',
+              json: null,
+              errorName: err?.name ?? 'Error',
+              errorMessage: err?.message ?? String(err),
+              errorStack: err?.stack ?? '',
+            };
+          }
+        },
+        { url: `${BASE}${apiPath}`, method, body, jwt: this.jwt! },
+      )) as FomoCallResult<T>;
+    } finally {
+      this.inFlight -= 1;
+    }
 
     if (result.status === 401) {
       this.jwt = null;
       await retry(() => this.refreshJwt(), 3, 1500);
       this.lastError = '401 — refreshed JWT';
     } else if (!result.status || result.status < 200 || result.status >= 300) {
-      this.lastError = result.text?.slice?.(0, 500) ?? `HTTP ${result.status}`;
+      // A throw inside page.evaluate comes back as status 0 with an empty body,
+      // which used to log as a bare path and nothing else. Prefer the real error.
+      this.lastError = result.errorMessage
+        ? `${result.errorName ?? 'Error'}: ${result.errorMessage}`
+        : result.text?.slice?.(0, 500) || `HTTP ${result.status}`;
       console.error('[FomoWorker]', apiPath, this.lastError);
     } else {
       this.lastError = null;

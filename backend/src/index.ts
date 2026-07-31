@@ -699,7 +699,7 @@ httpServer.listen(PORT, HOST, async () => {
   // scores callers too.
   startTokenPeakSampler();
 
-  // In-process Outpost Discord bot. Self-gates on DISCORD_BOT_TOKEN and swallows
+  // In-process OCT Discord bot. Self-gates on DISCORD_BOT_TOKEN and swallows
   // its own failures, so it can never take the backend down.
   startBot(wsServer);
 

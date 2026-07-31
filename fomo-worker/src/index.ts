@@ -67,6 +67,9 @@ function buildStatus(): WorkerStatus {
     lastError: client?.lastError ?? bootstrapError,
     refreshTokenSource,
     uptimeSec: Math.floor((Date.now() - startedAt) / 1000),
+    pageAgeSec: client?.pageAgeSec ?? null,
+    callsSincePageOpen: client?.callsSincePageOpen ?? 0,
+    rssMb: Math.round(process.memoryUsage().rss / 1024 / 1024),
   };
 }
 
