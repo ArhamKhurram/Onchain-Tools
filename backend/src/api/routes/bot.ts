@@ -1,7 +1,5 @@
 import { Router } from 'express';
-import { isHostedMode } from '../../storage/index.js';
 import {
-  BotServiceError,
   DEFAULT_NETWORK_ID,
   getBotHolders,
   getBotLeaderboard,
@@ -9,6 +7,7 @@ import {
   getBotTracked,
   resolveNetworkId,
 } from '../../bot/service.js';
+import { sendServiceError } from '../../bot/errors.js';
 import { AnnounceError, postAnnouncement, type AnnounceKind } from '../../bot/announce.js';
 import { deliverReleaseNotes } from '../../bot/releaseNotes.js';
 import { getBotClient } from '../../bot/index.js';
@@ -17,26 +16,8 @@ import { getBotClient } from '../../bot/index.js';
 // requireBotAuth, BEFORE the user-auth /api router. Thin adapters over
 // bot/service.ts; responses are the @oct/shared bot DTOs.
 
-function statusFor(err: BotServiceError): number {
-  switch (err.code) {
-    case 'not_configured': return 503;
-    case 'not_found': return 404;
-    case 'not_linked': return 403;
-    case 'upstream': return 502;
-  }
-}
-
 function handleError(res: any, err: unknown, fallback: string): void {
-  if (err instanceof BotServiceError) {
-    res.status(statusFor(err)).json({ error: err.message });
-    return;
-  }
-  if (!isHostedMode()) {
-    res.status(500).json({ error: (err as Error)?.message ?? fallback });
-    return;
-  }
-  console.error(`[BotAPI] ${fallback}:`, (err as Error)?.message ?? err);
-  res.status(500).json({ error: fallback });
+  sendServiceError(res, err, fallback);
 }
 
 export function createBotRouter(): Router {

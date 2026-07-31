@@ -1,8 +1,11 @@
-import { ActionRowBuilder, ButtonBuilder, ButtonStyle } from 'discord.js';
-
 // Components V2 builders + formatting helpers, ported from the standalone
 // Outpost bot (src/lib/layout.ts). Kept verbatim in behaviour so the embeds look
 // identical; only the formatting helpers at the bottom are new.
+//
+// Retiring the FOMO commands removed the only paginated, thumbnailed and
+// PnL-badged surfaces, so makeNavRow / makeThumbnail / makeSection / pnlBadge
+// went with them. What's left is what /ping, /token, alerts and announcements
+// actually render.
 
 export const BRAND = {
   red: 0xed4245,
@@ -30,51 +33,12 @@ export function botFooter(prefix?: string): string {
   return prefix ? `-# ${prefix} · ${BOT_SIGNATURE}` : `-# ${BOT_SIGNATURE}`;
 }
 
-export function makeNavRow(prefix: string, interactionId: string, page: number, totalPages: number) {
-  return new ActionRowBuilder<ButtonBuilder>().addComponents(
-    new ButtonBuilder()
-      .setCustomId(`${prefix}:first:${interactionId}`)
-      .setLabel('First')
-      .setStyle(ButtonStyle.Secondary)
-      .setDisabled(page === 0),
-    new ButtonBuilder()
-      .setCustomId(`${prefix}:prev:${interactionId}`)
-      .setLabel('Prev')
-      .setStyle(ButtonStyle.Primary)
-      .setDisabled(page === 0),
-    new ButtonBuilder()
-      .setCustomId(`${prefix}:next:${interactionId}`)
-      .setLabel('Next')
-      .setStyle(ButtonStyle.Primary)
-      .setDisabled(page >= totalPages - 1),
-    new ButtonBuilder()
-      .setCustomId(`${prefix}:last:${interactionId}`)
-      .setLabel('Last')
-      .setStyle(ButtonStyle.Secondary)
-      .setDisabled(page >= totalPages - 1),
-  );
-}
-
 export function makeSeparator(spacing: number = 1) {
   return { type: 14, spacing, divider: true };
 }
 
 export function makeText(content: string) {
   return { type: 10, content };
-}
-
-export function makeThumbnail(url: string, name?: string) {
-  const thumbnail: any = {
-    type: 11,
-    media: { url },
-    spoiler: false,
-  };
-  if (name) thumbnail.description = name;
-  return thumbnail;
-}
-
-export function makeSection(accessory: any, textComponents: any[]) {
-  return { type: 9, components: textComponents, accessory };
 }
 
 /** Media gallery — a single full-width image (Components V2 type 12). */
@@ -95,16 +59,9 @@ export function quoteLines(text: string) {
 
 // --- Formatting helpers ----------------------------------------------------
 
-/** `$1,234` — whole-dollar, comma-grouped. */
+/** `$1,234` — whole-dollar, comma-grouped. Backs compactUsd below the 1K mark. */
 export function usd(value: number): string {
   return `$${value.toLocaleString(undefined, { maximumFractionDigits: 0 })}`;
-}
-
-/** `+$1,234` / `-$1,234` with a red/green dot, for PnL. */
-export function pnlBadge(value: number): string {
-  const sign = value >= 0 ? '+' : '-';
-  const dot = value >= 0 ? '🟢' : '🔴';
-  return `${dot} ${sign}$${Math.abs(value).toLocaleString(undefined, { maximumFractionDigits: 0 })}`;
 }
 
 /** `$1.2M` / `$980.5K` — compact market caps. */

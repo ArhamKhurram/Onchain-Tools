@@ -2,7 +2,8 @@ import { useState, memo } from 'react';
 import { Eye, MessageSquareReply } from 'lucide-react';
 import type { FrontendMessage, ContractLinkTemplates, ContractClickAction, BadgeClickAction, HighlightMode, MessageDisplay, CallerTier } from '../types';
 import type { CallerQuality } from '../hooks/useCallerQuality';
-import { BAND_NAME_COLOR } from '../utils/callerBandStyle';
+import { BAND_NAME_COLOR, BAND_BADGE_CLASS, BAND_TITLE, bandIsNotable } from '../utils/callerBandStyle';
+import { BAND_LABELS } from '@oct/shared';
 import { useAppStore } from '../stores/appStore';
 import { AuthImage, AuthVideo, AuthAudio } from './AuthMedia';
 import ImageLightbox from './ImageLightbox';
@@ -234,6 +235,14 @@ function Message({ message, isCompact, messageDisplay = 'default', compactModeAv
                 </span>
               )}
             </span>
+            {callerQuality && bandIsNotable(callerQuality.band) && (
+              <span
+                className={`text-[9px] font-bold uppercase px-1 py-0.5 rounded-cockpit mr-1 ${BAND_BADGE_CLASS[callerQuality.band]}`}
+                title={BAND_TITLE[callerQuality.band]}
+              >
+                {BAND_LABELS[callerQuality.band]}
+              </span>
+            )}
             {channelBadge}
             <span className={`hidden sm:inline-flex items-center gap-0.5 align-middle transition-opacity ${isFocused ? 'opacity-100' : 'opacity-0 group-hover/compact:opacity-100'}`}>
               <button
@@ -661,6 +670,14 @@ function Message({ message, isCompact, messageDisplay = 'default', compactModeAv
               </span>
             )}
           </span>
+          {callerQuality && bandIsNotable(callerQuality.band) && (
+            <span
+              className={`text-[9px] font-bold uppercase px-1 py-0.5 rounded-cockpit ${BAND_BADGE_CLASS[callerQuality.band]}`}
+              title={BAND_TITLE[callerQuality.band]}
+            >
+              {BAND_LABELS[callerQuality.band]}
+            </span>
+          )}
           <span className="text-xs text-discord-text-muted leading-[1.375rem] ml-1 sm:hidden">
             {formatTimestamp(message.timestamp, true)}
           </span>

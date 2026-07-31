@@ -1,5 +1,5 @@
 import { useEffect, useState, useMemo } from 'react';
-import { Search, ExternalLink, Copy, Check, Trash2, LayoutGrid, List, X, MessageSquare, PanelLeftOpen, Send, Eye, EyeOff } from 'lucide-react';
+import { Search, ExternalLink, Copy, Check, Trash2, LayoutGrid, List, X, MessageSquare, PanelLeftOpen, Send, Eye, EyeOff, Users } from 'lucide-react';
 import { useAppStore } from '../stores/appStore';
 import { useCallerQuality, type CallerQuality } from '../hooks/useCallerQuality';
 import { BAND_DOT_CLASS, BAND_TITLE, bandIsNotable } from '../utils/callerBandStyle';
@@ -7,9 +7,20 @@ import { buildContractUrl } from '../utils/contractUrl';
 import { contractAttribution, isTelegramContract, openContractSource } from '../utils/contractSource';
 import ConfirmModal from './ConfirmModal';
 import SignalConvergenceBadge from './SignalConvergenceBadge';
+import TokenHoldersDrawer, { type HoldersTarget } from './fomo/TokenHoldersDrawer';
 import { useConvergenceForContract } from '../hooks/useSignalConvergence';
 import type { ContractEntry } from '../types';
 import { colorWithExtraAlpha } from './ColorPickerWithAlpha';
+
+// Chains FOMO indexes. A detection on any other EVM chain still opens the
+// drawer — we just omit the hint and let the backend probe.
+const FOMO_EVM_CHAINS = new Set(['eth', 'bsc', 'base', 'robinhood']);
+
+function holdersTargetFor(entry: ContractEntry): HoldersTarget {
+  if (entry.chain === 'sol') return { address: entry.address, network: 'sol' };
+  const slug = entry.evmChain?.toLowerCase();
+  return { address: entry.address, network: slug && FOMO_EVM_CHAINS.has(slug) ? slug : null };
+}
 
 const EVM_CHAIN_LABELS: Record<string, string> = {
   eth: 'ETH', bsc: 'BNB', base: 'BASE', arb: 'ARB',
@@ -60,6 +71,7 @@ export default function ContractDashboard({ embedded = false }: ContractDashboar
   const [copiedAddr, setCopiedAddr] = useState<string | null>(null);
   const [viewMode, setViewMode] = useState<ViewMode>('table');
   const [showDeleteAll, setShowDeleteAll] = useState(false);
+  const [holdersTarget, setHoldersTarget] = useState<HoldersTarget | null>(null);
   const [revealMuted, setRevealMuted] = useState(false);
   const { qualityForContract, rankingEnabled, showMuted } = useCallerQuality();
 
@@ -266,6 +278,7 @@ export default function ContractDashboard({ embedded = false }: ContractDashboar
                 onOpen={handleOpen}
                 onOpenDiscord={handleOpenDiscord}
                 onDelete={handleDelete}
+                onShowHolders={(e) => setHoldersTarget(holdersTargetFor(e))}
               />
             ))}
           </div>
@@ -282,6 +295,7 @@ export default function ContractDashboard({ embedded = false }: ContractDashboar
                 onOpen={handleOpen}
                 onOpenDiscord={handleOpenDiscord}
                 onDelete={handleDelete}
+                onShowHolders={(e) => setHoldersTarget(holdersTargetFor(e))}
               />
             ))}
           </div>
@@ -299,6 +313,8 @@ export default function ContractDashboard({ embedded = false }: ContractDashboar
         }}
         onCancel={() => setShowDeleteAll(false)}
       />
+
+      <TokenHoldersDrawer target={holdersTarget} onClose={() => setHoldersTarget(null)} />
     </div>
   );
 }
@@ -314,6 +330,7 @@ interface ContractItemProps {
   onOpen: (addr: string, evmChain?: string) => void;
   onOpenDiscord: (entry: ContractEntry) => void;
   onDelete: (entry: ContractEntry) => void;
+  onShowHolders: (entry: ContractEntry) => void;
 }
 
 function ContractRow({
@@ -327,6 +344,7 @@ function ContractRow({
   onOpen,
   onOpenDiscord,
   onDelete,
+  onShowHolders,
 }: ContractItemProps) {
   const color = entry.chain === 'evm' ? evmColor : solColor;
   const isMuted = quality?.tier === 'muted';
@@ -403,6 +421,13 @@ function ContractRow({
             >
               {isTelegramContract(entry) ? <Send size={13} className="text-[#2AABEE]" /> : <MessageSquare size={13} />}
             </button>
+            <button
+              onClick={() => onShowHolders(entry)}
+              className="p-1 rounded hover:bg-oct-surface text-oct-muted hover:text-oct-text transition-colors"
+              title="Top FOMO holders"
+            >
+              <Users size={13} />
+            </button>
           </div>
         </div>
 
@@ -464,6 +489,7 @@ function ContractCard({
   onOpen,
   onOpenDiscord,
   onDelete,
+  onShowHolders,
 }: ContractItemProps) {
   const color = entry.chain === 'evm' ? evmColor : solColor;
   const chainLabel = entry.chain === 'evm' && entry.evmChain
@@ -554,6 +580,14 @@ function ContractCard({
         >
           {isTelegramContract(entry) ? <Send size={11} className="text-[#2AABEE]" /> : <MessageSquare size={11} />}
           <span>{isTelegramContract(entry) ? 'Telegram' : 'Discord'}</span>
+        </button>
+        <button
+          onClick={() => onShowHolders(entry)}
+          className="flex items-center gap-1 px-2 py-1 rounded-cockpit text-xs bg-oct-bg hover:bg-oct-surface-raised transition-colors text-oct-muted hover:text-oct-text border border-oct-border"
+          title="Top FOMO holders"
+        >
+          <Users size={11} />
+          <span>Holders</span>
         </button>
       </div>
 

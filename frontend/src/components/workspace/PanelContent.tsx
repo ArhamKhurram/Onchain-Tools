@@ -3,6 +3,7 @@ import ContractDashboard from '../ContractDashboard';
 import RadarTable from '../callers/RadarTable';
 import FomoTradeFeed from '../fomo/FomoTradeFeed';
 import WorkspaceFomoLeaderboard from './WorkspaceFomoLeaderboard';
+import WorkspaceTokenLookup from './WorkspaceTokenLookup';
 import type { WorkspacePanelSlot } from '../../types/workspace';
 
 interface PanelContentProps {
@@ -39,6 +40,8 @@ export default function PanelContent({ panel }: PanelContentProps) {
         return <FomoTradeFeed embedded />;
       case 'fomo-leaderboard':
         return <WorkspaceFomoLeaderboard />;
+      case 'token-lookup':
+        return <WorkspaceTokenLookup />;
       default:
         return null;
     }
@@ -57,5 +60,6 @@ export function panelSubtitle(panel: WorkspacePanelSlot, roomName: string | null
   if (panel.type === 'radar') return 'Token radar';
   if (panel.type === 'fomo-feed') return 'Tracked traders';
   if (panel.type === 'fomo-leaderboard') return 'Top traders';
+  if (panel.type === 'token-lookup') return 'FOMO holders by token';
   return null;
 }
