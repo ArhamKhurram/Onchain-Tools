@@ -9,6 +9,9 @@ All notable changes to Trenchcord are documented here.
 - **Token lookup panel** — a new Workspace widget: paste any token address, get the same holders board. For tokens nobody in your rooms has called yet.
 - **Trader lookup** — Wallets → Trader Lookup searches any fomo.family trader by handle or name and shows their wallets, holdings and PnL, without tracking them first. The bot's `/wallet`, in the app.
 
+### Changed
+- **The FOMO slash commands have retired** — `/holders`, `/leaderboard`, `/tracked` and `/wallet` are gone now that all four live in the console. The bot stays online exactly as before: your DM alerts, release notes and announcements are untouched, and `/token` still works.
+
 ### Fixed
 - **FOMO data stopped loading after the worker had been up a few days** — holder overlap, the live trade poll and the bot's FOMO commands were all timing out. The worker keeps one browser tab open on fomo.family to get past Cloudflare, and after six days that tab had grown to 577 MB on a 1 GB box — enough to push it into constant swapping, where the same request took anywhere from 2 to 105 seconds. The tab is now recycled periodically, which keeps memory flat and response times steady at ~2s. Nothing was wrong with the FOMO login; no credentials needed rotating.
 - **`/holders` found nothing for BNB Chain, Ethereum and Base tokens** — the command assumed Solana whenever you didn't pass `network`, so any `0x…` address came back "No holders found". It now reads the chain off the address and checks every EVM chain FOMO indexes in a single request, so `/holders 0xfe18…7777` just works. Passing `network` explicitly still overrides it.
