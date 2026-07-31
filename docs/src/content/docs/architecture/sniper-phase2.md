@@ -76,7 +76,7 @@ Two corrections to earlier assumptions:
 - **The catalog does not exist in local mode.** Both `getCatalogEntry` and
   `upsertCatalogFromEnrichment` open with `if (!isHostedMode()) return`. Either
   lift that gate or document "local-mode Phase 2a has no catalog." Do not discover
-  this at implementation time (Open question 5).
+  this at implementation time (Open question 6).
 
 Source 2a has a property no adversary can fake: **the token existed before the
 tweet.** Prefer it over 2b whenever both produce a candidate.

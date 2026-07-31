@@ -16,7 +16,7 @@ Get it precise here and the rest follows.
 | `id` | `uuid` | — |
 | `name` | `string` | operator label |
 | `state` | `'draft' \| 'disabled' \| 'armed'` | rule-level only. Fire-level states live on `SNIPER_FIRES` |
-| `chain` | `'sol' \| 'bsc'` | selects the executor. `base` is trivially addable (GMGN supports it); Robinhood deferred |
+| `chain` | `'sol' \| 'bsc'` | selects the executor. **Phase 1 executes `sol` only** — `bsc` is modelled so the EVM leg needs no schema change, and `ExecutorRegistry.resolve` throws rather than routing it to a Solana venue. Robinhood deferred |
 | `venueId` | `uuid` | FK to `EXECUTION_VENUES` |
 | `handles` | `string[]` | watched accounts, lowercased. Denormalized into `RULE_HANDLES` |
 | `interactionTypes` | `('tweet'\|'retweet'\|'quote'\|'reply'\|'pin')[]` | which interactions count |
@@ -70,9 +70,10 @@ type ExecParams =
   the rule store.
 - On BSC the relay choice (`mevRelay`: `bloXroute`, `48Club`, `BlockRazor`) is the
   Jito analogue — block time ~0.45 s.
-- **`mevRelay` is only actionable when OCT submits the transaction directly.**
-  Firing through the `gmgn_openapi` venue collapses anti-MEV to a boolean — GMGN
-  picks the relay — so `mevRelay` is ignored on that path.
+- **`mevRelay` is only actionable when OCT submits the transaction directly.** A
+  custodial venue that exposes anti-MEV as a boolean picks the relay itself, and
+  ignores this field. No Phase 1 venue reads it — it is modelled now so the EVM leg
+  does not need a schema change later.
 
 ## Matcher grammar
 
@@ -143,7 +144,7 @@ a new row defeats the constraint.
 
 **Known tradeoff:** the content guard suppresses a second fire when two different
 watched handles post identical text within the window. Scoping it to
-`(rule_id, handle, content_hash)` would allow both — that is Open question 7.
+`(rule_id, handle, content_hash)` would allow both — that is Open question 8.
 
 ### Worked example: four frames, one fire
 
@@ -343,7 +344,7 @@ erDiagram
   }
   EXECUTION_VENUES {
     uuid id PK
-    text venue "slotshark, gmgn_openapi"
+    text venue "slotshark (phase 1)"
     text chain
     bool enabled
   }
@@ -362,13 +363,13 @@ Notes on the shape:
   undifferentiated firehose; no per-handle subscribe frame is documented, so the
   dedupe is a local filter over the reverse index, not an upstream subscription.
   `ref_count` exists to garbage-collect index entries, not to open or close
-  sockets (Open question 6).
+  sockets (Open question 7).
 - **`CANDIDATE_TOKENS` is written in shadow mode too**, from M9 onward. It is the
   only record of what the resolver saw, and the substrate for any later analysis
   of whether the scorer was farmed.
-- **`EXECUTION_VENUES` enumerates two custodial venues:** `gmgn_openapi`
-  (SOL/BSC/Base) and `slotshark` (SOL). Both custody the wallet, so OCT holds no
-  private key on any chain — `WALLETS.venue` is always `custodial at venue`. GMGN's
-  cooperation router (`gmgn_router`) is **not** in the enabled set: its ~3 s
-  cooperation/honeypot screen disqualifies it from the hot path.
+- **`EXECUTION_VENUES` holds one enabled venue in Phase 1:** `slotshark` (SOL).
+  It custodies the wallet, so OCT holds no private key — `WALLETS.venue` is always
+  `custodial at venue`. The table is a table rather than an enum precisely because
+  venues arrive per user later ([ADR-012](../../adr/012-venue-tenancy/)); a GMGN row
+  appears at M11 when users connect their own GMGN credential.
 - `FILLS` has no `wallet_id`; the wallet is derived through `SNIPER_FIRES`.

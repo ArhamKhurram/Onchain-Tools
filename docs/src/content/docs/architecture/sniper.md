@@ -168,18 +168,24 @@ expected to** — its clock starts when the tweet lands, same as everyone's.
 **Any signal that cannot be obtained inside its allotment is disqualified from
 the hot path by construction.** Two concrete casualties:
 
-- **GMGN's cooperation router**, at one call per 5 s per key. A single fire needs
-  route + submit + status — 10–15 s. Scoring N candidates is 5N seconds. It
-  cannot participate in a fire, let alone a resolution window. It is a
-  precomputation and post-fire enrichment tool. *(That limit is documented, not
-  measured on our key — Open question 4.)*
-- **Live market cap as an abort condition.** The rule spec has a market-cap
-  ceiling, and the only market-cap source in this repo is GMGN. Re-reading it
-  before every retry attempt would put a rate-limited network call inside the
-  retry loop. Resolution: the ceiling is evaluated against a value **pushed** by
-  the launch feed or the enrichment cache, never fetched inline; if no fresh
-  value exists, the ceiling does not block and the time budget alone terminates
-  the fire. Stated explicitly so nobody implements the naive version.
+- **Live market cap as an abort condition.** The rule spec has a `mcapCeiling`,
+  and the only market-cap source in this repo is the GMGN *enrichment* client
+  (`utils/gmgnClient.ts`), which is rate-limited. Re-reading it before every retry
+  attempt would put a throttled network call inside the retry loop. Resolution:
+  the ceiling is evaluated against a value **pushed** by the launch feed or the
+  enrichment cache, never fetched inline; if no fresh value exists the ceiling does
+  not block, and the time budget alone terminates the fire. Stated explicitly so
+  nobody implements the naive version.
+- **Token safety checks.** Honeypot / authority / LP-lock services (GoPlus,
+  honeypot.is) advertise seconds, not milliseconds. They cannot run inline before a
+  fire. They belong to Phase 2 candidate pre-screening, out of band, or to an
+  operator's own risk appetite at a low cap.
+
+Any venue whose API is rate-limited per key on the order of seconds is disqualified
+the same way. That is a live constraint for future venues, not a hypothetical: it is
+why GMGN's cooperation router (one call per 5 s, and a fire needs route + submit +
+status) would never be a fire path even when GMGN execution lands as a per-user
+venue at M11.
 
 The 150 ms join window at hop 3 deserves its own note. J7 emits the same tweet on
 two provider lanes with no ordering guarantee, and only the enriched lane carries
@@ -194,7 +200,11 @@ Detail in [sniper execution](../sniper-execution/) and
 
 | Reuse as-is | Extend | Copy the pattern | Avoid |
 | --- | --- | --- | --- |
-| `auth/encryption.ts` (AES-256-GCM), `utils/gmgnSigner.ts`, `utils/gmgnLimiter.ts`, `utils/contract.ts` detectors | `packages/shared` `KeywordPattern` → AND/OR/NOT groups; `MessageSource` unchanged (tweets never become `FrontendMessage`) | `telegram/clientManager.ts` dedupe window; `discord/gateway.ts` outbound WS heartbeat and backoff (drop the resume half — J7 has none); `fomo/poller.ts` dedupe-across-subscribers | Extending `StorageProvider` — its 20-method surface is Discord/Telegram/contract-shaped; `SniperStore` is a sibling |
+| `auth/encryption.ts` (AES-256-GCM), `utils/contract.ts` detectors | `packages/shared` `KeywordPattern` → AND/OR/NOT groups; `MessageSource` unchanged (tweets never become `FrontendMessage`) | `telegram/clientManager.ts` dedupe window; `discord/gateway.ts` outbound WS heartbeat and backoff (drop the resume half — J7 has none); `fomo/poller.ts` dedupe-across-subscribers | Extending `StorageProvider` — its 20-method surface is Discord/Telegram/contract-shaped; `SniperStore` is a sibling |
+
+`utils/gmgnSigner.ts` and `utils/gmgnLimiter.ts` are **not** Phase 1 reuse — GMGN is
+not a Phase 1 venue. They become relevant at M11, when a user's own GMGN credential
+is the thing being signed with.
 
 This is greenfield. A repo-wide grep for `sniper|slotshark|j7tracker|tweet`
 returns three incidental hits: a `.gitignore` comment about tweet drafts, and the
@@ -221,31 +231,26 @@ Each one is testable and proves something specific.
 
 ## Open questions
 
-1. **RESOLVED — custody and determinism.** Both venues are custodial: the wallet is
-   bound to the API credential and the venue builds, signs and submits server-side,
-   so OCT holds no wallet private key on any chain and there is no signer.
-   `GMGN_PRIVATE_KEY` is the Ed25519 **request-signing** key `utils/gmgnSigner.ts`
-   already implements, not a wallet key. GMGN also fires **deterministically** —
-   direct signed REST (`/v1/trade/quote` → `/v1/trade/swap` → `/v1/trade/query_order`),
-   never `gmgn-cli` and never a model round-trip. See
+1. **RESOLVED — custody.** The Phase 1 venue is custodial: the wallet is bound to
+   the API credential and Slotshark builds, signs and submits server-side, so OCT
+   holds no wallet private key and there is no signer to build. See
    [ADR-011](../../adr/011-sniper-custody/).
-2. **GMGN third-party-user ToS — open and gating.** Whether OCT may execute trades
-   on behalf of its own end users, or whether that requires a separate commercial
-   agreement, could not be verified — their `tos.html` returned 403. This is a
-   partnership/legal conversation, not something the design settles, and it gates
-   any hosted multi-user rollout of GMGN execution.
-3. **Real venue latency is unmeasured.** GMGN's `0.3 s` and Slotshark's `under 1 ms`
-   are vendor marketing for transaction-build time, not end-to-end tweet → fill.
-   Neither venue enters the hot path on faith — M6 measures real per-venue latency
-   before any sub-second commitment.
-4. Is GMGN's rate limit per key or per IP? Per-IP changes the cooperation-router
-   arithmetic in the latency budget above.
-5. **Maximum hot balance per operator — now the load-bearing control.** A leaked
-   Slotshark token can **sell every position and withdraw the balance** (confirmed;
-   there is no buy-only scope and no withdrawal 2FA — [security T3](../sniper-security/)),
-   so the funded balance *is* the blast radius. GMGN, by contrast, appears to expose
-   no off-platform withdrawal endpoint (unverified). The policy — a defined maximum
-   hot balance — bounds nearly every residual-risk cell in the threat model.
+2. **Real venue latency is unmeasured.** Slotshark's `under 1 ms` is vendor
+   marketing for transaction-build time, not end-to-end tweet → fill. The venue does
+   not enter the hot path on faith — M6 measures it before any sub-second commitment.
+3. **Maximum hot balance — the load-bearing control.** A leaked Slotshark token can
+   **sell every position and withdraw the balance** (confirmed; no buy-only scope,
+   no withdrawal 2FA — [security T3](../sniper-security/)), so the funded balance
+   *is* the blast radius. A defined maximum hot balance bounds nearly every
+   residual-risk cell in the threat model.
+4. **Slotshark scoped tokens — the highest-leverage security ask.** A buy/sell-only
+   token with withdrawals disabled or 2FA-gated would collapse T3 from *total drain*
+   to *a bad buy*. Offered as part of a custom OAuth integration, gated on volume
+   ([ADR-012](../../adr/012-venue-tenancy/)). No encryption choice substitutes for it.
+5. **GMGN third-party-user ToS — gates M11, not Phase 1.** Whether OCT may execute
+   trades on behalf of its end users, or whether that needs a separate commercial
+   agreement, could not be verified (their `tos.html` returned 403). Relevant only
+   when GMGN returns as a per-user connected venue.
 6. Does the token catalog gate on hosted mode block Phase 2a in local mode?
    `getCatalogEntry` and `upsertCatalogFromEnrichment` both open with
    `if (!isHostedMode()) return`. Lift it or document the limitation.

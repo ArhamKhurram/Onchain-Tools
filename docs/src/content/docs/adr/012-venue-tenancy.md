@@ -11,7 +11,7 @@ sidebar:
 ## Context
 
 OCT hosted mode is multi-user. The sniper spends real funds
-([ADR-011](../011-sniper-custody/) — both venues are custodial, so OCT holds an
+([ADR-011](../011-sniper-custody/) — execution venues are custodial, so OCT holds an
 API token per venue, never a wallet key). That leaves one tenancy question the
 custody ADR did not settle: **whose venue account do trades run through?**
 
@@ -54,7 +54,7 @@ Venue sequencing follows from the two partnership facts:
   `backend/src/sniper/types.ts` therefore omits it. When it returns (M11) its
   apparently-contained token — no withdrawal endpoint seen, unverified — makes it
   the *preferred* multi-tenant venue, still **gated on the GMGN third-party-user
-  ToS answer** (open question 2 in the [overview](../../architecture/sniper/)).
+  ToS answer** (open question 5 in the [overview](../../architecture/sniper/)).
 - **Raw Slotshark tokens are not mass-onboarded.** Until the scoped-OAuth custom
   integration exists, broad multi-tenant Slotshark execution is off — a store of
   sell+withdraw-capable tokens is an aggregate honeypot. Slotshark on the
