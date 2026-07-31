@@ -30,23 +30,14 @@ export const font = {
   mono: `${fontFamily.mono}, ui-monospace, monospace`,
 } as const;
 
-/**
- * Square. Twitter crops landscape hard in-feed and square occupies far more
- * vertical space on a phone, which is where this gets watched. The reference
- * edit is 1440x1440 for the same reason.
- */
+/** 16:9 for both cuts. */
 export const video = {
-  width: 1080,
-  height: 1080,
-  fps: 30,
-} as const;
-
-/** The guide keeps 16:9 — it is watched on a desktop while following along. */
-export const guideVideo = {
   width: 1920,
   height: 1080,
   fps: 30,
 } as const;
+
+export const guideVideo = video;
 
 /**
  * Snap easing. The reference board's energy comes from motion that arrives

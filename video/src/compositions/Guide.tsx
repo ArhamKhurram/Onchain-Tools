@@ -198,7 +198,7 @@ export const Guide: React.FC = () => (
           That&apos;s it.
         </SlabIn>
         <SlabIn from={8} size={34} family={font.mono} weight={500} colorOverride={color.flame} tracking={0.02}>
-          onchain-tools.app
+          onchaintools.tech
         </SlabIn>
       </AbsoluteFill>
     </Sequence>
