@@ -21,6 +21,30 @@ function workerSecret(): string {
   return secret;
 }
 
+/**
+ * Cap on a single worker round-trip. Without one, undici waits out its 300s
+ * header timeout, so a struggling worker parks Railway request handlers for
+ * five minutes instead of failing fast. A 35-token /hodlers/top returns ~2 MB
+ * in ~2s on a healthy worker, so 45s is generous.
+ */
+function workerTimeoutMs(): number {
+  const raw = Number(process.env.FOMO_WORKER_TIMEOUT_MS);
+  return Number.isFinite(raw) && raw > 0 ? raw : 45_000;
+}
+
+/**
+ * Node's fetch collapses every transport failure into `TypeError: fetch failed`
+ * and hides the reason on `.cause`, which made a swap-thrashing worker look
+ * exactly like a DNS outage in the logs. Unwrap it.
+ */
+function describeFetchError(err: unknown, timeoutMs: number): string {
+  if ((err as Error)?.name === 'TimeoutError') return `timed out after ${timeoutMs}ms`;
+  const message = (err as Error)?.message ?? String(err);
+  const cause = (err as { cause?: { message?: string; code?: string } })?.cause;
+  if (!cause) return message;
+  return `${message} (${cause.code ?? 'no code'}: ${cause.message ?? String(cause)})`;
+}
+
 async function workerFetch(path: string, init?: RequestInit): Promise<Response> {
   const url = `${proxyBaseUrl()}${path}`;
   const headers = new Headers(init?.headers);
@@ -28,7 +52,12 @@ async function workerFetch(path: string, init?: RequestInit): Promise<Response> 
   if (init?.body && !headers.has('Content-Type')) {
     headers.set('Content-Type', 'application/json');
   }
-  return fetch(url, { ...init, headers });
+  const timeoutMs = workerTimeoutMs();
+  try {
+    return await fetch(url, { ...init, headers, signal: AbortSignal.timeout(timeoutMs) });
+  } catch (err) {
+    throw new Error(`FOMO worker ${path} failed: ${describeFetchError(err, timeoutMs)}`);
+  }
 }
 
 export class FomoProxyClient {

@@ -11,5 +11,12 @@ ExecStart=/usr/bin/node /opt/onchain-tools/fomo-worker/dist/index.js
 Restart=always
 RestartSec=5
 
+# Backstop for the Chromium renderer. In-process tab recycling should keep the
+# whole cgroup well under this; if it ever does not, we want a fast restart
+# rather than the box paging itself to a standstill (which reads on Railway as
+# `fetch failed`, not as an outage). Sized for the 1 GB VPS.
+MemoryMax=700M
+MemorySwapMax=256M
+
 [Install]
 WantedBy=multi-user.target

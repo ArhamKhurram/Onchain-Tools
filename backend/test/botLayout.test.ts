@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { compactUsd, pnlBadge, shortAddress, usd, makeContainer, makeText, noticeCard, BRAND } from '../src/bot/layout';
+import { compactUsd, shortAddress, usd, makeContainer, makeText, noticeCard, BRAND } from '../src/bot/layout';
 import { commands, commandMap } from '../src/bot/commands/index';
 
 describe('bot formatting helpers', () => {
@@ -7,12 +7,6 @@ describe('bot formatting helpers', () => {
     expect(usd(1234567)).toBe('$1,234,567');
     expect(usd(0)).toBe('$0');
     expect(usd(999.7)).toBe('$1,000');
-  });
-
-  it('pnlBadge signs and colors profit vs loss', () => {
-    expect(pnlBadge(4200)).toBe('🟢 +$4,200');
-    expect(pnlBadge(-120.25)).toBe('🔴 -$120');
-    expect(pnlBadge(0)).toBe('🟢 +$0');
   });
 
   it('compactUsd abbreviates by magnitude', () => {
@@ -44,15 +38,16 @@ describe('components v2 builders', () => {
 });
 
 describe('command registry', () => {
+  // The FOMO commands were retired once the console reached parity. This list
+  // is what deployCommands.ts PUTs to Discord, so a stray re-add shows up here.
   it('registers the shipped commands', () => {
-    expect(commands.map((c) => c.data.name).sort()).toEqual([
-      'holders',
-      'leaderboard',
-      'ping',
-      'token',
-      'tracked',
-      'wallet',
-    ]);
+    expect(commands.map((c) => c.data.name).sort()).toEqual(['ping', 'token']);
+  });
+
+  it('no longer registers the retired FOMO commands', () => {
+    for (const name of ['holders', 'leaderboard', 'tracked', 'wallet']) {
+      expect(commandMap.has(name)).toBe(false);
+    }
   });
 
   it('maps every command by name and exposes an execute fn', () => {

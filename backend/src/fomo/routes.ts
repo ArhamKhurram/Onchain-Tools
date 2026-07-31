@@ -22,6 +22,8 @@ import {
   networkIdFromContract,
   type FomoTrackedUserRow,
 } from './store.js';
+import { getBotHolders, getBotWallet, resolveNetworkId } from '../bot/service.js';
+import { sendServiceError } from '../bot/errors.js';
 import type { FomoClientLike } from './types.js';
 import type { WsServer } from '../ws/server.js';
 import { deliverRecentTradesToUser, loadDeliveredTrades, MAX_TRADE_HISTORY } from './dispatch.js';
@@ -239,6 +241,42 @@ export function createFomoRouter(wsServer: WsServer): Router {
       res.json({ overlaps });
     } catch (err: any) {
       res.status(500).json({ error: safeError(err, 'Failed to compute holder overlap') });
+    }
+  });
+
+  // GET /api/fomo/hodlers/top?address=…&network=…
+  // The console's read of the same board the Discord /holders command renders.
+  // `network` is optional: omit it and getBotHolders infers the chain from the
+  // address (see candidateNetworkIds). Runs on the shared FOMO service account,
+  // so it needs no per-user state beyond an authenticated session.
+  router.get('/hodlers/top', async (req, res) => {
+    const address = typeof req.query.address === 'string' ? req.query.address.trim() : '';
+    if (!address || address.length < 8) {
+      return res.status(400).json({ error: 'A token address is required.' });
+    }
+
+    const networkRaw = typeof req.query.network === 'string' ? req.query.network.trim() : '';
+    const networkId = networkRaw ? resolveNetworkId(networkRaw) : null;
+    if (networkRaw && !networkId) {
+      return res.status(400).json({ error: `Unsupported network "${networkRaw}".` });
+    }
+
+    try {
+      res.json(await getBotHolders(address, networkId));
+    } catch (err) {
+      sendServiceError(res, err, 'Failed to fetch holders');
+    }
+  });
+
+  // GET /api/fomo/wallet?q=… — a FOMO trader's public profile, holdings and PnL.
+  router.get('/wallet', async (req, res) => {
+    const query = typeof req.query.q === 'string' ? req.query.q.trim() : '';
+    if (!query) return res.status(400).json({ error: 'A search query is required.' });
+
+    try {
+      res.json(await getBotWallet(query));
+    } catch (err) {
+      sendServiceError(res, err, 'Failed to look up trader');
     }
   });
 

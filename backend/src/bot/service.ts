@@ -61,6 +61,23 @@ export function resolveNetworkId(input: string | number | undefined | null): Bot
 
 export const DEFAULT_NETWORK_ID: BotNetworkId = 1399811149; // Solana
 
+/** EVM chains FOMO indexes, most-used first — the probe order for `0x…` addresses. */
+export const EVM_NETWORK_IDS: readonly BotNetworkId[] = [56, 1, 8453, 143];
+
+/** `0x` + 40 hex is an EVM address; anything else we treat as base58/Solana. */
+export function isEvmAddress(address: string): boolean {
+  return /^0x[0-9a-fA-F]{40}$/.test(address.trim());
+}
+
+/**
+ * Which networks to ask FOMO about when the caller did not name one. An `0x…`
+ * address is definitely not Solana but does not say *which* EVM chain, so we
+ * probe them all; a base58 address can only be Solana.
+ */
+export function candidateNetworkIds(tokenAddress: string): BotNetworkId[] {
+  return isEvmAddress(tokenAddress) ? [...EVM_NETWORK_IDS] : [DEFAULT_NETWORK_ID];
+}
+
 // --- Pure mappers (exported for tests) ------------------------------------
 
 function firstString(...vals: unknown[]): string | null {
@@ -82,14 +99,22 @@ function asNumber(v: unknown): number | null {
  * Payload shape: { responseObject: [{ tokenAddress|address, networkId, topHolders: [...] }] }
  * (matches matchHoldersToTracked in fomo/store.ts and the old Outpost bot).
  */
-export function mapHolders(hodlersJson: any, tokenAddress: string, networkId: number): BotHolder[] {
+export function mapHolders(
+  hodlersJson: any,
+  tokenAddress: string,
+  networkId: number,
+  // When a single network was requested we fall back to the first entry, since
+  // the API may echo a different casing. When probing several networks at once
+  // that fallback would attribute one chain's holders to another, so opt out.
+  strict = false,
+): BotHolder[] {
   const list: any[] = Array.isArray(hodlersJson?.responseObject) ? hodlersJson.responseObject : [];
-  const entry =
-    list.find(
-      (e) =>
-        String(e?.tokenAddress ?? e?.address ?? '').toLowerCase() === tokenAddress.toLowerCase() &&
-        Number(e?.networkId) === Number(networkId),
-    ) ?? list[0];
+  const matched = list.find(
+    (e) =>
+      String(e?.tokenAddress ?? e?.address ?? '').toLowerCase() === tokenAddress.toLowerCase() &&
+      Number(e?.networkId) === Number(networkId),
+  );
+  const entry = matched ?? (strict ? null : list[0]);
   const rawHolders: any[] = Array.isArray(entry?.topHolders) ? entry.topHolders : [];
 
   return rawHolders.map((h, idx) => {
@@ -164,9 +189,18 @@ function assertUpstreamOk(status: number | undefined, what: string): void {
   }
 }
 
-export async function getBotHolders(tokenAddress: string, networkId: BotNetworkId): Promise<BotHoldersResponse> {
+/**
+ * Top FOMO holders for a token. Pass `networkId: null` to let the address
+ * decide: `/hodlers/top` takes a batch, so probing every EVM chain costs the
+ * same one request as guessing wrong did.
+ */
+export async function getBotHolders(
+  tokenAddress: string,
+  networkId: BotNetworkId | null,
+): Promise<BotHoldersResponse> {
   const client = await requireFomoClient();
-  const tokens = [{ address: tokenAddress, networkId }];
+  const candidates = networkId != null ? [networkId] : candidateNetworkIds(tokenAddress);
+  const tokens = candidates.map((id) => ({ address: tokenAddress, networkId: id }));
 
   // Shares the console's hodlers cache (15 min TTL) — same key, same budget.
   const cacheKey = hodlersCacheKey(tokens);
@@ -179,7 +213,18 @@ export async function getBotHolders(tokenAddress: string, networkId: BotNetworkI
     setCached(cacheKey, hodlersJson, HODLERS_TTL_MS);
   }
 
-  const holders = mapHolders(hodlersJson, tokenAddress, networkId);
+  // Whichever candidate actually has holders is the chain the token lives on.
+  const multi = candidates.length > 1;
+  let resolved: BotNetworkId = candidates[0]!;
+  let holders: BotHolder[] = [];
+  for (const id of candidates) {
+    const found = mapHolders(hodlersJson, tokenAddress, id, multi);
+    if (found.length > holders.length) {
+      holders = found;
+      resolved = id;
+    }
+  }
+
   if (holders.length === 0) {
     throw new BotServiceError('not_found', 'No holders found for this token.');
   }
@@ -196,27 +241,27 @@ export async function getBotHolders(tokenAddress: string, networkId: BotNetworkI
     socials: {},
   };
   try {
-    const metaCacheKey = `bot:tokenmeta:${networkId}:${tokenAddress.toLowerCase()}`;
+    const metaCacheKey = `bot:tokenmeta:${resolved}:${tokenAddress.toLowerCase()}`;
     let filterJson = getCached<any>(metaCacheKey);
     if (!filterJson) {
       const result = await client.call('/proxy/filterTokens', {
         method: 'POST',
-        body: JSON.stringify([`${tokenAddress}:${networkId}`]),
+        body: JSON.stringify([`${tokenAddress}:${resolved}`]),
       });
       if (result.status && result.status >= 200 && result.status < 300) {
         filterJson = result.json;
         setCached(metaCacheKey, filterJson, HODLERS_TTL_MS);
       }
     }
-    if (filterJson) token = mapTokenInfo(filterJson, tokenAddress, networkId);
+    if (filterJson) token = mapTokenInfo(filterJson, tokenAddress, resolved);
   } catch (err) {
     console.warn('[BotService] token metadata fetch failed:', (err as Error)?.message);
   }
 
   return {
     token,
-    networkId,
-    explorerBase: EXPLORER_BASE[networkId] ?? EXPLORER_BASE[DEFAULT_NETWORK_ID],
+    networkId: resolved,
+    explorerBase: EXPLORER_BASE[resolved] ?? EXPLORER_BASE[DEFAULT_NETWORK_ID],
     holders,
   };
 }

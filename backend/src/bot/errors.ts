@@ -1,4 +1,37 @@
 import { BotServiceError } from './service.js';
+import { isHostedMode } from '../storage/index.js';
+
+/** HTTP status for a service-layer failure. Shared by the bot API and the console API. */
+export function statusForServiceError(err: BotServiceError): number {
+  switch (err.code) {
+    case 'not_configured': return 503;
+    case 'not_found': return 404;
+    case 'not_linked': return 403;
+    case 'upstream': return 502;
+  }
+}
+
+/**
+ * Write a service-layer failure to an Express response. In hosted mode unknown
+ * errors collapse to `fallback` and are logged server-side instead, matching
+ * safeError in fomo/routes.ts.
+ */
+export function sendServiceError(
+  res: { status: (code: number) => { json: (body: unknown) => void } },
+  err: unknown,
+  fallback: string,
+): void {
+  if (err instanceof BotServiceError) {
+    res.status(statusForServiceError(err)).json({ error: err.message });
+    return;
+  }
+  if (!isHostedMode()) {
+    res.status(500).json({ error: (err as Error)?.message ?? fallback });
+    return;
+  }
+  console.error(`[API] ${fallback}:`, (err as Error)?.message ?? err);
+  res.status(500).json({ error: fallback });
+}
 
 /**
  * Turn a service-layer failure into a short, user-facing line for an embed.

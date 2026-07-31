@@ -261,7 +261,8 @@ export type WorkspacePanelType =
   | 'contracts'
   | 'radar'
   | 'fomo-feed'
-  | 'fomo-leaderboard';
+  | 'fomo-leaderboard'
+  | 'token-lookup';
 
 export interface WorkspacePanelConfig {
   roomId?: string;

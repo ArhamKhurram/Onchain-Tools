@@ -5,21 +5,24 @@ import { useAuthSession } from '../hooks/useAuthSession';
 import WalletTracker from '../components/wallets/WalletTracker';
 import MyWalletsTracker from '../components/wallets/MyWalletsTracker';
 import FomoTracker from '../components/fomo/FomoTracker';
+import FomoTraderLookup from '../components/fomo/FomoTraderLookup';
 import ConsoleEmptyState from '../components/console/ConsoleEmptyState';
 import ConsoleSubnav from '../components/console/ConsoleSubnav';
 import { routes } from '../lib/routes';
 
-type WalletsView = 'tracked' | 'mine' | 'fomo';
+type WalletsView = 'tracked' | 'mine' | 'fomo' | 'lookup';
 
 const WALLETS_TABS = [
   { id: 'tracked' as const, label: 'Tracked Wallets' },
   { id: 'mine' as const, label: 'My Wallets' },
   { id: 'fomo' as const, label: 'FOMO Tracking' },
+  { id: 'lookup' as const, label: 'Trader Lookup' },
 ];
 
 function parseView(raw: string | null): WalletsView {
   if (raw === 'fomo') return 'fomo';
   if (raw === 'mine') return 'mine';
+  if (raw === 'lookup') return 'lookup';
   // legacy ?view=wallets
   return 'tracked';
 }
@@ -68,7 +71,9 @@ export default function WalletsPage() {
     <div className="h-full min-h-0 flex flex-col bg-oct-bg">
       <ConsoleSubnav tabs={WALLETS_TABS} active={view} onChange={setView} />
       <div className="flex-1 min-h-0">
-        {view === 'fomo' ? (
+        {view === 'lookup' ? (
+          <FomoTraderLookup />
+        ) : view === 'fomo' ? (
           <FomoTracker userId={userId} />
         ) : view === 'mine' ? (
           <MyWalletsTracker userId={userId} />
