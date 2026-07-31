@@ -74,6 +74,7 @@ export class FomoBrowserClient {
   private profileDir: string;
   private pageOpenedAt = 0;
   private callsOnPage = 0;
+  private inFlight = 0;
   lastCallAt: Date | null = null;
   lastCallPath: string | null = null;
   lastError: string | null = null;
@@ -304,68 +305,86 @@ export class FomoBrowserClient {
     this.jwt = null;
     this.pageOpenedAt = 0;
     this.callsOnPage = 0;
+    this.inFlight = 0;
   }
 
   async call<T = any>(
     apiPath: string,
     opts: { method?: string; body?: string | null } = {},
   ): Promise<FomoCallResult<T>> {
-    let page = await this.ensureBrowser();
+    await this.ensureBrowser();
     const method = opts.method || 'GET';
     const body = opts.body || null;
 
-    if (this.pageIsStale()) {
+    // Never hand out a tab a recycle is about to close.
+    while (this.recycleInit) {
+      await this.recycleInit.catch(() => undefined);
+    }
+
+    // Only recycle when nothing is mid-evaluate: the poller fires ~20 calls at
+    // once, and closing the tab under them fails every one with "Target page,
+    // context or browser has been closed". The thresholds are not deadlines,
+    // so waiting for the next idle moment costs nothing.
+    if (this.pageIsStale() && this.inFlight === 0) {
       try {
         await this.recyclePage();
-        page = this.page ?? page;
       } catch (err) {
         // A failed recycle is not worth failing the call over — the old tab
         // still works, it is just fatter than we would like.
         console.warn('[FomoWorker] Tab recycle failed (keeping current tab):', (err as Error)?.message);
       }
     }
-    this.callsOnPage += 1;
 
     if (!this.jwt) {
       await retry(() => this.refreshJwt(), 3, 1500);
     }
 
+    // Claim the tab only after every await above has settled, so no concurrent
+    // recycle can slip in between reading this.page and page.evaluate.
+    const page = this.page ?? (await this.ensureBrowser());
+    this.inFlight += 1;
+    this.callsOnPage += 1;
     this.lastCallPath = apiPath;
     this.lastCallAt = new Date();
 
-    const result = (await page.evaluate(
-      async ({ url, method, body, jwt }: { url: string; method: string; body: string | null; jwt: string }) => {
-        const headers: Record<string, string> = {
-          'x-supported-chains': '1,56,143,8453,1399811149',
-        };
-        if (jwt) headers.authorization = `Bearer ${jwt}`;
-        if (method === 'POST' || method === 'PUT' || method === 'PATCH') {
-          headers['content-type'] = 'application/json';
-        }
-
-        try {
-          const res = await fetch(url, { method, headers, body: body ?? undefined, cache: 'no-store' });
-          const text = await res.text();
-          let json: any = null;
-          try {
-            json = JSON.parse(text);
-          } catch {
-            /* not json */
-          }
-          return { status: res.status, text, json };
-        } catch (err: any) {
-          return {
-            status: 0,
-            text: '',
-            json: null,
-            errorName: err?.name ?? 'Error',
-            errorMessage: err?.message ?? String(err),
-            errorStack: err?.stack ?? '',
+    let result: FomoCallResult<T>;
+    try {
+      result = (await page.evaluate(
+        async ({ url, method, body, jwt }: { url: string; method: string; body: string | null; jwt: string }) => {
+          const headers: Record<string, string> = {
+            'x-supported-chains': '1,56,143,8453,1399811149',
           };
-        }
-      },
-      { url: `${BASE}${apiPath}`, method, body, jwt: this.jwt! },
-    )) as FomoCallResult<T>;
+          if (jwt) headers.authorization = `Bearer ${jwt}`;
+          if (method === 'POST' || method === 'PUT' || method === 'PATCH') {
+            headers['content-type'] = 'application/json';
+          }
+
+          try {
+            const res = await fetch(url, { method, headers, body: body ?? undefined, cache: 'no-store' });
+            const text = await res.text();
+            let json: any = null;
+            try {
+              json = JSON.parse(text);
+            } catch {
+              /* not json */
+            }
+            return { status: res.status, text, json };
+          } catch (err: any) {
+            return {
+              status: 0,
+              text: '',
+              json: null,
+              errorName: err?.name ?? 'Error',
+              errorMessage: err?.message ?? String(err),
+              errorStack: err?.stack ?? '',
+            };
+          }
+        },
+        { url: `${BASE}${apiPath}`, method, body, jwt: this.jwt! },
+      )) as FomoCallResult<T>;
+    } finally {
+      this.inFlight -= 1;
+    }
 
     if (result.status === 401) {
       this.jwt = null;
