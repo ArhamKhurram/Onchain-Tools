@@ -157,6 +157,23 @@ export default function CallerQualitySection({ form }: { form: SettingsForm }) {
           </p>
         ) : (
           <div className="space-y-1">
+            <div className="flex items-center justify-between gap-2 px-3">
+              <span />
+              <div className="flex items-center gap-3 shrink-0 font-mono text-[9px] uppercase tracking-wide text-discord-text-muted">
+                <span className="w-10 text-right" title="Median of (peak MC since call ÷ MC at call), across their rated calls">
+                  Median
+                </span>
+                <span className="w-10 text-right" title="Their single best call — highest peak MC ÷ MC at call">
+                  Best
+                </span>
+                <span className="w-14 text-right" title="Share of their rated calls that went on to 2x from call MC">
+                  Hit 2x
+                </span>
+                <span className="w-12 text-right" title="Overall band, from the median and hit rate together">
+                  Band
+                </span>
+              </div>
+            </div>
             {ratedScores.map((score) => (
               <div
                 key={score.key}
@@ -170,14 +187,27 @@ export default function CallerQualitySection({ form }: { form: SettingsForm }) {
                   </div>
                 </div>
                 <div className="flex items-center gap-3 shrink-0 font-mono text-[11px]">
-                  <span className="text-discord-text-muted" title="Median multiple">
+                  <span
+                    className="w-10 text-right text-discord-text-muted"
+                    title="Median multiple: peak MC since call ÷ MC at call"
+                  >
                     {formatMultiple(score.medianMultiple)}
                   </span>
-                  <span className="text-discord-text-muted" title="Share that hit 2x">
+                  <span
+                    className="w-10 text-right text-discord-text-muted"
+                    title="Best call: highest peak MC ÷ MC at call"
+                  >
+                    {formatMultiple(score.bestMultiple)}
+                  </span>
+                  <span
+                    className="w-14 text-right text-discord-text-muted"
+                    title="Share of rated calls that hit 2x from call MC"
+                  >
                     2x {formatRate(score.hitRate2x)}
                   </span>
                   <span
-                    className={`font-bold uppercase ${BAND_TEXT_CLASS[score.band]}`}
+                    className={`w-12 text-right font-bold uppercase ${BAND_TEXT_CLASS[score.band]}`}
+                    title={BAND_TITLE[score.band]}
                   >
                     {BAND_LABELS[score.band]}
                   </span>
