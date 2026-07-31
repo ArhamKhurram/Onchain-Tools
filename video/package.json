@@ -1,0 +1,24 @@
+{
+  "name": "oct-video",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Remotion compositions for OCT showcase and onboarding videos. Deliberately NOT an npm workspace — see video/README.md.",
+  "scripts": {
+    "dev": "remotion studio src/index.ts",
+    "render:showcase": "remotion render src/index.ts Showcase out/showcase.mp4",
+    "render:guide": "remotion render src/index.ts Guide out/guide.mp4",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@remotion/cli": "4.0.503",
+    "@remotion/google-fonts": "^4.0.503",
+    "react": "^19.1.0",
+    "react-dom": "^19.1.0",
+    "remotion": "4.0.503"
+  },
+  "devDependencies": {
+    "@types/react": "^19.1.0",
+    "@types/react-dom": "^19.1.0",
+    "typescript": "^5.7.3"
+  }
+}
