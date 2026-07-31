@@ -39,6 +39,9 @@ export default function AuthPage({ onAuth }: { onAuth: () => void }) {
         const { error } = await supabase.auth.signUp({
           email: email.trim(),
           password: password.trim(),
+          options: {
+            emailRedirectTo: `${window.location.origin}${consoleOriginPath('/')}`,
+          },
         });
         if (error) throw error;
         setMessage('Account created! Check your email to confirm, then sign in.');
