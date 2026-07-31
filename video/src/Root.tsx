@@ -1,6 +1,6 @@
 import React from 'react';
 import { Composition } from 'remotion';
-import { video } from './brand';
+import { video, guideVideo } from './brand';
 import { Showcase, SHOWCASE_DURATION } from './compositions/Showcase';
 import { Guide, GUIDE_DURATION } from './compositions/Guide';
 
@@ -14,13 +14,14 @@ export const RemotionRoot: React.FC = () => (
       width={video.width}
       height={video.height}
     />
+    {/* The guide stays 16:9 — it is watched on desktop while following along. */}
     <Composition
       id="Guide"
       component={Guide}
       durationInFrames={GUIDE_DURATION}
-      fps={video.fps}
-      width={video.width}
-      height={video.height}
+      fps={guideVideo.fps}
+      width={guideVideo.width}
+      height={guideVideo.height}
     />
   </>
 );
