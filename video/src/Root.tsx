@@ -3,9 +3,18 @@ import { Composition } from 'remotion';
 import { video, guideVideo } from './brand';
 import { Showcase, SHOWCASE_DURATION } from './compositions/Showcase';
 import { Guide, GUIDE_DURATION } from './compositions/Guide';
+import { Launch, LAUNCH_DURATION } from './compositions/Launch';
 
 export const RemotionRoot: React.FC = () => (
   <>
+    <Composition
+      id="Launch"
+      component={Launch}
+      durationInFrames={LAUNCH_DURATION}
+      fps={video.fps}
+      width={video.width}
+      height={video.height}
+    />
     <Composition
       id="Showcase"
       component={Showcase}
