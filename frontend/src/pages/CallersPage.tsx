@@ -11,7 +11,7 @@ import { routes } from '../lib/routes';
 type CallersView = 'feed' | 'radar';
 
 const CALLERS_TABS = [
-  { id: 'feed' as const, label: 'Contract Feed' },
+  { id: 'feed' as const, label: 'Contracts' },
   { id: 'radar' as const, label: 'Radar' },
 ];
 

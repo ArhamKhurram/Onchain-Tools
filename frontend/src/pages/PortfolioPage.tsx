@@ -1,7 +1,8 @@
 import { useEffect, useMemo, useState } from 'react';
-import { BarChart3, CalendarDays, PieChart, RefreshCw } from 'lucide-react';
-import { Link } from 'react-router-dom';
+import { BarChart3, CalendarDays, PieChart, Plus, Pencil, RefreshCw, Trash2 } from 'lucide-react';
 import ConsoleEmptyState from '../components/console/ConsoleEmptyState';
+import ConfirmModal from '../components/ConfirmModal';
+import HoldingWalletFormModal, { type HoldingWalletFormValues } from '../components/wallets/HoldingWalletFormModal';
 import PortfolioActivityFeed from '../components/portfolio/PortfolioActivityFeed';
 import PortfolioHoldingsTable from '../components/portfolio/PortfolioHoldingsTable';
 import PortfolioSummary from '../components/portfolio/PortfolioSummary';
@@ -10,6 +11,7 @@ import PnlCalendarModal from '../components/portfolio/PnlCalendarModal';
 import PnlChartModal from '../components/portfolio/PnlChartModal';
 import { useAuthSession } from '../hooks/useAuthSession';
 import { useHoldingWallets } from '../hooks/useHoldingWallets';
+import type { HoldingWallet } from '../types/holdingWallets';
 import {
   getStoredPortfolioWalletId,
   PORTFOLIO_ALL_WALLETS,
@@ -23,13 +25,21 @@ import { aggregateDailyPnlFromActivity, formatPortfolioError, isEvmWalletChain }
 
 export default function PortfolioPage() {
   const { isAuthenticated, ready, userId } = useAuthSession();
-  const { wallets, loading: walletsLoading } = useHoldingWallets(userId);
+  const { wallets, loading: walletsLoading, createWallet, updateWallet, deleteWallet } =
+    useHoldingWallets(userId);
   const [selectedWalletId, setSelectedWalletId] = useState<string | null>(
     () => getStoredPortfolioWalletId() ?? PORTFOLIO_ALL_WALLETS,
   );
   const [period, setPeriod] = useState<PortfolioPeriod>('30d');
   const [chartOpen, setChartOpen] = useState(false);
   const [calendarOpen, setCalendarOpen] = useState(false);
+  // Wallet management now lives here (formerly the Wallets → My Wallets tab):
+  // add via the +, edit/remove the selected wallet. No separate list — the
+  // picker is the list.
+  const [formMode, setFormMode] = useState<'add' | 'edit'>('add');
+  const [formOpen, setFormOpen] = useState(false);
+  const [deleteTarget, setDeleteTarget] = useState<HoldingWallet | null>(null);
+  const [walletActionError, setWalletActionError] = useState<string | null>(null);
 
   const {
     stats,
@@ -86,6 +96,43 @@ export default function PortfolioPage() {
     setStoredPortfolioWalletId(id);
   };
 
+  const openAddWallet = () => {
+    setWalletActionError(null);
+    setFormMode('add');
+    setFormOpen(true);
+  };
+
+  const openEditWallet = () => {
+    if (!selectedWallet) return;
+    setWalletActionError(null);
+    setFormMode('edit');
+    setFormOpen(true);
+  };
+
+  const handleWalletSubmit = async (values: HoldingWalletFormValues) => {
+    if (formMode === 'edit' && selectedWallet) {
+      await updateWallet(selectedWallet.id, values);
+    } else {
+      const created = await createWallet(values);
+      setSelectedWalletId(created.id);
+      setStoredPortfolioWalletId(created.id);
+    }
+  };
+
+  const handleWalletDelete = async () => {
+    if (!deleteTarget) return;
+    try {
+      await deleteWallet(deleteTarget.id);
+      if (selectedWalletId === deleteTarget.id) {
+        setSelectedWalletId(PORTFOLIO_ALL_WALLETS);
+        setStoredPortfolioWalletId(PORTFOLIO_ALL_WALLETS);
+      }
+    } catch (err) {
+      setWalletActionError(err instanceof Error ? err.message : 'Failed to remove wallet.');
+    }
+    setDeleteTarget(null);
+  };
+
   const isEvmAggregated = selectedWallet ? isEvmWalletChain(selectedWallet.chain) : false;
   const pickerValue = selectedWalletId ?? (dedupedWallets.length > 1 ? PORTFOLIO_ALL_WALLETS : dedupedWallets[0]?.id ?? '');
 
@@ -103,7 +150,7 @@ export default function PortfolioPage() {
         icon={PieChart}
         eyebrow="[ PORTFOLIO ]"
         title="Sign in to view portfolio"
-        description="Portfolio reads wallets from My Wallets and pulls Birdeye stats, holdings, and trade history for your buy wallets."
+        description="Portfolio pulls Birdeye stats, holdings, and trade history for the buy wallets you save here."
         actionLabel="SIGN IN"
         actionTo={routes.login}
         secondaryLabel="← Back to console home"
@@ -122,16 +169,24 @@ export default function PortfolioPage() {
 
   if (!walletsLoading && wallets.length === 0) {
     return (
-      <ConsoleEmptyState
-        icon={PieChart}
-        eyebrow="[ PORTFOLIO ]"
-        title="Add a wallet in My Wallets"
-        description="Portfolio uses the buy wallets you save under Wallets → My Wallets. Add at least one SOL, Base, BSC, ETH, or Robinhood (HOOD) address to get started."
-        actionLabel="GO TO MY WALLETS"
-        actionTo={`${routes.wallets}?view=mine`}
-        secondaryLabel="← Back to console home"
-        secondaryTo={routes.home}
-      />
+      <>
+        <ConsoleEmptyState
+          icon={PieChart}
+          eyebrow="[ PORTFOLIO ]"
+          title="Add your first wallet"
+          description="Portfolio tracks the buy wallets you save here. Add a SOL, Base, BSC, ETH, or Robinhood (HOOD) address to see holdings, PnL and activity."
+          actionLabel="ADD WALLET"
+          onActionClick={openAddWallet}
+          secondaryLabel="← Back to console home"
+          secondaryTo={routes.home}
+        />
+        <HoldingWalletFormModal
+          open={formOpen}
+          mode="add"
+          onClose={() => setFormOpen(false)}
+          onSubmit={handleWalletSubmit}
+        />
+      </>
     );
   }
 
@@ -149,11 +204,43 @@ export default function PortfolioPage() {
 
           <div className="flex flex-wrap items-end gap-3">
             {dedupedWallets.length > 0 && (
-              <PortfolioWalletPicker
-                wallets={dedupedWallets}
-                selectedId={pickerValue}
-                onChange={handleWalletChange}
-              />
+              <div className="flex items-end gap-2">
+                <PortfolioWalletPicker
+                  wallets={dedupedWallets}
+                  selectedId={pickerValue}
+                  onChange={handleWalletChange}
+                />
+                <div className="flex">
+                  <button
+                    type="button"
+                    onClick={openAddWallet}
+                    title="Add wallet"
+                    className="font-mono border-2 border-oct-accent/40 px-2.5 py-2 text-white/70 hover:text-white hover:border-oct-accent transition-colors"
+                  >
+                    <Plus size={14} />
+                  </button>
+                  {selectedWallet && (
+                    <>
+                      <button
+                        type="button"
+                        onClick={openEditWallet}
+                        title="Edit selected wallet"
+                        className="font-mono border-2 border-l-0 border-oct-accent/40 px-2.5 py-2 text-white/70 hover:text-white hover:border-oct-accent transition-colors"
+                      >
+                        <Pencil size={14} />
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setDeleteTarget(selectedWallet)}
+                        title="Remove selected wallet"
+                        className="font-mono border-2 border-l-0 border-oct-accent/40 px-2.5 py-2 text-white/70 hover:text-oct-accent hover:border-oct-accent transition-colors"
+                      >
+                        <Trash2 size={14} />
+                      </button>
+                    </>
+                  )}
+                </div>
+              </div>
             )}
 
             <div className="flex border-2 border-oct-accent/40">
@@ -196,10 +283,6 @@ export default function PortfolioPage() {
               )}
             </>
           ) : null}
-          {' · '}
-          <Link to={`${routes.wallets}?view=mine`} className="text-oct-accent hover:underline">
-            Manage in My Wallets
-          </Link>
         </p>
       </div>
 
@@ -215,6 +298,15 @@ export default function PortfolioPage() {
             <span className="text-oct-accent/80 uppercase tracking-wider">Rate limits:</span>{' '}
             Birdeye Standard tier caps wallet API traffic (~5 req/s). All Wallets loads many requests — pick one wallet
             if data is slow or errors. Missed-runner alerts use GMGN separately and are unaffected.
+          </div>
+        )}
+
+        {walletActionError && (
+          <div className="border-2 border-red-500/50 bg-red-950/30 px-4 py-3 font-mono text-xs text-red-200 flex items-center justify-between gap-3">
+            <span>{walletActionError}</span>
+            <button type="button" onClick={() => setWalletActionError(null)} className="text-oct-accent underline hover:no-underline">
+              Dismiss
+            </button>
           </div>
         )}
 
@@ -282,6 +374,26 @@ export default function PortfolioPage() {
         data={pnlData}
         loading={pnlLoading && pnlData.days.length === 0}
         error={pnlData.days.length === 0 ? pnlError : null}
+      />
+
+      <HoldingWalletFormModal
+        open={formOpen}
+        mode={formMode}
+        wallet={formMode === 'edit' ? selectedWallet : null}
+        onClose={() => setFormOpen(false)}
+        onSubmit={handleWalletSubmit}
+      />
+      <ConfirmModal
+        open={!!deleteTarget}
+        title="Remove wallet"
+        message={
+          deleteTarget
+            ? `Remove ${deleteTarget.label?.trim() || deleteTarget.address} from your portfolio? This only stops tracking it here.`
+            : ''
+        }
+        confirmLabel="Remove"
+        onConfirm={handleWalletDelete}
+        onCancel={() => setDeleteTarget(null)}
       />
     </div>
   );
