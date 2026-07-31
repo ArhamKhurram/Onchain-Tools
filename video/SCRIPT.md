@@ -62,9 +62,23 @@ the alert fires early, it is not a post-hoc notification.
 drift across the board rather than a push.
 **On screen:** `fomo.family, live`
 
-### 0:44–0:52 — Portfolio
-**Shot:** Portfolio page — PnL, holdings, activity, chart.
-**On screen:** `Your wallets, your P&L`
+### 0:44–0:52 — Caller radar  ← the differentiator
+**Shot:** Callers page, radar table. Slow push onto a couple of rows so the bands
+and hit-rates are legible — an `elite` row next to a `slop` row is the whole
+argument in one frame.
+**On screen:** `Which callers are actually worth following`
+
+**Why this and not Portfolio.** PnL is table stakes; every terminal has it, and it
+shows nothing only OCT can do. The radar does: it scores every caller across your
+feeds on their own calls — median multiple, 2x and 5x hit rates, slop rate, calls
+per day — and bands them `unrated / slop / mixed / solid / elite` once there are
+at least 10 rated calls (`MIN_RATED_CALLS`). `elite` means a 2x hit rate of 40%
+or better with a slop rate at or under 40%; `slop` means 80%+ of calls never
+cleared 1.2x.
+
+That is the beat that lands the product: you are in ten alpha groups, and this
+tells you which handful of people in them are actually worth reading. Keep the
+copy understated — the table is doing the persuading.
 
 ### 0:52–1:00 — Close
 **Shot:** Cross-dissolve to clean background. OCT wordmark, centred. Beat. URL
@@ -104,16 +118,19 @@ contrast (`#888`), lower-third, fading in 400ms after the shot settles.
 
 ## Open items — these gate production
 
-### 1. Real screens (blocking)
+### 1. Real screens — no longer blocked
 
-This style needs actual OCT UI for six pages: Home, Feed, Call, FOMO, Directory,
-Portfolio — with plausible data in them. Options:
+This style needs actual OCT UI for five surfaces: **Home, Feed, Call, FOMO,
+Callers (radar)** — with real data in them.
 
-- **Demo mode** — the deferred backend/frontend flag that pumps synthetic
-  messages through the real pipeline. ~30–60 min. Also solves the product problem
-  that people cannot evaluate OCT without a Discord token.
-- **Operator capture** — you run the console with real data, I capture and
-  redact.
+Demo mode was the plan while the hosted console could not load anything. That is
+no longer necessary: the production backend was unreachable from the browser
+because the domain was missing from the backend's allowed-origins list, and with
+that fixed the console loads config, rooms, contracts, FOMO and callers normally.
+**Capture the real thing.**
+
+Demo mode is still worth building later — it is what lets someone evaluate OCT
+before pasting a Discord token — but it is not on this video's critical path.
 
 Recreating these in Remotion is the wrong answer here. The reference works
 *because* it is real.
