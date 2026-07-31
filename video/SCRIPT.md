@@ -62,23 +62,32 @@ the alert fires early, it is not a post-hoc notification.
 drift across the board rather than a push.
 **On screen:** `fomo.family, live`
 
-### 0:44–0:52 — Caller radar  ← the differentiator
-**Shot:** Callers page, radar table. Slow push onto a couple of rows so the bands
-and hit-rates are legible — an `elite` row next to a `slop` row is the whole
-argument in one frame.
-**On screen:** `Which callers are actually worth following`
+### 0:44–0:52 — Radar  ← the differentiator
+**Shot:** Callers &rarr; **Radar** tab (not the Contract feed tab). The full token
+table: `TOKEN / MENTIONS / CALLERS / GROUPS / LATEST / MC@CALL / MC NOW / × /
+FIRST CALLER`, with the `EARLY` and `CROWDED` tags visible on the token column.
+Hold wide for ~2s so the density reads, then a slow push toward the right-hand
+columns where the multiple and the first caller sit.
+**On screen:** `Every call, ranked by who made it`
 
-**Why this and not Portfolio.** PnL is table stakes; every terminal has it, and it
-shows nothing only OCT can do. The radar does: it scores every caller across your
-feeds on their own calls — median multiple, 2x and 5x hit rates, slop rate, calls
-per day — and bands them `unrated / slop / mixed / solid / elite` once there are
-at least 10 rated calls (`MIN_RATED_CALLS`). `elite` means a 2x hit rate of 40%
-or better with a slop rate at or under 40%; `slop` means 80%+ of calls never
-cleared 1.2x.
+**What the frame is arguing.** Each row is a token somebody called, with how many
+people called it, at what market cap, and what it did since. The `×` column is
+the verdict. `EARLY` versus `CROWDED` says whether you are looking at it before
+or after the room piled in.
 
-That is the beat that lands the product: you are in ten alpha groups, and this
-tells you which handful of people in them are actually worth reading. Keep the
-copy understated — the table is doing the persuading.
+**Caller quality is the point of the beat.** The `FIRST CALLER` column carries the
+earned band — the same colour and badge the feed uses — so a name is not just a
+name: it is a track record. Bands are `unrated / slop / mixed / solid / elite`,
+assigned once a caller has at least 10 rated calls (`MIN_RATED_CALLS`). `elite`
+means a 2x hit rate of 40% or better with a slop rate at or under 40%; `slop`
+means 80%+ of their calls never cleared 1.2x. Frame the push so at least one
+banded name is legible — an `elite` name next to a `slop` name is the whole
+argument in a single frame.
+
+**Why this and not Portfolio.** PnL is table stakes; every terminal has it and it
+demonstrates nothing only OCT can do. This does: you are in ten alpha groups, and
+this tells you which handful of people in them are worth reading. Keep the copy
+understated — the table persuades better than a headline.
 
 ### 0:52–1:00 — Close
 **Shot:** Cross-dissolve to clean background. OCT wordmark, centred. Beat. URL
@@ -121,7 +130,7 @@ contrast (`#888`), lower-third, fading in 400ms after the shot settles.
 ### 1. Real screens — no longer blocked
 
 This style needs actual OCT UI for five surfaces: **Home, Feed, Call, FOMO,
-Callers (radar)** — with real data in them.
+Callers &rarr; Radar** — with real data in them.
 
 Demo mode was the plan while the hosted console could not load anything. That is
 no longer necessary: the production backend was unreachable from the browser
@@ -148,6 +157,13 @@ no drums until ~30s):
 | YouTube Audio Library | free | no attribution needed on many tracks |
 | Epidemic Sound | ~$15/mo | closest to the reference's production quality |
 | Artlist | ~$17/mo | broad ambient catalogue |
+
+**Do not reuse the reference's audio.** A candidate mp3 was checked against the
+reference video's track: identical duration to the microsecond and a Pearson
+correlation of 1.0 across the first 30s — a bit-for-bit rip. On a launch promo
+that a partner retweets, a Content ID match can mute or pull the post at the
+worst possible moment. Any track dropped in `public/audio/` should be one we hold
+a licence for.
 
 Pick a track, drop the file in `video/public/audio/`, and it wires in with
 Remotion's `<Audio/>` in one line.
