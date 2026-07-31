@@ -15,7 +15,7 @@
 import React from 'react';
 import { AbsoluteFill, Sequence, interpolate, useCurrentFrame } from 'remotion';
 import { color, font, sec } from '../brand';
-import { Shot, Caption, PANEL, FULL } from '../components/Shot';
+import { Shot, Caption, REGION, FULL } from '../components/Shot';
 import { SlabIn } from '../components/Kinetic';
 
 /** Cross-dissolve wrapper — the only transition in this cut. */
@@ -32,7 +32,7 @@ const BEATS = {
   open: sec(6),
   feed: sec(10),
   detect: sec(10),
-  radar: sec(10),
+  radar: sec(7),
   fomo: sec(8),
   quality: sec(8),
   close: sec(8),
@@ -60,7 +60,7 @@ export const Launch: React.FC = () => (
     {/* Cold open — the console at rest. No claim until something real is on screen. */}
     <Sequence from={OPEN_AT} durationInFrames={BEATS.open}>
       <Dissolve dur={BEATS.open}>
-        <Shot startAt={14} crop={FULL} fill={0.92} push={1.05} durationInFrames={BEATS.open} />
+        <Shot startAt={14} crop={FULL} push={1.05} durationInFrames={BEATS.open} />
         <Caption from={sec(2)}>Every alpha call. One console.</Caption>
       </Dissolve>
     </Sequence>
@@ -68,7 +68,7 @@ export const Launch: React.FC = () => (
     {/* The feed — punch into the room-feed panel while messages arrive. */}
     <Sequence from={FEED_AT} durationInFrames={BEATS.feed}>
       <Dissolve dur={BEATS.feed}>
-        <Shot startAt={196} crop={PANEL.roomFeed} fill={1} push={1.07} durationInFrames={BEATS.feed} />
+        <Shot startAt={196} crop={REGION.feed} push={1.08} durationInFrames={BEATS.feed} />
         <Caption>Discord + Telegram, one stream</Caption>
       </Dissolve>
     </Sequence>
@@ -76,7 +76,7 @@ export const Launch: React.FC = () => (
     {/* Detection — the contract feed, enriched. */}
     <Sequence from={DETECT_AT} durationInFrames={BEATS.detect}>
       <Dissolve dur={BEATS.detect}>
-        <Shot startAt={52} crop={FULL} fill={1} push={1.08} durationInFrames={BEATS.detect} />
+        <Shot startAt={52} crop={FULL} push={1.09} durationInFrames={BEATS.detect} />
         <Caption>Detected and enriched, the second it drops</Caption>
       </Dissolve>
     </Sequence>
@@ -84,7 +84,7 @@ export const Launch: React.FC = () => (
     {/* Radar — the differentiator. Punch into the radar panel. */}
     <Sequence from={RADAR_AT} durationInFrames={BEATS.radar}>
       <Dissolve dur={BEATS.radar}>
-        <Shot startAt={205} crop={PANEL.radar} fill={1} push={1.07} durationInFrames={BEATS.radar} />
+        <Shot startAt={220} crop={REGION.radar} push={1.07} durationInFrames={BEATS.radar} />
         <Caption>Every call, ranked by who made it</Caption>
       </Dissolve>
     </Sequence>
@@ -92,7 +92,7 @@ export const Launch: React.FC = () => (
     {/* FOMO — live trades. */}
     <Sequence from={FOMO_AT} durationInFrames={BEATS.fomo}>
       <Dissolve dur={BEATS.fomo}>
-        <Shot startAt={214} crop={PANEL.fomo} fill={1} push={1.06} durationInFrames={BEATS.fomo} />
+        <Shot startAt={200} crop={REGION.fomo} push={1.06} durationInFrames={BEATS.fomo} />
         <Caption>fomo.family, live</Caption>
       </Dissolve>
     </Sequence>
@@ -100,7 +100,7 @@ export const Launch: React.FC = () => (
     {/* Caller quality — the settings screen that explains the bands. */}
     <Sequence from={QUALITY_AT} durationInFrames={BEATS.quality}>
       <Dissolve dur={BEATS.quality}>
-        <Shot startAt={252} crop={FULL} fill={1} push={1.06} durationInFrames={BEATS.quality} />
+        <Shot startAt={252} crop={FULL} push={1.06} durationInFrames={BEATS.quality} />
         <Caption>Callers earn a rating from their own calls</Caption>
       </Dissolve>
     </Sequence>
