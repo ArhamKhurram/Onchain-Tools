@@ -77,7 +77,7 @@ export const Showcase: React.FC = () => (
         <Tag from={0}>live feed</Tag>
         <FeedMessage from={4} author="sol_scanner" accent={color.solana} ts="02:14" text="new pair deployed · LP burned" />
         <FeedMessage from={12} author="alpha_dev" accent={color.evm} ts="02:14" text="dev doxxed, socials live" />
-        <FeedMessage from={22} author="trench_bot" accent={color.flame} ts="02:15" text={`CA: ${FAKE_SOL_MINT}`} contract />
+        <FeedMessage from={22} author="trench_bot" accent={color.flame} ts="02:15" text={`$MARSCOIN  ${FAKE_SOL_MINT}`} contract />
       </AbsoluteFill>
     </Sequence>
 
@@ -98,27 +98,32 @@ export const Showcase: React.FC = () => (
       </AbsoluteFill>
     </Sequence>
 
-    {/* 19.0s — THE PAYOFF: the alert you would have gotten. */}
+    {/* 19.0s — THE PAYOFF. The alert fires EARLY, at 1.7x, long before the 3301x
+        run in the previous beat — that early trigger is the actual product, not
+        a post-hoc "you missed it" notification. Same token throughout. */}
     <Sequence from={sec(19)} durationInFrames={sec(6)}>
       <AbsoluteFill style={{ background: color.bg, padding: PAD, justifyContent: 'center', gap: 20 }}>
         <SlabIn from={0} size={112}>
-          You&apos;d have been told.
+          You&apos;d have been told
         </SlabIn>
-        <div style={{ height: 30 }} />
+        <SlabIn from={3} size={112} colorOverride={color.flame}>
+          at 1.7×.
+        </SlabIn>
+        <div style={{ height: 34 }} />
         <div style={{ display: 'flex' }}>
           <MissedRunnerToast
-            from={12}
-            symbol="SESTRI"
+            from={14}
+            symbol="MARSCOIN"
             multiple="1.7×"
             scannedAgo="8m ago"
             channel="#alpha-no-yap"
-            mcFrom="258K"
-            mcTo="450.9K"
+            mcFrom="14K"
+            mcTo="24.1K"
           />
         </div>
         <div style={{ height: 18 }} />
-        <SlabIn from={34} size={30} family={font.mono} weight={400} colorOverride={color.muted} tracking={0}>
-          Missed-runner alerts — every call you scrolled past, tracked.
+        <SlabIn from={36} size={30} family={font.mono} weight={400} colorOverride={color.muted} tracking={0}>
+          Missed-runner alerts fire while it is still early — not after.
         </SlabIn>
       </AbsoluteFill>
     </Sequence>
