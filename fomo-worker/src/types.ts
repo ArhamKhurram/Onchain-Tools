@@ -42,4 +42,8 @@ export interface WorkerStatus {
   lastError: string | null;
   refreshTokenSource: 'supabase' | 'env' | 'none';
   uptimeSec: number;
+  /** Age of the current browser tab; stays bounded while recycling works. */
+  pageAgeSec: number | null;
+  callsSincePageOpen: number;
+  rssMb: number;
 }
