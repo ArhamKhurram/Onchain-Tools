@@ -23,6 +23,13 @@ export interface AuthSlice {
   authStatus: AuthStatus | null;
   authLoading: boolean;
   maskedTokens: MaskedToken[];
+  /**
+   * Whether the last backend call reached the server at all. null = not yet
+   * attempted. This is deliberately distinct from "not authenticated": a CORS
+   * rejection or a dead backend must be visible, not silently rendered as an
+   * empty console. See BackendUnreachableBanner.
+   */
+  backendReachable: boolean | null;
 
   checkAuth: () => Promise<void>;
   submitToken: (token: string) => Promise<{ success: boolean; error?: string }>;
@@ -38,6 +45,7 @@ export const createAuthSlice: StateCreator<AppState, [], [], AuthSlice> = (set, 
     authStatus: null,
     authLoading: true,
     maskedTokens: [],
+    backendReachable: null,
 
     checkAuth: async () => {
       if (demo) return demo.checkAuth();
@@ -58,16 +66,19 @@ export const createAuthSlice: StateCreator<AppState, [], [], AuthSlice> = (set, 
         set({ authLoading: true });
         const res = await apiFetch(`${API_BASE}/auth/status`);
         if (!res.ok) {
-          set({ authStatus: resolve(null), authLoading: false });
+          // Reached the server; it just refused. Not an unreachable backend.
+          set({ authStatus: resolve(null), authLoading: false, backendReachable: true });
           return;
         }
         const status = resolve(await res.json());
         if (status?.configured) {
           markTokenEverConfigured();
         }
-        set({ authStatus: status, authLoading: false });
+        set({ authStatus: status, authLoading: false, backendReachable: true });
       } catch {
-        set({ authStatus: resolve(null), authLoading: false });
+        // fetch() itself threw: DNS, offline, or — the case that cost hours — a
+        // CORS rejection, which is indistinguishable from a network error here.
+        set({ authStatus: resolve(null), authLoading: false, backendReachable: false });
       }
     },
 
