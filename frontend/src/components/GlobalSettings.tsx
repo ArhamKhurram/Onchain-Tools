@@ -25,7 +25,7 @@ export default function GlobalSettings() {
   return (
     <div className="flex-1 flex flex-col md:flex-row h-full w-full min-w-0 bg-oct-bg">
       {/* Mobile header + horizontal nav */}
-      <div className="md:hidden shrink-0 border-b-2 border-black bg-black">
+      <div className="md:hidden shrink-0 border-b-2 border-oct-border bg-oct-surface">
         <div className="px-3 pt-3 pb-2 flex items-center gap-2">
           {sidebarCollapsed && (
             <button
@@ -50,10 +50,10 @@ export default function GlobalSettings() {
             <button
               key={id}
               onClick={() => { if (id !== section) setSection(id); }}
-              className={`flex items-center gap-1.5 px-3 py-1.5 font-mono text-[10px] uppercase tracking-[0.1em] whitespace-nowrap shrink-0 transition-colors border-2 ${
+              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-cockpit font-mono text-[10px] font-bold uppercase tracking-[0.1em] whitespace-nowrap shrink-0 transition-colors duration-100 border-2 ${
                 section === id
-                  ? 'border-oct-accent text-oct-accent bg-oct-accent/10'
-                  : 'border-transparent text-oct-muted hover:text-oct-text'
+                  ? 'border-oct-accent text-oct-accent bg-oct-accent-dim'
+                  : 'border-transparent text-oct-muted hover:text-oct-text hover:bg-oct-surface-raised'
               }`}
             >
               <Icon size={13} className="shrink-0" />
@@ -64,8 +64,8 @@ export default function GlobalSettings() {
       </div>
 
       {/* Desktop sidebar nav */}
-      <div className="hidden md:flex w-60 bg-black border-r-2 border-black flex-col shrink-0">
-        <div className="px-4 pt-5 pb-3 flex items-center gap-2 border-b border-oct-border">
+      <div className="hidden md:flex w-60 bg-oct-surface border-r-2 border-oct-border flex-col shrink-0">
+        <div className="px-4 pt-5 pb-3 flex items-center gap-2 border-b-2 border-oct-border">
           {sidebarCollapsed && (
             <button
               onClick={toggleSidebar}
@@ -89,10 +89,10 @@ export default function GlobalSettings() {
             <button
               key={id}
               onClick={() => { if (id !== section) setSection(id); }}
-              className={`w-full flex items-center gap-2.5 px-3 py-2 font-mono text-xs text-left uppercase tracking-[0.08em] transition-colors border-l-2 ${
+              className={`w-full flex items-center gap-2.5 px-3 py-2 rounded-cockpit font-mono text-xs text-left uppercase tracking-[0.08em] transition-colors duration-100 border-l-2 ${
                 section === id
-                  ? 'border-oct-accent text-oct-accent bg-oct-accent/5'
-                  : 'border-transparent text-oct-muted hover:text-oct-text hover:bg-oct-surface'
+                  ? 'border-oct-accent text-oct-accent bg-oct-accent-dim font-bold'
+                  : 'border-transparent text-oct-muted hover:text-oct-text hover:bg-oct-surface-raised'
               }`}
             >
               <Icon size={16} className="shrink-0" />
@@ -123,18 +123,18 @@ export default function GlobalSettings() {
         </div>
 
         {/* Save bar */}
-        <div className={`border-t px-3 sm:px-8 py-2.5 sm:py-3 flex items-center justify-between gap-2 sm:gap-3 shrink-0 transition-colors ${
-          hasUnsavedChanges ? 'border-discord-yellow/30 bg-discord-yellow/5' : 'border-discord-divider bg-discord-dark'
+        <div className={`border-t-2 px-3 sm:px-8 py-2.5 sm:py-3 flex items-center justify-between gap-2 sm:gap-3 shrink-0 transition-colors duration-100 ${
+          hasUnsavedChanges ? 'border-oct-yellow bg-oct-yellow/15' : 'border-oct-border bg-oct-bg'
         }`}>
           <div className="flex items-center gap-2 sm:gap-3 min-w-0">
-            <span className="text-[11px] text-discord-text-muted select-text whitespace-nowrap">
+            <span className="font-mono text-[11px] uppercase tracking-wide text-oct-muted select-text whitespace-nowrap">
               OCT v{__APP_VERSION__}
             </span>
-            <span className={`text-[11px] sm:text-sm transition-opacity ${hasUnsavedChanges ? 'opacity-100 text-discord-yellow' : 'opacity-0'}`}>
+            <span className={`font-mono text-[11px] sm:text-sm uppercase tracking-wide transition-opacity ${hasUnsavedChanges ? 'opacity-100 text-oct-yellow' : 'opacity-0'}`}>
               Unsaved changes
             </span>
             {saveError && (
-              <span className="text-[11px] sm:text-sm text-red-400 truncate" title={saveError}>
+              <span className="font-mono text-[11px] sm:text-sm text-oct-flame truncate" title={saveError}>
                 {saveError}
               </span>
             )}
@@ -143,7 +143,7 @@ export default function GlobalSettings() {
             {hasUnsavedChanges && (
               <button
                 onClick={() => { if (config) fetchConfig(); }}
-                className="px-3 sm:px-4 py-1.5 sm:py-2 rounded text-xs sm:text-sm text-discord-text-muted hover:text-white font-medium transition-colors"
+                className="brutal-btn-ghost px-3 sm:px-4 py-1.5 sm:py-2 text-xs sm:text-sm"
               >
                 Reset
               </button>
@@ -151,10 +151,8 @@ export default function GlobalSettings() {
             <button
               onClick={handleSave}
               disabled={saving || !hasUnsavedChanges}
-              className={`px-4 sm:px-5 py-1.5 sm:py-2 rounded text-xs sm:text-sm text-white font-medium transition-colors ${
-                hasUnsavedChanges
-                  ? 'bg-discord-green hover:bg-discord-green/80'
-                  : 'bg-discord-blurple hover:bg-discord-blurple-hover disabled:opacity-50 disabled:cursor-not-allowed'
+              className={`brutal-btn px-4 sm:px-5 py-1.5 sm:py-2 text-xs sm:text-sm ${
+                hasUnsavedChanges ? 'bg-oct-green' : ''
               }`}
             >
               {saving ? 'Saving...' : 'Save'}

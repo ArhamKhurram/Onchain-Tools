@@ -47,11 +47,11 @@ export default function SoundsSection({ form }: { form: SettingsForm }) {
   return (
               <>
                 <div>
-                  <h3 className="text-base sm:text-lg font-semibold text-white mb-4">Sounds & Notifications</h3>
+                  <h3 className="font-display text-base sm:text-lg tracking-tight text-oct-text mb-4">Sounds & Notifications</h3>
 
                   <div className="space-y-5">
-                    <div className="p-3 sm:p-4 bg-discord-sidebar rounded-lg">
-                      <h4 className="text-xs sm:text-sm font-semibold text-white mb-2">On-site toast alerts</h4>
+                    <div className="brutal-card p-3 sm:p-4">
+                      <h4 className="font-mono text-xs font-bold uppercase tracking-[0.15em] text-oct-text mb-2">On-site toast alerts</h4>
                       <Toggle
                         value={toastAlertsEnabled}
                         onChange={setToastAlertsEnabled}
@@ -59,17 +59,17 @@ export default function SoundsSection({ form }: { form: SettingsForm }) {
                       />
                       {toastAlertsEnabled && (
                         <div className="mt-3">
-                          <label className="block text-xs text-discord-text-muted mb-2">Toast position</label>
+                          <label className="block text-xs font-medium text-oct-muted mb-2 uppercase tracking-wide">Toast position</label>
                           <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
                             {TOAST_POSITIONS.map(({ value, label }) => (
                               <button
                                 key={value}
                                 type="button"
                                 onClick={() => setToastPosition(value)}
-                                className={`px-2 py-1.5 rounded text-xs font-medium border transition-colors ${
+                                className={`px-2 py-1.5 rounded-cockpit font-mono text-xs border-2 transition-colors duration-100 ${
                                   toastPosition === value
-                                    ? 'bg-discord-blurple text-white border-discord-blurple'
-                                    : 'bg-discord-dark text-discord-text-muted border-discord-input hover:text-discord-text'
+                                    ? 'bg-oct-accent text-white border-oct-accent'
+                                    : 'bg-oct-bg text-oct-muted border-oct-border hover:text-oct-text hover:border-oct-border-bright'
                                 }`}
                               >
                                 {label}
@@ -80,8 +80,8 @@ export default function SoundsSection({ form }: { form: SettingsForm }) {
                       )}
                     </div>
 
-                    <div className="p-3 sm:p-4 bg-discord-sidebar rounded-lg">
-                      <h4 className="text-xs sm:text-sm font-semibold text-white mb-2">Desktop Notifications</h4>
+                    <div className="brutal-card p-3 sm:p-4">
+                      <h4 className="font-mono text-xs font-bold uppercase tracking-[0.15em] text-oct-text mb-2">Desktop Notifications</h4>
                       <Toggle
                         value={desktopNotifications}
                         onChange={async (v) => {
@@ -98,8 +98,8 @@ export default function SoundsSection({ form }: { form: SettingsForm }) {
                       />
                     </div>
 
-                    <div className="p-3 sm:p-4 bg-discord-sidebar rounded-lg">
-                      <h4 className="text-sm font-semibold text-white mb-3">Sound Settings</h4>
+                    <div className="brutal-card p-3 sm:p-4">
+                      <h4 className="font-mono text-xs font-bold uppercase tracking-[0.15em] text-oct-text mb-3">Sound Settings</h4>
                       <Toggle
                         value={messageSounds}
                         onChange={setMessageSounds}
@@ -140,23 +140,23 @@ export default function SoundsSection({ form }: { form: SettingsForm }) {
                           ] as [SoundType, string][]).map(([type, label]) => {
                             const sc = soundSettings[type];
                             return (
-                              <div key={type} className="px-2 sm:px-3 py-2.5 sm:py-3 bg-discord-dark rounded space-y-2.5">
+                              <div key={type} className="rounded-cockpit border-2 border-oct-border bg-oct-surface-raised px-2 sm:px-3 py-2.5 sm:py-3 space-y-2.5">
                                 <div className="flex items-center justify-between">
                                   <div className="flex items-center gap-1.5 sm:gap-2">
-                                    <Volume2 size={14} className="text-discord-text-muted shrink-0" />
-                                    <span className="text-xs sm:text-sm text-discord-text font-medium">{label}</span>
+                                    <Volume2 size={14} className="text-oct-muted shrink-0" />
+                                    <span className="text-xs sm:text-sm text-oct-text font-medium">{label}</span>
                                   </div>
                                   <div className="flex items-center gap-2">
                                     <button
                                       onClick={() => previewSound(type, sc)}
-                                      className="p-1 rounded hover:bg-discord-hover/50 text-discord-text-muted hover:text-discord-text transition-colors"
+                                      className="p-1 rounded-cockpit text-oct-muted hover:text-oct-accent hover:bg-oct-surface transition-colors duration-100"
                                       title="Preview sound"
                                     >
                                       <Play size={14} />
                                     </button>
                                     <div
-                                      className={`w-9 h-[18px] rounded-full transition-colors relative cursor-pointer ${
-                                        sc.enabled ? 'bg-discord-green' : 'bg-discord-input'
+                                      className={`w-9 h-[18px] rounded-full transition-colors duration-100 relative cursor-pointer ${
+                                        sc.enabled ? 'bg-oct-green' : 'bg-oct-border-bright'
                                       }`}
                                       onClick={() => setSoundSettings((prev) => ({
                                         ...prev,
@@ -164,7 +164,7 @@ export default function SoundsSection({ form }: { form: SettingsForm }) {
                                       }))}
                                     >
                                       <div
-                                        className={`absolute top-[2px] w-[14px] h-[14px] bg-white rounded-full transition-transform ${
+                                        className={`absolute top-[2px] w-[14px] h-[14px] bg-oct-text rounded-full transition-transform duration-100 ${
                                           sc.enabled ? 'translate-x-[18px]' : 'translate-x-[2px]'
                                         }`}
                                       />
@@ -175,7 +175,7 @@ export default function SoundsSection({ form }: { form: SettingsForm }) {
                                 {sc.enabled && (
                                   <>
                                     <div className="flex items-center gap-3">
-                                      <span className="text-[11px] text-discord-text-muted w-12 shrink-0">Volume</span>
+                                      <span className="font-mono text-[11px] text-oct-muted w-12 shrink-0 uppercase tracking-wide">Volume</span>
                                       <input
                                         type="range"
                                         min={0}
@@ -185,23 +185,23 @@ export default function SoundsSection({ form }: { form: SettingsForm }) {
                                           ...prev,
                                           [type]: { ...prev[type], volume: Number(e.target.value) },
                                         }))}
-                                        className="flex-1 h-1.5 accent-discord-blurple cursor-pointer"
+                                        className="flex-1 h-1.5 accent-oct-accent cursor-pointer"
                                       />
-                                      <span className="text-[11px] text-discord-text-muted w-8 text-right">{sc.volume}%</span>
+                                      <span className="font-mono text-[11px] text-oct-muted w-8 text-right">{sc.volume}%</span>
                                     </div>
 
                                     <div className="space-y-2">
                                       <div className="flex flex-wrap items-center gap-1.5 sm:gap-2">
-                                        <span className="text-[11px] text-discord-text-muted">Sound:</span>
+                                        <span className="font-mono text-[11px] text-oct-muted uppercase tracking-wide">Sound:</span>
                                         <button
                                           onClick={() => setSoundSettings((prev) => ({
                                             ...prev,
                                             [type]: { ...prev[type], useCustom: false, presetSound: undefined },
                                           }))}
-                                          className={`px-2 py-1 rounded text-[11px] font-medium transition-colors ${
+                                          className={`px-2 py-1 rounded-cockpit border-2 font-mono text-[11px] font-bold uppercase tracking-wide transition-colors duration-100 ${
                                             !sc.useCustom && !sc.presetSound
-                                              ? 'bg-discord-blurple text-white'
-                                              : 'bg-discord-sidebar text-discord-text-muted hover:text-discord-text'
+                                              ? 'bg-oct-accent border-oct-accent text-white'
+                                              : 'bg-oct-bg border-oct-border text-oct-muted hover:text-oct-text hover:border-oct-border-bright'
                                           }`}
                                         >
                                           Default
@@ -211,10 +211,10 @@ export default function SoundsSection({ form }: { form: SettingsForm }) {
                                             ...prev,
                                             [type]: { ...prev[type], useCustom: false, presetSound: prev[type].presetSound || 'ping' },
                                           }))}
-                                          className={`px-2 py-1 rounded text-[11px] font-medium transition-colors ${
+                                          className={`px-2 py-1 rounded-cockpit border-2 font-mono text-[11px] font-bold uppercase tracking-wide transition-colors duration-100 ${
                                             !sc.useCustom && sc.presetSound
-                                              ? 'bg-discord-blurple text-white'
-                                              : 'bg-discord-sidebar text-discord-text-muted hover:text-discord-text'
+                                              ? 'bg-oct-accent border-oct-accent text-white'
+                                              : 'bg-oct-bg border-oct-border text-oct-muted hover:text-oct-text hover:border-oct-border-bright'
                                           }`}
                                         >
                                           Preset
@@ -228,10 +228,10 @@ export default function SoundsSection({ form }: { form: SettingsForm }) {
                                               fileInputRef.current?.click();
                                             }
                                           }}
-                                          className={`px-2 py-1 rounded text-[11px] font-medium transition-colors ${
+                                          className={`px-2 py-1 rounded-cockpit border-2 font-mono text-[11px] font-bold uppercase tracking-wide transition-colors duration-100 ${
                                             sc.useCustom
-                                              ? 'bg-discord-blurple text-white'
-                                              : 'bg-discord-sidebar text-discord-text-muted hover:text-discord-text'
+                                              ? 'bg-oct-accent border-oct-accent text-white'
+                                              : 'bg-oct-bg border-oct-border text-oct-muted hover:text-oct-text hover:border-oct-border-bright'
                                           }`}
                                         >
                                           Custom
@@ -246,7 +246,7 @@ export default function SoundsSection({ form }: { form: SettingsForm }) {
                                                 setSoundSettings((prev) => ({ ...prev, [type]: { ...prev[type], presetSound: preset.id } }));
                                                 previewPreset(preset.id, sc.volume);
                                               }}
-                                              className={`px-2 py-1 rounded text-[10px] font-medium transition-colors ${sc.presetSound === preset.id ? 'bg-discord-blurple text-white' : 'bg-discord-sidebar text-discord-text-muted hover:text-discord-text'}`}
+                                              className={`px-2 py-1 rounded-cockpit border-2 font-mono text-[10px] transition-colors duration-100 ${sc.presetSound === preset.id ? 'bg-oct-accent border-oct-accent text-white' : 'bg-oct-bg border-oct-border text-oct-muted hover:text-oct-text hover:border-oct-border-bright'}`}
                                             >
                                               {preset.label}
                                             </button>
@@ -256,11 +256,11 @@ export default function SoundsSection({ form }: { form: SettingsForm }) {
                                       {sc.useCustom && (
                                         <div className="flex items-center gap-2">
                                           {sc.customSoundUrl && (
-                                            <span className="text-[10px] text-discord-text-muted truncate">{sc.customSoundUrl.split('/').pop()}</span>
+                                            <span className="font-mono text-[10px] text-oct-muted truncate">{sc.customSoundUrl.split('/').pop()}</span>
                                           )}
                                           <button
                                             onClick={() => { setUploadingSoundType(type); fileInputRef.current?.click(); }}
-                                            className="p-1 rounded hover:bg-discord-hover/50 text-discord-text-muted hover:text-discord-text transition-colors"
+                                            className="p-1 rounded-cockpit text-oct-muted hover:text-oct-accent hover:bg-oct-surface transition-colors duration-100"
                                             title="Upload sound"
                                           >
                                             <Upload size={12} />
@@ -274,7 +274,7 @@ export default function SoundsSection({ form }: { form: SettingsForm }) {
                                                   [type]: { ...prev[type], useCustom: false, customSoundUrl: undefined },
                                                 }));
                                               }}
-                                              className="text-discord-text-muted hover:text-discord-red transition-colors"
+                                              className="text-oct-muted hover:text-oct-flame transition-colors duration-100"
                                               title="Remove custom sound"
                                             >
                                               <Trash2 size={12} />
@@ -292,9 +292,9 @@ export default function SoundsSection({ form }: { form: SettingsForm }) {
                       )}
                     </div>
 
-                    <div className="p-3 sm:p-4 bg-discord-sidebar rounded-lg">
-                      <h4 className="text-xs sm:text-sm font-semibold text-white mb-2">Channel Sounds</h4>
-                      <p className="text-xs text-discord-text-muted mb-3">
+                    <div className="brutal-card p-3 sm:p-4">
+                      <h4 className="font-mono text-xs font-bold uppercase tracking-[0.15em] text-oct-text mb-2">Channel Sounds</h4>
+                      <p className="text-xs text-oct-muted mb-3">
                         Play a notification sound for every message in specific channels, even when no highlight or keyword matches.
                       </p>
                       <input
@@ -333,7 +333,7 @@ export default function SoundsSection({ form }: { form: SettingsForm }) {
                             }
                           }
                         }
-                        if (channels.length === 0) return <p className="text-xs text-discord-text-muted italic">No channels in rooms yet</p>;
+                        if (channels.length === 0) return <p className="text-xs text-oct-muted italic">No channels in rooms yet</p>;
 
                         const discordChannels = channels.filter((c) => c.source !== 'telegram');
                         const telegramChannels = channels.filter((c) => c.source === 'telegram');
@@ -353,7 +353,7 @@ export default function SoundsSection({ form }: { form: SettingsForm }) {
                             <div className="space-y-2">
                               {Array.from(discordGrouped.entries()).map(([guildName, guildChannels]) => (
                                 <div key={guildName}>
-                                  <p className="text-[10px] text-discord-text-muted uppercase tracking-wider mb-1">{guildName}</p>
+                                  <p className="font-mono text-[10px] text-oct-muted uppercase tracking-wider mb-1">{guildName}</p>
                                   <div className="flex flex-wrap gap-1.5">
                                     {guildChannels.map((ch) => {
                                       const active = ch.id in channelSounds;
@@ -374,7 +374,7 @@ export default function SoundsSection({ form }: { form: SettingsForm }) {
                                               }));
                                             }
                                           }}
-                                          className={`px-2 py-1 rounded text-xs font-medium transition-colors ${active ? 'bg-discord-blurple text-white' : 'bg-discord-dark text-discord-text-muted hover:text-discord-text'}`}
+                                          className={`px-2 py-1 rounded-cockpit border-2 font-mono text-xs transition-colors duration-100 ${active ? 'bg-oct-accent border-oct-accent text-white' : 'bg-oct-bg border-oct-border text-oct-muted hover:text-oct-text hover:border-oct-border-bright'}`}
                                         >
                                           #{ch.name}
                                         </button>
@@ -386,7 +386,7 @@ export default function SoundsSection({ form }: { form: SettingsForm }) {
 
                               {telegramChannels.length > 0 && (
                                 <div>
-                                  <p className="text-[10px] text-[#2AABEE] uppercase tracking-wider mb-1 flex items-center gap-1">
+                                  <p className="font-mono text-[10px] text-oct-accent uppercase tracking-wider mb-1 flex items-center gap-1">
                                     <Send size={9} />
                                     Telegram
                                   </p>
@@ -410,7 +410,7 @@ export default function SoundsSection({ form }: { form: SettingsForm }) {
                                               }));
                                             }
                                           }}
-                                          className={`px-2 py-1 rounded text-xs font-medium transition-colors ${active ? 'bg-[#2AABEE] text-white' : 'bg-discord-dark text-discord-text-muted hover:text-discord-text'}`}
+                                          className={`px-2 py-1 rounded-cockpit border-2 font-mono text-xs transition-colors duration-100 ${active ? 'bg-oct-accent border-oct-accent text-white' : 'bg-oct-bg border-oct-border text-oct-muted hover:text-oct-text hover:border-oct-border-bright'}`}
                                         >
                                           {ch.name}
                                         </button>
@@ -430,33 +430,33 @@ export default function SoundsSection({ form }: { form: SettingsForm }) {
                                   const isTg = chInfo?.source === 'telegram';
                                   const label = chInfo ? (isTg ? chInfo.name : `#${chInfo.name}`) : `#${chId}`;
                                   return (
-                                    <div key={chId} className="px-2 sm:px-3 py-2.5 sm:py-3 bg-discord-dark rounded space-y-2.5">
+                                    <div key={chId} className="rounded-cockpit border-2 border-oct-border bg-oct-surface-raised px-2 sm:px-3 py-2.5 sm:py-3 space-y-2.5">
                                       <div className="flex items-center justify-between">
                                         <div className="flex items-center gap-1.5 sm:gap-2 min-w-0">
-                                          <Volume2 size={14} className="text-discord-text-muted shrink-0" />
-                                          {isTg && <Send size={12} className="text-[#2AABEE] shrink-0" />}
-                                          <span className="text-xs sm:text-sm text-discord-text font-medium truncate">{label}</span>
+                                          <Volume2 size={14} className="text-oct-muted shrink-0" />
+                                          {isTg && <Send size={12} className="text-oct-accent shrink-0" />}
+                                          <span className="text-xs sm:text-sm text-oct-text font-medium truncate">{label}</span>
                                           {isTg
-                                            ? <span className="text-[10px] text-[#2AABEE] hidden sm:inline">Telegram</span>
-                                            : chInfo?.guildName && <span className="text-[10px] text-discord-text-muted hidden sm:inline">{chInfo.guildName}</span>
+                                            ? <span className="font-mono text-[10px] text-oct-accent hidden sm:inline">Telegram</span>
+                                            : chInfo?.guildName && <span className="font-mono text-[10px] text-oct-muted hidden sm:inline">{chInfo.guildName}</span>
                                           }
                                         </div>
                                         <div className="flex items-center gap-2">
                                           <button
                                             onClick={() => previewSound('highlight', sc)}
-                                            className="p-1 rounded hover:bg-discord-hover/50 text-discord-text-muted hover:text-discord-text transition-colors"
+                                            className="p-1 rounded-cockpit text-oct-muted hover:text-oct-accent hover:bg-oct-surface transition-colors duration-100"
                                             title="Preview sound"
                                           >
                                             <Play size={14} />
                                           </button>
                                           <div
-                                            className={`w-9 h-[18px] rounded-full transition-colors relative cursor-pointer ${sc.enabled ? 'bg-discord-green' : 'bg-discord-input'}`}
+                                            className={`w-9 h-[18px] rounded-full transition-colors duration-100 relative cursor-pointer ${sc.enabled ? 'bg-oct-green' : 'bg-oct-border-bright'}`}
                                             onClick={() => setChannelSounds((prev) => ({
                                               ...prev,
                                               [chId]: { ...prev[chId], enabled: !prev[chId].enabled },
                                             }))}
                                           >
-                                            <div className={`absolute top-[2px] w-[14px] h-[14px] bg-white rounded-full transition-transform ${sc.enabled ? 'translate-x-[18px]' : 'translate-x-[2px]'}`} />
+                                            <div className={`absolute top-[2px] w-[14px] h-[14px] bg-oct-text rounded-full transition-transform duration-100 ${sc.enabled ? 'translate-x-[18px]' : 'translate-x-[2px]'}`} />
                                           </div>
                                         </div>
                                       </div>
@@ -464,7 +464,7 @@ export default function SoundsSection({ form }: { form: SettingsForm }) {
                                       {sc.enabled && (
                                         <>
                                           <div className="flex items-center gap-3">
-                                            <span className="text-[11px] text-discord-text-muted w-12 shrink-0">Volume</span>
+                                            <span className="font-mono text-[11px] text-oct-muted w-12 shrink-0 uppercase tracking-wide">Volume</span>
                                             <input
                                               type="range"
                                               min={0}
@@ -474,22 +474,22 @@ export default function SoundsSection({ form }: { form: SettingsForm }) {
                                                 ...prev,
                                                 [chId]: { ...prev[chId], volume: Number(e.target.value) },
                                               }))}
-                                              className="flex-1 h-1.5 accent-discord-blurple cursor-pointer"
+                                              className="flex-1 h-1.5 accent-oct-accent cursor-pointer"
                                             />
-                                            <span className="text-[11px] text-discord-text-muted w-8 text-right">{sc.volume}%</span>
+                                            <span className="font-mono text-[11px] text-oct-muted w-8 text-right">{sc.volume}%</span>
                                           </div>
                                           <div className="space-y-2">
                                             <div className="flex flex-wrap items-center gap-1.5 sm:gap-2">
-                                              <span className="text-[11px] text-discord-text-muted">Sound:</span>
+                                              <span className="font-mono text-[11px] text-oct-muted uppercase tracking-wide">Sound:</span>
                                               <button
                                                 onClick={() => setChannelSounds((prev) => ({ ...prev, [chId]: { ...prev[chId], useCustom: false, presetSound: undefined } }))}
-                                                className={`px-2 py-1 rounded text-[11px] font-medium transition-colors ${!sc.useCustom && !sc.presetSound ? 'bg-discord-blurple text-white' : 'bg-discord-sidebar text-discord-text-muted hover:text-discord-text'}`}
+                                                className={`px-2 py-1 rounded-cockpit border-2 font-mono text-[11px] font-bold uppercase tracking-wide transition-colors duration-100 ${!sc.useCustom && !sc.presetSound ? 'bg-oct-accent border-oct-accent text-white' : 'bg-oct-bg border-oct-border text-oct-muted hover:text-oct-text hover:border-oct-border-bright'}`}
                                               >
                                                 Default
                                               </button>
                                               <button
                                                 onClick={() => setChannelSounds((prev) => ({ ...prev, [chId]: { ...prev[chId], useCustom: false, presetSound: prev[chId].presetSound || 'ping' } }))}
-                                                className={`px-2 py-1 rounded text-[11px] font-medium transition-colors ${!sc.useCustom && sc.presetSound ? 'bg-discord-blurple text-white' : 'bg-discord-sidebar text-discord-text-muted hover:text-discord-text'}`}
+                                                className={`px-2 py-1 rounded-cockpit border-2 font-mono text-[11px] font-bold uppercase tracking-wide transition-colors duration-100 ${!sc.useCustom && sc.presetSound ? 'bg-oct-accent border-oct-accent text-white' : 'bg-oct-bg border-oct-border text-oct-muted hover:text-oct-text hover:border-oct-border-bright'}`}
                                               >
                                                 Preset
                                               </button>
@@ -502,7 +502,7 @@ export default function SoundsSection({ form }: { form: SettingsForm }) {
                                                     channelFileInputRef.current?.click();
                                                   }
                                                 }}
-                                                className={`px-2 py-1 rounded text-[11px] font-medium transition-colors ${sc.useCustom ? 'bg-discord-blurple text-white' : 'bg-discord-sidebar text-discord-text-muted hover:text-discord-text'}`}
+                                                className={`px-2 py-1 rounded-cockpit border-2 font-mono text-[11px] font-bold uppercase tracking-wide transition-colors duration-100 ${sc.useCustom ? 'bg-oct-accent border-oct-accent text-white' : 'bg-oct-bg border-oct-border text-oct-muted hover:text-oct-text hover:border-oct-border-bright'}`}
                                               >
                                                 Custom
                                               </button>
@@ -516,7 +516,7 @@ export default function SoundsSection({ form }: { form: SettingsForm }) {
                                                       setChannelSounds((prev) => ({ ...prev, [chId]: { ...prev[chId], presetSound: preset.id } }));
                                                       previewPreset(preset.id, sc.volume);
                                                     }}
-                                                    className={`px-2 py-1 rounded text-[10px] font-medium transition-colors ${sc.presetSound === preset.id ? 'bg-discord-blurple text-white' : 'bg-discord-sidebar text-discord-text-muted hover:text-discord-text'}`}
+                                                    className={`px-2 py-1 rounded-cockpit border-2 font-mono text-[10px] transition-colors duration-100 ${sc.presetSound === preset.id ? 'bg-oct-accent border-oct-accent text-white' : 'bg-oct-bg border-oct-border text-oct-muted hover:text-oct-text hover:border-oct-border-bright'}`}
                                                   >
                                                     {preset.label}
                                                   </button>
@@ -526,11 +526,11 @@ export default function SoundsSection({ form }: { form: SettingsForm }) {
                                             {sc.useCustom && (
                                               <div className="flex items-center gap-2">
                                                 {sc.customSoundUrl && (
-                                                  <span className="text-[10px] text-discord-text-muted truncate">{sc.customSoundUrl.split('/').pop()}</span>
+                                                  <span className="font-mono text-[10px] text-oct-muted truncate">{sc.customSoundUrl.split('/').pop()}</span>
                                                 )}
                                                 <button
                                                   onClick={() => { setUploadingChannelId(chId); channelFileInputRef.current?.click(); }}
-                                                  className="p-1 rounded hover:bg-discord-hover/50 text-discord-text-muted hover:text-discord-text transition-colors"
+                                                  className="p-1 rounded-cockpit text-oct-muted hover:text-oct-accent hover:bg-oct-surface transition-colors duration-100"
                                                   title="Upload sound"
                                                 >
                                                   <Upload size={12} />
@@ -544,7 +544,7 @@ export default function SoundsSection({ form }: { form: SettingsForm }) {
                                                         [chId]: { ...prev[chId], useCustom: false, customSoundUrl: undefined },
                                                       }));
                                                     }}
-                                                    className="text-discord-text-muted hover:text-discord-red transition-colors"
+                                                    className="text-oct-muted hover:text-oct-flame transition-colors duration-100"
                                                     title="Remove custom sound"
                                                   >
                                                     <Trash2 size={12} />

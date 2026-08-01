@@ -193,59 +193,59 @@ export default function RoomConfig() {
   );
 
   return (
-    <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/70" onClick={closeConfigModal}>
+    <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/75" onClick={closeConfigModal}>
       <div
-        className="bg-discord-sidebar rounded-t-xl sm:rounded-lg shadow-2xl w-full sm:max-w-2xl h-[90vh] sm:h-auto sm:max-h-[80vh] flex flex-col"
+        className="bg-oct-surface rounded-cockpit border-2 border-oct-border shadow-oct-hard-lg w-full sm:max-w-2xl h-[90vh] sm:h-auto sm:max-h-[80vh] flex flex-col overflow-hidden"
         onClick={(e) => e.stopPropagation()}
       >
         {/* Header */}
-        <div className="flex items-center justify-between px-4 sm:px-6 py-3 sm:py-4 border-b border-discord-divider shrink-0">
-          <h2 className="text-base sm:text-lg font-semibold text-white truncate">
+        <div className="flex items-center justify-between px-4 sm:px-6 py-3 sm:py-4 border-b-2 border-oct-border shrink-0">
+          <h2 className="font-display text-base sm:text-lg tracking-tight text-oct-text truncate">
             {editingRoom ? `Edit: ${editingRoom.name}` : 'Create New Room'}
           </h2>
-          <button onClick={closeConfigModal} className="text-discord-text-muted hover:text-white shrink-0 p-1">
+          <button onClick={closeConfigModal} className="text-oct-muted hover:text-oct-accent transition-colors duration-100 shrink-0 p-1">
             <X size={20} />
           </button>
         </div>
 
         {/* Tabs */}
-        <div className="flex overflow-x-auto border-b border-discord-divider px-4 sm:px-6 shrink-0 scrollbar-none">
+        <div className="flex overflow-x-auto border-b-2 border-oct-border px-4 sm:px-6 shrink-0 scrollbar-none">
           <button
             onClick={() => setTab('channels')}
-            className={`px-3 sm:px-4 py-2.5 text-xs sm:text-sm font-medium border-b-2 transition-colors whitespace-nowrap shrink-0 ${
+            className={`px-3 sm:px-4 py-2.5 font-mono text-[11px] sm:text-xs font-bold uppercase tracking-[0.15em] border-b-2 transition-colors duration-100 whitespace-nowrap shrink-0 ${
               tab === 'channels'
-                ? 'border-discord-blurple text-white'
-                : 'border-transparent text-discord-text-muted hover:text-discord-text'
+                ? 'border-oct-accent text-oct-text'
+                : 'border-transparent text-oct-muted hover:text-oct-text'
             }`}
           >
             Channels
           </button>
           <button
             onClick={() => setTab('users')}
-            className={`px-3 sm:px-4 py-2.5 text-xs sm:text-sm font-medium border-b-2 transition-colors whitespace-nowrap shrink-0 ${
+            className={`px-3 sm:px-4 py-2.5 font-mono text-[11px] sm:text-xs font-bold uppercase tracking-[0.15em] border-b-2 transition-colors duration-100 whitespace-nowrap shrink-0 ${
               tab === 'users'
-                ? 'border-discord-blurple text-white'
-                : 'border-transparent text-discord-text-muted hover:text-discord-text'
+                ? 'border-oct-accent text-oct-text'
+                : 'border-transparent text-oct-muted hover:text-oct-text'
             }`}
           >
             Highlights
           </button>
           <button
             onClick={() => setTab('filter')}
-            className={`px-3 sm:px-4 py-2.5 text-xs sm:text-sm font-medium border-b-2 transition-colors whitespace-nowrap shrink-0 ${
+            className={`px-3 sm:px-4 py-2.5 font-mono text-[11px] sm:text-xs font-bold uppercase tracking-[0.15em] border-b-2 transition-colors duration-100 whitespace-nowrap shrink-0 ${
               tab === 'filter'
-                ? 'border-discord-blurple text-white'
-                : 'border-transparent text-discord-text-muted hover:text-discord-text'
+                ? 'border-oct-accent text-oct-text'
+                : 'border-transparent text-oct-muted hover:text-oct-text'
             }`}
           >
             Filter
           </button>
           <button
             onClick={() => setTab('keywords')}
-            className={`px-3 sm:px-4 py-2.5 text-xs sm:text-sm font-medium border-b-2 transition-colors whitespace-nowrap shrink-0 ${
+            className={`px-3 sm:px-4 py-2.5 font-mono text-[11px] sm:text-xs font-bold uppercase tracking-[0.15em] border-b-2 transition-colors duration-100 whitespace-nowrap shrink-0 ${
               tab === 'keywords'
-                ? 'border-discord-blurple text-white'
-                : 'border-transparent text-discord-text-muted hover:text-discord-text'
+                ? 'border-oct-accent text-oct-text'
+                : 'border-transparent text-oct-muted hover:text-oct-text'
             }`}
           >
             Keywords
@@ -322,23 +322,23 @@ export default function RoomConfig() {
         </div>
 
         {/* Footer */}
-        <div className="flex items-center justify-end gap-3 px-4 sm:px-6 py-3 sm:py-4 border-t border-discord-divider shrink-0">
+        <div className="flex items-center justify-end gap-3 px-4 sm:px-6 py-3 sm:py-4 border-t-2 border-oct-border shrink-0">
           <button
             onClick={closeConfigModal}
-            className="px-4 py-2 text-sm text-discord-text-muted hover:text-white transition-colors"
+            className="brutal-btn-ghost px-4 py-2 text-sm"
           >
             Cancel
           </button>
           <button
             onClick={handleSave}
             disabled={saving || !name.trim()}
-            className="px-4 py-2 bg-discord-blurple hover:bg-discord-blurple-hover disabled:opacity-50 disabled:cursor-not-allowed rounded text-sm text-white font-medium transition-colors"
+            className="brutal-btn px-4 py-2 text-sm"
           >
             {saving ? 'Saving...' : editingRoom ? 'Update Room' : 'Create Room'}
           </button>
         </div>
         {!name.trim() && (
-          <p className="px-4 sm:px-6 pb-3 text-xs text-discord-text-muted text-right -mt-1">
+          <p className="px-4 sm:px-6 pb-3 text-xs text-oct-muted text-right -mt-1">
             Enter a room name to continue. Channels are optional — add them on the Channels tab.
           </p>
         )}
