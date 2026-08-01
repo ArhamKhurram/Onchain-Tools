@@ -62,25 +62,25 @@ export default function GuildsSection({ form }: { form: SettingsForm }) {
   return (
               <>
                 <div>
-                  <h3 className="text-base sm:text-lg font-semibold text-white mb-4">Guilds</h3>
+                  <h3 className="font-display text-3xl sm:text-4xl tracking-tight text-oct-text mb-4">Guilds</h3>
 
                   <div className="space-y-5">
-                    <div className="p-3 sm:p-4 bg-discord-sidebar rounded-lg">
-                      <h4 className="text-xs sm:text-sm font-semibold text-white mb-2">Enabled Guilds</h4>
-                      <p className="text-xs sm:text-sm text-discord-text-muted mb-3">
+                    <div className="brutal-card p-3 sm:p-4">
+                      <h4 className="font-mono text-xs font-bold uppercase tracking-[0.15em] text-oct-text mb-2">[ Enabled Guilds ]</h4>
+                      <p className="text-xs sm:text-sm text-oct-muted mb-3">
                         Only enabled guilds will appear in the channel picker when creating rooms. All guilds are off by default.
                       </p>
                       <div className="relative mb-3">
-                        <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-discord-text-muted" />
+                        <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-oct-muted" />
                         <input
                           type="text"
                           value={guildSearch}
                           onChange={(e) => setGuildSearch(e.target.value)}
                           placeholder="Search guilds..."
-                          className="w-full bg-discord-dark border-none rounded px-3 py-2 pl-9 text-sm text-discord-text outline-none focus:ring-2 focus:ring-discord-blurple"
+                          className="w-full px-3 py-2 pl-9 rounded-cockpit bg-oct-bg border-2 border-oct-border text-sm text-oct-text placeholder:text-oct-muted/60 focus:outline-none focus:border-oct-accent"
                         />
                       </div>
-                      <div className="text-[11px] text-discord-text-muted mb-2">
+                      <div className="text-[11px] font-mono uppercase tracking-wide text-oct-muted mb-2">
                         {enabledGuilds.length} of {guilds.length} guilds enabled
                       </div>
                       <div className="space-y-1 max-h-[350px] overflow-y-auto">
@@ -108,17 +108,17 @@ export default function GuildsSection({ form }: { form: SettingsForm }) {
                                     enabled ? prev.filter((id) => id !== guild.id) : [...prev, guild.id]
                                   );
                                 }}
-                                className={`w-full flex items-center gap-2 sm:gap-3 px-2 sm:px-3 py-2 rounded text-xs sm:text-sm text-left transition-colors ${
+                                className={`w-full flex items-center gap-2 sm:gap-3 px-2 sm:px-3 py-2 rounded-cockpit border-2 text-xs sm:text-sm text-left transition-colors duration-100 ${
                                   enabled
-                                    ? 'bg-discord-green/10 text-discord-text'
-                                    : 'bg-discord-dark/50 text-discord-text-muted'
+                                    ? 'border-oct-green bg-oct-green/15 text-oct-text'
+                                    : 'border-oct-border bg-oct-bg text-oct-muted'
                                 }`}
                               >
                                 <div
-                                  className={`w-4 h-4 rounded-sm border flex items-center justify-center shrink-0 transition-colors ${
+                                  className={`w-4 h-4 rounded-cockpit border-2 flex items-center justify-center shrink-0 transition-colors duration-100 ${
                                     enabled
-                                      ? 'bg-discord-green border-discord-green'
-                                      : 'border-discord-channel-icon bg-transparent'
+                                      ? 'bg-oct-green border-oct-green'
+                                      : 'border-oct-border-bright bg-transparent'
                                   }`}
                                 >
                                   {enabled && (
@@ -129,39 +129,39 @@ export default function GuildsSection({ form }: { form: SettingsForm }) {
                                 </div>
                                 <Users size={14} className="shrink-0 opacity-60" />
                                 <span className="truncate flex-1">{guild.name}</span>
-                                <span className="text-[11px] text-discord-text-muted shrink-0">
+                                <span className="text-[11px] font-mono text-oct-muted shrink-0">
                                   {guild.channels.length} ch
                                 </span>
                               </button>
                             );
                           })}
                         {guilds.length === 0 && (
-                          <p className="text-sm text-discord-text-muted text-center py-2">Loading guilds...</p>
+                          <p className="text-sm text-oct-muted text-center py-2">Loading guilds...</p>
                         )}
                         {guilds.length > 0 && guilds.filter((g) => !guildSearch || g.name.toLowerCase().includes(guildSearch.toLowerCase())).length === 0 && (
-                          <p className="text-sm text-discord-text-muted text-center py-2">No guilds match your search.</p>
+                          <p className="text-sm text-oct-muted text-center py-2">No guilds match your search.</p>
                         )}
                       </div>
                     </div>
 
-                    <div className="p-3 sm:p-4 bg-discord-sidebar rounded-lg">
-                      <h4 className="text-xs sm:text-sm font-semibold text-white mb-2">Guild Message Colors</h4>
-                      <p className="text-xs sm:text-sm text-discord-text-muted mb-3">
+                    <div className="brutal-card p-3 sm:p-4">
+                      <h4 className="font-mono text-xs font-bold uppercase tracking-[0.15em] text-oct-text mb-2">[ Guild Message Colors ]</h4>
+                      <p className="text-xs sm:text-sm text-oct-muted mb-3">
                         Set a background color for messages from each enabled guild to visually distinguish them in mixed rooms.
                       </p>
                       <div className="space-y-2">
                         {guilds.filter((g) => enabledGuilds.includes(g.id)).map((guild) => (
-                          <div key={guild.id} className="flex items-center gap-2 sm:gap-3 px-2 sm:px-3 py-2 bg-discord-dark rounded">
+                          <div key={guild.id} className="flex items-center gap-2 sm:gap-3 px-2 sm:px-3 py-2 rounded-cockpit border-2 border-oct-border bg-oct-surface-raised">
                             <ColorPickerWithAlpha
                               value={guildColors[guild.id] || '#0B0E1A'}
                               onChange={(c) => setGuildColors((prev) => ({ ...prev, [guild.id]: c }))}
                               defaultColor="#0B0E1A"
                             />
-                            <span className="text-xs sm:text-sm text-discord-text flex-1 truncate">{guild.name}</span>
+                            <span className="text-xs sm:text-sm text-oct-text flex-1 truncate">{guild.name}</span>
                             {guildColors[guild.id] && (
                               <button
                                 onClick={() => setGuildColors((prev) => { const { [guild.id]: _, ...rest } = prev; return rest; })}
-                                className="text-discord-text-muted hover:text-white"
+                                className="text-oct-muted hover:text-oct-flame transition-colors duration-100"
                               >
                                 <Trash2 size={14} />
                               </button>
@@ -169,7 +169,7 @@ export default function GuildsSection({ form }: { form: SettingsForm }) {
                           </div>
                         ))}
                         {enabledGuilds.length === 0 && (
-                          <p className="text-sm text-discord-text-muted text-center py-2">Enable some guilds above first.</p>
+                          <p className="text-sm text-oct-muted text-center py-2">Enable some guilds above first.</p>
                         )}
                       </div>
                     </div>
@@ -180,9 +180,9 @@ export default function GuildsSection({ form }: { form: SettingsForm }) {
                       )];
                       if (dmChannelIdsInRooms.length === 0) return null;
                       return (
-                        <div className="p-3 sm:p-4 bg-discord-sidebar rounded-lg">
-                          <h4 className="text-xs sm:text-sm font-semibold text-white mb-2">DM Message Colors</h4>
-                          <p className="text-xs sm:text-sm text-discord-text-muted mb-3">
+                        <div className="brutal-card p-3 sm:p-4">
+                          <h4 className="font-mono text-xs font-bold uppercase tracking-[0.15em] text-oct-text mb-2">[ DM Message Colors ]</h4>
+                          <p className="text-xs sm:text-sm text-oct-muted mb-3">
                             Set a background color for messages from each DM that is added to a room.
                           </p>
                           <div className="space-y-2">
@@ -192,17 +192,17 @@ export default function GuildsSection({ form }: { form: SettingsForm }) {
                                 ? dm.recipients.map((r) => r.global_name || r.username).join(', ')
                                 : channelId;
                               return (
-                                <div key={channelId} className="flex items-center gap-2 sm:gap-3 px-2 sm:px-3 py-2 bg-discord-dark rounded">
+                                <div key={channelId} className="flex items-center gap-2 sm:gap-3 px-2 sm:px-3 py-2 rounded-cockpit border-2 border-oct-border bg-oct-surface-raised">
                                   <ColorPickerWithAlpha
                                     value={dmColors[channelId] || '#0B0E1A'}
                                     onChange={(c) => setDmColors((prev) => ({ ...prev, [channelId]: c }))}
                                     defaultColor="#0B0E1A"
                                   />
-                                  <span className="text-xs sm:text-sm text-discord-text flex-1 truncate">{dmName}</span>
+                                  <span className="text-xs sm:text-sm text-oct-text flex-1 truncate">{dmName}</span>
                                   {dmColors[channelId] && (
                                     <button
                                       onClick={() => setDmColors((prev) => { const { [channelId]: _, ...rest } = prev; return rest; })}
-                                      className="text-discord-text-muted hover:text-white"
+                                      className="text-oct-muted hover:text-oct-flame transition-colors duration-100"
                                     >
                                       <Trash2 size={14} />
                                     </button>
@@ -221,12 +221,12 @@ export default function GuildsSection({ form }: { form: SettingsForm }) {
                       )];
                       if (tgChannelIdsInRooms.length === 0) return null;
                       return (
-                        <div className="p-3 sm:p-4 bg-discord-sidebar rounded-lg">
-                          <h4 className="text-xs sm:text-sm font-semibold text-white mb-2 flex items-center gap-1.5">
-                            <Send size={14} className="text-[#2AABEE]" />
-                            Telegram Chat Colors
+                        <div className="brutal-card p-3 sm:p-4">
+                          <h4 className="font-mono text-xs font-bold uppercase tracking-[0.15em] text-oct-text mb-2 flex items-center gap-1.5">
+                            <Send size={14} className="text-oct-telegram" />
+                            [ Telegram Chat Colors ]
                           </h4>
-                          <p className="text-xs sm:text-sm text-discord-text-muted mb-3">
+                          <p className="text-xs sm:text-sm text-oct-muted mb-3">
                             Set a background color for messages from each Telegram chat that is added to a room.
                           </p>
                           <div className="space-y-2">
@@ -234,17 +234,17 @@ export default function GuildsSection({ form }: { form: SettingsForm }) {
                               const channelRef = rooms.flatMap((r) => r.channels).find((c) => c.channelId === channelId && c.source === 'telegram');
                               const chatName = channelRef?.channelName ?? channelId;
                               return (
-                                <div key={channelId} className="flex items-center gap-2 sm:gap-3 px-2 sm:px-3 py-2 bg-discord-dark rounded">
+                                <div key={channelId} className="flex items-center gap-2 sm:gap-3 px-2 sm:px-3 py-2 rounded-cockpit border-2 border-oct-border bg-oct-surface-raised">
                                   <ColorPickerWithAlpha
                                     value={telegramColors[channelId] || '#0B0E1A'}
                                     onChange={(c) => setTelegramColors((prev) => ({ ...prev, [channelId]: c }))}
                                     defaultColor="#0B0E1A"
                                   />
-                                  <span className="text-xs sm:text-sm text-discord-text flex-1 truncate">{chatName}</span>
+                                  <span className="text-xs sm:text-sm text-oct-text flex-1 truncate">{chatName}</span>
                                   {telegramColors[channelId] && (
                                     <button
                                       onClick={() => setTelegramColors((prev) => { const { [channelId]: _, ...rest } = prev; return rest; })}
-                                      className="text-discord-text-muted hover:text-white"
+                                      className="text-oct-muted hover:text-oct-flame transition-colors duration-100"
                                     >
                                       <Trash2 size={14} />
                                     </button>

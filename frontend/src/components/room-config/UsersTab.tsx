@@ -30,38 +30,38 @@ export default function UsersTab({
 }: UsersTabProps) {
   return (
             <>
-              <p className="text-sm text-discord-text-muted mb-4">
+              <p className="text-sm text-oct-muted mb-4">
                 Add user IDs or Telegram @usernames to highlight in this room. Their messages will be
                 visually highlighted and you'll get alerts when they send messages.
               </p>
 
               <div className="mb-4">
-                <label className="block text-[11px] font-semibold uppercase tracking-wide text-discord-text-muted mb-2">
+                <label className="block font-mono text-[11px] font-bold uppercase tracking-[0.15em] text-oct-muted mb-2">
                   Highlight Style
                 </label>
-                <div className="flex rounded overflow-hidden border border-discord-divider">
+                <div className="flex rounded-cockpit overflow-hidden border-2 border-oct-border divide-x-2 divide-oct-border">
                   <button
                     onClick={() => setHighlightMode('background')}
-                    className={`flex-1 px-3 py-2 text-sm font-medium transition-colors ${
+                    className={`flex-1 px-3 py-2 font-mono text-xs font-bold uppercase tracking-wide transition-colors duration-100 ${
                       highlightMode === 'background'
-                        ? 'bg-discord-blurple text-white'
-                        : 'bg-discord-dark text-discord-text-muted hover:text-discord-text'
+                        ? 'bg-oct-accent text-white'
+                        : 'bg-oct-bg text-oct-muted hover:text-oct-text'
                     }`}
                   >
                     Background
                   </button>
                   <button
                     onClick={() => setHighlightMode('username')}
-                    className={`flex-1 px-3 py-2 text-sm font-medium transition-colors ${
+                    className={`flex-1 px-3 py-2 font-mono text-xs font-bold uppercase tracking-wide transition-colors duration-100 ${
                       highlightMode === 'username'
-                        ? 'bg-discord-blurple text-white'
-                        : 'bg-discord-dark text-discord-text-muted hover:text-discord-text'
+                        ? 'bg-oct-accent text-white'
+                        : 'bg-oct-bg text-oct-muted hover:text-oct-text'
                     }`}
                   >
                     Username Color
                   </button>
                 </div>
-                <p className="text-xs text-discord-text-muted mt-1.5">
+                <p className="text-xs text-oct-muted mt-1.5">
                   {highlightMode === 'background'
                     ? 'Highlighted messages get a colored background and left border.'
                     : 'Only the username is colored (like a Discord role) — no background change.'}
@@ -75,7 +75,7 @@ export default function UsersTab({
                   onChange={(e) => setNewUserId(e.target.value)}
                   onKeyDown={(e) => e.key === 'Enter' && addHighlightedUser()}
                   placeholder="Discord User ID or @telegram_username"
-                  className="flex-1 bg-discord-dark border-none rounded px-3 py-2 text-sm text-discord-text outline-none focus:ring-2 focus:ring-discord-blurple"
+                  className="flex-1 px-3 py-2 rounded-cockpit bg-oct-bg border-2 border-oct-border text-sm text-oct-text placeholder:text-oct-muted/60 focus:outline-none focus:border-oct-accent"
                   autoComplete="off"
                   data-1p-ignore
                   data-lpignore="true"
@@ -83,14 +83,14 @@ export default function UsersTab({
                 />
                 <button
                   onClick={addHighlightedUser}
-                  className="px-3 py-2 bg-discord-blurple hover:bg-discord-blurple-hover rounded text-sm text-white transition-colors"
+                  className="brutal-btn px-3 py-2 text-sm"
                 >
                   <Plus size={16} />
                 </button>
               </div>
               <div className="space-y-1">
                 {highlightedUsers.length === 0 && (
-                  <p className="text-sm text-discord-text-muted text-center py-4">
+                  <p className="text-sm text-oct-muted text-center py-4">
                     No highlighted users for this room.
                   </p>
                 )}
@@ -99,13 +99,22 @@ export default function UsersTab({
                   return (
                   <div
                     key={uid}
-                    className="flex items-center justify-between px-3 py-2 bg-discord-dark rounded"
+                    className="flex items-center justify-between gap-2 px-2 sm:px-3 py-2 rounded-cockpit border-2 border-oct-border bg-oct-surface"
                   >
-                    <div className="flex items-center gap-2 min-w-0">
-                      {isTgUser && <Send size={12} className="text-[#2AABEE] shrink-0" />}
-                      <span className={`text-sm ${isTgUser ? 'text-[#2AABEE]' : 'font-mono'}`} style={isTgUser ? undefined : { color: highlightedUserColors[uid] || '#f2f3f5' }}>{uid}</span>
+                    <div className="flex items-center gap-1.5 sm:gap-2 min-w-0">
+                      {isTgUser && <Send size={12} className="text-oct-telegram shrink-0" />}
+                      <span
+                        className={`text-xs sm:text-sm font-mono truncate ${
+                          isTgUser
+                            ? 'text-oct-accent'
+                            : highlightedUserColors[uid]
+                              ? ''
+                              : 'text-oct-text'
+                        }`}
+                        style={!isTgUser && highlightedUserColors[uid] ? { color: highlightedUserColors[uid] } : undefined}
+                      >{uid}</span>
                       {!isTgUser && userNameMap.has(uid) && (
-                        <span className="text-[11px] text-discord-text-muted">{userNameMap.get(uid)}</span>
+                        <span className="text-[10px] sm:text-[11px] text-oct-muted shrink-0">{userNameMap.get(uid)}</span>
                       )}
                     </div>
                     <div className="flex items-center gap-2 shrink-0">
@@ -117,7 +126,7 @@ export default function UsersTab({
                       {highlightedUserColors[uid] && (
                         <button
                           onClick={() => setHighlightedUserColors((prev) => { const next = { ...prev }; delete next[uid]; return next; })}
-                          className="text-[10px] text-discord-text-muted hover:text-discord-text"
+                          className="font-mono text-[10px] font-bold uppercase tracking-wide text-oct-muted hover:text-oct-text"
                           title="Reset to default"
                         >
                           Reset
@@ -125,7 +134,7 @@ export default function UsersTab({
                       )}
                       <button
                         onClick={() => removeHighlightedUser(uid)}
-                        className="text-discord-text-muted hover:text-discord-red shrink-0"
+                        className="text-oct-muted hover:text-oct-flame shrink-0"
                       >
                         <Trash2 size={14} />
                       </button>

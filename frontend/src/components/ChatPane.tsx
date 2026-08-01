@@ -25,7 +25,7 @@ function Tip({ label, children }: { label: string; children: React.ReactNode }) 
   return (
     <div className="relative group/tip flex items-center">
       {children}
-      <span className="pointer-events-none absolute top-full right-0 mt-1.5 z-50 whitespace-nowrap rounded bg-discord-dark px-2 py-1 text-[11px] font-medium text-discord-text shadow-lg border border-oct-border/60 opacity-0 group-hover/tip:opacity-100 transition-opacity duration-100">
+      <span className="pointer-events-none absolute top-full right-0 mt-1.5 z-50 whitespace-nowrap rounded-cockpit border-2 border-oct-border bg-oct-surface-raised px-2 py-1 font-mono text-[10px] font-bold uppercase tracking-wide text-oct-text shadow-oct-hard-sm opacity-0 group-hover/tip:opacity-100 transition-opacity duration-100">
         {label}
       </span>
     </div>
@@ -238,8 +238,8 @@ export default function ChatPane({ roomId, paneIndex, paneCount, editMode, varia
     const el = document.getElementById(`msg-${msg.id}`);
     if (el) {
       el.scrollIntoView({ behavior: 'smooth', block: 'center' });
-      el.classList.add('ring-1', 'ring-discord-blurple');
-      setTimeout(() => el.classList.remove('ring-1', 'ring-discord-blurple'), 2000);
+      el.classList.add('outline', 'outline-2', 'outline-oct-accent');
+      setTimeout(() => el.classList.remove('outline', 'outline-2', 'outline-oct-accent'), 2000);
     }
   }, [searchResults]);
 
@@ -485,7 +485,7 @@ export default function ChatPane({ roomId, paneIndex, paneCount, editMode, varia
       : (activeRoom?.name ?? 'Unknown');
 
   const HeaderIcon = isMentionsView ? AtSign : isTgDMView ? Send : isDMView ? MessageCircle : Hash;
-  const headerIconClass = isTgDMView ? 'text-[#2AABEE]' : 'text-discord-channel-icon';
+  const headerIconClass = isTgDMView ? 'text-oct-accent' : 'text-oct-muted';
 
   const canDrag = editMode && paneCount > 1 && !locked && !isWorkspace;
   const canPopOut = variant === 'grid' && !!window.oct?.openPopout && !poppedOutRoomIds.includes(roomId);
@@ -505,7 +505,7 @@ export default function ChatPane({ roomId, paneIndex, paneCount, editMode, varia
 
   const unknownPane = !activeRoom && !activeDM && !isTgDMView && !isMentionsView;
 
-  const ringClass = editMode ? 'ring-1 ring-inset ring-discord-blurple/30' : '';
+  const ringClass = editMode ? 'outline outline-2 outline-offset-[-2px] outline-oct-accent' : '';
   const theme = useThemeStore((s) => s.theme);
   const paneBg =
     theme === 'light' ? 'var(--oct-feed-bg)' : activeRoom?.color || 'var(--oct-feed-bg)';
@@ -520,17 +520,17 @@ export default function ChatPane({ roomId, paneIndex, paneCount, editMode, varia
       onDrop={handleDrop}
     >
       {editMode && !locked && dragOver && (
-        <div className="absolute inset-0 z-40 bg-discord-blurple/20 border-2 border-dashed border-discord-blurple pointer-events-none flex items-center justify-center">
-          <span className="text-sm font-semibold text-white bg-discord-blurple/80 px-3 py-1.5 rounded">Drop here</span>
+        <div className="absolute inset-0 z-40 bg-oct-accent-dim border-2 border-dashed border-oct-accent pointer-events-none flex items-center justify-center">
+          <span className="rounded-cockpit border-2 border-oct-border bg-oct-accent px-3 py-1.5 font-mono text-xs font-bold uppercase tracking-wide text-white">Drop here</span>
         </div>
       )}
       {/* Channel header */}
-      <div className="h-12 px-2 sm:px-4 flex items-center shadow-[0_1px_0_rgba(0,0,0,0.2),0_1.5px_0_rgba(0,0,0,0.05),0_2px_0_rgba(0,0,0,0.05)] border-b border-discord-dark/60 shrink-0 bg-transparent z-10 gap-1">
+      <div className="h-12 px-2 sm:px-4 flex items-center border-b-2 border-oct-border shrink-0 bg-transparent z-10 gap-1">
         {canDrag && (
           <div
             draggable
             onDragStart={(e) => { e.dataTransfer.setData('text/plain', `pane:${paneIndex}`); e.dataTransfer.effectAllowed = 'move'; }}
-            className="p-0.5 -ml-0.5 mr-0.5 rounded text-discord-channel-icon hover:text-discord-header-primary cursor-grab active:cursor-grabbing shrink-0"
+            className="p-0.5 -ml-0.5 mr-0.5 rounded-cockpit text-oct-muted hover:text-oct-text cursor-grab active:cursor-grabbing shrink-0"
             title="Drag to rearrange pane"
           >
             <GripVertical size={16} />
@@ -541,31 +541,31 @@ export default function ChatPane({ roomId, paneIndex, paneCount, editMode, varia
         <div className="relative min-w-0 flex items-center">
           <button
             onClick={() => { if (!locked) setSwitcherOpen((v) => !v); }}
-            className="flex items-center gap-1.5 min-w-0 rounded px-1 py-0.5 hover:bg-discord-hover/50 transition-colors"
+            className="flex items-center gap-1.5 min-w-0 rounded-cockpit px-1 py-0.5 hover:bg-oct-surface-raised transition-colors duration-100"
             title={locked ? 'Pane locked - unlock to change room' : 'Switch pane content'}
           >
             <HeaderIcon size={20} className={`${headerIconClass} shrink-0`} />
-            <span className="font-semibold text-sm sm:text-base text-discord-header-primary truncate max-w-[40vw] sm:max-w-none">
+            <span className="font-mono text-sm sm:text-base font-bold uppercase tracking-wide text-oct-text truncate max-w-[40vw] sm:max-w-none">
               {headerTitle}
             </span>
-            {locked ? <Lock size={13} className="text-discord-channel-icon shrink-0" /> : <ChevronDown size={14} className="text-discord-channel-icon shrink-0" />}
+            {locked ? <Lock size={13} className="text-oct-muted shrink-0" /> : <ChevronDown size={14} className="text-oct-muted shrink-0" />}
           </button>
           {switcherOpen && !locked && (
             <>
               <div className="fixed inset-0 z-20" onClick={() => setSwitcherOpen(false)} />
-              <div className="absolute top-full left-0 mt-1 z-30 w-56 max-h-[60vh] overflow-y-auto bg-discord-sidebar border border-discord-dark rounded-md shadow-xl py-1">
+              <div className="absolute top-full left-0 mt-1 z-30 w-56 max-h-[60vh] overflow-y-auto rounded-cockpit border-2 border-oct-border bg-oct-surface-raised shadow-oct-hard-lg py-1">
                 {switcherOptions.map((opt) => (
                   <button
                     key={opt.id}
                     onClick={() => { setPaneRoom(paneIndex, opt.id); setSwitcherOpen(false); }}
-                    className={`w-full flex items-center gap-2 px-3 py-1.5 text-left text-sm truncate transition-colors ${
+                    className={`w-full flex items-center gap-2 px-3 py-1.5 text-left font-mono text-xs uppercase tracking-wide truncate transition-colors duration-100 ${
                       opt.id === roomId
-                        ? 'bg-discord-hover-light text-discord-header-primary'
-                        : 'text-discord-channel-icon hover:bg-discord-hover hover:text-discord-header-secondary'
+                        ? 'bg-oct-accent-dim text-oct-accent'
+                        : 'text-oct-text hover:bg-oct-accent-dim hover:text-oct-accent'
                     }`}
                   >
                     {opt.kind === 'mentions' ? <AtSign size={16} className="shrink-0 opacity-70" />
-                      : opt.kind === 'tg' ? <Send size={16} className="shrink-0 text-[#2AABEE]" />
+                      : opt.kind === 'tg' ? <Send size={16} className="shrink-0 text-oct-accent" />
                       : opt.kind === 'dm' ? <MessageCircle size={16} className="shrink-0 opacity-70" />
                       : <Hash size={16} className="shrink-0 opacity-70" />}
                     <span className="truncate">{opt.label}</span>
@@ -577,23 +577,23 @@ export default function ChatPane({ roomId, paneIndex, paneCount, editMode, varia
         </div>
 
         {!isAnyDMView && !isMentionsView && activeRoom && (
-          <span className="ml-2 text-xs sm:text-sm text-discord-header-secondary truncate hidden lg:inline">
+          <span className="ml-2 font-mono text-[10px] sm:text-xs uppercase tracking-[0.15em] text-oct-muted truncate hidden lg:inline">
             {activeRoom.channels.length} channel{activeRoom.channels.length !== 1 ? 's' : ''}
           </span>
         )}
         <div className="ml-auto flex items-center gap-1 shrink-0">
           {activeRoom && activeRoom.highlightedUsers.length > 0 && (
-            <span className="text-[11px] px-1.5 sm:px-2 py-0.5 rounded-full bg-discord-blurple/20 text-discord-blurple hidden lg:inline-flex">
+            <span className="items-center gap-1 rounded-cockpit border-2 border-oct-accent bg-oct-accent-dim px-1.5 sm:px-2 py-0.5 font-mono text-[10px] font-bold uppercase tracking-wide text-oct-accent shrink-0 hidden lg:inline-flex">
               {activeRoom.highlightedUsers.length} highlighted
             </span>
           )}
           {activeRoom && (activeRoom.filteredUsers?.length ?? 0) > 0 && (
             <button
               onClick={toggleFilter}
-              className={`flex items-center gap-1 text-[11px] px-1.5 sm:px-2 py-0.5 rounded-full transition-colors ${
+              className={`inline-flex items-center gap-1 rounded-cockpit border-2 px-1.5 sm:px-2 py-0.5 font-mono text-[10px] font-bold uppercase tracking-wide shrink-0 transition-colors duration-100 ${
                 activeRoom.filterEnabled
-                  ? 'bg-discord-green/20 text-discord-green'
-                  : 'bg-discord-dark/50 text-discord-text-muted hover:text-discord-text'
+                  ? 'border-oct-green bg-oct-green/15 text-oct-green'
+                  : 'border-oct-border bg-oct-surface-raised text-oct-muted hover:text-oct-text'
               }`}
               title={activeRoom.filterEnabled ? 'Click to disable user filter' : 'Click to enable user filter'}
             >
@@ -604,7 +604,7 @@ export default function ChatPane({ roomId, paneIndex, paneCount, editMode, varia
           {focusFilter && (
             <button
               onClick={clearFocusFilter}
-              className="flex items-center gap-1 text-[11px] px-1.5 sm:px-2 py-0.5 rounded-full bg-discord-blurple/20 text-discord-blurple hover:bg-discord-blurple/30 transition-colors max-w-[120px] sm:max-w-none"
+              className="inline-flex items-center gap-1 rounded-cockpit border-2 border-oct-accent bg-oct-accent-dim px-1.5 sm:px-2 py-0.5 font-mono text-[10px] font-bold uppercase tracking-wide text-oct-accent hover:border-oct-accent-hover hover:text-oct-accent-hover transition-colors duration-100 max-w-[120px] sm:max-w-none"
               title="Click to exit focus mode"
             >
               <Eye size={10} className="shrink-0" />
@@ -615,10 +615,10 @@ export default function ChatPane({ roomId, paneIndex, paneCount, editMode, varia
           {channelHiddenUsers.length > 0 && (
             <button
               onClick={() => setHiddenPanelOpen(!hiddenPanelOpen)}
-              className={`flex items-center gap-1 text-[11px] px-1.5 sm:px-2 py-0.5 rounded-full transition-colors ${
+              className={`inline-flex items-center gap-1 rounded-cockpit border-2 px-1.5 sm:px-2 py-0.5 font-mono text-[10px] font-bold uppercase tracking-wide shrink-0 transition-colors duration-100 ${
                 hiddenPanelOpen
-                  ? 'bg-discord-red/20 text-discord-red'
-                  : 'bg-discord-dark/50 text-discord-text-muted hover:text-discord-text'
+                  ? 'border-oct-flame bg-oct-flame/15 text-oct-flame'
+                  : 'border-oct-border bg-oct-surface-raised text-oct-muted hover:text-oct-text'
               }`}
               title="View hidden users"
             >
@@ -629,8 +629,8 @@ export default function ChatPane({ roomId, paneIndex, paneCount, editMode, varia
           <Tip label={searchOpen ? 'Close search' : 'Search messages (Ctrl+F)'}>
             <button
               onClick={searchOpen ? closeSearch : openSearch}
-              className={`p-1 transition-colors ${
-                searchOpen ? 'text-white' : 'text-discord-channel-icon hover:text-discord-text'
+              className={`p-1 transition-colors duration-100 ${
+                searchOpen ? 'text-oct-accent' : 'text-oct-muted hover:text-oct-accent'
               }`}
             >
               <Search size={18} />
@@ -640,7 +640,7 @@ export default function ChatPane({ roomId, paneIndex, paneCount, editMode, varia
             <Tip label="Room settings">
               <button
                 onClick={() => openConfigModal(activeRoom)}
-                className="p-1 text-discord-channel-icon hover:text-discord-text transition-colors"
+                className="p-1 text-oct-muted hover:text-oct-accent transition-colors duration-100"
               >
                 <Settings size={18} />
               </button>
@@ -650,7 +650,7 @@ export default function ChatPane({ roomId, paneIndex, paneCount, editMode, varia
             <Tip label="Pop out to its own window">
               <button
                 onClick={() => popOutPane(paneIndex)}
-                className="p-1 text-discord-channel-icon hover:text-discord-text transition-colors"
+                className="p-1 text-oct-muted hover:text-oct-accent transition-colors duration-100"
               >
                 <ExternalLink size={18} />
               </button>
@@ -660,7 +660,7 @@ export default function ChatPane({ roomId, paneIndex, paneCount, editMode, varia
             <Tip label="Move chat to left side">
               <button
                 onClick={onMoveLeft}
-                className="p-1 text-discord-channel-icon hover:text-discord-text transition-colors"
+                className="p-1 text-oct-muted hover:text-oct-accent transition-colors duration-100"
               >
                 <ArrowLeft size={18} />
               </button>
@@ -670,7 +670,7 @@ export default function ChatPane({ roomId, paneIndex, paneCount, editMode, varia
             <Tip label="Move chat to right side">
               <button
                 onClick={onMoveRight}
-                className="p-1 text-discord-channel-icon hover:text-discord-text transition-colors"
+                className="p-1 text-oct-muted hover:text-oct-accent transition-colors duration-100"
               >
                 <ArrowRight size={18} />
               </button>
@@ -680,7 +680,7 @@ export default function ChatPane({ roomId, paneIndex, paneCount, editMode, varia
             <Tip label={isGrid ? 'Single row layout' : 'Two rows layout'}>
               <button
                 onClick={() => updateConfig({ splitLayout: isGrid ? 'row' : 'grid' })}
-                className="p-1 text-discord-channel-icon hover:text-discord-text transition-colors"
+                className="p-1 text-oct-muted hover:text-oct-accent transition-colors duration-100"
               >
                 {isGrid ? <Columns2 size={18} /> : <Rows2 size={18} />}
               </button>
@@ -690,7 +690,7 @@ export default function ChatPane({ roomId, paneIndex, paneCount, editMode, varia
             <Tip label={locked ? 'Unlock pane' : 'Lock pane (prevent changing room)'}>
               <button
                 onClick={() => togglePaneLock(paneIndex)}
-                className={`p-1 transition-colors ${locked ? 'text-discord-blurple hover:text-discord-blurple-hover' : 'text-discord-channel-icon hover:text-discord-text'}`}
+                className={`p-1 transition-colors duration-100 ${locked ? 'text-oct-accent hover:text-oct-accent-hover' : 'text-oct-muted hover:text-oct-accent'}`}
               >
                 {locked ? <Lock size={18} /> : <Unlock size={18} />}
               </button>
@@ -700,7 +700,7 @@ export default function ChatPane({ roomId, paneIndex, paneCount, editMode, varia
             <Tip label="Add chat pane">
               <button
                 onClick={() => addPane()}
-                className="p-1 text-discord-channel-icon hover:text-discord-text transition-colors"
+                className="p-1 text-oct-muted hover:text-oct-accent transition-colors duration-100"
               >
                 <Plus size={18} />
               </button>
@@ -710,7 +710,7 @@ export default function ChatPane({ roomId, paneIndex, paneCount, editMode, varia
             <Tip label="Close pane">
               <button
                 onClick={() => removePane(paneIndex)}
-                className="p-1 text-discord-channel-icon hover:text-discord-red transition-colors"
+                className="p-1 text-oct-muted hover:text-oct-flame transition-colors duration-100"
               >
                 <X size={18} />
               </button>
@@ -721,8 +721,8 @@ export default function ChatPane({ roomId, paneIndex, paneCount, editMode, varia
 
       {/* Search bar */}
       {searchOpen && (
-        <div className="px-2 sm:px-4 py-2 border-b border-discord-dark/60 bg-discord-embed-bg shrink-0 flex items-center gap-2">
-          <Search size={16} className="text-discord-text-muted shrink-0" />
+        <div className="px-2 sm:px-4 py-2 border-b-2 border-oct-border bg-oct-surface shrink-0 flex items-center gap-2">
+          <Search size={16} className="text-oct-muted shrink-0" />
           <input
             ref={searchInputRef}
             type="text"
@@ -736,12 +736,12 @@ export default function ChatPane({ roomId, paneIndex, paneCount, editMode, varia
               if (e.key === 'Escape') closeSearch();
             }}
             placeholder="Search messages..."
-            className="flex-1 bg-discord-dark text-discord-text text-sm px-3 py-1.5 rounded outline-none placeholder:text-discord-text-muted/60"
+            className="flex-1 px-3 py-1.5 rounded-cockpit bg-oct-bg border-2 border-oct-border text-sm text-oct-text placeholder:text-oct-muted/60 focus:outline-none focus:border-oct-accent"
             autoFocus
           />
           {trimmedSearch && searchResults && (
             <div className="flex items-center gap-1 shrink-0">
-              <span className="text-[12px] text-discord-text-muted tabular-nums">
+              <span className="font-mono text-[10px] uppercase tracking-wide text-oct-muted tabular-nums">
                 {searchResults.length === 0
                   ? 'No results'
                   : `${searchResults.length} result${searchResults.length !== 1 ? 's' : ''}`}
@@ -750,14 +750,14 @@ export default function ChatPane({ roomId, paneIndex, paneCount, editMode, varia
                 <>
                   <button
                     onClick={() => jumpToMatch(activeMatchIndex - 1)}
-                    className="p-0.5 text-discord-text-muted hover:text-discord-header-primary transition-colors"
+                    className="p-0.5 text-oct-muted hover:text-oct-accent transition-colors duration-100"
                     title="Previous match (Shift+Enter)"
                   >
                     <ChevronUp size={16} />
                   </button>
                   <button
                     onClick={() => jumpToMatch(activeMatchIndex + 1)}
-                    className="p-0.5 text-discord-text-muted hover:text-discord-header-primary transition-colors"
+                    className="p-0.5 text-oct-muted hover:text-oct-accent transition-colors duration-100"
                     title="Next match (Enter)"
                   >
                     <ChevronDown size={16} />
@@ -768,7 +768,7 @@ export default function ChatPane({ roomId, paneIndex, paneCount, editMode, varia
           )}
           <button
             onClick={closeSearch}
-            className="p-0.5 text-discord-text-muted hover:text-discord-header-primary transition-colors shrink-0"
+            className="p-0.5 text-oct-muted hover:text-oct-accent transition-colors duration-100 shrink-0"
             title="Close search (Esc)"
           >
             <X size={16} />
@@ -778,14 +778,14 @@ export default function ChatPane({ roomId, paneIndex, paneCount, editMode, varia
 
       {/* Hidden users panel */}
       {hiddenPanelOpen && channelHiddenUsers.length > 0 && (
-        <div className="border-b border-discord-dark/60 bg-discord-embed-bg px-3 sm:px-4 py-3 shrink-0">
+        <div className="border-b-2 border-oct-border bg-oct-surface px-3 sm:px-4 py-3 shrink-0">
           <div className="flex items-center justify-between mb-2">
-            <span className="text-[11px] font-semibold uppercase tracking-wide text-discord-text-muted">
+            <span className="font-mono text-xs uppercase tracking-[0.2em] text-oct-muted">
               Hidden Users
             </span>
             <button
               onClick={() => setHiddenPanelOpen(false)}
-              className="text-discord-text-muted hover:text-discord-header-primary transition-colors"
+              className="text-oct-muted hover:text-oct-accent transition-colors duration-100"
             >
               <X size={14} />
             </button>
@@ -794,19 +794,19 @@ export default function ChatPane({ roomId, paneIndex, paneCount, editMode, varia
             {channelHiddenUsers.map((entry) => (
               <div
                 key={`${entry.guildId}:${entry.channelId}:${entry.userId}`}
-                className="flex items-center justify-between gap-2 px-2 sm:px-2.5 py-1.5 rounded bg-discord-sidebar/60"
+                className="flex items-center justify-between gap-2 px-2 sm:px-2.5 py-1.5 rounded-cockpit border-2 border-oct-border bg-oct-surface-raised"
               >
                 <div className="flex items-center gap-2 min-w-0 flex-wrap">
-                  <EyeOff size={12} className="shrink-0 text-discord-red/70" />
-                  <span className="text-sm text-white font-medium truncate">{entry.displayName}</span>
-                  <span className="text-[11px] text-discord-text-muted font-mono hidden sm:inline">{entry.userId}</span>
-                  <span className="text-[10px] text-discord-text-muted truncate hidden sm:inline">
+                  <EyeOff size={12} className="shrink-0 text-oct-flame/70" />
+                  <span className="text-sm text-oct-text font-medium truncate">{entry.displayName}</span>
+                  <span className="text-[10px] text-oct-muted font-mono hidden sm:inline">{entry.userId}</span>
+                  <span className="font-mono text-[10px] text-oct-muted truncate hidden sm:inline">
                     {entry.guildName ? `${entry.guildName} / ` : ''}#{entry.channelName}
                   </span>
                 </div>
                 <button
                   onClick={() => unhideUser(entry.guildId, entry.channelId, entry.userId)}
-                  className="shrink-0 text-discord-text-muted hover:text-discord-red transition-colors"
+                  className="shrink-0 text-oct-muted hover:text-oct-flame transition-colors duration-100"
                   title="Unhide user"
                 >
                   <Trash2 size={14} />
@@ -819,7 +819,7 @@ export default function ChatPane({ roomId, paneIndex, paneCount, editMode, varia
 
       {/* Messages */}
       {unknownPane ? (
-        <div className="flex-1 flex items-center justify-center text-center text-discord-text-muted p-4">
+        <div className="flex-1 flex items-center justify-center text-center text-oct-muted p-4">
           <div>
             <Hash size={40} className="mx-auto mb-3 opacity-30" />
             <p className="text-sm">This chat is no longer available. Pick another from the header.</p>
@@ -834,7 +834,7 @@ export default function ChatPane({ roomId, paneIndex, paneCount, editMode, varia
         >
           <div ref={contentRef} className="pb-[1vh]">
             {roomMessages.length === 0 && (
-              <div className="flex items-center justify-center h-full text-discord-text-muted text-sm">
+              <div className="flex items-center justify-center h-full font-mono text-xs uppercase tracking-[0.15em] text-oct-muted">
                 {searchOpen && trimmedSearch
                   ? 'No messages match your search.'
                   : isMentionsView
@@ -859,7 +859,7 @@ export default function ChatPane({ roomId, paneIndex, paneCount, editMode, varia
               const highlightColor = activeRoom?.highlightedUserColors?.[msg.author.id];
 
               return (
-                <div key={msg.id} id={`msg-${msg.id}`} className="transition-colors duration-500">
+                <div key={msg.id} id={`msg-${msg.id}`} className="transition-colors duration-100">
                   <Message
                     message={msg}
                     isCompact={isCompact}
@@ -907,7 +907,7 @@ export default function ChatPane({ roomId, paneIndex, paneCount, editMode, varia
       {newMessageCount > 0 && !searchOpen && (
         <button
           onClick={jumpToPresent}
-          className="absolute top-12 left-0 right-0 z-20 flex items-center justify-between gap-2 px-3 sm:px-4 py-1.5 bg-discord-blurple hover:bg-discord-blurple-hover text-white text-xs sm:text-sm font-medium shadow-md transition-colors"
+          className="absolute top-12 left-0 right-0 z-20 flex items-center justify-between gap-2 px-3 sm:px-4 py-1.5 border-b-2 border-oct-border bg-oct-accent hover:bg-oct-accent-hover text-white font-mono text-[10px] sm:text-xs font-bold uppercase tracking-wide transition-colors duration-100"
         >
           <span className="truncate">
             {newMessageCount} new message{newMessageCount !== 1 ? 's' : ''}
@@ -920,12 +920,12 @@ export default function ChatPane({ roomId, paneIndex, paneCount, editMode, varia
       {/* "Viewing older messages" banner (replaces the plain jump button) */}
       {viewingOlder && !searchOpen && roomMessages.length > 0 && (
         <div
-          className={`absolute ${chattingEnabled ? 'bottom-16' : 'bottom-4'} left-1/2 -translate-x-1/2 z-20 flex items-center gap-3 px-4 py-2 rounded-full bg-discord-dark/95 border border-black/30 shadow-lg shadow-black/25`}
+          className={`absolute ${chattingEnabled ? 'bottom-16' : 'bottom-4'} left-1/2 -translate-x-1/2 z-20 flex items-center gap-3 px-4 py-2 rounded-cockpit border-2 border-oct-border-bright bg-oct-surface`}
         >
-          <span className="text-xs sm:text-sm text-discord-text-muted whitespace-nowrap">You're viewing older messages</span>
+          <span className="font-mono text-[10px] sm:text-xs uppercase tracking-wide text-oct-muted whitespace-nowrap">You're viewing older messages</span>
           <button
             onClick={jumpToPresent}
-            className="flex items-center gap-1 text-xs sm:text-sm font-semibold text-white bg-discord-blurple hover:bg-discord-blurple-hover px-2.5 py-1 rounded-full transition-colors whitespace-nowrap"
+            className="brutal-btn inline-flex items-center gap-1 px-2.5 py-1 text-[10px] sm:text-xs whitespace-nowrap"
           >
             Jump To Present <ArrowDown size={14} />
           </button>

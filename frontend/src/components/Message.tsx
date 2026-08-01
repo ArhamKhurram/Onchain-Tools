@@ -78,14 +78,14 @@ function Message({ message, isCompact, messageDisplay = 'default', compactModeAv
   const bandNameColor = callerQuality ? BAND_NAME_COLOR[callerQuality.band] : null;
   const authorNameColor = effectiveHighlighted
     ? resolvedHighlightColor
-    : (bandNameColor ?? (roleColors && message.author.roleColor ? message.author.roleColor : '#f2f3f5'));
+    : (bandNameColor ?? (roleColors && message.author.roleColor ? message.author.roleColor : 'var(--oct-text)'));
 
   const highlightClass = effectiveHighlighted
     ? useUsernameHighlight
-      ? hasCustomColor ? 'border-l-2' : 'border-l-2 border-discord-blurple'
-      : hasCustomColor ? 'border-l-2' : 'border-l-2 border-discord-blurple bg-discord-highlight'
+      ? hasCustomColor ? 'border-l-2' : 'border-l-2 border-oct-accent'
+      : hasCustomColor ? 'border-l-2' : 'border-l-2 border-oct-accent bg-oct-accent-dim'
     : hasKeywordMatch
-      ? 'border-l-2 border-orange-400 bg-orange-400/5'
+      ? 'border-l-2 border-oct-accent bg-oct-accent-dim'
       : '';
 
   const highlightInlineStyle: React.CSSProperties = {};
@@ -166,7 +166,7 @@ function Message({ message, isCompact, messageDisplay = 'default', compactModeAv
   const channelBadge = isTelegram ? (
     <span
       onClick={telegramUrl ? openSourcePlatform : undefined}
-      className={`text-[0.6875rem] px-1.5 py-0.5 rounded bg-[#2AABEE]/10 text-[#2AABEE] font-medium shrink-0${telegramUrl ? ' cursor-pointer hover:bg-[#2AABEE]/20 transition-colors' : ''}`}
+      className={`font-mono text-[0.6875rem] px-1.5 py-0.5 rounded-cockpit bg-oct-accent-dim text-oct-accent font-medium shrink-0${telegramUrl ? ' cursor-pointer hover:bg-oct-surface-raised transition-colors' : ''}`}
       title={telegramUrl ? 'Open in Telegram' : 'Telegram'}
     >
       TG &middot; {channelLabel}
@@ -174,7 +174,7 @@ function Message({ message, isCompact, messageDisplay = 'default', compactModeAv
   ) : openInDiscordApp ? (
     <span
       onClick={() => { window.location.href = discordUrl; }}
-      className="text-[0.6875rem] px-1.5 py-0.5 rounded bg-discord-embed-bg text-discord-text-muted font-medium shrink-0 hover:text-discord-text hover:bg-discord-dark transition-colors cursor-pointer"
+      className="font-mono text-[0.6875rem] px-1.5 py-0.5 rounded-cockpit bg-oct-surface text-oct-muted font-medium shrink-0 hover:text-oct-text hover:bg-oct-surface-raised transition-colors cursor-pointer"
       title="Open in Discord app"
     >
       {channelLabel}
@@ -184,7 +184,7 @@ function Message({ message, isCompact, messageDisplay = 'default', compactModeAv
       href={discordUrl}
       target="_blank"
       rel="noopener noreferrer"
-      className="text-[0.6875rem] px-1.5 py-0.5 rounded bg-discord-embed-bg text-discord-text-muted font-medium shrink-0 hover:text-discord-text hover:bg-discord-dark transition-colors cursor-pointer"
+      className="font-mono text-[0.6875rem] px-1.5 py-0.5 rounded-cockpit bg-oct-surface text-oct-muted font-medium shrink-0 hover:text-oct-text hover:bg-oct-surface-raised transition-colors cursor-pointer"
       title="Open in Discord"
     >
       {channelLabel}
@@ -193,28 +193,28 @@ function Message({ message, isCompact, messageDisplay = 'default', compactModeAv
 
   if (messageDisplay === 'compact') {
     return (
-      <div className={`group/compact relative hover:bg-discord-hover py-[1px] pr-2 sm:pr-[48px] pl-[52px] sm:pl-[72px] ${highlightClass} ${message.isDeleted ? 'opacity-60' : ''} min-h-[1.375rem]`} style={bgStyle}>
-        <span className={`absolute left-0 w-[52px] sm:w-[72px] text-[0.6875rem] text-discord-text-muted text-right pr-2 sm:pr-4 pt-[1px] select-none leading-[1.375rem] ${isCompact ? 'opacity-0 group-hover/compact:opacity-100' : ''}`}>
+      <div className={`group/compact relative hover:bg-oct-surface-raised py-[1px] pr-2 sm:pr-[48px] pl-[52px] sm:pl-[72px] ${highlightClass} ${message.isDeleted ? 'opacity-60' : ''} min-h-[1.375rem]`} style={bgStyle}>
+        <span className={`absolute left-0 w-[52px] sm:w-[72px] font-mono text-[0.6875rem] text-oct-muted text-right pr-2 sm:pr-4 pt-[1px] select-none leading-[1.375rem] ${isCompact ? 'opacity-0 group-hover/compact:opacity-100' : ''}`}>
           {new Date(message.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
         </span>
         <div className="min-w-0">
           {message.referencedMessage && (
             <div
-              className="flex items-center gap-1 text-xs text-discord-text-muted mb-0.5 cursor-pointer hover:text-discord-text-normal max-w-full overflow-hidden"
+              className="flex items-center gap-1 text-xs text-oct-muted mb-0.5 cursor-pointer hover:text-oct-text max-w-full overflow-hidden"
               onClick={() => {
                 const el = document.getElementById(`msg-${message.referencedMessage!.id}`);
-                if (el) { el.scrollIntoView({ behavior: 'smooth', block: 'center' }); el.classList.add('bg-discord-hover'); setTimeout(() => el.classList.remove('bg-discord-hover'), 2000); }
+                if (el) { el.scrollIntoView({ behavior: 'smooth', block: 'center' }); el.classList.add('bg-oct-surface-raised'); setTimeout(() => el.classList.remove('bg-oct-surface-raised'), 2000); }
               }}
             >
-              <div className="w-8 h-3 border-l-2 border-t-2 border-discord-text-muted/30 rounded-tl ml-1 shrink-0" />
-              <span className="font-medium text-discord-text-muted shrink-0">{message.referencedMessage.author}</span>
+              <div className="w-8 h-3 border-l-2 border-t-2 border-oct-border-bright rounded-cockpit ml-1 shrink-0" />
+              <span className="font-medium text-oct-muted shrink-0">{message.referencedMessage.author}</span>
               <span className="truncate opacity-70">
                 {renderInlineMarkdown(message.referencedMessage.content, [], message.referencedMessage.mentions ?? {}, addrColors)}
               </span>
             </div>
           )}
 
-          <div className="text-[0.9375rem] text-discord-text-normal leading-[1.375rem] break-words">
+          <div className="text-[0.9375rem] text-oct-text leading-[1.375rem] break-words">
             {!isCompact && compactModeAvatars && (
               <AuthImage
                 src={getAvatarUrl(message.author.id, message.author.avatar)}
@@ -230,14 +230,14 @@ function Message({ message, isCompact, messageDisplay = 'default', compactModeAv
             >
               {message.author.displayName}
               {copied && (
-                <span className="absolute -top-6 left-0 text-[10px] bg-discord-dark text-discord-green px-1.5 py-0.5 rounded shadow-lg whitespace-nowrap pointer-events-none">
+                <span className="absolute -top-6 left-0 font-mono text-[10px] rounded-cockpit border-2 border-oct-border bg-oct-surface-raised text-oct-green px-1.5 py-0.5 shadow-oct-hard whitespace-nowrap pointer-events-none">
                   ID copied!
                 </span>
               )}
             </span>
             {callerQuality && bandIsNotable(callerQuality.band) && (
               <span
-                className={`text-[9px] font-bold uppercase px-1 py-0.5 rounded-cockpit mr-1 ${BAND_BADGE_CLASS[callerQuality.band]}`}
+                className={`font-mono text-[9px] font-bold uppercase tracking-wide px-1 py-0.5 rounded-cockpit mr-1 ${BAND_BADGE_CLASS[callerQuality.band]}`}
                 title={BAND_TITLE[callerQuality.band]}
               >
                 {BAND_LABELS[callerQuality.band]}
@@ -247,10 +247,10 @@ function Message({ message, isCompact, messageDisplay = 'default', compactModeAv
             <span className={`hidden sm:inline-flex items-center gap-0.5 align-middle transition-opacity ${isFocused ? 'opacity-100' : 'opacity-0 group-hover/compact:opacity-100'}`}>
               <button
                 onClick={() => onFocus?.(message.guildId, message.channelId, message.guildName, message.channelName)}
-                className={`p-0.5 rounded transition-colors ${
+                className={`p-0.5 rounded-cockpit transition-colors ${
                   isFocused
-                    ? 'text-discord-blurple'
-                    : 'text-discord-text-muted hover:text-white hover:bg-discord-hover/50'
+                    ? 'text-oct-accent'
+                    : 'text-oct-muted hover:text-oct-text hover:bg-oct-surface-raised'
                 }`}
                 title={isFocused ? 'Focused on this channel' : 'Focus on this channel'}
               >
@@ -259,7 +259,7 @@ function Message({ message, isCompact, messageDisplay = 'default', compactModeAv
               {chattingEnabled && (
                 <button
                   onClick={() => onQuickReply?.(message.channelId)}
-                  className="p-0.5 rounded text-discord-text-muted hover:text-discord-green hover:bg-discord-hover/50 transition-colors"
+                  className="p-0.5 rounded-cockpit text-oct-muted hover:text-oct-green hover:bg-oct-surface-raised transition-colors"
                   title="Quick reply to this channel"
                 >
                   <MessageSquareReply size={13} />
@@ -271,7 +271,7 @@ function Message({ message, isCompact, messageDisplay = 'default', compactModeAv
               <>
                 <span
                   onClick={handleBadgeClick}
-                  className="text-[10px] px-1.5 py-0.5 rounded bg-discord-yellow/20 text-discord-yellow font-semibold cursor-pointer hover:bg-discord-yellow/30 transition-colors"
+                  className="inline-flex items-center rounded-cockpit border-2 border-oct-yellow bg-oct-yellow/15 px-1.5 py-0.5 font-mono text-[10px] font-bold uppercase tracking-wide text-oct-yellow shrink-0 cursor-pointer hover:bg-oct-yellow/25 transition-colors"
                   title={badgeAct === 'platform' ? 'Open in trading platform' : badgeAct === 'both' ? 'Open in Discord + platform' : 'Open in Discord'}
                 >
                   CONTRACT
@@ -283,7 +283,7 @@ function Message({ message, isCompact, messageDisplay = 'default', compactModeAv
               <>
                 <span
                   onClick={handleBadgeClick}
-                  className="text-[10px] px-1.5 py-0.5 rounded bg-orange-400/20 text-orange-400 font-semibold cursor-pointer hover:bg-orange-400/30 transition-colors"
+                  className="inline-flex items-center rounded-cockpit border-2 border-oct-accent bg-oct-accent-dim px-1.5 py-0.5 font-mono text-[10px] font-bold uppercase tracking-wide text-oct-accent shrink-0 cursor-pointer hover:bg-oct-surface-raised transition-colors"
                   title={badgeAct === 'platform' && message.hasContractAddress ? 'Open in trading platform' : badgeAct === 'both' && message.hasContractAddress ? 'Open in Discord + platform' : 'Open in Discord'}
                 >
                   {message.matchedKeywords!.join(', ')}
@@ -309,19 +309,19 @@ function Message({ message, isCompact, messageDisplay = 'default', compactModeAv
                     key={att.id}
                     src={att.proxy_url}
                     alt={att.filename}
-                    className="max-w-full sm:max-w-[400px] max-h-[300px] rounded-lg cursor-pointer hover:opacity-90 transition-opacity"
+                    className="max-w-full sm:max-w-[400px] max-h-[300px] rounded-cockpit border-2 border-oct-border cursor-pointer hover:opacity-90 transition-opacity"
                     onClick={() => setLightboxSrc(att.proxy_url)}
                   />
                 ) : att.content_type?.startsWith('audio/') ? (
                   <div key={att.id} className="flex flex-col gap-1 max-w-full sm:max-w-[400px]">
                     <AuthAudio src={att.proxy_url} type={att.content_type} className="h-8 max-w-full" />
-                    <span className="text-[11px] text-discord-text-muted truncate">{att.filename}</span>
+                    <span className="font-mono text-[11px] text-oct-muted truncate">{att.filename}</span>
                   </div>
                 ) : att.content_type?.startsWith('video/') ? (
                   <AuthVideo
                     key={att.id}
                     src={att.proxy_url}
-                    className="max-w-full sm:max-w-[400px] max-h-[300px] rounded-lg"
+                    className="max-w-full sm:max-w-[400px] max-h-[300px] rounded-cockpit border-2 border-oct-border"
                   />
                 ) : (
                   <a
@@ -329,7 +329,7 @@ function Message({ message, isCompact, messageDisplay = 'default', compactModeAv
                     href={att.url}
                     target="_blank"
                     rel="noopener noreferrer"
-                    className="text-discord-text-link hover:underline text-sm"
+                    className="text-oct-accent hover:underline text-sm"
                   >
                     {att.filename}
                   </a>
@@ -343,8 +343,8 @@ function Message({ message, isCompact, messageDisplay = 'default', compactModeAv
               {message.embeds.map((embed, i) => (
                 <div
                   key={i}
-                  className="border-l-4 rounded bg-discord-embed-bg p-2 sm:p-3 max-w-full sm:max-w-[520px]"
-                  style={{ borderColor: embed.color ? `#${embed.color.toString(16).padStart(6, '0')}` : '#1e1f22' }}
+                  className="rounded-cockpit border-2 border-oct-border border-l-4 bg-oct-surface-raised p-2 sm:p-3 max-w-full sm:max-w-[520px]"
+                  style={{ borderLeftColor: embed.color ? `#${embed.color.toString(16).padStart(6, '0')}` : 'var(--oct-border-bright)' }}
                 >
                   {embed.author?.name && (
                     <div className="flex items-center gap-2 mb-1">
@@ -352,11 +352,11 @@ function Message({ message, isCompact, messageDisplay = 'default', compactModeAv
                         <img src={embed.author.icon_url} alt="" loading="lazy" decoding="async" className="w-6 h-6 rounded-full" />
                       )}
                       {embed.author.url ? (
-                        <a href={embed.author.url} target="_blank" rel="noopener noreferrer" className="text-sm font-medium text-white hover:underline">
+                        <a href={embed.author.url} target="_blank" rel="noopener noreferrer" className="text-sm font-medium text-oct-text hover:underline">
                           {renderInlineMarkdown(embed.author.name, [], {})}
                         </a>
                       ) : (
-                        <span className="text-sm font-medium text-white">
+                        <span className="text-sm font-medium text-oct-text">
                           {renderInlineMarkdown(embed.author.name, [], {})}
                         </span>
                       )}
@@ -365,14 +365,14 @@ function Message({ message, isCompact, messageDisplay = 'default', compactModeAv
                   {embed.title && (
                     <div className="font-semibold text-sm">
                       {embed.url ? (
-                        <a href={embed.url} target="_blank" rel="noopener noreferrer" className="hover:underline text-discord-text-link">
+                        <a href={embed.url} target="_blank" rel="noopener noreferrer" className="hover:underline text-oct-accent">
                           {renderInlineMarkdown(embed.title, [], {})}
                         </a>
-                      ) : <span className="text-white">{renderInlineMarkdown(embed.title, [], {})}</span>}
+                      ) : <span className="text-oct-text">{renderInlineMarkdown(embed.title, [], {})}</span>}
                     </div>
                   )}
                   {embed.description && (
-                    <div className="text-[13px] text-discord-text mt-1 leading-[1.125rem]">
+                    <div className="text-[13px] text-oct-text mt-1 leading-[1.125rem]">
                       {renderEmbedDescription(embed.description, showFull)}
                     </div>
                   )}
@@ -380,10 +380,10 @@ function Message({ message, isCompact, messageDisplay = 'default', compactModeAv
                     <div className="grid gap-y-1 gap-x-2 mt-2" style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(140px, 1fr))' }}>
                       {embed.fields.map((field, fi) => (
                         <div key={fi} className={field.inline ? '' : 'col-span-full'}>
-                          <div className="text-xs font-semibold text-white mb-0.5">
+                          <div className="font-mono text-xs font-semibold text-oct-text mb-0.5">
                             {renderInlineMarkdown(field.name, [], {})}
                           </div>
-                          <div className="text-[13px] text-discord-text leading-[1.125rem]">
+                          <div className="text-[13px] text-oct-text leading-[1.125rem]">
                             {renderEmbedDescription(field.value, showFull)}
                           </div>
                         </div>
@@ -396,7 +396,7 @@ function Message({ message, isCompact, messageDisplay = 'default', compactModeAv
                       alt=""
                       loading="lazy"
                       decoding="async"
-                      className="max-w-[80px] max-h-[80px] rounded mt-2 cursor-pointer hover:opacity-90 transition-opacity"
+                      className="max-w-[80px] max-h-[80px] rounded-cockpit border-2 border-oct-border mt-2 cursor-pointer hover:opacity-90 transition-opacity"
                       onClick={() => setLightboxSrc(embed.thumbnail!.url)}
                     />
                   )}
@@ -406,12 +406,12 @@ function Message({ message, isCompact, messageDisplay = 'default', compactModeAv
                       alt=""
                       loading="lazy"
                       decoding="async"
-                      className="max-w-full sm:max-w-[400px] max-h-[300px] rounded mt-2 cursor-pointer hover:opacity-90 transition-opacity"
+                      className="max-w-full sm:max-w-[400px] max-h-[300px] rounded-cockpit border-2 border-oct-border mt-2 cursor-pointer hover:opacity-90 transition-opacity"
                       onClick={() => setLightboxSrc(embed.image!.url)}
                     />
                   )}
                   {embed.footer?.text && (
-                    <div className="flex items-center gap-2 mt-2 text-xs text-discord-text-muted">
+                    <div className="flex items-center gap-2 mt-2 font-mono text-xs text-oct-muted">
                       {embed.footer.icon_url && (
                         <img src={embed.footer.icon_url} alt="" loading="lazy" decoding="async" className="w-5 h-5 rounded-full" />
                       )}
@@ -461,28 +461,28 @@ function Message({ message, isCompact, messageDisplay = 'default', compactModeAv
 
   if (isCompact) {
     return (
-      <div className={`group/compact relative hover:bg-discord-hover py-[2px] pr-2 sm:pr-[48px] pl-[52px] sm:pl-[72px] ${highlightClass} ${message.isDeleted ? 'opacity-60' : ''} min-h-[1.375rem]`} style={bgStyle}>
-        <span className="absolute left-0 w-[52px] sm:w-[72px] text-[0.6875rem] text-discord-text-muted text-right pr-2 sm:pr-4 pt-[2px] opacity-0 group-hover/compact:opacity-100 select-none leading-[1.375rem]">
+      <div className={`group/compact relative hover:bg-oct-surface-raised py-[2px] pr-2 sm:pr-[48px] pl-[52px] sm:pl-[72px] ${highlightClass} ${message.isDeleted ? 'opacity-60' : ''} min-h-[1.375rem]`} style={bgStyle}>
+        <span className="absolute left-0 w-[52px] sm:w-[72px] font-mono text-[0.6875rem] text-oct-muted text-right pr-2 sm:pr-4 pt-[2px] opacity-0 group-hover/compact:opacity-100 select-none leading-[1.375rem]">
           {new Date(message.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
         </span>
         <div className="min-w-0">
           {message.referencedMessage && (
             <div
-              className="flex items-center gap-1 text-xs text-discord-text-muted mb-0.5 cursor-pointer hover:text-discord-text-normal max-w-full overflow-hidden"
+              className="flex items-center gap-1 text-xs text-oct-muted mb-0.5 cursor-pointer hover:text-oct-text max-w-full overflow-hidden"
               onClick={() => {
                 const el = document.getElementById(`msg-${message.referencedMessage!.id}`);
-                if (el) { el.scrollIntoView({ behavior: 'smooth', block: 'center' }); el.classList.add('bg-discord-hover'); setTimeout(() => el.classList.remove('bg-discord-hover'), 2000); }
+                if (el) { el.scrollIntoView({ behavior: 'smooth', block: 'center' }); el.classList.add('bg-oct-surface-raised'); setTimeout(() => el.classList.remove('bg-oct-surface-raised'), 2000); }
               }}
             >
-              <div className="w-8 h-3 border-l-2 border-t-2 border-discord-text-muted/30 rounded-tl ml-1 shrink-0" />
-              <span className="font-medium text-discord-text-muted shrink-0">{message.referencedMessage.author}</span>
+              <div className="w-8 h-3 border-l-2 border-t-2 border-oct-border-bright rounded-cockpit ml-1 shrink-0" />
+              <span className="font-medium text-oct-muted shrink-0">{message.referencedMessage.author}</span>
               <span className="truncate opacity-70">
                 {renderInlineMarkdown(message.referencedMessage.content, [], message.referencedMessage.mentions ?? {}, addrColors)}
               </span>
             </div>
           )}
 
-          <div className="text-base text-discord-text-normal leading-[1.375rem] break-words">
+          <div className="text-base text-oct-text leading-[1.375rem] break-words">
             {message.isDeleted && (
               <>
                 <DeletedBadge />
@@ -501,19 +501,19 @@ function Message({ message, isCompact, messageDisplay = 'default', compactModeAv
                     key={att.id}
                     src={att.proxy_url}
                     alt={att.filename}
-                    className="max-w-full sm:max-w-[400px] max-h-[300px] rounded-lg cursor-pointer hover:opacity-90 transition-opacity"
+                    className="max-w-full sm:max-w-[400px] max-h-[300px] rounded-cockpit border-2 border-oct-border cursor-pointer hover:opacity-90 transition-opacity"
                     onClick={() => setLightboxSrc(att.proxy_url)}
                   />
                 ) : att.content_type?.startsWith('audio/') ? (
                   <div key={att.id} className="flex flex-col gap-1 max-w-full sm:max-w-[400px]">
                     <AuthAudio src={att.proxy_url} type={att.content_type} className="h-8 max-w-full" />
-                    <span className="text-[11px] text-discord-text-muted truncate">{att.filename}</span>
+                    <span className="font-mono text-[11px] text-oct-muted truncate">{att.filename}</span>
                   </div>
                 ) : att.content_type?.startsWith('video/') ? (
                   <AuthVideo
                     key={att.id}
                     src={att.proxy_url}
-                    className="max-w-full sm:max-w-[400px] max-h-[300px] rounded-lg"
+                    className="max-w-full sm:max-w-[400px] max-h-[300px] rounded-cockpit border-2 border-oct-border"
                   />
                 ) : (
                   <a
@@ -521,7 +521,7 @@ function Message({ message, isCompact, messageDisplay = 'default', compactModeAv
                     href={att.url}
                     target="_blank"
                     rel="noopener noreferrer"
-                    className="text-discord-text-link hover:underline text-sm"
+                    className="text-oct-accent hover:underline text-sm"
                   >
                     {att.filename}
                   </a>
@@ -535,8 +535,8 @@ function Message({ message, isCompact, messageDisplay = 'default', compactModeAv
               {message.embeds.map((embed, i) => (
                 <div
                   key={i}
-                  className="border-l-4 rounded bg-discord-embed-bg p-2 sm:p-3 max-w-full sm:max-w-[520px]"
-                  style={{ borderColor: embed.color ? `#${embed.color.toString(16).padStart(6, '0')}` : '#1e1f22' }}
+                  className="rounded-cockpit border-2 border-oct-border border-l-4 bg-oct-surface-raised p-2 sm:p-3 max-w-full sm:max-w-[520px]"
+                  style={{ borderLeftColor: embed.color ? `#${embed.color.toString(16).padStart(6, '0')}` : 'var(--oct-border-bright)' }}
                 >
                   {embed.author?.name && (
                     <div className="flex items-center gap-2 mb-1">
@@ -544,11 +544,11 @@ function Message({ message, isCompact, messageDisplay = 'default', compactModeAv
                         <img src={embed.author.icon_url} alt="" loading="lazy" decoding="async" className="w-6 h-6 rounded-full" />
                       )}
                       {embed.author.url ? (
-                        <a href={embed.author.url} target="_blank" rel="noopener noreferrer" className="text-sm font-medium text-white hover:underline">
+                        <a href={embed.author.url} target="_blank" rel="noopener noreferrer" className="text-sm font-medium text-oct-text hover:underline">
                           {renderInlineMarkdown(embed.author.name, [], {})}
                         </a>
                       ) : (
-                        <span className="text-sm font-medium text-white">
+                        <span className="text-sm font-medium text-oct-text">
                           {renderInlineMarkdown(embed.author.name, [], {})}
                         </span>
                       )}
@@ -557,14 +557,14 @@ function Message({ message, isCompact, messageDisplay = 'default', compactModeAv
                   {embed.title && (
                     <div className="font-semibold text-sm">
                       {embed.url ? (
-                        <a href={embed.url} target="_blank" rel="noopener noreferrer" className="hover:underline text-discord-text-link">
+                        <a href={embed.url} target="_blank" rel="noopener noreferrer" className="hover:underline text-oct-accent">
                           {renderInlineMarkdown(embed.title, [], {})}
                         </a>
-                      ) : <span className="text-white">{renderInlineMarkdown(embed.title, [], {})}</span>}
+                      ) : <span className="text-oct-text">{renderInlineMarkdown(embed.title, [], {})}</span>}
                     </div>
                   )}
                   {embed.description && (
-                    <div className="text-[13px] text-discord-text mt-1 leading-[1.125rem]">
+                    <div className="text-[13px] text-oct-text mt-1 leading-[1.125rem]">
                       {renderEmbedDescription(embed.description, showFull)}
                     </div>
                   )}
@@ -572,10 +572,10 @@ function Message({ message, isCompact, messageDisplay = 'default', compactModeAv
                     <div className="grid gap-y-1 gap-x-2 mt-2" style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(140px, 1fr))' }}>
                       {embed.fields.map((field, fi) => (
                         <div key={fi} className={field.inline ? '' : 'col-span-full'}>
-                          <div className="text-xs font-semibold text-white mb-0.5">
+                          <div className="font-mono text-xs font-semibold text-oct-text mb-0.5">
                             {renderInlineMarkdown(field.name, [], {})}
                           </div>
-                          <div className="text-[13px] text-discord-text leading-[1.125rem]">
+                          <div className="text-[13px] text-oct-text leading-[1.125rem]">
                             {renderEmbedDescription(field.value, showFull)}
                           </div>
                         </div>
@@ -588,7 +588,7 @@ function Message({ message, isCompact, messageDisplay = 'default', compactModeAv
                       alt=""
                       loading="lazy"
                       decoding="async"
-                      className="max-w-[80px] max-h-[80px] rounded mt-2 cursor-pointer hover:opacity-90 transition-opacity"
+                      className="max-w-[80px] max-h-[80px] rounded-cockpit border-2 border-oct-border mt-2 cursor-pointer hover:opacity-90 transition-opacity"
                       onClick={() => setLightboxSrc(embed.thumbnail!.url)}
                     />
                   )}
@@ -598,12 +598,12 @@ function Message({ message, isCompact, messageDisplay = 'default', compactModeAv
                       alt=""
                       loading="lazy"
                       decoding="async"
-                      className="max-w-full sm:max-w-[400px] max-h-[300px] rounded mt-2 cursor-pointer hover:opacity-90 transition-opacity"
+                      className="max-w-full sm:max-w-[400px] max-h-[300px] rounded-cockpit border-2 border-oct-border mt-2 cursor-pointer hover:opacity-90 transition-opacity"
                       onClick={() => setLightboxSrc(embed.image!.url)}
                     />
                   )}
                   {embed.footer?.text && (
-                    <div className="flex items-center gap-2 mt-2 text-xs text-discord-text-muted">
+                    <div className="flex items-center gap-2 mt-2 font-mono text-xs text-oct-muted">
                       {embed.footer.icon_url && (
                         <img src={embed.footer.icon_url} alt="" loading="lazy" decoding="async" className="w-5 h-5 rounded-full" />
                       )}
@@ -627,14 +627,14 @@ function Message({ message, isCompact, messageDisplay = 'default', compactModeAv
   }
 
   return (
-    <div className={`relative hover:bg-discord-hover pt-[1.0625rem] pb-[2px] pr-2 sm:pr-[48px] pl-[52px] sm:pl-[72px] ${highlightClass} ${message.isDeleted ? 'opacity-60' : ''} group`} style={bgStyle}>
-      <div className={`absolute right-0 top-0.5 flex items-center gap-0.5 rounded px-0.5 py-0.5 z-10 sm:hidden ${isFocused ? 'opacity-100' : ''}`}>
+    <div className={`relative hover:bg-oct-surface-raised pt-[1.0625rem] pb-[2px] pr-2 sm:pr-[48px] pl-[52px] sm:pl-[72px] ${highlightClass} ${message.isDeleted ? 'opacity-60' : ''} group`} style={bgStyle}>
+      <div className={`absolute right-0 top-0.5 flex items-center gap-0.5 rounded-cockpit px-0.5 py-0.5 z-10 sm:hidden ${isFocused ? 'opacity-100' : ''}`}>
         <button
           onClick={() => onFocus?.(message.guildId, message.channelId, message.guildName, message.channelName)}
-          className={`p-0.5 rounded transition-colors ${
+          className={`p-0.5 rounded-cockpit transition-colors ${
             isFocused
-              ? 'text-discord-blurple'
-              : 'text-discord-text-muted/60 hover:text-white'
+              ? 'text-oct-accent'
+              : 'text-oct-muted/60 hover:text-oct-text'
           }`}
           title={isFocused ? 'Focused on this channel' : 'Focus on this channel'}
         >
@@ -643,7 +643,7 @@ function Message({ message, isCompact, messageDisplay = 'default', compactModeAv
         {chattingEnabled && (
           <button
             onClick={() => onQuickReply?.(message.channelId)}
-            className="p-0.5 rounded text-discord-text-muted/60 hover:text-discord-green transition-colors"
+            className="p-0.5 rounded-cockpit text-oct-muted/60 hover:text-oct-green transition-colors"
             title="Quick reply to this channel"
           >
             <MessageSquareReply size={13} />
@@ -665,33 +665,33 @@ function Message({ message, isCompact, messageDisplay = 'default', compactModeAv
           >
             {message.author.displayName}
             {copied && (
-              <span className="absolute -top-6 left-0 text-[10px] bg-discord-dark text-discord-green px-1.5 py-0.5 rounded shadow-lg whitespace-nowrap pointer-events-none">
+              <span className="absolute -top-6 left-0 font-mono text-[10px] rounded-cockpit border-2 border-oct-border bg-oct-surface-raised text-oct-green px-1.5 py-0.5 shadow-oct-hard whitespace-nowrap pointer-events-none">
                 ID copied!
               </span>
             )}
           </span>
           {callerQuality && bandIsNotable(callerQuality.band) && (
             <span
-              className={`text-[9px] font-bold uppercase px-1 py-0.5 rounded-cockpit ${BAND_BADGE_CLASS[callerQuality.band]}`}
+              className={`font-mono text-[9px] font-bold uppercase tracking-wide px-1 py-0.5 rounded-cockpit ${BAND_BADGE_CLASS[callerQuality.band]}`}
               title={BAND_TITLE[callerQuality.band]}
             >
               {BAND_LABELS[callerQuality.band]}
             </span>
           )}
-          <span className="text-xs text-discord-text-muted leading-[1.375rem] ml-1 sm:hidden">
+          <span className="font-mono text-xs text-oct-muted leading-[1.375rem] ml-1 sm:hidden">
             {formatTimestamp(message.timestamp, true)}
           </span>
-          <span className="text-xs text-discord-text-muted leading-[1.375rem] ml-1 hidden sm:inline">
+          <span className="font-mono text-xs text-oct-muted leading-[1.375rem] ml-1 hidden sm:inline">
             {formatTimestamp(message.timestamp)}
           </span>
           {channelBadge}
           <span className={`hidden sm:inline-flex items-center gap-0.5 align-middle transition-opacity ${isFocused ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'}`}>
             <button
               onClick={() => onFocus?.(message.guildId, message.channelId, message.guildName, message.channelName)}
-              className={`p-0.5 rounded transition-colors ${
+              className={`p-0.5 rounded-cockpit transition-colors ${
                 isFocused
-                  ? 'text-discord-blurple'
-                  : 'text-discord-text-muted hover:text-white hover:bg-discord-hover/50'
+                  ? 'text-oct-accent'
+                  : 'text-oct-muted hover:text-oct-text hover:bg-oct-surface-raised'
               }`}
               title={isFocused ? 'Focused on this channel' : 'Focus on this channel'}
             >
@@ -700,7 +700,7 @@ function Message({ message, isCompact, messageDisplay = 'default', compactModeAv
             {chattingEnabled && (
               <button
                 onClick={() => onQuickReply?.(message.channelId)}
-                className="p-0.5 rounded text-discord-text-muted hover:text-discord-green hover:bg-discord-hover/50 transition-colors"
+                className="p-0.5 rounded-cockpit text-oct-muted hover:text-oct-green hover:bg-oct-surface-raised transition-colors"
                 title="Quick reply to this channel"
               >
                 <MessageSquareReply size={14} />
@@ -710,7 +710,7 @@ function Message({ message, isCompact, messageDisplay = 'default', compactModeAv
           {message.hasContractAddress && (
             <span
               onClick={handleBadgeClick}
-              className="text-[10px] px-1.5 py-0.5 rounded bg-discord-yellow/20 text-discord-yellow font-semibold cursor-pointer hover:bg-discord-yellow/30 transition-colors"
+              className="inline-flex items-center rounded-cockpit border-2 border-oct-yellow bg-oct-yellow/15 px-1.5 py-0.5 font-mono text-[10px] font-bold uppercase tracking-wide text-oct-yellow shrink-0 cursor-pointer hover:bg-oct-yellow/25 transition-colors"
               title={badgeAct === 'platform' ? 'Open in trading platform' : badgeAct === 'both' ? 'Open in Discord + platform' : 'Open in Discord'}
             >
               CONTRACT
@@ -719,7 +719,7 @@ function Message({ message, isCompact, messageDisplay = 'default', compactModeAv
           {hasKeywordMatch && (
             <span
               onClick={handleBadgeClick}
-              className="text-[10px] px-1.5 py-0.5 rounded bg-orange-400/20 text-orange-400 font-semibold cursor-pointer hover:bg-orange-400/30 transition-colors"
+              className="inline-flex items-center rounded-cockpit border-2 border-oct-accent bg-oct-accent-dim px-1.5 py-0.5 font-mono text-[10px] font-bold uppercase tracking-wide text-oct-accent shrink-0 cursor-pointer hover:bg-oct-surface-raised transition-colors"
               title={badgeAct === 'platform' && message.hasContractAddress ? 'Open in trading platform' : badgeAct === 'both' && message.hasContractAddress ? 'Open in Discord + platform' : 'Open in Discord'}
             >
               {message.matchedKeywords!.join(', ')}
@@ -730,25 +730,25 @@ function Message({ message, isCompact, messageDisplay = 'default', compactModeAv
 
         {message.referencedMessage && (
           <div
-            className="flex items-center gap-1.5 text-sm text-discord-text-muted mt-0.5 mb-0.5 cursor-pointer hover:text-discord-text transition-colors"
+            className="flex items-center gap-1.5 text-sm text-oct-muted mt-0.5 mb-0.5 cursor-pointer hover:text-oct-text transition-colors"
             onClick={() => {
               const el = document.getElementById(`msg-${message.referencedMessage!.id}`);
               if (el) {
                 el.scrollIntoView({ behavior: 'smooth', block: 'center' });
-                el.classList.add('bg-discord-blurple/10');
-                setTimeout(() => el.classList.remove('bg-discord-blurple/10'), 2000);
+                el.classList.add('bg-oct-accent-dim');
+                setTimeout(() => el.classList.remove('bg-oct-accent-dim'), 2000);
               }
             }}
           >
-            <div className="w-8 h-3 border-l-2 border-t-2 border-discord-text-muted/30 rounded-tl ml-1 shrink-0" />
-            <span className="font-medium text-discord-text-muted shrink-0">{message.referencedMessage.author}</span>
+            <div className="w-8 h-3 border-l-2 border-t-2 border-oct-border-bright rounded-cockpit ml-1 shrink-0" />
+            <span className="font-medium text-oct-muted shrink-0">{message.referencedMessage.author}</span>
             <span className="truncate opacity-70">
               {renderInlineMarkdown(message.referencedMessage.content, [], message.referencedMessage.mentions ?? {}, addrColors)}
             </span>
           </div>
         )}
 
-        <div className="text-base text-discord-text-normal leading-[1.375rem] break-words whitespace-pre-wrap">
+        <div className="text-base text-oct-text leading-[1.375rem] break-words whitespace-pre-wrap">
           {renderContent(message.content, message.contractAddresses, message.mentions, addrColors, templates, clickAct, showFull)}
           <EditedIndicator message={message} addrColors={addrColors} templates={templates} clickAct={clickAct} showFull={showFull} />
         </div>
@@ -761,19 +761,19 @@ function Message({ message, isCompact, messageDisplay = 'default', compactModeAv
                   key={att.id}
                   src={att.proxy_url}
                   alt={att.filename}
-                  className="max-w-full sm:max-w-[400px] max-h-[300px] rounded-lg cursor-pointer hover:opacity-90 transition-opacity"
+                  className="max-w-full sm:max-w-[400px] max-h-[300px] rounded-cockpit border-2 border-oct-border cursor-pointer hover:opacity-90 transition-opacity"
                   onClick={() => setLightboxSrc(att.proxy_url)}
                 />
               ) : att.content_type?.startsWith('audio/') ? (
                 <div key={att.id} className="flex flex-col gap-1 max-w-full sm:max-w-[400px]">
                   <AuthAudio src={att.proxy_url} type={att.content_type} className="h-8 max-w-full" />
-                  <span className="text-[11px] text-discord-text-muted truncate">{att.filename}</span>
+                  <span className="font-mono text-[11px] text-oct-muted truncate">{att.filename}</span>
                 </div>
               ) : att.content_type?.startsWith('video/') ? (
                 <AuthVideo
                   key={att.id}
                   src={att.proxy_url}
-                  className="max-w-full sm:max-w-[400px] max-h-[300px] rounded-lg"
+                  className="max-w-full sm:max-w-[400px] max-h-[300px] rounded-cockpit border-2 border-oct-border"
                 />
               ) : (
                 <a
@@ -781,7 +781,7 @@ function Message({ message, isCompact, messageDisplay = 'default', compactModeAv
                   href={att.url}
                   target="_blank"
                   rel="noopener noreferrer"
-                  className="text-discord-text-link hover:underline text-sm"
+                  className="text-oct-accent hover:underline text-sm"
                 >
                   {att.filename}
                 </a>
@@ -795,8 +795,8 @@ function Message({ message, isCompact, messageDisplay = 'default', compactModeAv
             {message.embeds.map((embed, i) => (
               <div
                 key={i}
-                className="border-l-4 rounded bg-discord-embed-bg p-2 sm:p-3 max-w-full sm:max-w-[520px]"
-                style={{ borderColor: embed.color ? `#${embed.color.toString(16).padStart(6, '0')}` : '#1e1f22' }}
+                className="rounded-cockpit border-2 border-oct-border border-l-4 bg-oct-surface-raised p-2 sm:p-3 max-w-full sm:max-w-[520px]"
+                style={{ borderLeftColor: embed.color ? `#${embed.color.toString(16).padStart(6, '0')}` : 'var(--oct-border-bright)' }}
               >
                 {embed.author?.name && (
                   <div className="flex items-center gap-2 mb-1">
@@ -804,11 +804,11 @@ function Message({ message, isCompact, messageDisplay = 'default', compactModeAv
                       <img src={embed.author.icon_url} alt="" loading="lazy" decoding="async" className="w-6 h-6 rounded-full" />
                     )}
                     {embed.author.url ? (
-                      <a href={embed.author.url} target="_blank" rel="noopener noreferrer" className="text-sm font-medium text-white hover:underline">
+                      <a href={embed.author.url} target="_blank" rel="noopener noreferrer" className="text-sm font-medium text-oct-text hover:underline">
                         {renderInlineMarkdown(embed.author.name, [], {})}
                       </a>
                     ) : (
-                      <span className="text-sm font-medium text-white">
+                      <span className="text-sm font-medium text-oct-text">
                         {renderInlineMarkdown(embed.author.name, [], {})}
                       </span>
                     )}
@@ -817,14 +817,14 @@ function Message({ message, isCompact, messageDisplay = 'default', compactModeAv
                 {embed.title && (
                   <div className="font-semibold text-sm">
                     {embed.url ? (
-                      <a href={embed.url} target="_blank" rel="noopener noreferrer" className="hover:underline text-discord-text-link">
+                      <a href={embed.url} target="_blank" rel="noopener noreferrer" className="hover:underline text-oct-accent">
                         {renderInlineMarkdown(embed.title, [], {})}
                       </a>
-                    ) : <span className="text-white">{renderInlineMarkdown(embed.title, [], {})}</span>}
+                    ) : <span className="text-oct-text">{renderInlineMarkdown(embed.title, [], {})}</span>}
                   </div>
                 )}
                 {embed.description && (
-                  <div className="text-[13px] text-discord-text mt-1 leading-[1.125rem]">
+                  <div className="text-[13px] text-oct-text mt-1 leading-[1.125rem]">
                     {renderEmbedDescription(embed.description, showFull)}
                   </div>
                 )}
@@ -832,10 +832,10 @@ function Message({ message, isCompact, messageDisplay = 'default', compactModeAv
                   <div className="grid gap-y-1 gap-x-2 mt-2" style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(140px, 1fr))' }}>
                     {embed.fields.map((field, fi) => (
                       <div key={fi} className={field.inline ? '' : 'col-span-full'}>
-                        <div className="text-xs font-semibold text-white mb-0.5">
+                        <div className="font-mono text-xs font-semibold text-oct-text mb-0.5">
                           {renderInlineMarkdown(field.name, [], {})}
                         </div>
-                        <div className="text-[13px] text-discord-text leading-[1.125rem]">
+                        <div className="text-[13px] text-oct-text leading-[1.125rem]">
                           {renderEmbedDescription(field.value, showFull)}
                         </div>
                       </div>
@@ -848,7 +848,7 @@ function Message({ message, isCompact, messageDisplay = 'default', compactModeAv
                     alt=""
                     loading="lazy"
                     decoding="async"
-                    className="max-w-[80px] max-h-[80px] rounded mt-2 cursor-pointer hover:opacity-90 transition-opacity"
+                    className="max-w-[80px] max-h-[80px] rounded-cockpit border-2 border-oct-border mt-2 cursor-pointer hover:opacity-90 transition-opacity"
                     onClick={() => setLightboxSrc(embed.thumbnail!.url)}
                   />
                 )}
@@ -858,12 +858,12 @@ function Message({ message, isCompact, messageDisplay = 'default', compactModeAv
                     alt=""
                     loading="lazy"
                     decoding="async"
-                    className="max-w-full sm:max-w-[400px] max-h-[300px] rounded mt-2 cursor-pointer hover:opacity-90 transition-opacity"
+                    className="max-w-full sm:max-w-[400px] max-h-[300px] rounded-cockpit border-2 border-oct-border mt-2 cursor-pointer hover:opacity-90 transition-opacity"
                     onClick={() => setLightboxSrc(embed.image!.url)}
                   />
                 )}
                 {embed.footer?.text && (
-                  <div className="flex items-center gap-2 mt-2 text-xs text-discord-text-muted">
+                  <div className="flex items-center gap-2 mt-2 font-mono text-xs text-oct-muted">
                     {embed.footer.icon_url && (
                       <img src={embed.footer.icon_url} alt="" loading="lazy" decoding="async" className="w-5 h-5 rounded-full" />
                     )}

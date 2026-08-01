@@ -47,8 +47,8 @@ export default function UsersSection({ form }: { form: SettingsForm }) {
   return (
               <>
                 <div>
-                  <h3 className="text-base sm:text-lg font-semibold text-white mb-1">Global Highlighted Users</h3>
-                  <p className="text-xs sm:text-sm text-discord-text-muted mb-3 sm:mb-4">
+                  <h3 className="font-display text-xl sm:text-2xl tracking-tight text-oct-text mb-1">Global Highlighted Users</h3>
+                  <p className="text-xs sm:text-sm text-oct-muted mb-3 sm:mb-4">
                     These users will be highlighted in all rooms. Use Discord user IDs or Telegram @usernames.
                   </p>
                   <div className="flex gap-2 mb-4">
@@ -58,7 +58,7 @@ export default function UsersSection({ form }: { form: SettingsForm }) {
                       onChange={(e) => setNewUserId(e.target.value)}
                       onKeyDown={(e) => e.key === 'Enter' && addGlobalUser()}
                       placeholder="User ID or @telegram_username"
-                      className="flex-1 bg-discord-sidebar border-none rounded px-3 py-2 text-sm text-discord-text outline-none focus:ring-2 focus:ring-discord-blurple"
+                      className="flex-1 px-3 py-2 rounded-cockpit bg-oct-bg border-2 border-oct-border text-sm text-oct-text placeholder:text-oct-muted/60 focus:outline-none focus:border-oct-accent"
                       autoComplete="off"
                       data-1p-ignore
                       data-lpignore="true"
@@ -66,31 +66,31 @@ export default function UsersSection({ form }: { form: SettingsForm }) {
                     />
                     <button
                       onClick={addGlobalUser}
-                      className="px-3 py-2 bg-discord-blurple hover:bg-discord-blurple-hover rounded text-sm text-white transition-colors"
+                      className="brutal-btn px-3 py-2 text-sm"
                     >
                       <Plus size={16} />
                     </button>
                   </div>
                   <div className="space-y-1">
                     {globalUsers.length === 0 && (
-                      <p className="text-sm text-discord-text-muted text-center py-4">
+                      <p className="text-sm text-oct-muted text-center py-4">
                         No global highlighted users.
                       </p>
                     )}
                     {globalUsers.map((uid) => {
                       const isTgUser = uid.startsWith('@');
                       return (
-                      <div key={uid} className="flex items-center justify-between gap-2 px-2 sm:px-3 py-2 bg-discord-sidebar rounded">
+                      <div key={uid} className="flex items-center justify-between gap-2 px-2 sm:px-3 py-2 rounded-cockpit border-2 border-oct-border bg-oct-surface">
                         <div className="flex items-center gap-1.5 sm:gap-2 min-w-0">
-                          {isTgUser && <Send size={12} className="text-[#2AABEE] shrink-0" />}
-                          <span className={`text-xs sm:text-sm truncate ${isTgUser ? 'text-[#2AABEE]' : 'text-discord-text font-mono'}`}>{uid}</span>
+                          {isTgUser && <Send size={12} className="text-oct-accent shrink-0" />}
+                          <span className={`text-xs sm:text-sm truncate font-mono ${isTgUser ? 'text-oct-accent' : 'text-oct-text'}`}>{uid}</span>
                           {!isTgUser && userNameMap.has(uid) && (
-                            <span className="text-[10px] sm:text-[11px] text-discord-text-muted shrink-0">{userNameMap.get(uid)}</span>
+                            <span className="text-[10px] sm:text-[11px] text-oct-muted shrink-0">{userNameMap.get(uid)}</span>
                           )}
                         </div>
                         <button
                           onClick={() => removeGlobalUser(uid)}
-                          className="text-discord-text-muted hover:text-discord-red shrink-0"
+                          className="text-oct-muted hover:text-oct-flame shrink-0"
                         >
                           <Trash2 size={14} />
                         </button>
