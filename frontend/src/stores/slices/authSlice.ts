@@ -3,6 +3,7 @@ import type { AuthStatus, MaskedToken } from '../../types';
 import type { AppState } from '../appStore';
 import { isDemoMode, createDemoOverrides } from '../../demo/demoStore';
 import { markTokenEverConfigured } from '../../utils/tokenState';
+import { resolveAuthStatus } from '../authStatusResolve';
 import {
   connectClientGateway,
   disconnectClientGateway,
@@ -22,6 +23,13 @@ export interface AuthSlice {
   authStatus: AuthStatus | null;
   authLoading: boolean;
   maskedTokens: MaskedToken[];
+  /**
+   * Whether the last backend call reached the server at all. null = not yet
+   * attempted. This is deliberately distinct from "not authenticated": a CORS
+   * rejection or a dead backend must be visible, not silently rendered as an
+   * empty console. See BackendUnreachableBanner.
+   */
+  backendReachable: boolean | null;
 
   checkAuth: () => Promise<void>;
   submitToken: (token: string) => Promise<{ success: boolean; error?: string }>;
@@ -37,28 +45,40 @@ export const createAuthSlice: StateCreator<AppState, [], [], AuthSlice> = (set, 
     authStatus: null,
     authLoading: true,
     maskedTokens: [],
+    backendReachable: null,
 
     checkAuth: async () => {
       if (demo) return demo.checkAuth();
+
+      // The configured/connected decision lives in resolveAuthStatus (pure, and
+      // unit-tested) because it is subtle: in client-gateway mode the token is
+      // browser-only (ADR-002), so a failed /auth/status says nothing about
+      // whether Discord is configured and must not clear it.
+      const resolve = (serverStatus: AuthStatus | null): AuthStatus | null =>
+        resolveAuthStatus({
+          serverStatus,
+          clientGatewayMode: isClientGatewayMode(),
+          hasLocalTokens: hasLocalDiscordTokens(),
+          gatewayPresent: getClientGatewayManager() !== null,
+        });
+
       try {
         set({ authLoading: true });
         const res = await apiFetch(`${API_BASE}/auth/status`);
         if (!res.ok) {
-          set({ authStatus: null, authLoading: false });
+          // Reached the server; it just refused. Not an unreachable backend.
+          set({ authStatus: resolve(null), authLoading: false, backendReachable: true });
           return;
         }
-        const status: AuthStatus = await res.json();
-        if (isClientGatewayMode()) {
-          status.clientGateway = true;
-          status.configured = hasLocalDiscordTokens();
-          status.connected = status.configured && getClientGatewayManager() !== null;
-        }
+        const status = resolve(await res.json());
         if (status?.configured) {
           markTokenEverConfigured();
         }
-        set({ authStatus: status, authLoading: false });
+        set({ authStatus: status, authLoading: false, backendReachable: true });
       } catch {
-        set({ authStatus: null, authLoading: false });
+        // fetch() itself threw: DNS, offline, or — the case that cost hours — a
+        // CORS rejection, which is indistinguishable from a network error here.
+        set({ authStatus: resolve(null), authLoading: false, backendReachable: false });
       }
     },
 

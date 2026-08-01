@@ -17,7 +17,14 @@ import {
 } from './radarColumns';
 import { isHostedMode, getAccessToken } from '../../lib/supabase';
 import { useCallerQuality, type CallerQuality } from '../../hooks/useCallerQuality';
-import { BAND_DOT_CLASS, BAND_TEXT_CLASS, BAND_TITLE } from '../../utils/callerBandStyle';
+import {
+  BAND_DOT_CLASS,
+  BAND_TEXT_CLASS,
+  BAND_TITLE,
+  BAND_BADGE_CLASS,
+  BAND_NAME_COLOR,
+  bandIsNotable,
+} from '../../utils/callerBandStyle';
 import { BAND_LABELS, type CallerBand } from '@oct/shared';
 import type { ContractEntry } from '../../types';
 
@@ -51,6 +58,12 @@ interface RadarRow {
   mcAtCallDisplay?: string;
   /** Best band among the callers who posted this token. */
   bestBand?: CallerBand;
+  /**
+   * Band of the first caller specifically — distinct from bestBand, which is the
+   * best across everyone who posted it. The First caller column names one person,
+   * so it must show that person's own band, not the row's best.
+   */
+  firstCallerBand?: CallerBand;
   bestRank: number;
   /** Every caller on this token is muted — the row is pure slop by your own rules. */
   allMuted: boolean;
@@ -127,6 +140,7 @@ function buildRadar(
         callers: new Set(),
         groups: new Set(),
         firstCaller: c.authorName,
+        firstCallerBand: qualityForContract ? qualityForContract(c).band : undefined,
         firstSeenAt: ts,
         lastMentionAt: ts,
         timestamps: [],
@@ -157,6 +171,7 @@ function buildRadar(
     if (ts < row.firstSeenAt) {
       row.firstSeenAt = ts;
       row.firstCaller = c.authorName;
+      row.firstCallerBand = qualityForContract ? qualityForContract(c).band : undefined;
     }
     if (ts > row.lastMentionAt) row.lastMentionAt = ts;
     row.symbol = row.symbol ?? c.tokenSymbol;
@@ -770,8 +785,24 @@ export default function RadarTable({ embedded: _embedded = false }: { embedded?:
                         );
                       case 'firstCaller':
                         return (
-                          <td key={col} className="px-3 py-2 text-sm text-oct-muted truncate max-w-[120px]">
-                            {r.firstCaller}
+                          <td key={col} className="px-3 py-2 text-sm truncate max-w-[160px]">
+                            {/* Same band colour + badge as the feed (Message.tsx). A name
+                                is worth very different amounts depending on who it is, and
+                                the radar was the one place that withheld that. */}
+                            {r.firstCallerBand && bandIsNotable(r.firstCallerBand) && (
+                              <span
+                                className={`text-[9px] font-bold uppercase px-1 py-0.5 rounded-cockpit mr-1 align-middle ${BAND_BADGE_CLASS[r.firstCallerBand]}`}
+                                title={BAND_TITLE[r.firstCallerBand]}
+                              >
+                                {BAND_LABELS[r.firstCallerBand]}
+                              </span>
+                            )}
+                            <span
+                              style={{ color: r.firstCallerBand ? BAND_NAME_COLOR[r.firstCallerBand] ?? undefined : undefined }}
+                              className={r.firstCallerBand && BAND_NAME_COLOR[r.firstCallerBand] ? '' : 'text-oct-muted'}
+                            >
+                              {r.firstCaller}
+                            </span>
                           </td>
                         );
                       case 'mcAtCall':

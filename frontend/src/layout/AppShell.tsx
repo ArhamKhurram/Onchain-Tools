@@ -11,6 +11,7 @@ import { getSeenIds } from '../utils/announcements';
 import { useThemeStore } from '../stores/themeStore';
 import ThemeToggle from '../components/ThemeToggle';
 import NotificationPanel from '../components/NotificationPanel';
+import BackendUnreachableBanner from '../components/BackendUnreachableBanner';
 
 const NAV: { to: string; label: string; end?: boolean }[] = [
   { to: routes.home, label: 'Home', end: true },
@@ -119,6 +120,8 @@ export default function AppShell() {
           ) : null}
         </div>
       </header>
+
+      <BackendUnreachableBanner />
 
       <main className="flex-1 min-h-0 overflow-hidden">
         <Outlet />
