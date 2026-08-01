@@ -22,6 +22,7 @@ export default {
           'live-dim': 'var(--oct-live-dim)',
           green: 'var(--oct-green)',
           yellow: 'var(--oct-yellow)',
+          telegram: 'var(--oct-telegram)',
         },
         discord: {
           dark: 'var(--oct-bg)',

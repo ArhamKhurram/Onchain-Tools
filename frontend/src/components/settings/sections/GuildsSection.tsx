@@ -223,7 +223,7 @@ export default function GuildsSection({ form }: { form: SettingsForm }) {
                       return (
                         <div className="brutal-card p-3 sm:p-4">
                           <h4 className="font-mono text-xs font-bold uppercase tracking-[0.15em] text-oct-text mb-2 flex items-center gap-1.5">
-                            <Send size={14} className="text-oct-accent" />
+                            <Send size={14} className="text-oct-telegram" />
                             [ Telegram Chat Colors ]
                           </h4>
                           <p className="text-xs sm:text-sm text-oct-muted mb-3">

@@ -26,6 +26,10 @@
   --oct-live-pulse: rgba(255, 42, 42, 0.55);
   --oct-green: #22c55e;
   --oct-yellow: #fbbf24;
+  /* Telegram brand blue. Platform identity, like the SOL/EVM chain colours —
+     deliberately the same value in both themes so a Telegram source always
+     reads as Telegram. */
+  --oct-telegram: #2aabee;
   --oct-shadow: #000000;
   --oct-feed-bg: #0b0e1a;
 }
@@ -49,6 +53,7 @@
   --oct-live-pulse: rgba(61, 107, 158, 0.45);
   --oct-green: #2d7a4a;
   --oct-yellow: #a8841a;
+  --oct-telegram: #2aabee;
   --oct-shadow: #1a1c18;
   --oct-feed-bg: #ebe8e0;
 }
