@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { RefreshCw, Users, Radio, UserPlus, ShieldAlert } from 'lucide-react';
-import { apiFetch } from '../stores/appStore.helpers';
+import { apiFetch, API_BASE } from '../stores/appStore.helpers';
 
 interface AdminStats {
   mode: 'local' | 'hosted';
@@ -20,7 +20,10 @@ export default function AdminPage() {
     setLoading(true);
     setError(null);
     try {
-      const res = await apiFetch('/admin/stats');
+      // Must be absolute via API_BASE: apiFetch only attaches the bearer token,
+      // it does not prefix the API origin. A bare path resolves against the
+      // Vercel-hosted frontend, which 404s without ever reaching the backend.
+      const res = await apiFetch(`${API_BASE}/admin/stats`);
       if (res.status === 404) {
         // Deliberately indistinguishable from a missing route — see requireAdmin.
         setError('Not found.');
