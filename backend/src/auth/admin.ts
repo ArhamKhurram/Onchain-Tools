@@ -51,14 +51,6 @@ export async function requireAdmin(req: Request, res: Response, next: NextFuncti
     next();
     return;
   }
-  // Temporary diagnostic for the initial rollout: denials are rare (in practice
-  // only the operator hitting this before their account is recognised), so one
-  // log line per denial is cheap and lets us see exactly which identity the
-  // gate saw without guessing. Remove once access is confirmed working.
-  const discordId = await resolveDiscordIdByOctUser(req.userId ?? '').catch(() => 'lookup-threw');
-  console.warn(
-    `[Admin] denied — userId=${req.userId ?? 'none'} resolvedDiscordId=${discordId ?? 'none'} allowListLen=${allowList().length}`,
-  );
   // 404 rather than 403: an unauthorised caller should not learn the surface exists.
   res.status(404).json({ error: 'Not found' });
 }
