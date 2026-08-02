@@ -9,8 +9,59 @@ export interface AdminStats {
   /** null when the figure cannot be sourced (local mode, or no service key). */
   signups: { total: number | null; last7d: number | null; last24h: number | null };
   live: { connections: number; users: number; anonymousConnections: number };
+  /**
+   * Activation funnel — distinct users who reached each stage. Each is a strict
+   * prerequisite for the next in practice, so the drop between stages is the
+   * interesting number, not the absolutes.
+   */
+  funnel: {
+    signedUp: number | null;
+    addedDiscordToken: number | null;
+    createdRoom: number | null;
+    detectedContract: number | null;
+    trackedWallet: number | null;
+    addedTelegram: number | null;
+  };
   gatingConfigured: boolean;
   generatedAt: string;
+}
+
+/**
+ * Count distinct user_id values in a table.
+ *
+ * Supabase has no COUNT(DISTINCT) over PostgREST, so this pages the column and
+ * de-duplicates in memory. These tables are small (one row per user per token /
+ * room / wallet), and the alternative — an RPC — would need a migration for a
+ * number the operator reads occasionally. Returns null on any failure so a
+ * broken lookup never renders as a real zero.
+ */
+async function countDistinctUsers(
+  db: NonNullable<ReturnType<typeof getFomoServiceClient>>,
+  table: 'discord_tokens' | 'rooms' | 'contracts' | 'user_tracked_wallets' | 'telegram_credentials',
+): Promise<number | null> {
+  try {
+    const seen = new Set<string>();
+    const PAGE = 1000;
+    const MAX_PAGES = 50;
+    for (let page = 0; page < MAX_PAGES; page++) {
+      const from = page * PAGE;
+      const { data, error } = await db
+        .from(table)
+        .select('user_id')
+        .range(from, from + PAGE - 1);
+      if (error) throw error;
+      const rows = data ?? [];
+      for (const r of rows) {
+        const id = (r as { user_id: string | null }).user_id;
+        if (id) seen.add(id);
+      }
+      if (rows.length < PAGE) break;
+    }
+    return seen.size;
+  } catch (err) {
+    console.error(`[admin] distinct-user count failed for ${table}:`, err);
+    return null;
+  }
 }
 
 /**
@@ -31,6 +82,14 @@ export function createAdminRoutes(wsServer: WsServer): Router {
       mode: isHostedMode() ? 'hosted' : 'local',
       signups: { total: null, last7d: null, last24h: null },
       live,
+      funnel: {
+        signedUp: null,
+        addedDiscordToken: null,
+        createdRoom: null,
+        detectedContract: null,
+        trackedWallet: null,
+        addedTelegram: null,
+      },
       gatingConfigured: adminGatingConfigured(),
       generatedAt: new Date().toISOString(),
     };
@@ -67,10 +126,26 @@ export function createAdminRoutes(wsServer: WsServer): Router {
         }
 
         stats.signups = { total, last7d, last24h };
+        stats.funnel.signedUp = total;
       } catch (err) {
         console.error('[admin] signup stats unavailable:', err);
         // leave the nulls in place — the live figures are still worth returning
       }
+
+      // Each stage counts independently rather than nesting, so one failing
+      // lookup degrades to a single null instead of collapsing the funnel.
+      const [discordTokens, rooms, contracts, wallets, telegram] = await Promise.all([
+        countDistinctUsers(db, 'discord_tokens'),
+        countDistinctUsers(db, 'rooms'),
+        countDistinctUsers(db, 'contracts'),
+        countDistinctUsers(db, 'user_tracked_wallets'),
+        countDistinctUsers(db, 'telegram_credentials'),
+      ]);
+      stats.funnel.addedDiscordToken = discordTokens;
+      stats.funnel.createdRoom = rooms;
+      stats.funnel.detectedContract = contracts;
+      stats.funnel.trackedWallet = wallets;
+      stats.funnel.addedTelegram = telegram;
     }
 
     res.json(stats);

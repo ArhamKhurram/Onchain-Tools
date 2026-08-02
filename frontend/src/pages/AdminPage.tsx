@@ -6,6 +6,14 @@ interface AdminStats {
   mode: 'local' | 'hosted';
   signups: { total: number | null; last7d: number | null; last24h: number | null };
   live: { connections: number; users: number; anonymousConnections: number };
+  funnel: {
+    signedUp: number | null;
+    addedDiscordToken: number | null;
+    createdRoom: number | null;
+    detectedContract: number | null;
+    trackedWallet: number | null;
+    addedTelegram: number | null;
+  };
   gatingConfigured: boolean;
   generatedAt: string;
 }
@@ -93,6 +101,8 @@ export default function AdminPage() {
                 <Stat icon={<UserPlus size={16} />} label="New · 7d" value={num(stats.signups.last7d)} hint={`${num(stats.signups.last24h)} in 24h`} />
               </div>
 
+              <Funnel stats={stats} />
+
               {stats.signups.total === null && (
                 <p className="font-mono text-[11px] text-oct-muted mt-6 leading-relaxed">
                   Signup figures need a Supabase service-role key
@@ -126,6 +136,74 @@ export default function AdminPage() {
           )}
         </div>
       </section>
+    </div>
+  );
+}
+
+/**
+ * Activation funnel. The bar is width-scaled against signups, and each row
+ * carries its conversion off the PREVIOUS stage — the drop between steps is
+ * what identifies where people stall, which the absolute counts obscure.
+ */
+function Funnel({ stats }: { stats: AdminStats }) {
+  const base = stats.funnel.signedUp;
+  const steps: { label: string; value: number | null; note: string }[] = [
+    { label: 'Signed up', value: stats.funnel.signedUp, note: 'created an account' },
+    { label: 'Added Discord token', value: stats.funnel.addedDiscordToken, note: 'the big drop-off point' },
+    { label: 'Created a room', value: stats.funnel.createdRoom, note: 'configured a feed' },
+    { label: 'Saw a contract', value: stats.funnel.detectedContract, note: 'got real value' },
+    { label: 'Tracked a wallet', value: stats.funnel.trackedWallet, note: 'went beyond the feed' },
+    { label: 'Added Telegram', value: stats.funnel.addedTelegram, note: 'second source' },
+  ];
+
+  if (base === null) return null;
+
+  return (
+    <div className="mt-10">
+      <p className="font-mono text-[10px] font-bold uppercase tracking-[0.2em] text-oct-muted mb-4">
+        [ ACTIVATION FUNNEL ]
+      </p>
+      <div className="border-2 border-oct-border bg-oct-surface">
+        {steps.map((s, i) => {
+          const prev = i === 0 ? null : steps[i - 1].value;
+          const pctOfBase = s.value !== null && base > 0 ? (s.value / base) * 100 : 0;
+          // Conversion off the previous stage — the number that localises a drop.
+          const conv = s.value !== null && prev !== null && prev > 0 ? (s.value / prev) * 100 : null;
+          const bad = conv !== null && conv < 50;
+
+          return (
+            <div key={s.label} className="border-b-2 border-oct-border last:border-b-0 px-5 py-4">
+              <div className="flex items-baseline justify-between gap-4 mb-2">
+                <span className="font-mono text-[11px] font-bold uppercase tracking-[0.12em] text-oct-text">
+                  {s.label}
+                </span>
+                <span className="flex items-baseline gap-3 shrink-0">
+                  {conv !== null && (
+                    <span className={`font-mono text-[11px] ${bad ? 'text-oct-accent' : 'text-oct-muted'}`}>
+                      {conv.toFixed(0)}% of prev
+                    </span>
+                  )}
+                  <span className="font-mono text-2xl font-bold tabular-nums text-oct-text">
+                    {s.value === null ? '—' : s.value.toLocaleString('en-US')}
+                  </span>
+                </span>
+              </div>
+              <div className="h-2 bg-oct-bg border-2 border-oct-border">
+                <div
+                  className={bad ? 'h-full bg-oct-accent' : 'h-full bg-oct-green'}
+                  style={{ width: `${Math.min(100, pctOfBase)}%` }}
+                />
+              </div>
+              <p className="font-mono text-[10px] uppercase tracking-[0.1em] text-oct-muted mt-2">{s.note}</p>
+            </div>
+          );
+        })}
+      </div>
+      <p className="font-mono text-[10px] text-oct-muted mt-3 leading-relaxed">
+        Counts are distinct accounts that ever reached a stage, not a strict cohort —
+        someone who added a token then deleted it still counts. Stages after the first
+        are not guaranteed sequential.
+      </p>
     </div>
   );
 }
