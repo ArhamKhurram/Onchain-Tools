@@ -15,9 +15,10 @@ import NotificationPanel from '../components/NotificationPanel';
 const NAV: { to: string; label: string; end?: boolean }[] = [
   { to: routes.home, label: 'Home', end: true },
   { to: routes.feed, label: 'Feed' },
-  { to: routes.wallets, label: 'Wallets' },
-  { to: routes.portfolio, label: 'Portfolio' },
   { to: routes.callers, label: 'Callers' },
+  { to: routes.fomo, label: 'FOMO' },
+  { to: routes.directory, label: 'Directory' },
+  { to: routes.portfolio, label: 'Portfolio' },
   { to: routes.lpAutomation, label: 'LP' },
   { to: routes.workspace, label: 'Workspace' },
   { to: routes.settings, label: 'Settings' },

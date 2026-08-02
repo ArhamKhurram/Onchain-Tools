@@ -2,10 +2,13 @@
 export const routes = {
   home: '/',
   feed: '/feed',
-  wallets: '/wallets',
-  portfolio: '/portfolio',
   callers: '/callers',
   lpAutomation: '/lp',
+  fomo: '/fomo',
+  // The tracked-wallet directory — formerly '/wallets', which now 301s here
+  // (see App.tsx) so old bookmarks survive the rename.
+  directory: '/directory',
+  portfolio: '/portfolio',
   workspace: '/workspace',
   settings: '/settings',
   login: '/login',

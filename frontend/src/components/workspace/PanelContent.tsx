@@ -3,7 +3,7 @@ import ContractDashboard from '../ContractDashboard';
 import RadarTable from '../callers/RadarTable';
 import FomoTradeFeed from '../fomo/FomoTradeFeed';
 import WorkspaceFomoLeaderboard from './WorkspaceFomoLeaderboard';
-import WorkspaceTokenLookup from './WorkspaceTokenLookup';
+import FomoHoldersLookup from '../fomo/FomoHoldersLookup';
 import type { WorkspacePanelSlot } from '../../types/workspace';
 
 interface PanelContentProps {
@@ -41,7 +41,7 @@ export default function PanelContent({ panel }: PanelContentProps) {
       case 'fomo-leaderboard':
         return <WorkspaceFomoLeaderboard />;
       case 'token-lookup':
-        return <WorkspaceTokenLookup />;
+        return <FomoHoldersLookup />;
       default:
         return null;
     }
