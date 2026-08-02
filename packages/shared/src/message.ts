@@ -1,6 +1,32 @@
 import { detectContractAddresses } from './contract.js';
 import { matchKeywords } from './keyword.js';
-import type { FrontendMessage, DiscordMessage, KeywordPattern, AppConfig } from './types.js';
+import type { FrontendMessage, DiscordMessage, DiscordEmbed, KeywordPattern, AppConfig } from './types.js';
+
+/**
+ * Flatten every text-bearing field of an embed into one blob.
+ *
+ * Bots almost always post a contract in an embed with an empty `content`, so
+ * scanning `content` alone made their calls undetectable — and therefore
+ * unclickable. Rick was the exception only because it has a dedicated parser
+ * (`rickEmbedParser`), which meant CAs silently stopped working whenever Rick
+ * was down or a different scanner posted instead.
+ */
+export function embedTextBlob(embeds: DiscordEmbed[] | undefined): string {
+  if (!embeds?.length) return '';
+  const parts: string[] = [];
+  for (const e of embeds) {
+    if (e.title) parts.push(e.title);
+    if (e.description) parts.push(e.description);
+    if (e.url) parts.push(e.url);
+    if (e.author?.name) parts.push(e.author.name);
+    if (e.author?.url) parts.push(e.author.url);
+    if (e.footer?.text) parts.push(e.footer.text);
+    for (const f of e.fields ?? []) {
+      parts.push(f.name, f.value);
+    }
+  }
+  return parts.join('\n');
+}
 
 // Shared Discord message → FrontendMessage transform, used by the backend
 // ingestion pipeline and the browser gateway. Previously duplicated (identical
@@ -35,7 +61,12 @@ export function processDiscordMessage(
 
   let contractResult = { hasContract: false, addresses: [] as string[] };
   if (config.contractDetection) {
-    contractResult = detectContractAddresses(rawMsg.content);
+    // Scan embeds as well as content: bot calls carry the CA in an embed with
+    // an empty content string, so content-only detection missed every bot that
+    // was not Rick.
+    const embedBlob = embedTextBlob(rawMsg.embeds);
+    const scanned = embedBlob ? `${rawMsg.content}\n${embedBlob}` : rawMsg.content;
+    contractResult = detectContractAddresses(scanned);
   }
 
   let matchedKeywords: string[] = [];
