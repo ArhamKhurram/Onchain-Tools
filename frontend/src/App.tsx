@@ -12,6 +12,7 @@ const CallersPage = lazy(() => import('./pages/CallersPage'));
 const WorkspacePage = lazy(() => import('./pages/WorkspacePage'));
 const SettingsPage = lazy(() => import('./pages/SettingsPage'));
 const LoginPage = lazy(() => import('./pages/LoginPage'));
+const AdminPage = lazy(() => import('./pages/AdminPage'));
 
 const basename = import.meta.env.BASE_URL.replace(/\/$/, '');
 
@@ -40,6 +41,7 @@ export default function App() {
               <Route path="portfolio" element={<PortfolioPage />} />
               <Route path="workspace" element={<WorkspacePage />} />
               <Route path="settings" element={<SettingsPage />} />
+              <Route path="admin" element={<AdminPage />} />
               <Route path="login" element={<LoginPage />} />
             </Route>
             <Route path="*" element={<Navigate to="/" replace />} />

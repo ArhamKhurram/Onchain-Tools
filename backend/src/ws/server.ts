@@ -114,6 +114,31 @@ export class WsServer {
     }
   }
 
+  /**
+   * Live connection snapshot for the admin stats surface.
+   *
+   * `users` counts distinct authenticated identities, not sockets — one person
+   * with the console open in three tabs is one user, three connections. In
+   * local mode clients never authenticate, so `users` stays 0 and `connections`
+   * is the only meaningful figure.
+   */
+  getLiveStats(): { connections: number; users: number; anonymousConnections: number } {
+    const users = new Set<string>();
+    let anonymous = 0;
+
+    for (const [ws, state] of this.clients) {
+      if (ws.readyState !== WebSocket.OPEN) continue;
+      if (state.userId) users.add(state.userId);
+      else anonymous++;
+    }
+
+    return {
+      connections: [...this.clients].filter(([ws]) => ws.readyState === WebSocket.OPEN).length,
+      users: users.size,
+      anonymousConnections: anonymous,
+    };
+  }
+
   private shouldSendToClient(state: ClientState, roomIds: string[], userId?: string): boolean {
     if (isHostedMode() && userId && state.userId !== userId) return false;
 
