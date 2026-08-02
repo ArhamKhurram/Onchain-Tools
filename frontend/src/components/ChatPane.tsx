@@ -4,6 +4,7 @@ import { useThemeStore } from '../stores/themeStore';
 import Message from './Message';
 import ChatInput from './ChatInput';
 import { useCallerQuality } from '../hooks/useCallerQuality';
+import { useFeedChromeContext } from './feed/feedChromeContract';
 import { callerKey } from '@oct/shared';
 import { Hash, MessageCircle, Settings, ArrowDown, Filter, EyeOff, X, Trash2, Eye, Search, ChevronUp, ChevronDown, Send, AtSign, GripVertical, Plus, Rows2, Columns2, ArrowLeft, ArrowRight, Lock, Unlock, ExternalLink } from 'lucide-react';
 
@@ -487,6 +488,10 @@ export default function ChatPane({ roomId, paneIndex, paneCount, editMode, varia
   const HeaderIcon = isMentionsView ? AtSign : isTgDMView ? Send : isDMView ? MessageCircle : Hash;
   const headerIconClass = isTgDMView ? 'text-oct-accent' : 'text-oct-muted';
 
+  // In the Feed shell the chrome row already names the room, so the pane header
+  // keeps only its own controls.
+  const chromeOwnsHeader = useFeedChromeContext()?.ownsPaneHeader ?? false;
+
   const canDrag = editMode && paneCount > 1 && !locked && !isWorkspace;
   const canPopOut = variant === 'grid' && !!window.oct?.openPopout && !poppedOutRoomIds.includes(roomId);
 
@@ -508,7 +513,9 @@ export default function ChatPane({ roomId, paneIndex, paneCount, editMode, varia
   const ringClass = editMode ? 'outline outline-2 outline-offset-[-2px] outline-oct-accent' : '';
   const theme = useThemeStore((s) => s.theme);
   const paneBg =
-    theme === 'light' ? 'var(--oct-feed-bg)' : activeRoom?.color || 'var(--oct-feed-bg)';
+    theme === 'light'
+      ? 'rgb(var(--oct-feed-bg))'
+      : activeRoom?.color || 'rgb(var(--oct-feed-bg))';
 
   return (
     <div
@@ -525,7 +532,7 @@ export default function ChatPane({ roomId, paneIndex, paneCount, editMode, varia
         </div>
       )}
       {/* Channel header */}
-      <div className="h-12 px-2 sm:px-4 flex items-center border-b-2 border-oct-border shrink-0 bg-transparent z-10 gap-1">
+      <div className={`${chromeOwnsHeader ? 'h-9' : 'h-12'} px-2 sm:px-4 flex items-center border-b-2 border-oct-border shrink-0 bg-transparent z-10 gap-1`}>
         {canDrag && (
           <div
             draggable
@@ -538,45 +545,47 @@ export default function ChatPane({ roomId, paneIndex, paneCount, editMode, varia
         )}
 
         {/* Room switcher */}
-        <div className="relative min-w-0 flex items-center">
-          <button
-            onClick={() => { if (!locked) setSwitcherOpen((v) => !v); }}
-            className="flex items-center gap-1.5 min-w-0 rounded-cockpit px-1 py-0.5 hover:bg-oct-surface-raised transition-colors duration-100"
-            title={locked ? 'Pane locked - unlock to change room' : 'Switch pane content'}
-          >
-            <HeaderIcon size={20} className={`${headerIconClass} shrink-0`} />
-            <span className="font-mono text-sm sm:text-base font-bold uppercase tracking-wide text-oct-text truncate max-w-[40vw] sm:max-w-none">
-              {headerTitle}
-            </span>
-            {locked ? <Lock size={13} className="text-oct-muted shrink-0" /> : <ChevronDown size={14} className="text-oct-muted shrink-0" />}
-          </button>
-          {switcherOpen && !locked && (
-            <>
-              <div className="fixed inset-0 z-20" onClick={() => setSwitcherOpen(false)} />
-              <div className="absolute top-full left-0 mt-1 z-30 w-56 max-h-[60vh] overflow-y-auto rounded-cockpit border-2 border-oct-border bg-oct-surface-raised shadow-oct-hard-lg py-1">
-                {switcherOptions.map((opt) => (
-                  <button
-                    key={opt.id}
-                    onClick={() => { setPaneRoom(paneIndex, opt.id); setSwitcherOpen(false); }}
-                    className={`w-full flex items-center gap-2 px-3 py-1.5 text-left font-mono text-xs uppercase tracking-wide truncate transition-colors duration-100 ${
-                      opt.id === roomId
-                        ? 'bg-oct-accent-dim text-oct-accent'
-                        : 'text-oct-text hover:bg-oct-accent-dim hover:text-oct-accent'
-                    }`}
-                  >
-                    {opt.kind === 'mentions' ? <AtSign size={16} className="shrink-0 opacity-70" />
-                      : opt.kind === 'tg' ? <Send size={16} className="shrink-0 text-oct-accent" />
-                      : opt.kind === 'dm' ? <MessageCircle size={16} className="shrink-0 opacity-70" />
-                      : <Hash size={16} className="shrink-0 opacity-70" />}
-                    <span className="truncate">{opt.label}</span>
-                  </button>
-                ))}
-              </div>
-            </>
-          )}
-        </div>
+        {!chromeOwnsHeader && (
+          <div className="relative min-w-0 flex items-center">
+            <button
+              onClick={() => { if (!locked) setSwitcherOpen((v) => !v); }}
+              className="flex items-center gap-1.5 min-w-0 rounded-cockpit px-1 py-0.5 hover:bg-oct-surface-raised transition-colors duration-100"
+              title={locked ? 'Pane locked - unlock to change room' : 'Switch pane content'}
+            >
+              <HeaderIcon size={20} className={`${headerIconClass} shrink-0`} />
+              <span className="font-mono text-sm sm:text-base font-bold uppercase tracking-wide text-oct-text truncate max-w-[40vw] sm:max-w-none">
+                {headerTitle}
+              </span>
+              {locked ? <Lock size={13} className="text-oct-muted shrink-0" /> : <ChevronDown size={14} className="text-oct-muted shrink-0" />}
+            </button>
+            {switcherOpen && !locked && (
+              <>
+                <div className="fixed inset-0 z-20" onClick={() => setSwitcherOpen(false)} />
+                <div className="absolute top-full left-0 mt-1 z-30 w-56 max-h-[60vh] overflow-y-auto rounded-cockpit border-2 border-oct-border bg-oct-surface-raised shadow-oct-hard-lg py-1">
+                  {switcherOptions.map((opt) => (
+                    <button
+                      key={opt.id}
+                      onClick={() => { setPaneRoom(paneIndex, opt.id); setSwitcherOpen(false); }}
+                      className={`w-full flex items-center gap-2 px-3 py-1.5 text-left font-mono text-xs uppercase tracking-wide truncate transition-colors duration-100 ${
+                        opt.id === roomId
+                          ? 'bg-oct-accent-dim text-oct-accent'
+                          : 'text-oct-text hover:bg-oct-accent-dim hover:text-oct-accent'
+                      }`}
+                    >
+                      {opt.kind === 'mentions' ? <AtSign size={16} className="shrink-0 opacity-70" />
+                        : opt.kind === 'tg' ? <Send size={16} className="shrink-0 text-oct-accent" />
+                        : opt.kind === 'dm' ? <MessageCircle size={16} className="shrink-0 opacity-70" />
+                        : <Hash size={16} className="shrink-0 opacity-70" />}
+                      <span className="truncate">{opt.label}</span>
+                    </button>
+                  ))}
+                </div>
+              </>
+            )}
+          </div>
+        )}
 
-        {!isAnyDMView && !isMentionsView && activeRoom && (
+        {!chromeOwnsHeader && !isAnyDMView && !isMentionsView && activeRoom && (
           <span className="ml-2 font-mono text-[10px] sm:text-xs uppercase tracking-[0.15em] text-oct-muted truncate hidden lg:inline">
             {activeRoom.channels.length} channel{activeRoom.channels.length !== 1 ? 's' : ''}
           </span>
@@ -907,7 +916,7 @@ export default function ChatPane({ roomId, paneIndex, paneCount, editMode, varia
       {newMessageCount > 0 && !searchOpen && (
         <button
           onClick={jumpToPresent}
-          className="absolute top-12 left-0 right-0 z-20 flex items-center justify-between gap-2 px-3 sm:px-4 py-1.5 border-b-2 border-oct-border bg-oct-accent hover:bg-oct-accent-hover text-white font-mono text-[10px] sm:text-xs font-bold uppercase tracking-wide transition-colors duration-100"
+          className={`absolute ${chromeOwnsHeader ? 'top-9' : 'top-12'} left-0 right-0 z-20 flex items-center justify-between gap-2 px-3 sm:px-4 py-1.5 border-b-2 border-oct-border bg-oct-accent hover:bg-oct-accent-hover text-white font-mono text-[10px] sm:text-xs font-bold uppercase tracking-wide transition-colors duration-100`}
         >
           <span className="truncate">
             {newMessageCount} new message{newMessageCount !== 1 ? 's' : ''}

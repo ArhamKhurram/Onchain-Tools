@@ -1,5 +1,5 @@
 import { Key, Search, Plus, Trash2, Eye, EyeOff, Volume2, Upload, Play, Users, Shield, Tag, Zap, Settings2, ArrowLeft, HelpCircle, Bell, PanelLeftOpen, Send, Download, AlertTriangle, AtSign } from 'lucide-react';
-import type { SolPlatform, EvmPlatform, ContractClickAction, BadgeClickAction, KeywordPattern, KeywordMatchMode, SoundSettings, SoundType, SoundConfig, PushoverPriority, PushoverSound, PushoverTriggers, PushoverFilters, MessageDisplay, SplitLayout, MissedRunnerConfig, MissedRunnerNotifyVia, ToastPosition } from '../../../types';
+import type { SolPlatform, EvmPlatform, ContractClickAction, BadgeClickAction, KeywordPattern, KeywordMatchMode, SoundSettings, SoundType, SoundConfig, PushoverPriority, PushoverSound, PushoverTriggers, PushoverFilters, MessageDisplay, FeedChromePreset, SplitLayout, MissedRunnerConfig, MissedRunnerNotifyVia, ToastPosition } from '../../../types';
 import { PUSHOVER_SOUNDS, TOAST_POSITIONS, MISSED_RUNNER_NOTIFY_OPTIONS } from '../../../types';
 import { requestNotificationPermission } from '../../../utils/desktopNotification';
 import { previewSound, previewPreset, PRESET_SOUNDS } from '../../../utils/notificationSound';
@@ -34,7 +34,7 @@ export default function GeneralSection({ form }: { form: SettingsForm }) {
     setDesktopNotifications, toastAlertsEnabled, setToastAlertsEnabled, toastPosition, setToastPosition, mentionsUserEnabled,
     setMentionsUserEnabled, mentionsRoleEnabled, setMentionsRoleEnabled, mentionsHereEnabled, setMentionsHereEnabled, mentionsEveryoneEnabled,
     setMentionsEveryoneEnabled, badgeClickAction, setBadgeClickAction, chattingEnabled, setChattingEnabled, messageDisplay,
-    setMessageDisplay, compactModeAvatars, setCompactModeAvatars, roleColors, setRoleColors, mobileZoomScale,
+    setMessageDisplay, feedChromePreset, setFeedChromePreset, compactModeAvatars, setCompactModeAvatars, roleColors, setRoleColors, mobileZoomScale,
     setMobileZoomScale, splitLayout, setSplitLayout, newKeywordPattern, setNewKeywordPattern, newKeywordMatchMode,
     setNewKeywordMatchMode, newKeywordLabel, setNewKeywordLabel, saving, setSaving, newToken,
     setNewToken, showNewToken, setShowNewToken, tokenError, setTokenError, addingToken,
@@ -86,6 +86,37 @@ export default function GeneralSection({ form }: { form: SettingsForm }) {
                           />
                         </div>
                       )}
+                    </div>
+
+                    <div className="brutal-card p-3 sm:p-4">
+                      <h4 className="font-mono text-xs font-bold uppercase tracking-[0.15em] text-oct-text mb-2">[ Feed Layout ]</h4>
+                      <p className="text-xs sm:text-sm text-oct-muted mb-3">
+                        Choose the chrome around the feed — how rooms are picked and where status lives.
+                      </p>
+                      <div className="flex flex-wrap gap-1.5">
+                        {([
+                          ['terminal', 'Terminal'],
+                          ['masthead', 'Masthead'],
+                          ['rail', 'Rail'],
+                        ] as [FeedChromePreset, string][]).map(([preset, label]) => (
+                          <button
+                            key={preset}
+                            onClick={() => setFeedChromePreset(preset)}
+                            className={`px-3 py-1.5 rounded-cockpit border-2 font-mono text-xs font-bold uppercase tracking-wide transition-colors duration-100 ${
+                              feedChromePreset === preset
+                                ? 'border-oct-accent bg-oct-accent text-white'
+                                : 'border-oct-border bg-oct-bg text-oct-muted hover:text-oct-text hover:border-oct-border-bright'
+                            }`}
+                          >
+                            {label}
+                          </button>
+                        ))}
+                      </div>
+                      <p className="text-[11px] text-oct-muted mt-2">
+                        {feedChromePreset === 'terminal' && 'One dense status line. Rooms via ⌘K. Maximum feed space. (Default)'}
+                        {feedChromePreset === 'masthead' && 'Vertical room rail with a large editorial room header.'}
+                        {feedChromePreset === 'rail' && 'Icon rail, inline room dividers, bottom status bar. Densest.'}
+                      </p>
                     </div>
 
                     <div className="brutal-card p-3 sm:p-4">

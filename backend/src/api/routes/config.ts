@@ -1,10 +1,11 @@
 import { Router } from 'express';
-import { parseCallerKey, type CallerTier, type CallerTierEntry } from '@oct/shared';
+import { parseCallerKey, type CallerTier, type CallerTierEntry, type FeedChromePreset } from '@oct/shared';
 import { isHostedMode } from '../../storage/index.js';
 import type { RouterContext } from '../context.js';
 import { getUserId, safeError } from '../shared.js';
 
 const CALLER_TIERS: CallerTier[] = ['muted', 'normal', 'trusted'];
+const FEED_CHROME_PRESETS: FeedChromePreset[] = ['terminal', 'masthead', 'rail'];
 /** Bounded so a client can't grow the config blob without limit. */
 const MAX_CALLER_TIER_ENTRIES = 2000;
 const MAX_CALLER_FIELD_LEN = 200;
@@ -66,7 +67,7 @@ export function createConfigRoutes(ctx: RouterContext): Router {
 
   router.put('/config', async (req, res) => {
     const userId = getUserId(req);
-    const { globalHighlightedUsers, contractDetection, guildColors, dmColors, telegramColors, enabledGuilds, hiddenUsers, callerTiers, callerTierShowMuted, callerQualityRanking, evmAddressColor, solAddressColor, openInDiscordApp, openInTelegramApp, messageSounds, soundSettings, channelSounds, pushover, missedRunner, contractLinkTemplates, contractClickAction, showFullContractAddress, autoOpenHighlightedContracts, signalConvergenceWindowMinutes, globalKeywordPatterns, keywordAlertsEnabled, desktopNotifications, toastAlertsEnabled, toastPosition, mentionsUserEnabled, mentionsRoleEnabled, mentionsHereEnabled, mentionsEveryoneEnabled, badgeClickAction, chattingEnabled, messageDisplay, compactModeAvatars, roleColors, mobileZoomScale, splitLayout, paneRoomIds, paneLocks, gridMirror, seenAnnouncements, discordProxyUrl, workspaceLayout, discordBotDm } = req.body;
+    const { globalHighlightedUsers, contractDetection, guildColors, dmColors, telegramColors, enabledGuilds, hiddenUsers, callerTiers, callerTierShowMuted, callerQualityRanking, evmAddressColor, solAddressColor, openInDiscordApp, openInTelegramApp, messageSounds, soundSettings, channelSounds, pushover, missedRunner, contractLinkTemplates, contractClickAction, showFullContractAddress, autoOpenHighlightedContracts, signalConvergenceWindowMinutes, globalKeywordPatterns, keywordAlertsEnabled, desktopNotifications, toastAlertsEnabled, toastPosition, mentionsUserEnabled, mentionsRoleEnabled, mentionsHereEnabled, mentionsEveryoneEnabled, badgeClickAction, chattingEnabled, messageDisplay, feedChromePreset, compactModeAvatars, roleColors, mobileZoomScale, splitLayout, paneRoomIds, paneLocks, gridMirror, seenAnnouncements, discordProxyUrl, workspaceLayout, discordBotDm } = req.body;
 
     // The Discord proxy only makes sense in local mode (the connection leaves the
     // user's own machine). In hosted mode the server IP is fixed, and honouring a
@@ -151,6 +152,9 @@ export function createConfigRoutes(ctx: RouterContext): Router {
       ...(badgeClickAction !== undefined && { badgeClickAction }),
       ...(chattingEnabled !== undefined && { chattingEnabled }),
       ...(messageDisplay !== undefined && { messageDisplay }),
+      ...(feedChromePreset !== undefined && {
+        feedChromePreset: FEED_CHROME_PRESETS.includes(feedChromePreset) ? feedChromePreset : 'terminal',
+      }),
       ...(compactModeAvatars !== undefined && { compactModeAvatars }),
       ...(roleColors !== undefined && { roleColors }),
       ...(mobileZoomScale !== undefined && { mobileZoomScale }),

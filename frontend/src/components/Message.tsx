@@ -78,7 +78,7 @@ function Message({ message, isCompact, messageDisplay = 'default', compactModeAv
   const bandNameColor = callerQuality ? BAND_NAME_COLOR[callerQuality.band] : null;
   const authorNameColor = effectiveHighlighted
     ? resolvedHighlightColor
-    : (bandNameColor ?? (roleColors && message.author.roleColor ? message.author.roleColor : 'var(--oct-text)'));
+    : (bandNameColor ?? (roleColors && message.author.roleColor ? message.author.roleColor : 'rgb(var(--oct-text))'));
 
   const highlightClass = effectiveHighlighted
     ? useUsernameHighlight
@@ -344,7 +344,7 @@ function Message({ message, isCompact, messageDisplay = 'default', compactModeAv
                 <div
                   key={i}
                   className="rounded-cockpit border-2 border-oct-border border-l-4 bg-oct-surface-raised p-2 sm:p-3 max-w-full sm:max-w-[520px]"
-                  style={{ borderLeftColor: embed.color ? `#${embed.color.toString(16).padStart(6, '0')}` : 'var(--oct-border-bright)' }}
+                  style={{ borderLeftColor: embed.color ? `#${embed.color.toString(16).padStart(6, '0')}` : 'rgb(var(--oct-border-bright))' }}
                 >
                   {embed.author?.name && (
                     <div className="flex items-center gap-2 mb-1">
@@ -536,7 +536,7 @@ function Message({ message, isCompact, messageDisplay = 'default', compactModeAv
                 <div
                   key={i}
                   className="rounded-cockpit border-2 border-oct-border border-l-4 bg-oct-surface-raised p-2 sm:p-3 max-w-full sm:max-w-[520px]"
-                  style={{ borderLeftColor: embed.color ? `#${embed.color.toString(16).padStart(6, '0')}` : 'var(--oct-border-bright)' }}
+                  style={{ borderLeftColor: embed.color ? `#${embed.color.toString(16).padStart(6, '0')}` : 'rgb(var(--oct-border-bright))' }}
                 >
                   {embed.author?.name && (
                     <div className="flex items-center gap-2 mb-1">
@@ -796,7 +796,7 @@ function Message({ message, isCompact, messageDisplay = 'default', compactModeAv
               <div
                 key={i}
                 className="rounded-cockpit border-2 border-oct-border border-l-4 bg-oct-surface-raised p-2 sm:p-3 max-w-full sm:max-w-[520px]"
-                style={{ borderLeftColor: embed.color ? `#${embed.color.toString(16).padStart(6, '0')}` : 'var(--oct-border-bright)' }}
+                style={{ borderLeftColor: embed.color ? `#${embed.color.toString(16).padStart(6, '0')}` : 'rgb(var(--oct-border-bright))' }}
               >
                 {embed.author?.name && (
                   <div className="flex items-center gap-2 mb-1">

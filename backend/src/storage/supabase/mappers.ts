@@ -60,6 +60,7 @@ export const DEFAULT_SETTINGS: Omit<AppConfig, 'discordTokens' | 'rooms'> = {
   userNameCache: {},
   chattingEnabled: false,
   messageDisplay: 'default',
+  feedChromePreset: 'terminal',
   compactModeAvatars: true,
   roleColors: true,
   mobileZoomScale: 1,

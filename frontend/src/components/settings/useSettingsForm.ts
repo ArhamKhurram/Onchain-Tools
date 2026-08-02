@@ -1,10 +1,15 @@
 import { useState, useEffect, useMemo, useRef, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAppStore } from '../../stores/appStore';
-import type { SolPlatform, EvmPlatform, ContractClickAction, BadgeClickAction, KeywordPattern, KeywordMatchMode, SoundSettings, SoundType, SoundConfig, PushoverPriority, PushoverSound, PushoverTriggers, PushoverFilters, MessageDisplay, SplitLayout, MissedRunnerConfig, MissedRunnerNotifyVia, ToastPosition, DiscordBotDmConfig, CallerTierEntry } from '../../types';
+import type { SolPlatform, EvmPlatform, ContractClickAction, BadgeClickAction, KeywordPattern, KeywordMatchMode, SoundSettings, SoundType, SoundConfig, PushoverPriority, PushoverSound, PushoverTriggers, PushoverFilters, MessageDisplay, FeedChromePreset, SplitLayout, MissedRunnerConfig, MissedRunnerNotifyVia, ToastPosition, DiscordBotDmConfig, CallerTierEntry } from '../../types';
 import type { Section } from './constants';
 import { defaultSoundConfig, defaultTriggers, defaultFilters, defaultMissedRunner, defaultDiscordBotDm } from './constants';
 import { apiBase, authedFetch } from './fields';
+
+const FEED_CHROME_PRESETS: FeedChromePreset[] = ['terminal', 'masthead', 'rail'];
+
+const normalizeFeedChromePreset = (value: unknown): FeedChromePreset =>
+  FEED_CHROME_PRESETS.includes(value as FeedChromePreset) ? (value as FeedChromePreset) : 'terminal';
 
 export function useSettingsForm() {
   const config = useAppStore((s) => s.config);
@@ -121,6 +126,7 @@ export function useSettingsForm() {
   const [badgeClickAction, setBadgeClickAction] = useState<BadgeClickAction>('discord');
   const [chattingEnabled, setChattingEnabled] = useState(false);
   const [messageDisplay, setMessageDisplay] = useState<MessageDisplay>('default');
+  const [feedChromePreset, setFeedChromePreset] = useState<FeedChromePreset>('terminal');
   const [compactModeAvatars, setCompactModeAvatars] = useState(true);
   const [roleColors, setRoleColors] = useState(true);
   const [mobileZoomScale, setMobileZoomScale] = useState(1);
@@ -209,6 +215,7 @@ export function useSettingsForm() {
       setBadgeClickAction(config.badgeClickAction ?? 'discord');
       setChattingEnabled(config.chattingEnabled ?? false);
       setMessageDisplay(config.messageDisplay ?? 'default');
+      setFeedChromePreset(normalizeFeedChromePreset(config.feedChromePreset));
       setCompactModeAvatars(config.compactModeAvatars ?? true);
       setRoleColors(config.roleColors ?? true);
       setMobileZoomScale(config.mobileZoomScale ?? 1);
@@ -288,6 +295,7 @@ export function useSettingsForm() {
       badgeClickAction !== (config.badgeClickAction ?? 'discord') ||
       chattingEnabled !== (config.chattingEnabled ?? false) ||
       messageDisplay !== (config.messageDisplay ?? 'default') ||
+      feedChromePreset !== normalizeFeedChromePreset(config.feedChromePreset) ||
       compactModeAvatars !== (config.compactModeAvatars ?? true) ||
       roleColors !== (config.roleColors ?? true) ||
       mobileZoomScale !== (config.mobileZoomScale ?? 1) ||
@@ -300,7 +308,7 @@ export function useSettingsForm() {
     openInDiscordApp, openInTelegramApp, messageSounds, soundSettings, channelSounds, pushoverEnabled, pushoverAppToken, pushoverUserKey, pushoverPriority, pushoverSound, pushoverTriggers, pushoverFilters, discordBotDm,
     missedRunnerEnabled, missedRunnerMultiplier, missedRunnerLookbackHours, missedRunnerCooldownHours, missedRunnerMinMcAtCall, missedRunnerNotifyVia,
     solPlatform, evmPlatform, customSolUrl, customEvmUrl, contractClickAction, showFullContractAddress, autoOpenHighlightedContracts, signalConvergenceWindowMinutes,
-    globalKeywordPatterns, keywordAlertsEnabled, desktopNotifications, toastAlertsEnabled, toastPosition, mentionsUserEnabled, mentionsRoleEnabled, mentionsHereEnabled, mentionsEveryoneEnabled, badgeClickAction, chattingEnabled, messageDisplay, compactModeAvatars, roleColors, mobileZoomScale, splitLayout]);
+    globalKeywordPatterns, keywordAlertsEnabled, desktopNotifications, toastAlertsEnabled, toastPosition, mentionsUserEnabled, mentionsRoleEnabled, mentionsHereEnabled, mentionsEveryoneEnabled, badgeClickAction, chattingEnabled, messageDisplay, feedChromePreset, compactModeAvatars, roleColors, mobileZoomScale, splitLayout]);
 
   useEffect(() => {
     if (!hasUnsavedChanges) return;
@@ -367,6 +375,7 @@ export function useSettingsForm() {
         badgeClickAction,
         chattingEnabled,
         messageDisplay,
+        feedChromePreset,
         compactModeAvatars,
         roleColors,
         mobileZoomScale,
@@ -523,7 +532,7 @@ export function useSettingsForm() {
     setDesktopNotifications, toastAlertsEnabled, setToastAlertsEnabled, toastPosition, setToastPosition, mentionsUserEnabled,
     setMentionsUserEnabled, mentionsRoleEnabled, setMentionsRoleEnabled, mentionsHereEnabled, setMentionsHereEnabled, mentionsEveryoneEnabled,
     setMentionsEveryoneEnabled, badgeClickAction, setBadgeClickAction, chattingEnabled, setChattingEnabled, messageDisplay,
-    setMessageDisplay, compactModeAvatars, setCompactModeAvatars, roleColors, setRoleColors, mobileZoomScale,
+    setMessageDisplay, feedChromePreset, setFeedChromePreset, compactModeAvatars, setCompactModeAvatars, roleColors, setRoleColors, mobileZoomScale,
     setMobileZoomScale, splitLayout, setSplitLayout, newKeywordPattern, setNewKeywordPattern, newKeywordMatchMode,
     setNewKeywordMatchMode, newKeywordLabel, setNewKeywordLabel, saving, setSaving, newToken,
     setNewToken, showNewToken, setShowNewToken, tokenError, setTokenError, addingToken,
