@@ -6,14 +6,8 @@ interface AdminStats {
   mode: 'local' | 'hosted';
   signups: { total: number | null; last7d: number | null; last24h: number | null };
   live: { connections: number; users: number; anonymousConnections: number };
-  funnel: {
-    signedUp: number | null;
-    addedDiscordToken: number | null;
-    createdRoom: number | null;
-    detectedContract: number | null;
-    trackedWallet: number | null;
-    addedTelegram: number | null;
-  };
+  funnel: { signedUp: number | null; createdRoom: number | null; detectedContract: number | null };
+  adoption: { trackedWallet: number | null; addedTelegram: number | null; serverSideToken: number | null };
   gatingConfigured: boolean;
   generatedAt: string;
 }
@@ -149,11 +143,12 @@ function Funnel({ stats }: { stats: AdminStats }) {
   const base = stats.funnel.signedUp;
   const steps: { label: string; value: number | null; note: string }[] = [
     { label: 'Signed up', value: stats.funnel.signedUp, note: 'created an account' },
-    { label: 'Added Discord token', value: stats.funnel.addedDiscordToken, note: 'the big drop-off point' },
-    { label: 'Created a room', value: stats.funnel.createdRoom, note: 'configured a feed' },
+    { label: 'Created a room', value: stats.funnel.createdRoom, note: 'earliest proof of a working Discord token' },
     { label: 'Saw a contract', value: stats.funnel.detectedContract, note: 'got real value' },
-    { label: 'Tracked a wallet', value: stats.funnel.trackedWallet, note: 'went beyond the feed' },
-    { label: 'Added Telegram', value: stats.funnel.addedTelegram, note: 'second source' },
+  ];
+  const adoption: { label: string; value: number | null }[] = [
+    { label: 'Tracked a wallet', value: stats.adoption.trackedWallet },
+    { label: 'Added Telegram', value: stats.adoption.addedTelegram },
   ];
 
   if (base === null) return null;
@@ -200,9 +195,42 @@ function Funnel({ stats }: { stats: AdminStats }) {
         })}
       </div>
       <p className="font-mono text-[10px] text-oct-muted mt-3 leading-relaxed">
-        Counts are distinct accounts that ever reached a stage, not a strict cohort —
-        someone who added a token then deleted it still counts. Stages after the first
-        are not guaranteed sequential.
+        Distinct accounts that ever reached a stage, not a strict cohort. There is no
+        &ldquo;added a Discord token&rdquo; stage because in hosted mode the token stays in the
+        browser and never reaches the server — creating a room is the earliest thing the
+        backend can actually observe.
+      </p>
+
+      <p className="font-mono text-[10px] font-bold uppercase tracking-[0.2em] text-oct-muted mt-8 mb-4">
+        [ FEATURE ADOPTION ]
+      </p>
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+        {adoption.map((a) => {
+          const pct = a.value !== null && base > 0 ? (a.value / base) * 100 : null;
+          return (
+            <div key={a.label} className="border-2 border-oct-border bg-oct-surface p-5">
+              <div className="font-mono text-[10px] font-bold uppercase tracking-[0.15em] text-oct-muted mb-3">
+                {a.label}
+              </div>
+              <div className="flex items-baseline gap-3">
+                <span className="font-mono text-3xl font-bold tabular-nums text-oct-text">
+                  {a.value === null ? '—' : a.value.toLocaleString('en-US')}
+                </span>
+                {pct !== null && (
+                  <span className="font-mono text-[11px] text-oct-muted">{pct.toFixed(0)}% of signups</span>
+                )}
+              </div>
+            </div>
+          );
+        })}
+      </div>
+      <p className="font-mono text-[10px] text-oct-muted mt-3 leading-relaxed">
+        Independent capabilities, measured against signups — not funnel stages. Someone can
+        track a wallet without ever configuring a feed, so comparing these to each other
+        would be meaningless.
+        {stats.adoption.serverSideToken !== null && stats.adoption.serverSideToken > 0 && (
+          <> {stats.adoption.serverSideToken} account(s) store a token server-side (desktop/local installs).</>
+        )}
       </p>
     </div>
   );

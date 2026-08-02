@@ -10,17 +10,30 @@ export interface AdminStats {
   signups: { total: number | null; last7d: number | null; last24h: number | null };
   live: { connections: number; users: number; anonymousConnections: number };
   /**
-   * Activation funnel — distinct users who reached each stage. Each is a strict
-   * prerequisite for the next in practice, so the drop between stages is the
-   * interesting number, not the absolutes.
+   * Activation funnel — genuinely sequential stages only, so "% of previous"
+   * is meaningful.
+   *
+   * NOTE there is deliberately no "added a Discord token" stage. In hosted mode
+   * the token lives in the browser and never reaches the server (ADR-002), so
+   * the `discord_tokens` table is only ever written by local/desktop installs.
+   * Counting it here reported 0 while users demonstrably had working feeds.
+   * Creating a room is the earliest server-visible proof of a working token,
+   * because rooms are built from guilds the browser gateway fetched.
    */
   funnel: {
     signedUp: number | null;
-    addedDiscordToken: number | null;
     createdRoom: number | null;
     detectedContract: number | null;
+  };
+  /**
+   * Independent feature adoption. These are NOT funnel stages — a user can
+   * track a wallet without ever configuring a feed — so they are counted
+   * against signups, never against each other.
+   */
+  adoption: {
     trackedWallet: number | null;
     addedTelegram: number | null;
+    serverSideToken: number | null;
   };
   gatingConfigured: boolean;
   generatedAt: string;
@@ -82,14 +95,8 @@ export function createAdminRoutes(wsServer: WsServer): Router {
       mode: isHostedMode() ? 'hosted' : 'local',
       signups: { total: null, last7d: null, last24h: null },
       live,
-      funnel: {
-        signedUp: null,
-        addedDiscordToken: null,
-        createdRoom: null,
-        detectedContract: null,
-        trackedWallet: null,
-        addedTelegram: null,
-      },
+      funnel: { signedUp: null, createdRoom: null, detectedContract: null },
+      adoption: { trackedWallet: null, addedTelegram: null, serverSideToken: null },
       gatingConfigured: adminGatingConfigured(),
       generatedAt: new Date().toISOString(),
     };
@@ -134,18 +141,20 @@ export function createAdminRoutes(wsServer: WsServer): Router {
 
       // Each stage counts independently rather than nesting, so one failing
       // lookup degrades to a single null instead of collapsing the funnel.
-      const [discordTokens, rooms, contracts, wallets, telegram] = await Promise.all([
-        countDistinctUsers(db, 'discord_tokens'),
+      const [rooms, contracts, wallets, telegram, serverTokens] = await Promise.all([
         countDistinctUsers(db, 'rooms'),
         countDistinctUsers(db, 'contracts'),
         countDistinctUsers(db, 'user_tracked_wallets'),
         countDistinctUsers(db, 'telegram_credentials'),
+        countDistinctUsers(db, 'discord_tokens'),
       ]);
-      stats.funnel.addedDiscordToken = discordTokens;
       stats.funnel.createdRoom = rooms;
       stats.funnel.detectedContract = contracts;
-      stats.funnel.trackedWallet = wallets;
-      stats.funnel.addedTelegram = telegram;
+      stats.adoption.trackedWallet = wallets;
+      stats.adoption.addedTelegram = telegram;
+      // Expected to be 0 in a hosted-only deployment; surfaced so the number is
+      // explained rather than mistaken for a broken query.
+      stats.adoption.serverSideToken = serverTokens;
     }
 
     res.json(stats);
