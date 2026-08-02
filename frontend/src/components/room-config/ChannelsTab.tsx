@@ -1,5 +1,5 @@
 import type { Dispatch, SetStateAction } from 'react';
-import { Search, Trash2, Hash, MessageCircle, Users, Palette, Send } from 'lucide-react';
+import { Search, Trash2, Hash, MessageCircle, Users, Palette, Send, AlertTriangle, Plus } from 'lucide-react';
 import type { ChannelRef, AppConfig, AuthStatus, GuildInfo, DMChannel, TelegramChatInfo } from '../../types';
 import type { AppState } from '../../stores/appStore';
 import ColorPickerWithAlpha from '../ColorPickerWithAlpha';
@@ -426,6 +426,44 @@ export default function ChannelsTab({
                             </div>
                           </div>
                         )}
+                      </div>
+                    ) : guilds.length > 0 && (config?.enabledGuilds ?? []).length === 0 ? (
+                      // The channel picker only lists ENABLED guilds, so with none
+                      // enabled it used to sit on "Loading Discord channels..."
+                      // forever — the list was not loading, it was empty by
+                      // configuration, and nothing said so. Enable them right here
+                      // rather than sending the user to Settings and back.
+                      <div className="py-4 space-y-3">
+                        <div className="flex items-start gap-2 rounded border border-discord-yellow/30 bg-discord-yellow/5 p-3">
+                          <AlertTriangle size={16} className="text-discord-yellow shrink-0 mt-0.5" />
+                          <div className="text-xs text-discord-text-muted leading-relaxed">
+                            <span className="text-discord-text font-semibold">No guilds enabled yet.</span>{' '}
+                            Servers are off by default so the picker stays manageable. Turn on the ones
+                            you want to watch — here, or in Settings &rarr; Guilds.
+                          </div>
+                        </div>
+                        <div className="space-y-1 max-h-[220px] overflow-y-auto">
+                          {guilds
+                            .slice()
+                            .sort((a, b) => b.channels.length - a.channels.length)
+                            .map((guild) => (
+                              <button
+                                key={guild.id}
+                                onClick={() => {
+                                  const current = config?.enabledGuilds ?? [];
+                                  if (current.includes(guild.id)) return;
+                                  void updateConfig({ enabledGuilds: [...current, guild.id] });
+                                }}
+                                className="w-full flex items-center gap-2 px-3 py-2 rounded text-sm text-left bg-discord-dark/50 text-discord-text-muted hover:bg-discord-dark hover:text-discord-text transition-colors"
+                              >
+                                <Plus size={14} className="shrink-0 opacity-60" />
+                                <span className="truncate flex-1">{guild.name}</span>
+                                <span className="text-[11px] shrink-0 opacity-60">
+                                  {guild.channels.length} ch
+                                </span>
+                              </button>
+                            ))}
+                        </div>
                       </div>
                     ) : (
                       <p className="text-sm text-discord-text-muted text-center py-4">

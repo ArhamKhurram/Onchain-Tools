@@ -9,6 +9,7 @@ import { isHostedMode } from '../../../lib/supabase';
 import { isClientGatewayMode } from '../../../discord/clientGateway';
 import { Toggle } from '../fields';
 import type { SettingsForm } from '../useSettingsForm';
+import { useMemo, useRef } from 'react';
 
 export default function GuildsSection({ form }: { form: SettingsForm }) {
   const {
@@ -44,6 +45,20 @@ export default function GuildsSection({ form }: { form: SettingsForm }) {
     setImportSuccess, importFileRef, hasUnsavedChanges, guardNavigation, handleSave, handleMissedRunnerTest,
     handleExport, handleImportFile, addGlobalUser, removeGlobalUser, addKeyword,
   } = form;
+
+  // Snapshot of which guilds were enabled when this section mounted. The guild
+  // list sorts by THIS, not by the live `enabledGuilds`, so rows keep their
+  // position while you tick several in a row. Without it the list re-sorts on
+  // every toggle and clicks land on the wrong guild.
+  const initialEnabledRef = useRef<string[] | null>(null);
+  if (initialEnabledRef.current === null && config) {
+    initialEnabledRef.current = config.enabledGuilds ?? [];
+  }
+  const initialEnabledGuilds = useMemo(
+    () => new Set(initialEnabledRef.current ?? []),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [initialEnabledRef.current],
+  );
   return (
               <>
                 <div>
@@ -71,10 +86,17 @@ export default function GuildsSection({ form }: { form: SettingsForm }) {
                       <div className="space-y-1 max-h-[350px] overflow-y-auto">
                         {guilds
                           .filter((g) => !guildSearch || g.name.toLowerCase().includes(guildSearch.toLowerCase()))
+                          // Sort by the order captured when the list was opened, NOT by
+                          // live `enabledGuilds`. Sorting on the live value re-ordered the
+                          // list on every toggle: the guild you just enabled jumped to the
+                          // top, the rows shifted under the cursor, and the next click
+                          // landed on the wrong guild — so nothing changed and Save stayed
+                          // disabled, which reads as "it won't let me save".
                           .sort((a, b) => {
-                            const aEnabled = enabledGuilds.includes(a.id) ? 0 : 1;
-                            const bEnabled = enabledGuilds.includes(b.id) ? 0 : 1;
-                            return aEnabled - bEnabled;
+                            const aEnabled = initialEnabledGuilds.has(a.id) ? 0 : 1;
+                            const bEnabled = initialEnabledGuilds.has(b.id) ? 0 : 1;
+                            if (aEnabled !== bEnabled) return aEnabled - bEnabled;
+                            return a.name.localeCompare(b.name);
                           })
                           .map((guild) => {
                             const enabled = enabledGuilds.includes(guild.id);
