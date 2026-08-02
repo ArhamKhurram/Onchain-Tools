@@ -48,7 +48,7 @@ export function detectContractAddresses(content: string): ContractDetectionResul
   };
 }
 
-export const REFERRALS = { axiom: 'danielref', padre: 'daniel_dev', gmgn: 'danieldev', bloom: 'daniel' };
+export const REFERRALS = { axiom: 'xpertalt', padre: 'xpertisback', gmgn: 'xpert', bloom: '9S8HSYE56E' };
 
 export function getPresetTemplate(platform: string, chain: 'sol' | 'evm', evmChain?: string): string {
   const evmSlug = evmChain || 'base';
