@@ -1,11 +1,12 @@
-import { useEffect } from 'react';
+import { useEffect, useMemo } from 'react';
 import { MessageSquare, KeyRound } from 'lucide-react';
 import { useAuthSession } from '../hooks/useAuthSession';
 import { useAppStore } from '../stores/appStore';
 import ChatView from '../components/ChatView';
 import TokenSetup from '../components/TokenSetup';
 import GatewayAuthBanner from '../components/GatewayAuthBanner';
-import FeedToolbar from '../components/feed/FeedToolbar';
+import FeedChrome from '../components/feed/FeedChrome';
+import { DEFAULT_FEED_CHROME_PRESET, FeedChromeContext, chromeOwnsPaneHeader } from '../components/feed/feedChromeContract';
 import ConsoleEmptyState from '../components/console/ConsoleEmptyState';
 import { routes } from '../lib/routes';
 
@@ -26,6 +27,14 @@ export default function FeedPage() {
       setActiveRoom(rooms[0].id);
     }
   }, [discordConnected, rooms, paneRoomIds.length, setActiveRoom]);
+
+  const chromeContext = useMemo(
+    () => ({
+      preset: DEFAULT_FEED_CHROME_PRESET,
+      ownsPaneHeader: chromeOwnsPaneHeader(DEFAULT_FEED_CHROME_PRESET, paneRoomIds.length),
+    }),
+    [paneRoomIds.length],
+  );
 
   if (!ready || (isAuthenticated && authLoading)) {
     return (
@@ -72,12 +81,14 @@ export default function FeedPage() {
   }
 
   return (
-    <div className="flex flex-col h-full w-full min-h-0 bg-oct-bg">
-      <FeedToolbar />
-      <div className="flex flex-1 min-h-0 w-full">
-        <ChatView standalone />
-        <GatewayAuthBanner />
+    <FeedChromeContext.Provider value={chromeContext}>
+      <div className="flex flex-col h-full w-full min-h-0 bg-oct-bg">
+        <FeedChrome preset={chromeContext.preset} />
+        <div className="flex flex-1 min-h-0 w-full">
+          <ChatView standalone />
+          <GatewayAuthBanner />
+        </div>
       </div>
-    </div>
+    </FeedChromeContext.Provider>
   );
 }

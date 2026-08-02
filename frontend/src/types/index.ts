@@ -19,6 +19,7 @@ export type {
   ChannelRef,
   HighlightMode,
   MessageDisplay,
+  FeedChromePreset,
   SplitLayout,
   KeywordMatchMode,
   KeywordPattern,

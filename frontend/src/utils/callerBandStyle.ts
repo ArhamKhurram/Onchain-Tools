@@ -58,11 +58,11 @@ export function bandIsNotable(band: CallerBand): boolean {
  * the manual highlights that are supposed to stand out.
  */
 export const BAND_NAME_COLOR: Record<CallerBand, string | null> = {
-  elite: 'var(--oct-green)',
-  solid: 'var(--oct-live)',
+  elite: 'rgb(var(--oct-green))',
+  solid: 'rgb(var(--oct-live))',
   mixed: null,
   unrated: null,
-  slop: 'var(--oct-muted)',
+  slop: 'rgb(var(--oct-muted))',
 };
 
 export function formatMultiple(value: number | undefined): string {
