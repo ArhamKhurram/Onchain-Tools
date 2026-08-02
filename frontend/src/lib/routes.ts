@@ -10,6 +10,8 @@ export const routes = {
   portfolio: '/portfolio',
   workspace: '/workspace',
   settings: '/settings',
+  /** Operator-only; the API 404s for non-admins so there is no nav entry. */
+  admin: '/admin',
   login: '/login',
 } as const;
 
