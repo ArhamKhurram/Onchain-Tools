@@ -1,0 +1,58 @@
+---
+title: Onchain Tools — User Guide
+description: How to use Onchain Tools (OCT) — connect your feeds, read the signals, and tune your alerts.
+template: splash
+hero:
+  title: The user guide
+  tagline: Turn the noise of a hundred Discord and Telegram channels into one console — with the signals that matter surfaced automatically.
+  image:
+    alt: Onchain Tools
+    html: '<img src="/oct-logo.png" alt="Onchain Tools" width="320" height="320" class="oct-hero-logo" />'
+  actions:
+    - text: Get started
+      link: ./getting-started/what-is-oct/
+      icon: right-arrow
+      variant: primary
+    - text: Connect Discord
+      link: ./connecting/discord/
+      icon: external
+      variant: minimal
+---
+
+import { Card, CardGrid } from '@astrojs/starlight/components';
+
+## Where to start
+
+<CardGrid stagger>
+  <Card title="New here?" icon="rocket">
+    Start with [What is OCT?](./getting-started/what-is-oct/) then
+    [connect your Discord](./connecting/discord/) — that unlocks the Feed and
+    everything downstream of it.
+  </Card>
+  <Card title="Read the Feed" icon="comment">
+    The [Feed](./feed/feed/) aggregates every channel you watch into rooms, with
+    panes, search, and a ⌘K room switcher.
+  </Card>
+  <Card title="Work the signals" icon="magnifier">
+    [Radar](./callers/radar/) ranks tokens by how many callers are on them.
+    [FOMO](./fomo/overview/) tracks real traders. [Convergence](./fomo/convergence/)
+    fires when the two overlap.
+  </Card>
+  <Card title="Tune your alerts" icon="setting">
+    Toasts, sounds, phone push via [Pushover](./alerts/pushover/), Discord DMs,
+    and [missed-runner](./alerts/missed-runner/) alerts — all configurable.
+  </Card>
+</CardGrid>
+
+## The five modules
+
+OCT is organized into five modules you reach from the top nav:
+
+- **Feed** — live Discord/Telegram chat, aggregated into rooms.
+- **Callers** — every contract address mentioned in your feeds, plus a Radar that ranks tokens by crowd.
+- **FOMO** — live trades from the fomo.family traders you follow.
+- **Portfolio** — PnL, holdings, and activity for your own wallets.
+- **Directory** — a private watchlist of on-chain wallets to monitor.
+
+Plus a **Workspace** to build your own multi-column dashboard, and **Settings**
+for everything else.
