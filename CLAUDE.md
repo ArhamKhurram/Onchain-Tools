@@ -77,16 +77,13 @@ done.** `strict: true` is on everywhere. Coverage is unit tests over pure functi
 only — there are no integration or end-to-end tests, so the compiler still carries
 most of the weight on anything involving I/O.
 
-<<<<<<< HEAD
 The `lp-automation` Solidity is **not** covered by `npm run test`. It runs under
 Foundry in CI (`.github/workflows/ci.yml`, job `contracts`), which is its only
 automated verification — treat a red run there as blocking.
-=======
-**LP automation and the sniper do not live on this branch.** The
-`lp-automation/` workspace, its dashboard page, its `/api/lp` routes and its
-Foundry CI job are on `dev`, as is `backend/src/sniper/` (reverted from `main`
-in #55). Don't re-add them here — see the branch topology below.
->>>>>>> main
+
+LP automation and the sniper live **only** on this branch — `main` carries
+neither (the sniper was reverted from `main` in #55). See the branch topology
+below before moving work between branches.
 
 ---
 
@@ -251,45 +248,17 @@ plan. Prefer extracting from them over adding more:
 
 ### Branch topology
 
-<<<<<<< HEAD
-**You are on `dev`** — the integration branch. It carries *both* halves and
-**nothing merges out of it**; it exists to prove they still compose.
-=======
-Two long-lived branches. **`dev` is an integration branch that nothing merges
-out of** — it exists to prove production and the unshipped work still compose.
->>>>>>> main
+Two long-lived branches. **You are on `dev`** — the integration branch that
+nothing merges out of; it exists to prove production and the unshipped work
+still compose.
 
 ```
                  production work
                          │
-<<<<<<< HEAD
-main      ───●───────────●────────────●─────►   production, NO lp-automation
-              ╲           ╲            ╲
-               ╲ merge     ╲ merge      ╲ merge
-dev       ───────●───────────●────────────●─►   YOU ARE HERE (main ∪ LP-Feats)
-              ╱           ╱            ╱
-             ╱ merge     ╱ merge      ╱
-LP-Feats  ───●───────────●────────────●─────►   lp-automation + LP dashboard
-```
-
-- **Non-LP feature** → PR into `main` → merge `main` down into `dev`.
-- **LP feature** → PR into `LP-Feats` → merge `LP-Feats` down into `dev`.
-- **Never merge `dev` into `main`** — it would re-add `lp-automation/` to
-  production. The old `feature → dev → main` promotion no longer applies.
-- Do not push straight to `main`; PR + green CI first.
-
-Only `main` deploys (Railway backend, Vercel frontend + landing). `dev` and
-`LP-Feats` are for CI and local work.
-
-The commit that removed LP from `main` was merged here with `-s ours`, so git
-already considers it merged. Ordinary `main → dev` merges from here are clean —
-if one ever proposes deleting `lp-automation/` again, something has gone wrong;
-do not accept it.
-=======
 main      ───●───────────●────────────●─────►   production (Railway + Vercel)
               ╲           ╲            ╲            no LP, no sniper
                ╲ merge     ╲ merge      ╲ merge
-dev       ───────●─────●─────●─────●──────●─►   everything
+dev       ───────●─────●─────●─────●──────●─►   YOU ARE HERE
                        │           │                (main ∪ LP ∪ sniper)
                     LP / sniper work
 ```
@@ -308,10 +277,14 @@ files with no conflict, because `dev`'s copy and the revert's deletion never
 touch the same lines. Check `backend/src/sniper/` survives every `main` → `dev`
 merge and restore it from the pre-merge commit if not.
 
+LP is safer: the commit that removed `lp-automation/` from `main` was merged
+here with `-s ours`, so git already considers it merged. If a `main` → `dev`
+merge ever proposes deleting `lp-automation/` again, something has gone wrong;
+do not accept it.
+
 `main` deploys to Railway (backend) and Vercel (frontend + landing). `dev`
 deploys nowhere — it is for CI and local work. The `LP-Feats` branch was retired
-on 2026-08-03 (tag `archive/LP-Feats`); its work had all landed on `dev`.
->>>>>>> main
+on 2026-08-03 (tag `archive/LP-Feats`); its work had all landed here.
 - **Before finishing any change:** `npm run typecheck` (and the relevant `build`).
 - **Docs:** update the [roadmap](https://arhamkhurram.github.io/Onchain-Tools/roadmap/)
   when scoping features, `CHANGELOG.md` when shipping.
