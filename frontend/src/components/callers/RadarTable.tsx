@@ -384,13 +384,15 @@ export default function RadarTable({ embedded: _embedded = false }: { embedded?:
   const [copiedAddr, setCopiedAddr] = useState<string | null>(null);
   const [visibleColumns, setVisibleColumns] = useState<Set<RadarColumnId>>(() => loadVisibleRadarColumns());
   const [revealMuted, setRevealMuted] = useState(false);
-  const { qualityForContract, showMuted } = useCallerQuality();
+  // Global bands, not room-scoped: the Radar aggregates every room's calls
+  // into one table, so a row's band must reflect the caller's whole record.
+  const { qualityForContractGlobal, showMuted } = useCallerQuality();
 
   // One buildRadar pass per (contracts, quality) change; the muted counter and
   // the visible table both derive from it rather than each paying for their own.
   const radarRows = useMemo(
-    () => buildRadar(contracts, qualityForContract),
-    [contracts, qualityForContract],
+    () => buildRadar(contracts, qualityForContractGlobal),
+    [contracts, qualityForContractGlobal],
   );
 
   // Counted off the unfiltered set so the toggle still shows a number once the

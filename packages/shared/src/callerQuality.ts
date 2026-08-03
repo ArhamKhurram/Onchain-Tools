@@ -229,6 +229,75 @@ export function buildCallerScores(
 }
 
 // ---------------------------------------------------------------------------
+// Per-room scores
+// ---------------------------------------------------------------------------
+
+/** Room-scoped scores: roomId -> that room's caller scores. */
+export type RoomCallerScores = Record<string, CallerScore[]>;
+
+/**
+ * Score each caller within each room separately.
+ *
+ * A caller can be sharp in one room and noise in another; a single global band
+ * averages that away. This reuses `buildCallerScores` per room, so every
+ * attribution rule (own MC@call, one caller/token pair per room, MIN_RATED_CALLS
+ * before showing a band) holds inside the room exactly as it does globally.
+ *
+ * A contract row can land in several rooms at once and counts in each — the
+ * question a room score answers is "what has this caller's record *in here*
+ * been", and a call posted here is part of that record regardless of where
+ * else it also landed.
+ */
+export function buildRoomCallerScores(
+  contracts: ContractEntry[],
+  peakFor: PeakLookup,
+  windowDays: number,
+): RoomCallerScores {
+  const byRoom = new Map<string, ContractEntry[]>();
+  for (const entry of contracts) {
+    for (const roomId of entry.roomIds ?? []) {
+      let list = byRoom.get(roomId);
+      if (!list) {
+        list = [];
+        byRoom.set(roomId, list);
+      }
+      list.push(entry);
+    }
+  }
+
+  const out: RoomCallerScores = {};
+  for (const [roomId, group] of byRoom) {
+    out[roomId] = buildCallerScores(group, peakFor, windowDays);
+  }
+  return out;
+}
+
+/**
+ * Which earned score a room-scoped surface should show.
+ *
+ * Prefer the caller's record in the room(s) the message/contract actually
+ * landed in — but only once that record is *rated*. A caller with 3 calls in
+ * this room and 40 globally should show their global band, not flash unrated;
+ * MIN_RATED_CALLS exists precisely so thin samples don't display as signal.
+ * When several rooms match, the largest rated sample wins. Falls back to the
+ * global score otherwise, and says which one it picked so the UI can label it.
+ */
+export function pickRoomScore(
+  roomIds: string[],
+  roomScoreFor: (roomId: string) => CallerScore | undefined,
+  globalScore: CallerScore | undefined,
+): { score?: CallerScore; scope: 'room' | 'global' } {
+  let best: CallerScore | undefined;
+  for (const roomId of roomIds) {
+    const s = roomScoreFor(roomId);
+    if (!s || s.band === 'unrated') continue;
+    if (!best || s.rated > best.rated) best = s;
+  }
+  if (best) return { score: best, scope: 'room' };
+  return { score: globalScore, scope: 'global' };
+}
+
+// ---------------------------------------------------------------------------
 // Display + ordering
 // ---------------------------------------------------------------------------
 

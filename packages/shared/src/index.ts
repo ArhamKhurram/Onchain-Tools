@@ -47,6 +47,8 @@ export {
   bandFromRates,
   scoreCaller,
   buildCallerScores,
+  buildRoomCallerScores,
+  pickRoomScore,
   effectiveBand,
   callerRank,
 } from './callerQuality.js';
@@ -55,6 +57,7 @@ export type {
   CallerBand,
   RatedCall,
   CallerScore,
+  RoomCallerScores,
   PeakLookup,
 } from './callerQuality.js';
 
