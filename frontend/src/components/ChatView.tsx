@@ -19,11 +19,11 @@ export default function ChatView({ standalone = false }: ChatViewProps) {
 
   if (paneRoomIds.length === 0) {
     return (
-      <div className="flex-1 flex flex-col bg-discord-main">
+      <div className="flex-1 flex flex-col bg-oct-surface-raised">
         <div className="flex-1 flex items-center justify-center">
-          <div className="text-center text-discord-text-muted px-6">
+          <div className="text-center text-oct-muted px-6">
             <Hash size={48} className="mx-auto mb-4 opacity-30" />
-            <p className="text-xl font-semibold mb-2 text-discord-header-primary">No room selected</p>
+            <p className="font-display text-xl tracking-tight mb-2 text-oct-text">No room selected</p>
             <p className="text-sm mb-5">
               {standalone
                 ? 'Create a room and add Discord channels to start streaming.'
@@ -33,7 +33,7 @@ export default function ChatView({ standalone = false }: ChatViewProps) {
               <button
                 type="button"
                 onClick={() => openConfigModal()}
-                className="inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-oct-accent hover:bg-oct-accent-hover text-sm font-medium text-white transition-colors"
+                className="brutal-btn inline-flex items-center gap-2 px-4 py-2 text-sm"
               >
                 <Plus size={16} />
                 Create room
@@ -46,8 +46,8 @@ export default function ChatView({ standalone = false }: ChatViewProps) {
   }
 
   const count = paneRoomIds.length;
-  const vHandleCls = `h-1 bg-discord-dark transition-colors ${editMode ? 'hover:bg-discord-blurple cursor-row-resize' : ''}`;
-  const hHandleCls = `w-1 bg-discord-dark transition-colors ${editMode ? 'hover:bg-discord-blurple cursor-col-resize' : ''}`;
+  const vHandleCls = `h-0.5 bg-oct-border transition-colors duration-100 ${editMode ? 'hover:bg-oct-accent cursor-row-resize' : ''}`;
+  const hHandleCls = `w-0.5 bg-oct-border transition-colors duration-100 ${editMode ? 'hover:bg-oct-accent cursor-col-resize' : ''}`;
 
   if (count === 1) {
     return <ChatPane roomId={paneRoomIds[0]} paneIndex={0} paneCount={1} editMode={editMode} />;

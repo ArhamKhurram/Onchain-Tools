@@ -25,7 +25,7 @@ editing history.
 | [006](../006-in-process-bot/) | The OCT bot runs in-process with the backend |
 | [007](../007-storage-interface/) | All user-scoped persistence behind `StorageProvider` |
 | [008](../008-local-loopback/) | Local mode binds loopback |
-| [009](../009-branch-topology/) | Branch topology: `main` / `dev` / `LP-Feats` |
+| [009](../009-branch-topology/) | Branch topology: `main` / `dev` |
 | [010](../010-event-driven-announce/) | Changelog announcements are event-driven, not scheduled |
 | [011](../011-sniper-custody/) | The sniper never holds a wallet key |
 | [012](../012-venue-tenancy/) | Users bring their own venue accounts (multi-tenant) |

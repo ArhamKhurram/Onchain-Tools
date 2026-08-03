@@ -39,8 +39,8 @@ export default function CallerQualitySection({ form }: { form: SettingsForm }) {
   return (
     <>
       <div>
-        <h3 className="text-oct-text font-extrabold uppercase text-lg mb-1">Caller Quality</h3>
-        <p className="text-sm text-discord-text-muted">
+        <h3 className="font-display text-xl sm:text-2xl tracking-tight text-oct-text mb-1">Caller Quality</h3>
+        <p className="text-sm text-oct-muted">
           Rank contract calls by who sent them. Mute the slop, float the callers worth
           watching. Muted callers are collapsed rather than deleted — a caller you've
           written off can still be first on a runner.
@@ -53,7 +53,7 @@ export default function CallerQualitySection({ form }: { form: SettingsForm }) {
           onChange={setCallerTierShowMuted}
           label="Keep muted callers reachable"
         />
-        <p className="text-xs text-discord-text-muted -mt-2">
+        <p className="text-xs text-oct-muted -mt-2">
           Collapse muted callers' contracts behind a counter you can expand, instead of
           hiding them completely.
         </p>
@@ -62,23 +62,23 @@ export default function CallerQualitySection({ form }: { form: SettingsForm }) {
           onChange={setCallerQualityRanking}
           label="Rank the contract feed by caller quality"
         />
-        <p className="text-xs text-discord-text-muted -mt-2">
+        <p className="text-xs text-oct-muted -mt-2">
           Trusted and high-scoring callers sort to the top. Off = newest first, as before.
         </p>
       </div>
 
       {/* Manual tiers */}
       <div>
-        <label className="block text-[11px] font-semibold uppercase tracking-wide text-discord-text-muted mb-2">
+        <label className="block font-mono text-xs uppercase tracking-[0.2em] text-oct-muted mb-2">
           Manual tiers ({callerTiers.length})
         </label>
-        <p className="text-xs text-discord-text-muted mb-3">
+        <p className="text-xs text-oct-muted mb-3">
           Set these by right-clicking a name in any chat feed. A room-specific tier beats a
           global one, so a caller can be slop in one room and fine elsewhere.
         </p>
 
         {callerTiers.length === 0 ? (
-          <p className="text-sm text-discord-text-muted text-center py-4 border-2 border-dashed border-discord-divider rounded">
+          <p className="text-sm text-oct-muted text-center py-4 border-2 border-dashed border-oct-border rounded-cockpit">
             No manual tiers yet.
           </p>
         ) : (
@@ -89,7 +89,7 @@ export default function CallerQualitySection({ form }: { form: SettingsForm }) {
               return (
                 <div
                   key={`${entry.key}:${entry.roomId ?? 'global'}`}
-                  className="flex items-center justify-between gap-2 px-3 py-2 bg-discord-dark rounded"
+                  className="flex items-center justify-between gap-2 px-3 py-2 rounded-cockpit border-2 border-oct-border bg-oct-surface-raised"
                 >
                   <div className="flex items-center gap-2 min-w-0">
                     {entry.tier === 'muted' ? (
@@ -98,14 +98,14 @@ export default function CallerQualitySection({ form }: { form: SettingsForm }) {
                       <Star size={13} className="text-oct-yellow shrink-0" />
                     )}
                     <div className="min-w-0">
-                      <div className="text-sm text-discord-text truncate">
+                      <div className="text-sm text-oct-text truncate">
                         {entry.displayName}
-                        <span className="ml-2 text-[10px] uppercase text-discord-text-muted">
+                        <span className="ml-2 font-mono text-[10px] uppercase tracking-wide text-oct-muted">
                           {parsed?.platform ?? '?'} · {roomName(entry.roomId)}
                         </span>
                       </div>
                       {score && score.band !== 'unrated' && (
-                        <div className={`text-[10px] ${BAND_TEXT_CLASS[score.band]}`}>
+                        <div className={`font-mono text-[10px] ${BAND_TEXT_CLASS[score.band]}`}>
                           scored {BAND_LABELS[score.band]} · med{' '}
                           {formatMultiple(score.medianMultiple)}
                         </div>
@@ -120,7 +120,7 @@ export default function CallerQualitySection({ form }: { form: SettingsForm }) {
                         ),
                       )
                     }
-                    className="text-discord-text-muted hover:text-discord-red shrink-0"
+                    className="text-oct-muted hover:text-oct-flame shrink-0"
                     title="Remove this tier"
                   >
                     <Trash2 size={14} />
@@ -134,10 +134,10 @@ export default function CallerQualitySection({ form }: { form: SettingsForm }) {
 
       {/* Earned scores */}
       <div>
-        <label className="block text-[11px] font-semibold uppercase tracking-wide text-discord-text-muted mb-2">
+        <label className="block font-mono text-xs uppercase tracking-[0.2em] text-oct-muted mb-2">
           Earned scores
         </label>
-        <div className="flex items-start gap-2 text-xs text-discord-text-muted mb-3">
+        <div className="flex items-start gap-2 text-xs text-oct-muted mb-3">
           <Info size={13} className="shrink-0 mt-0.5" />
           <p>
             Scored from each caller's own calls — their MC at the moment they posted, against
@@ -149,9 +149,9 @@ export default function CallerQualitySection({ form }: { form: SettingsForm }) {
         </div>
 
         {!loaded ? (
-          <p className="text-sm text-discord-text-muted text-center py-4">Loading scores…</p>
+          <p className="text-sm text-oct-muted text-center py-4">Loading scores…</p>
         ) : ratedScores.length === 0 ? (
-          <p className="text-sm text-discord-text-muted text-center py-4 border-2 border-dashed border-discord-divider rounded">
+          <p className="text-sm text-oct-muted text-center py-4 border-2 border-dashed border-oct-border rounded-cockpit">
             Nobody has enough scored calls yet. Peaks are sampled every few minutes, so this
             fills in over the first day or so of running.
           </p>
@@ -159,7 +159,7 @@ export default function CallerQualitySection({ form }: { form: SettingsForm }) {
           <div className="space-y-1">
             <div className="flex items-center justify-between gap-2 px-3">
               <span />
-              <div className="flex items-center gap-3 shrink-0 font-mono text-[9px] uppercase tracking-wide text-discord-text-muted">
+              <div className="flex items-center gap-3 shrink-0 font-mono text-[9px] uppercase tracking-wide text-oct-muted">
                 <span className="w-10 text-right" title="Median of (peak MC since call ÷ MC at call), across their rated calls">
                   Median
                 </span>
@@ -177,30 +177,30 @@ export default function CallerQualitySection({ form }: { form: SettingsForm }) {
             {ratedScores.map((score) => (
               <div
                 key={score.key}
-                className="flex items-center justify-between gap-2 px-3 py-2 bg-discord-dark rounded"
+                className="flex items-center justify-between gap-2 px-3 py-2 rounded-cockpit border-2 border-oct-border bg-oct-surface-raised"
                 title={BAND_TITLE[score.band]}
               >
                 <div className="min-w-0">
-                  <div className="text-sm text-discord-text truncate">{score.displayName}</div>
-                  <div className="text-[10px] text-discord-text-muted">
+                  <div className="text-sm text-oct-text truncate">{score.displayName}</div>
+                  <div className="font-mono text-[10px] text-oct-muted">
                     {score.rated} rated of {score.calls} calls
                   </div>
                 </div>
                 <div className="flex items-center gap-3 shrink-0 font-mono text-[11px]">
                   <span
-                    className="w-10 text-right text-discord-text-muted"
+                    className="w-10 text-right text-oct-muted"
                     title="Median multiple: peak MC since call ÷ MC at call"
                   >
                     {formatMultiple(score.medianMultiple)}
                   </span>
                   <span
-                    className="w-10 text-right text-discord-text-muted"
+                    className="w-10 text-right text-oct-muted"
                     title="Best call: highest peak MC ÷ MC at call"
                   >
                     {formatMultiple(score.bestMultiple)}
                   </span>
                   <span
-                    className="w-14 text-right text-discord-text-muted"
+                    className="w-14 text-right text-oct-muted"
                     title="Share of rated calls that hit 2x from call MC"
                   >
                     2x {formatRate(score.hitRate2x)}

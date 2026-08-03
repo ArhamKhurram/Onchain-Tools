@@ -43,6 +43,61 @@ describe('processDiscordMessage (shared via backend shim)', () => {
     expect(r.hasContractAddress).toBe(false);
   });
 
+  // Bots post the CA inside an embed and leave content empty. Scanning content
+  // alone meant only Rick's calls were detected (it has a dedicated parser), so
+  // every other scanner's contracts were unclickable.
+  it('detects a contract in an embed description when content is empty', () => {
+    const r = processDiscordMessage(
+      gateway,
+      rawMsg({ content: '', embeds: [{ description: `New pair detected\nCA: ${EVM}` }] }),
+      undefined, undefined, undefined, ctx({}),
+    );
+    expect(r.hasContractAddress).toBe(true);
+    expect(r.contractAddresses).toContain(EVM);
+  });
+
+  it('detects a contract in embed title, fields, footer and author', () => {
+    const inField = processDiscordMessage(
+      gateway,
+      rawMsg({ content: '', embeds: [{ title: 'PEPE/WETH', fields: [{ name: 'Contract', value: EVM }] }] }),
+      undefined, undefined, undefined, ctx({}),
+    );
+    expect(inField.contractAddresses).toContain(EVM);
+
+    const inFooter = processDiscordMessage(
+      gateway,
+      rawMsg({ content: '', embeds: [{ footer: { text: EVM } }] }),
+      undefined, undefined, undefined, ctx({}),
+    );
+    expect(inFooter.contractAddresses).toContain(EVM);
+
+    const inAuthor = processDiscordMessage(
+      gateway,
+      rawMsg({ content: '', embeds: [{ author: { name: `scanner ${EVM}` } }] }),
+      undefined, undefined, undefined, ctx({}),
+    );
+    expect(inAuthor.contractAddresses).toContain(EVM);
+  });
+
+  it('still honours the detection flag for embed contracts', () => {
+    const r = processDiscordMessage(
+      gateway,
+      rawMsg({ content: '', embeds: [{ description: EVM }] }),
+      undefined, undefined, undefined, ctx({ contractDetection: false }),
+    );
+    expect(r.hasContractAddress).toBe(false);
+  });
+
+  it('does not invent a contract for embeds without one', () => {
+    const r = processDiscordMessage(
+      gateway,
+      rawMsg({ content: '', embeds: [{ title: 'Daily recap', description: 'no addresses here' }] }),
+      undefined, undefined, undefined, ctx({}),
+    );
+    expect(r.hasContractAddress).toBe(false);
+    expect(r.contractAddresses).toEqual([]);
+  });
+
   it('matches global + room keyword patterns, else undefined', () => {
     const withKw = processDiscordMessage(
       gateway, rawMsg({ content: 'stealth launch incoming' }), undefined, undefined,

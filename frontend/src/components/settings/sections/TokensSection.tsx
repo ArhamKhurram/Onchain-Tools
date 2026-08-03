@@ -46,12 +46,12 @@ export default function TokensSection({ form }: { form: SettingsForm }) {
   } = form;
   return (
               <>
-                <div>
-                  <h3 className="text-base sm:text-base sm:text-lg font-semibold text-white mb-1">Discord Tokens</h3>
-                  <p className="text-xs sm:text-sm text-discord-text-muted mb-3 sm:mb-4">
+                <div className="brutal-card p-3 sm:p-4">
+                  <h3 className="font-display text-3xl sm:text-4xl tracking-tight text-oct-text mb-1">Discord Tokens</h3>
+                  <p className="text-xs sm:text-sm text-oct-muted mb-3 sm:mb-4">
                     Manage your Discord authentication tokens. Multiple tokens allow monitoring across different accounts.
                     {isClientGatewayMode() && (
-                      <span className="block mt-2 text-discord-yellow/90">
+                      <span className="block mt-2 text-oct-yellow">
                         Hosted mode: tokens are stored only in this browser and connect directly to Discord — they never touch our servers.
                       </span>
                     )}
@@ -62,16 +62,16 @@ export default function TokensSection({ form }: { form: SettingsForm }) {
                       {maskedTokens.map((t) => (
                         <div
                           key={t.index}
-                          className={`flex items-center justify-between gap-2 px-2 sm:px-3 py-2 sm:py-2.5 rounded ${t.invalid ? 'bg-discord-red/10 ring-1 ring-discord-red/40' : 'bg-discord-sidebar'}`}
+                          className={`flex items-center justify-between gap-2 px-2 sm:px-3 py-2 sm:py-2.5 rounded-cockpit border-2 ${t.invalid ? 'border-oct-flame bg-oct-flame/15' : 'border-oct-border bg-oct-surface-raised'}`}
                         >
                           <div className="flex items-center gap-1.5 sm:gap-2 min-w-0">
-                            <Key size={14} className={`shrink-0 ${t.invalid ? 'text-discord-red' : 'text-discord-blurple'}`} />
-                            <span className="text-xs sm:text-sm text-discord-text font-mono tracking-wider truncate">{t.masked}</span>
-                            <span className={`text-[10px] px-1 sm:px-1.5 py-0.5 rounded font-semibold shrink-0 ${t.invalid ? 'bg-discord-red/20 text-discord-red' : 'bg-discord-blurple/20 text-discord-blurple'}`}>
+                            <Key size={14} className={`shrink-0 ${t.invalid ? 'text-oct-flame' : 'text-oct-accent'}`} />
+                            <span className="text-xs sm:text-sm text-oct-text font-mono tracking-wider truncate">{t.masked}</span>
+                            <span className={`inline-flex items-center rounded-cockpit border-2 px-1 sm:px-1.5 py-0.5 font-mono text-[10px] font-bold uppercase tracking-wide shrink-0 ${t.invalid ? 'border-oct-flame bg-oct-flame/15 text-oct-flame' : 'border-oct-accent bg-oct-accent-dim text-oct-accent'}`}>
                               #{t.index + 1}
                             </span>
                             {t.invalid && (
-                              <span className="flex items-center gap-1 text-[10px] px-1 sm:px-1.5 py-0.5 rounded bg-discord-red/20 text-discord-red font-semibold shrink-0">
+                              <span className="inline-flex items-center gap-1 rounded-cockpit border-2 border-oct-flame bg-oct-flame/15 px-1 sm:px-1.5 py-0.5 font-mono text-[10px] font-bold uppercase tracking-wide text-oct-flame shrink-0">
                                 <AlertTriangle size={11} />
                                 Invalid
                               </span>
@@ -79,7 +79,7 @@ export default function TokensSection({ form }: { form: SettingsForm }) {
                           </div>
                           <button
                             onClick={async () => { await removeToken(t.index); }}
-                            className="text-discord-text-muted hover:text-discord-red shrink-0"
+                            className="text-oct-muted hover:text-oct-flame transition-colors duration-100 shrink-0"
                             title="Remove token"
                           >
                             <Trash2 size={14} />
@@ -89,7 +89,7 @@ export default function TokensSection({ form }: { form: SettingsForm }) {
                     </div>
                   )}
                   {maskedTokens.length === 0 && (
-                    <p className="text-sm text-discord-text-muted text-center py-3 mb-4 bg-discord-sidebar/50 rounded">
+                    <p className="text-sm text-oct-muted text-center py-3 mb-4 rounded-cockpit border-2 border-oct-border bg-oct-surface-raised">
                       No tokens configured.
                     </p>
                   )}
@@ -112,7 +112,7 @@ export default function TokensSection({ form }: { form: SettingsForm }) {
                         }}
                         placeholder="Paste Discord token..."
                         name="oct-token-field"
-                        className="w-full bg-discord-sidebar border-none rounded px-2 sm:px-3 py-2 pr-8 sm:pr-9 text-xs sm:text-sm text-discord-text outline-none focus:ring-2 focus:ring-discord-blurple font-mono"
+                        className="w-full px-2 sm:px-3 py-2 pr-8 sm:pr-9 rounded-cockpit bg-oct-bg border-2 border-oct-border font-mono text-xs sm:text-sm text-oct-text placeholder:text-oct-muted/60 focus:outline-none focus:border-oct-accent disabled:opacity-60 disabled:cursor-not-allowed"
                         disabled={addingToken}
                         autoComplete="one-time-code"
                         data-1p-ignore
@@ -121,7 +121,7 @@ export default function TokensSection({ form }: { form: SettingsForm }) {
                       />
                       <button
                         onClick={() => setShowNewToken(!showNewToken)}
-                        className="absolute right-2 top-1/2 -translate-y-1/2 text-discord-text-muted hover:text-discord-text"
+                        className="absolute right-2 top-1/2 -translate-y-1/2 text-oct-muted hover:text-oct-text transition-colors duration-100"
                         type="button"
                         tabIndex={-1}
                       >
@@ -139,21 +139,21 @@ export default function TokensSection({ form }: { form: SettingsForm }) {
                         setAddingToken(false);
                       }}
                       disabled={addingToken || !newToken.trim()}
-                      className="px-3 py-2 bg-discord-blurple hover:bg-discord-blurple-hover disabled:opacity-50 disabled:cursor-not-allowed rounded text-sm text-white transition-colors"
+                      className="brutal-btn px-3 py-2 text-sm"
                     >
                       <Plus size={16} />
                     </button>
                   </div>
                   {tokenError && (
-                    <p className="text-xs text-discord-red mt-1.5">{tokenError}</p>
+                    <p className="text-xs text-oct-flame mt-1.5">{tokenError}</p>
                   )}
                 </div>
 
                 {/* Connection / Proxy (desktop only) */}
                 {!isHostedMode && (
-                  <div className="mt-8 pt-6 border-t border-discord-divider">
-                    <h3 className="text-base sm:text-lg font-semibold text-white mb-1">Connection</h3>
-                    <p className="text-xs sm:text-sm text-discord-text-muted mb-3 sm:mb-4">
+                  <div className="brutal-card p-3 sm:p-4 mt-6">
+                    <h3 className="font-display text-3xl sm:text-4xl tracking-tight text-oct-text mb-1">Connection</h3>
+                    <p className="text-xs sm:text-sm text-oct-muted mb-3 sm:mb-4">
                       If Discord won't load on a VPN, route the connection through an HTTP/HTTPS proxy.
                       Leave blank to connect directly. SOCKS proxies are not supported.
                     </p>
@@ -163,7 +163,7 @@ export default function TokensSection({ form }: { form: SettingsForm }) {
                         value={proxyUrl}
                         onChange={(e) => { setProxyUrl(e.target.value); setProxySaved(false); }}
                         placeholder="http://user:pass@host:port"
-                        className="flex-1 bg-discord-sidebar border-none rounded px-2 sm:px-3 py-2 text-xs sm:text-sm text-discord-text outline-none focus:ring-2 focus:ring-discord-blurple font-mono"
+                        className="flex-1 px-2 sm:px-3 py-2 rounded-cockpit bg-oct-bg border-2 border-oct-border font-mono text-xs sm:text-sm text-oct-text placeholder:text-oct-muted/60 focus:outline-none focus:border-oct-accent disabled:opacity-60 disabled:cursor-not-allowed"
                         disabled={proxySaving}
                         spellCheck={false}
                         autoComplete="off"
@@ -177,13 +177,13 @@ export default function TokensSection({ form }: { form: SettingsForm }) {
                           setProxySaved(true);
                         }}
                         disabled={proxySaving || proxyUrl.trim() === (config?.discordProxyUrl ?? '')}
-                        className="px-3 py-2 bg-discord-blurple hover:bg-discord-blurple-hover disabled:opacity-50 disabled:cursor-not-allowed rounded text-sm text-white transition-colors whitespace-nowrap"
+                        className="brutal-btn px-3 py-2 text-sm whitespace-nowrap"
                       >
                         {proxySaving ? 'Saving…' : 'Save'}
                       </button>
                     </div>
                     {proxySaved && (
-                      <p className="text-xs text-discord-green mt-1.5">
+                      <p className="text-xs text-oct-green mt-1.5">
                         Saved. Reconnecting Discord{proxyUrl.trim() ? ' through the proxy' : ' directly'}…
                       </p>
                     )}
@@ -191,38 +191,38 @@ export default function TokensSection({ form }: { form: SettingsForm }) {
                 )}
 
                 {/* Telegram Section */}
-                <div className="mt-8 pt-6 border-t border-discord-divider">
-                  <h3 className="text-base sm:text-lg font-semibold text-white mb-1">Telegram</h3>
-                  <p className="text-xs sm:text-sm text-discord-text-muted mb-3 sm:mb-4">
+                <div className="brutal-card p-3 sm:p-4 mt-6">
+                  <h3 className="font-display text-3xl sm:text-4xl tracking-tight text-oct-text mb-1">Telegram</h3>
+                  <p className="text-xs sm:text-sm text-oct-muted mb-3 sm:mb-4">
                     Connect your Telegram account to combine TG chats with Discord channels in your rooms.
                   </p>
 
                   {authStatus?.telegramConnected ? (
                     <div className="space-y-3">
-                      <div className="flex items-center gap-2 px-3 py-2.5 bg-discord-sidebar rounded">
-                        <div className="w-2 h-2 rounded-full bg-discord-green" />
-                        <span className="text-sm text-discord-text">Telegram connected</span>
+                      <div className="flex items-center gap-2 px-3 py-2.5 rounded-cockpit border-2 border-oct-border bg-oct-surface-raised">
+                        <div className="w-2 h-2 rounded-full bg-oct-green" />
+                        <span className="text-sm text-oct-text">Telegram connected</span>
                       </div>
                       <button
                         onClick={async () => {
                           await telegramDisconnect();
                         }}
-                        className="px-4 py-2 bg-discord-red/20 hover:bg-discord-red/30 text-discord-red rounded text-sm font-medium transition-colors"
+                        className="brutal-btn-ghost px-4 py-2 text-sm hover:border-oct-flame hover:text-oct-flame"
                       >
                         Disconnect Telegram
                       </button>
                     </div>
                   ) : authStatus?.telegramConfigured ? (
                     <div className="space-y-3">
-                      <div className="flex items-center gap-2 px-3 py-2.5 bg-discord-sidebar rounded">
-                        <div className="w-2 h-2 rounded-full bg-yellow-500" />
-                        <span className="text-sm text-discord-text">Telegram configured but not connected</span>
+                      <div className="flex items-center gap-2 px-3 py-2.5 rounded-cockpit border-2 border-oct-border bg-oct-surface-raised">
+                        <div className="w-2 h-2 rounded-full bg-oct-yellow" />
+                        <span className="text-sm text-oct-text">Telegram configured but not connected</span>
                       </div>
                       <button
                         onClick={async () => {
                           await telegramDisconnect();
                         }}
-                        className="px-4 py-2 bg-discord-red/20 hover:bg-discord-red/30 text-discord-red rounded text-sm font-medium transition-colors"
+                        className="brutal-btn-ghost px-4 py-2 text-sm hover:border-oct-flame hover:text-oct-flame"
                       >
                         Remove Telegram Session
                       </button>
@@ -234,7 +234,7 @@ export default function TokensSection({ form }: { form: SettingsForm }) {
                       ) : (
                         <button
                           onClick={() => setShowTelegramSetup(true)}
-                          className="px-4 py-2.5 bg-[#2AABEE] hover:bg-[#229ED9] rounded text-sm font-medium text-white transition-colors"
+                          className="brutal-btn px-4 py-2.5 text-sm"
                         >
                           Connect Telegram
                         </button>

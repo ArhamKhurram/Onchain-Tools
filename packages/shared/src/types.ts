@@ -117,6 +117,7 @@ export interface ChannelRef {
 
 export type HighlightMode = 'background' | 'username';
 export type MessageDisplay = 'default' | 'compact';
+export type FeedChromePreset = 'terminal' | 'masthead' | 'rail';
 export type SplitLayout = 'row' | 'grid';
 
 export type KeywordMatchMode = 'includes' | 'exact' | 'regex';
@@ -361,6 +362,8 @@ export interface AppConfig {
   userNameCache: Record<string, string>;
   chattingEnabled: boolean;
   messageDisplay: MessageDisplay;
+  /** Which chrome layout the Feed renders around the message list. */
+  feedChromePreset?: FeedChromePreset;
   compactModeAvatars: boolean;
   roleColors: boolean;
   mobileZoomScale: number;

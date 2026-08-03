@@ -26,6 +26,7 @@ export default {
           'live-dim': 'rgb(var(--oct-live-dim))',
           green: 'rgb(var(--oct-green) / <alpha-value>)',
           yellow: 'rgb(var(--oct-yellow) / <alpha-value>)',
+          telegram: 'rgb(var(--oct-telegram) / <alpha-value>)',
         },
         discord: {
           dark: 'rgb(var(--oct-bg) / <alpha-value>)',
