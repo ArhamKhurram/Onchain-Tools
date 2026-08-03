@@ -6,6 +6,7 @@ import {
   BAND_TEXT_CLASS,
   BAND_TITLE,
   formatMultiple,
+  formatMultipleFloor,
   formatRate,
 } from '../../../utils/callerBandStyle';
 import { Toggle } from '../fields';
@@ -141,8 +142,10 @@ export default function CallerQualitySection({ form }: { form: SettingsForm }) {
           <Info size={13} className="shrink-0 mt-0.5" />
           <p>
             Scored from each caller's own calls — their MC at the moment they posted, against
-            the highest that token has reached since. A caller stays unrated below{' '}
-            {MIN_RATED_CALLS} scored calls rather than showing a number built on noise.
+            the highest we've <em>observed</em> that token reach since. Peaks are sampled, so
+            a spike between samples is missed: multiples are floors, not exact ATHs. A caller
+            stays unrated below {MIN_RATED_CALLS} scored calls rather than showing a number
+            built on noise.
             {windowDays ? ` Window: last ${windowDays} days.` : ''}
             {pricedTokens != null ? ` ${pricedTokens} tokens priced.` : ''}
           </p>
@@ -160,10 +163,10 @@ export default function CallerQualitySection({ form }: { form: SettingsForm }) {
             <div className="flex items-center justify-between gap-2 px-3">
               <span />
               <div className="flex items-center gap-3 shrink-0 font-mono text-[9px] uppercase tracking-wide text-oct-muted">
-                <span className="w-10 text-right" title="Median of (peak MC since call ÷ MC at call), across their rated calls">
+                <span className="w-10 text-right" title="Median of (observed peak MC since call ÷ MC at call), across their rated calls. Peaks are sampled, so these are floors.">
                   Median
                 </span>
-                <span className="w-10 text-right" title="Their single best call — highest peak MC ÷ MC at call">
+                <span className="w-12 text-right" title="Their single best call — highest observed peak ÷ MC at call. An observed floor: a spike between samples is missed, so the true ATH can be higher.">
                   Best
                 </span>
                 <span className="w-14 text-right" title="Share of their rated calls that went on to 2x from call MC">
@@ -189,15 +192,15 @@ export default function CallerQualitySection({ form }: { form: SettingsForm }) {
                 <div className="flex items-center gap-3 shrink-0 font-mono text-[11px]">
                   <span
                     className="w-10 text-right text-oct-muted"
-                    title="Median multiple: peak MC since call ÷ MC at call"
+                    title="Median multiple: observed peak MC since call ÷ MC at call (a floor — peaks are sampled)"
                   >
                     {formatMultiple(score.medianMultiple)}
                   </span>
                   <span
-                    className="w-10 text-right text-oct-muted"
-                    title="Best call: highest peak MC ÷ MC at call"
+                    className="w-12 text-right text-oct-muted"
+                    title="Best call: highest observed peak ÷ MC at call. At least this — the true ATH can be higher."
                   >
-                    {formatMultiple(score.bestMultiple)}
+                    {formatMultipleFloor(score.bestMultiple)}
                   </span>
                   <span
                     className="w-14 text-right text-oct-muted"

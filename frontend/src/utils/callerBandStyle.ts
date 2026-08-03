@@ -70,6 +70,16 @@ export function formatMultiple(value: number | undefined): string {
   return `${value >= 10 ? value.toFixed(0) : value.toFixed(1)}×`;
 }
 
+/**
+ * A multiple that is an observed floor, not an exact figure. Peaks are sampled
+ * (every ~3 min, plus opportunistic observations), so a spike between samples
+ * is missed — the honest claim is "at least this", never "exactly this".
+ */
+export function formatMultipleFloor(value: number | undefined): string {
+  if (value == null || !Number.isFinite(value)) return '—';
+  return `≥${formatMultiple(value)}`;
+}
+
 export function formatRate(value: number | undefined): string {
   if (value == null || !Number.isFinite(value)) return '—';
   return `${Math.round(value * 100)}%`;

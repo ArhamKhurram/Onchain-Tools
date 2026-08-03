@@ -16,6 +16,7 @@ import { getFomoServiceClient } from '../fomo/store.js';
 import { getStorageProvider } from '../storage/index.js';
 import { sendPushover } from '../utils/pushover.js';
 import { fetchLiveMarketCap } from '../utils/tokenEnrichment.js';
+import { recordPeakObservation } from './tokenPeakStore.js';
 import { buildContractUrl } from '../utils/contract.js';
 import { checkTokenHeldByWallets, formatCompact, type TrackedWalletRow } from '../wallets/balanceChecker.js';
 import type { ContractEntry } from '../utils/contractLog.js';
@@ -308,6 +309,17 @@ class MissedRunnerPoller {
 
       const live = await fetchLiveMarketCap(token.address, token.evmChain ?? undefined);
       if (!live?.mcNow || live.mcNow <= 0) continue;
+
+      // This fetch already happened for the alert check; folding it into the
+      // token peaks costs nothing upstream and catches spikes the 3-min
+      // sampler sleeps through. The signals stay separate — this feeds the
+      // shared peak *data*, not the missed-runner detection.
+      recordPeakObservation({
+        address: token.address,
+        chain: token.chain,
+        evmChain: token.evmChain,
+        mcNow: live.mcNow,
+      });
 
       const multiplier = live.mcNow / token.mcAtCall;
       if (multiplier < mr.minMultiplier) continue;
