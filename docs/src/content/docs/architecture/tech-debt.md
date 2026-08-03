@@ -28,14 +28,22 @@ callers never change.
 | - | ---- | -------------- | ---- |
 | 1 | `backend/src/api/routes.ts` | Mechanical; the fomo/portfolio sub-routers already prove the pattern — **done**, see [API reference](../../api/rest/) | Low |
 | 2 | `backend/src/storage/supabase.ts` | Interface-guarded; pure mapper helpers lift out cleanly — **done**, see [Storage abstraction](../../data/storage/) | Low–Med |
-| 3 | `frontend/src/components/Message.tsx` | The markdown/render cluster is self-contained | Low–Med |
+| 3 | `frontend/src/components/Message.tsx` | The markdown/render cluster is self-contained — **done**, see [Frontend architecture](../frontend/) | Low–Med |
 | 4 | `frontend/src/stores/appStore.ts` | Enables cleaner component splits; needs Zustand slices — **done**, see [Frontend architecture](../frontend/) | Medium |
-| 5 | `frontend/src/components/RoomConfig.tsx` | Shares a keyword editor with #6 | Medium |
-| 6 | `frontend/src/components/GlobalSettings.tsx` | Biggest, hardest seam (dirty-check triad) — do last | Med–High |
+| 5 | `frontend/src/components/RoomConfig.tsx` | Shares a keyword editor with #6 — **done**, see [Frontend architecture](../frontend/) | Medium |
+| 6 | `frontend/src/components/GlobalSettings.tsx` | Biggest, hardest seam (dirty-check triad) — **done**, see [Frontend architecture](../frontend/) | Med–High |
 
-Items 1, 2, and 4 have shipped since this plan was written (`api/routes/*`,
-`storage/supabase/*`, `stores/slices/*`) — see the linked architecture pages for
-the structure that landed. 3, 5, and 6 remain open.
+:::tip[All six have shipped]
+Every item on this plan is done: `api/routes/*`, `storage/supabase/*`,
+`stores/slices/*`, `message/*`, `room-config/*`, `settings/sections/*`. The
+per-item sections below are kept as a record of the reasoning and the structure
+that landed — they are history, not a backlog.
+
+Two files have since grown past the threshold and are **not** covered here:
+`frontend/src/components/ChatPane.tsx` (~960 lines) and
+`frontend/src/components/callers/RadarTable.tsx` (~880). Neither has a plan
+written yet.
+:::
 
 ---
 
@@ -111,7 +119,7 @@ backend/src/storage/supabase/
 
 ---
 
-## 3. `frontend/src/components/Message.tsx` (1513 → renderer + sub-components + shell)
+## 3. `frontend/src/components/Message.tsx` (1513 → renderer + sub-components + shell) — shipped
 
 **Target structure**
 ```
@@ -138,6 +146,12 @@ frontend/src/components/message/
 
 **Public surface:** default `memo(Message)` + `MessageProps` unchanged for `ChatPane.tsx`.
 
+**What landed:** all five extracted files exist under `components/message/`, but
+the shell stayed at `components/Message.tsx` rather than moving inside the
+directory — so the import path is `./message/content`, not `../message/content`.
+The shell is ~910 lines, which is the intended end state: the three render
+branches were deliberately kept together per the rule above, not left as debt.
+
 ---
 
 ## 4. `frontend/src/stores/appStore.ts` (1361 → Zustand slices) — shipped
@@ -149,7 +163,7 @@ for the structure that shipped (nine slices under `stores/slices/`).
 
 ---
 
-## 5. `frontend/src/components/RoomConfig.tsx` (1034 → modal shell + tab components)
+## 5. `frontend/src/components/RoomConfig.tsx` (1034 → modal shell + tab components) — shipped
 
 **Target structure**
 ```
@@ -176,7 +190,7 @@ frontend/src/components/room-config/
 
 ---
 
-## 6. `frontend/src/components/GlobalSettings.tsx` (2899 → shell + section components)
+## 6. `frontend/src/components/GlobalSettings.tsx` (2899 → shell + section components) — shipped
 
 Biggest file, hardest seam — do it last, after the store slices and the shared
 `KeywordEditor` exist.
