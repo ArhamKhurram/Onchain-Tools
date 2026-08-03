@@ -103,3 +103,42 @@ pre.astro-code {
   border-radius: 6px;
   border: 1px solid var(--sl-color-gray-4);
 }
+
+/* ---- Splash hero -------------------------------------------------------- */
+.hero h1 {
+  font-family: 'Fraunces', Georgia, serif;
+  font-weight: 900;
+  letter-spacing: -0.02em;
+}
+.hero .tagline {
+  font-family: var(--sl-font-mono);
+  color: var(--sl-color-gray-2);
+}
+
+/* The OCT mark, with a soft red glow so it reads as the brand centerpiece. */
+.oct-hero-logo {
+  width: min(320px, 70%);
+  height: auto;
+  border-radius: 14px;
+  box-shadow: 0 0 70px -10px rgba(255, 23, 68, 0.45);
+}
+
+/* Squared, brand-red call-to-action buttons. */
+.hero .sl-link-button {
+  border-radius: 4px;
+  font-family: var(--sl-font-mono);
+  font-weight: 600;
+  letter-spacing: 0.02em;
+}
+.hero .sl-link-button.primary {
+  background: var(--oct-accent);
+  border-color: var(--oct-accent);
+  color: #fff;
+}
+.hero .sl-link-button.primary:hover {
+  background: var(--oct-accent-hover);
+  border-color: var(--oct-accent-hover);
+}
+.hero .sl-link-button.minimal {
+  border: 1px solid var(--sl-color-gray-4);
+}
