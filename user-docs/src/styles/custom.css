@@ -1,0 +1,37 @@
+/* OCT user-guide branding — the site's red/black identity on top of Starlight. */
+
+:root {
+  /* Accent = OCT brand red (#ff2a2a), matching the console + landing site. */
+  --sl-color-accent-low: #3a0d0d;
+  --sl-color-accent: #ff2a2a;
+  --sl-color-accent-high: #ffd6d6;
+
+  /* Near-black neutrals to echo the console chrome. */
+  --sl-color-black: #0a0a0a;
+  --sl-color-gray-6: #111111;
+  --sl-color-gray-5: #1a1a1a;
+}
+
+:root[data-theme='light'] {
+  --sl-color-accent-low: #ffd6d6;
+  --sl-color-accent: #e11000;
+  --sl-color-accent-high: #4a0808;
+}
+
+/* Keep wide code blocks and tables scrollable inside the content column. */
+pre.astro-code {
+  overflow-x: auto;
+  padding: 1rem;
+  border-radius: 0.5rem;
+}
+
+.sl-markdown-content table {
+  display: block;
+  overflow-x: auto;
+}
+
+/* Screenshots read better with a soft border + rounded corners. */
+.sl-markdown-content img {
+  border-radius: 0.5rem;
+  border: 1px solid var(--sl-color-gray-5);
+}

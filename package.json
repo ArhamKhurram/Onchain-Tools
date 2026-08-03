@@ -3,7 +3,7 @@
   "version": "1.1.1",
   "private": true,
   "license": "AGPL-3.0-only",
-  "workspaces": ["packages/*", "backend", "frontend", "landing", "fomo-worker", "docs"],
+  "workspaces": ["packages/*", "backend", "frontend", "landing", "fomo-worker", "docs", "user-docs"],
   "scripts": {
     "dev": "node scripts/dev-local.mjs",
     "dev:backend": "npm run dev -w backend",
