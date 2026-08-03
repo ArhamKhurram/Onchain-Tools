@@ -227,16 +227,23 @@ if any `VITE_SUPABASE_SERVICE*` key is present (guards against leaking the servi
 
 ## Known oversized files (refactor targets)
 
-These are being split incrementally — see the
-[tech debt plan](https://arhamkhurram.github.io/Onchain-Tools/architecture/tech-debt/)
-for the full detail. Prefer extracting into the planned structure over adding
-more to them:
+**The six-item [tech debt plan](https://arhamkhurram.github.io/Onchain-Tools/architecture/tech-debt/)
+has fully shipped.** `api/routes.ts` → `routes/*.ts`, `storage/supabase.ts` →
+`storage/supabase/*.ts`, `appStore.ts` → `stores/slices/*`, `RoomConfig.tsx` →
+`room-config/*`, `GlobalSettings.tsx` → `settings/sections/*`, and `Message.tsx`
+→ `message/*`. Don't re-plan those; the structure that landed is documented on
+the linked page.
 
-- `frontend/src/components/GlobalSettings.tsx` (~2.9k) · `Message.tsx` (~1.5k) · `RoomConfig.tsx` (~1k)
+`Message.tsx` still measures ~910 lines. That is the plan's intended end state,
+not leftover debt — the three render branches share ~15 derived values and were
+deliberately kept together rather than threaded through as props.
 
-`backend/src/api/routes.ts` and `storage/supabase.ts` have already been split
-(`routes/*.ts`, `storage/supabase/*.ts`); `frontend/src/stores/appStore.ts` is
-already sliced.
+Two files have since grown past the threshold and are **not** covered by any
+plan. Prefer extracting from them over adding more:
+
+- `frontend/src/components/ChatPane.tsx` (~960) · `callers/RadarTable.tsx` (~880)
+
+(`packages/shared/src/database.types.ts` is ~1k but generated — never hand-edit.)
 
 ---
 
