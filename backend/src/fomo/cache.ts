@@ -7,14 +7,40 @@ interface CacheEntry<T> {
 
 const store = new Map<string, CacheEntry<unknown>>();
 
+let hits = 0;
+let misses = 0;
+
 export function getCached<T>(key: string): T | null {
   const entry = store.get(key);
-  if (!entry) return null;
-  if (Date.now() > entry.expiresAt) {
-    store.delete(key);
+  if (!entry) {
+    misses += 1;
     return null;
   }
+  if (Date.now() > entry.expiresAt) {
+    store.delete(key);
+    misses += 1;
+    return null;
+  }
+  hits += 1;
   return entry.value as T;
+}
+
+export interface FomoCacheStats {
+  size: number;
+  hits: number;
+  misses: number;
+}
+
+/** Hit/miss counters since process start, for /api/fomo/status. */
+export function getFomoCacheStats(): FomoCacheStats {
+  return { size: store.size, hits, misses };
+}
+
+/** Test hook — counters and entries otherwise leak between specs. */
+export function resetFomoCache(): void {
+  store.clear();
+  hits = 0;
+  misses = 0;
 }
 
 export function setCached<T>(key: string, value: T, ttlMs: number): void {

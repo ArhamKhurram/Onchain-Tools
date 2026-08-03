@@ -52,6 +52,23 @@ export async function loadPersistedFomoRefreshToken(): Promise<string | null> {
 }
 
 /**
+ * When the persisted Privy refresh token last rotated. Nothing else writes
+ * fomo_poll_state anymore, so its `updated_at` (trigger-maintained) moves only
+ * when the worker or backend persists a rotated token — i.e. token age.
+ */
+export async function loadFomoTokenRotatedAt(): Promise<string | null> {
+  const db = getFomoServiceClient();
+  if (!db) return null;
+  const { data, error } = await db
+    .from('fomo_poll_state')
+    .select('updated_at')
+    .eq('id', true)
+    .single();
+  if (error) return null;
+  return data?.updated_at ?? null;
+}
+
+/**
  * A single swap from a tracked user's `/v2/users/{id}/activity` feed.
  */
 export interface NormalizedTrade {
