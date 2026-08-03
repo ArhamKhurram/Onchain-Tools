@@ -69,10 +69,10 @@ done.** `strict: true` is on everywhere. Coverage is unit tests over pure functi
 only — there are no integration or end-to-end tests, so the compiler still carries
 most of the weight on anything involving I/O.
 
-**LP automation does not live on this branch.** The `lp-automation/` workspace,
-its dashboard page, its `/api/lp` routes and its Foundry CI job are on `LP-Feats`
-(and `dev`, which integrates both). Don't re-add them here — see the branch
-topology below.
+**LP automation and the sniper do not live on this branch.** The
+`lp-automation/` workspace, its dashboard page, its `/api/lp` routes and its
+Foundry CI job are on `dev`, as is `backend/src/sniper/` (reverted from `main`
+in #55). Don't re-add them here — see the branch topology below.
 
 ---
 
@@ -230,29 +230,37 @@ already sliced.
 
 ### Branch topology
 
-Three long-lived branches. **`dev` is an integration branch that nothing merges
-out of** — it exists to prove the two halves still compose.
+Two long-lived branches. **`dev` is an integration branch that nothing merges
+out of** — it exists to prove production and the unshipped work still compose.
 
 ```
-                    non-LP work
+                 production work
                          │
-main      ───●───────────●────────────●─────►   production (Railway + Vercel), no LP
-              ╲           ╲            ╲
+main      ───●───────────●────────────●─────►   production (Railway + Vercel)
+              ╲           ╲            ╲            no LP, no sniper
                ╲ merge     ╲ merge      ╲ merge
-dev       ───────●───────────●────────────●─►   everything (main ∪ LP-Feats)
-              ╱           ╱            ╱
-             ╱ merge     ╱ merge      ╱
-LP-Feats  ───●───────────●────────────●─────►   lp-automation + LP dashboard only
+dev       ───────●─────●─────●─────●──────●─►   everything
+                       │           │                (main ∪ LP ∪ sniper)
+                    LP / sniper work
 ```
 
-- **Non-LP feature** → PR into `main` → then merge `main` down into `dev`.
-- **LP feature** → PR into `LP-Feats` → then merge `LP-Feats` down into `dev`.
-- **Never merge `dev` into `main`.** It would drag `lp-automation/` back in. This
-  is why the old `feature → dev → main` promotion flow no longer applies.
+- **Production feature** → PR into `main` → then merge `main` down into `dev`.
+- **LP or sniper work** → branch off `dev`, PR back into `dev`. It never reaches
+  `main`.
+- **Never merge `dev` into `main`.** It would drag `lp-automation/` and the
+  sniper back in. This is why the old `feature → dev → main` promotion flow no
+  longer applies.
 - Do not push straight to `main`; PR + green CI first.
 
-`main` deploys to Railway (backend) and Vercel (frontend + landing). `dev` and
-`LP-Feats` deploy nowhere — they are for CI and local work.
+**Merging `main` down into `dev` deletes the sniper module.** `main` reverted
+the dormant sniper in #55, and that revert propagates: it removes all 26 sniper
+files with no conflict, because `dev`'s copy and the revert's deletion never
+touch the same lines. Check `backend/src/sniper/` survives every `main` → `dev`
+merge and restore it from the pre-merge commit if not.
+
+`main` deploys to Railway (backend) and Vercel (frontend + landing). `dev`
+deploys nowhere — it is for CI and local work. The `LP-Feats` branch was retired
+on 2026-08-03 (tag `archive/LP-Feats`); its work had all landed on `dev`.
 - **Before finishing any change:** `npm run typecheck` (and the relevant `build`).
 - **Docs:** update the [roadmap](https://arhamkhurram.github.io/Onchain-Tools/roadmap/)
   when scoping features, `CHANGELOG.md` when shipping.

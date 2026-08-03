@@ -118,7 +118,7 @@ Reading notes:
 
 `lp_automation_policies` exists in the migration set even on `main` (prod
 already has the table, and main's migrations must describe the database it
-deploys to — the LP *code* lives on `LP-Feats`). It is versioned and
+deploys to — the LP *code* lives on `dev`). It is versioned and
 append-only: a trigger rejects any UPDATE that changes anything besides
 `is_active`, and a partial unique index enforces one active version per user.
 

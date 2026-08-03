@@ -15,7 +15,7 @@ sidebar:
 | **GitHub Pages** | this docs site | push to `main` touching `docs/**` |
 | **Desktop** | Electron installer (`npm run build:desktop`) | manual |
 
-`main` is protected: PR + green CI only. `dev` and `LP-Feats` deploy nowhere.
+`main` is protected: PR + green CI only. `dev` deploys nowhere.
 
 ## Standard deploy (backend/frontend)
 
