@@ -1,37 +1,105 @@
-/* OCT user-guide branding — the site's red/black identity on top of Starlight. */
+/* OCT user-guide branding — matches onchaintools.tech: true-black surfaces,
+   red accent, Fraunces heavy-serif headings, IBM Plex Mono body. */
 
+/* ---- Fonts -------------------------------------------------------------- */
 :root {
-  /* Accent = OCT brand red (#ff2a2a), matching the console + landing site. */
-  --sl-color-accent-low: #3a0d0d;
-  --sl-color-accent: #ff2a2a;
-  --sl-color-accent-high: #ffd6d6;
+  --oct-accent: #ff1744;
+  --oct-accent-hover: #ff4569;
 
-  /* Near-black neutrals to echo the console chrome. */
-  --sl-color-black: #0a0a0a;
-  --sl-color-gray-6: #111111;
-  --sl-color-gray-5: #1a1a1a;
+  --sl-font: 'IBM Plex Mono', ui-monospace, SFMono-Regular, monospace;
+  --sl-font-mono: 'IBM Plex Mono', ui-monospace, monospace;
 }
 
+/* Headings in the display serif, like the site's wordmark and section heads. */
+.sl-markdown-content h1,
+.sl-markdown-content h2,
+.sl-markdown-content h3,
+.sl-markdown-content h4,
+.content-panel h1 {
+  font-family: 'Fraunces', Georgia, 'Times New Roman', serif;
+  font-weight: 900;
+  letter-spacing: -0.015em;
+}
+
+/* ---- Dark theme = the brand default ------------------------------------- */
+:root[data-theme='dark'] {
+  /* Accent ramp keyed to OCT red. */
+  --sl-color-accent-low: #3a0510;
+  --sl-color-accent: var(--oct-accent);
+  --sl-color-accent-high: #ffc2cd;
+
+  /* True black + near-black surfaces, like the console/landing. */
+  --sl-color-black: #000000;
+  --sl-color-gray-7: #050505;
+  --sl-color-gray-6: #0a0a0a;
+  --sl-color-gray-5: #161616;
+  --sl-color-gray-4: #222222;
+  --sl-color-gray-3: #4d4d4d;
+  --sl-color-gray-2: #b3b3b3;
+  --sl-color-gray-1: #f2f2f2;
+  --sl-color-white: #ffffff;
+
+  --sl-color-text-accent: var(--oct-accent);
+  --sl-color-bg: #000000;
+  --sl-color-bg-nav: #000000;
+  --sl-color-bg-sidebar: #050505;
+  --sl-color-hairline: #1c1c1c;
+  --sl-color-hairline-shade: #1c1c1c;
+}
+
+/* ---- Light theme (kept usable, still on-brand) -------------------------- */
 :root[data-theme='light'] {
-  --sl-color-accent-low: #ffd6d6;
-  --sl-color-accent: #e11000;
-  --sl-color-accent-high: #4a0808;
+  --sl-color-accent-low: #ffd9e0;
+  --sl-color-accent: #e10032;
+  --sl-color-accent-high: #4a0212;
+  --sl-color-text-accent: #e10032;
 }
 
-/* Keep wide code blocks and tables scrollable inside the content column. */
-pre.astro-code {
-  overflow-x: auto;
-  padding: 1rem;
-  border-radius: 0.5rem;
+/* ---- Neobrutalist details ----------------------------------------------- */
+/* Header sits on a hard hairline, like the site's rule under the logo. */
+.header {
+  border-bottom: 1px solid var(--sl-color-hairline);
+  box-shadow: none;
 }
 
+/* Links in the brand red. */
+.sl-markdown-content a:not(:where(.not-content *)) {
+  color: var(--oct-accent);
+  text-underline-offset: 0.2em;
+}
+
+/* Tables + code: square, bordered, scrollable. */
 .sl-markdown-content table {
   display: block;
   overflow-x: auto;
+  border: 1px solid var(--sl-color-gray-5);
+}
+.sl-markdown-content th {
+  background: var(--sl-color-gray-6);
+  font-family: var(--sl-font-mono);
+  text-transform: uppercase;
+  font-size: 0.72rem;
+  letter-spacing: 0.06em;
+}
+.sl-markdown-content :not(pre) > code {
+  border: 1px solid var(--sl-color-gray-5);
+  border-radius: 3px;
+  color: var(--oct-accent);
+}
+pre.astro-code {
+  overflow-x: auto;
+  padding: 1rem;
+  border: 1px solid var(--sl-color-gray-5);
+  border-radius: 4px;
 }
 
-/* Screenshots read better with a soft border + rounded corners. */
+/* Asides (:::note / :::caution) keep the square, bordered look. */
+.starlight-aside {
+  border-radius: 4px;
+}
+
+/* Screenshots: soft border + rounded corners so they don't float. */
 .sl-markdown-content img {
-  border-radius: 0.5rem;
-  border: 1px solid var(--sl-color-gray-5);
+  border-radius: 6px;
+  border: 1px solid var(--sl-color-gray-4);
 }

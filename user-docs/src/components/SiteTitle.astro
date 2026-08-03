@@ -1,0 +1,51 @@
+---
+// Custom header mark — the OCT red badge + the Fraunces wordmark, matching
+// onchaintools.tech. Replaces Starlight's plain text title.
+const href = import.meta.env.BASE_URL;
+---
+
+<a href={href} class="oct-site-title" aria-label="Onchain Tools home">
+  <span class="oct-badge">OCT</span>
+  <span class="oct-wordmark">Onchain&nbsp;Tools</span>
+</a>
+
+<style>
+  .oct-site-title {
+    display: flex;
+    align-items: center;
+    gap: 0.6rem;
+    text-decoration: none;
+    line-height: 1;
+  }
+
+  .oct-badge {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 2rem;
+    height: 2rem;
+    background: var(--oct-accent, #ff1744);
+    color: #fff;
+    font-family: 'IBM Plex Mono', ui-monospace, monospace;
+    font-weight: 700;
+    font-size: 0.72rem;
+    letter-spacing: 0.02em;
+    border-radius: 4px;
+    flex-shrink: 0;
+  }
+
+  .oct-wordmark {
+    font-family: 'Fraunces', Georgia, serif;
+    font-weight: 900;
+    font-size: 1.35rem;
+    letter-spacing: -0.01em;
+    color: var(--sl-color-white);
+  }
+
+  /* Drop the wordmark on very narrow screens; the badge alone carries it. */
+  @media (max-width: 30rem) {
+    .oct-wordmark {
+      display: none;
+    }
+  }
+</style>

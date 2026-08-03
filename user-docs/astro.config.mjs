@@ -18,6 +18,37 @@ export default defineConfig({
         { icon: 'x.com', label: 'X', href: 'https://x.com/toolsonchain' },
       ],
       customCss: ['./src/styles/custom.css'],
+      components: {
+        // Brand mark (OCT badge + Fraunces wordmark) in place of the plain title.
+        SiteTitle: './src/components/SiteTitle.astro',
+      },
+      head: [
+        // Brand fonts — Fraunces (heavy serif wordmark/headings) + IBM Plex Mono
+        // (body), the same pair onchaintools.tech uses.
+        {
+          tag: 'link',
+          attrs: { rel: 'preconnect', href: 'https://fonts.googleapis.com' },
+        },
+        {
+          tag: 'link',
+          attrs: { rel: 'preconnect', href: 'https://fonts.gstatic.com', crossorigin: true },
+        },
+        {
+          tag: 'link',
+          attrs: {
+            rel: 'stylesheet',
+            href: 'https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,600;9..144,900&family=IBM+Plex+Mono:wght@400;500;600&display=swap',
+          },
+        },
+        // Default to the dark (black) brand theme unless the visitor already
+        // chose one. Writes Starlight's own storage key so its theme script
+        // resolves dark regardless of script order; the toggle still overrides.
+        {
+          tag: 'script',
+          content:
+            "try{if(!localStorage.getItem('starlight-theme')){localStorage.setItem('starlight-theme','dark');document.documentElement.dataset.theme='dark';}}catch(e){}",
+        },
+      ],
       sidebar: [
         { label: 'Getting Started', autogenerate: { directory: 'getting-started' } },
         { label: 'Connecting Accounts', autogenerate: { directory: 'connecting' } },
