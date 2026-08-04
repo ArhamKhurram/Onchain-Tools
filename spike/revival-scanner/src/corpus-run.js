@@ -121,6 +121,12 @@ function launch(task) {
   const logPath = path.join(LOGS, `${task.id}.log`);
   const log = fs.createWriteStream(logPath, { flags: 'a' });
   const child = spawn(process.execPath, [
+    // Hard heap cap: without it, workers creep to multi-GB (lazy GC + eager
+    // stream buffering), starve the whole box, and take the orchestrator down
+    // with them (observed twice on 2026-08-04). A capped worker either stays
+    // small or OOMs alone — and the retry loop below resumes it from its
+    // checkpoint for pennies.
+    '--max-old-space-size=1024',
     path.join(HERE, 'corpus-stream.js'),
     '--chain', task.chain, '--start', String(task.start), '--stop', String(task.stop),
     '--out', task.out, '--id', task.id,
