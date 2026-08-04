@@ -29,10 +29,18 @@ exist, and how attention — the market's and yours — is modeled.
 
 Two label tracks, deliberately separate:
 
-- **Outcome labels (automatic, objective).** For every logged signal: did the
-  token revive per the C0 definition? Peak multiple? Time-to-peak? Did it rug
-  (LP pulled / −90% with no recovery)? No human needed; computed by replaying
-  the tape 24–48h later. This trains the *outcome model*.
+- **Outcome labels (automatic, objective, GRADED — decided 2026-08-04 after
+  the outcome-distribution measurement).** Not a binary "revived?" but the
+  full forward profile per signal: peak multiple @1h/6h/24h, terminal multiple
+  @24h, retrace-from-peak, time-to-peak, rugged? (LP pulled / −90% no
+  recovery). The **product event is "≥2× within 24h of alert"** — capturable
+  and unambiguous; the C0 definition remains the episode *segmenter* only,
+  because measurement showed C0-revivals span 1.5×–7× and ALL round-tripped
+  (median terminal 0.76× from alert = holding is negative expectancy; this is
+  a scalp-timing signal until proven otherwise). Models therefore carry a
+  **magnitude head** — quantile regression (P10/P50/P90 of forward multiple)
+  — alongside classification. Repeat-pumper history (same tokens revive
+  repeatedly) is a first-class feature.
 - **Attention ratings (manual, ≤24h).** The operator rates each day's
   inventory: `worth-it / meh / noise / rug-bait`. This trains the *attention
   model* — because a signal can be "correct" (it pumped 40%) and still not
@@ -200,7 +208,30 @@ hand-waved:
 4. Shadow before promote; incumbent beaten for N weeks before swap.
 5. Vetoes are not learnable and not removable by any model.
 
-## 7 · Phasing
+## 7 · The full-chain corpus (decided 2026-08-04)
+
+The spike's 130-pool universe was a REST-instrument limitation (8–11s per
+pool-filtered query, serial), not a design choice. Training happens on
+**full-chain substreams replay**: one stream over a historical block range
+carries every swap in every pool; cost scales with block range, not token
+count. This removes universe selection bias — every token biography
+(revivals, rugs, never-revived) enters the corpus.
+
+- **Life-floor filter, in-stream:** keep every pool that ever crossed minimal
+  trades+liquidity; the launchpad graveyard (dead-on-arrival mints) never
+  becomes episodes. Applied in the stream, not by pre-selection.
+- **Storage discipline:** aggregate to 1m candles per pool in-stream; retain
+  raw swaps only in windows around dormancy-exits (where microstructure
+  features live). Full raw retention is a platform-DB decision, not a corpus
+  requirement.
+- **Checkpoint zero:** verify the Pinax plan's substreams quota covers the
+  target block range before committing to a corpus window.
+- **Rotational-market principle (operator):** positions are not held past the
+  first run-up; the system trades rotation. All value metrics are
+  peak-capture shaped (graded labels above), never hold-based. Details TBD
+  ("more on that later" — Arham).
+
+## 7b · Phasing
 
 | Phase | What runs | Needs |
 | --- | --- | --- |
