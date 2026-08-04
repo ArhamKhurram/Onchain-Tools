@@ -40,7 +40,9 @@ const outputModule = opt('--module', modules.find((m) => /map/.test(m.name))?.na
 const nBlocks = Number(opt('--blocks', 5));
 const creds = getCreds();
 // --auth jwt | key  (which credential to present as the bearer token)
-const authMode = opt('--auth', 'jwt');
+// VERIFIED 2026-08-04: Pinax substreams accepts the raw PINAX_API_KEY as the
+// bearer and REJECTS the account JWT ("invalid api key") — key is the default.
+const authMode = opt('--auth', 'key');
 const bearer = authMode === 'key' ? creds.apiKey : creds.apiToken;
 if (!bearer) throw new Error('credential missing for auth mode ' + authMode);
 
