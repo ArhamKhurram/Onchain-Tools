@@ -1,0 +1,19 @@
+{
+  "name": "oct-revival-spike",
+  "private": true,
+  "version": "0.0.1",
+  "type": "module",
+  "description": "Workstream C de-risking spike: measure whether the ATR-based revival signal has alpha. Not a workspace, not a product.",
+  "scripts": {
+    "probe": "node src/probe.js",
+    "universe": "node src/universe.js",
+    "backfill": "node src/backfill.js",
+    "measure": "node src/measure.js",
+    "grpc": "node src/grpc-hello.js"
+  },
+  "dependencies": {
+    "@substreams/core": "^0.17.0",
+    "@substreams/manifest": "^0.16.0",
+    "@substreams/node": "^0.7.2"
+  }
+}
