@@ -41,7 +41,7 @@ const cfg = CHAINS[CHAIN];
 
 const LIFE_FLOOR = 20;         // swaps before a pool materializes
 const TINY_BUFFER_MAX = 24;    // replay buffer per tiny pool
-const EVICT_IDLE_SEC = 90 * 60; // evict pools idle > 90 chain-minutes
+const EVICT_IDLE_SEC = 45 * 60; // evict pools idle > 45 chain-minutes (memory-pressure tuned)
 const FLUSH_EVERY_BLOCKS = CHAIN === 'solana' ? 3000 : 4000;
 const STATUS_EVERY_MS = 30_000;
 
@@ -189,7 +189,7 @@ emitter.on('anyMessage', (msg, cursor, clock) => {
   stats.blocks += 1;
   for (const s of cfg.normalizeBlock(msg, ts)) onSwap(s);
 
-  if (lastBlock - lastFlushBlock >= FLUSH_EVERY_BLOCKS || pending.length > 80_000) {
+  if (lastBlock - lastFlushBlock >= FLUSH_EVERY_BLOCKS || pending.length > 40_000) {
     evictAndFlush(ts);
     writeCkpt(lastBlock, ts);
     lastFlushBlock = lastBlock;

@@ -77,13 +77,26 @@ async function partitionWindow(w) {
   return bucketDir;
 }
 
-/** Window end = latest checkpointed ts (flat price is observable to there). */
+/**
+ * Contiguous-coverage end of a window, from worker checkpoints.
+ * Workers own consecutive block sub-ranges; the usable window is the span
+ * covered without gaps from the window start: walk workers in range order and
+ * stop at the first one that is unfinished (its lastTs caps the span) or
+ * missing. Rows after this ts are DROPPED — a partially-covered tail from a
+ * later worker would otherwise read as fake flat dormancy across the gap.
+ */
 function windowEndTs(w) {
-  const dir = path.join(CORPUS, w.chain, w.name);
+  const tasks = PLAN.tasks
+    .filter((t) => t.window === w.name)
+    .sort((a, b) => a.start - b.start);
   let end = 0;
-  for (const f of fs.readdirSync(dir)) {
-    if (!f.endsWith('.ckpt.json')) continue;
-    try { end = Math.max(end, JSON.parse(fs.readFileSync(path.join(dir, f), 'utf8')).lastTs ?? 0); } catch {}
+  for (const t of tasks) {
+    const p = path.join(CORPUS, w.chain, w.name, `${t.id}.ckpt.json`);
+    if (!fs.existsSync(p)) break;
+    let ck;
+    try { ck = JSON.parse(fs.readFileSync(p, 'utf8')); } catch { break; }
+    if (ck.lastTs) end = Math.max(end, ck.lastTs);
+    if (!ck.done) break;
   }
   return end;
 }
@@ -245,6 +258,7 @@ async function processBucket(w, bucketPath, endTs, out, tally) {
     if (!line) continue;
     let r;
     try { r = JSON.parse(line); } catch { continue; }
+    if (r.t > endTs - 60) continue; // beyond contiguous coverage (see windowEndTs)
     let arr = byPool.get(r.p);
     if (!arr) { arr = []; byPool.set(r.p, arr); }
     arr.push(r);

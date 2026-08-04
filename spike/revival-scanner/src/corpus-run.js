@@ -3,8 +3,9 @@
 // files, restarts failed workers (they resume from their checkpoints), and
 // writes a final summary.
 //
-//   node src/corpus-run.js            # build/load plan, run everything
-//   node src/corpus-run.js --status   # print progress from checkpoints and exit
+//   node src/corpus-run.js                     # build/load plan, run everything
+//   node src/corpus-run.js --windows sol-w1    # run ONE lane (sequential driving)
+//   node src/corpus-run.js --status            # print progress and exit
 //
 // The plan (exact block ranges) is computed ONCE and persisted to
 // data/corpus/plan.json so restarts of the orchestrator reuse identical
@@ -70,10 +71,11 @@ function readCkpt(task) {
   try { return JSON.parse(fs.readFileSync(p, 'utf8')); } catch { return null; }
 }
 
-function progressLine(plan) {
+function progressLine(plan, windowFilter = null) {
   const parts = [];
   let allDone = true;
   for (const w of plan.windows) {
+    if (windowFilter && !windowFilter.includes(w.name)) continue;
     const tasks = plan.tasks.filter((t) => t.window === w.name);
     let done = 0, total = 0, rows = 0, finished = 0;
     for (const t of tasks) {
@@ -92,14 +94,20 @@ function progressLine(plan) {
 }
 
 const plan = loadPlan();
+const wIdx = process.argv.indexOf('--windows');
+const windowFilter = wIdx >= 0 ? process.argv[wIdx + 1].split(',') : null;
+const activeTasks = windowFilter
+  ? plan.tasks.filter((t) => windowFilter.includes(t.window))
+  : plan.tasks;
 
 if (process.argv.includes('--status')) {
-  console.log(progressLine(plan).line);
+  console.log(progressLine(plan, windowFilter).line);
   process.exit(0);
 }
 
-console.log(`plan: ${plan.tasks.length} workers over ${plan.windows.length} windows (created ${plan.createdAt})`);
+console.log(`plan: ${activeTasks.length} workers${windowFilter ? ` (lanes: ${windowFilter})` : ''} (created ${plan.createdAt})`);
 for (const w of plan.windows) {
+  if (windowFilter && !windowFilter.includes(w.name)) continue;
   console.log(`  ${w.name}: [${w.start}, ${w.stop}) = ${((w.stop - w.start) / 1000).toFixed(0)}k blocks, ${w.workers} workers`);
 }
 
@@ -149,11 +157,11 @@ function onExit(task, code, alreadyDone = false, sawQuota = false) {
 }
 
 function maybeFinish() {
-  const { line, allDone } = progressLine(plan);
+  const { line, allDone } = progressLine(plan, windowFilter);
   if (running.size === 0 && allDone) {
     console.log(`[run] ALL DONE — ${line}`);
-    const summary = { finishedAt: new Date().toISOString(), quotaStrikes, tasks: plan.tasks.map((t) => ({ id: t.id, ckpt: readCkpt(t) })) };
-    fs.writeFileSync(path.join(CORPUS, 'run-summary.json'), JSON.stringify(summary, null, 1));
+    const summary = { finishedAt: new Date().toISOString(), quotaStrikes, lanes: windowFilter, tasks: activeTasks.map((t) => ({ id: t.id, ckpt: readCkpt(t) })) };
+    fs.writeFileSync(path.join(CORPUS, windowFilter ? `run-summary-${windowFilter.join('+')}.json` : 'run-summary.json'), JSON.stringify(summary, null, 1));
     process.exit(0);
   }
   if (running.size === 0) {
@@ -166,8 +174,8 @@ function maybeFinish() {
   }
 }
 
-for (const t of plan.tasks) launch(t);
+for (const t of activeTasks) launch(t);
 
 setInterval(() => {
-  console.log(`[run ${new Date().toISOString()}] ${progressLine(plan).line} | active=${running.size} quotaStrikes=${quotaStrikes}`);
+  console.log(`[run ${new Date().toISOString()}] ${progressLine(plan, windowFilter).line} | active=${running.size} quotaStrikes=${quotaStrikes}`);
 }, 120_000);
