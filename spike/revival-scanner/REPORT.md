@@ -129,3 +129,41 @@ Findings that matter for the platform build:
   disk-cache every page (this spike does; reruns are free).
 - No SVM liquidity add/remove endpoint exists on REST.
 - History depth is fine (spot-checked to 2026-01-01).
+
+---
+
+## Outcome distribution (added 2026-08-04 — `src/outcomes.js`)
+
+The C0 label is a detection bar, not an outcome. Measuring what happened
+*after* each episode/alert (price multiples from pre-move baseline, capped
+per-horizon; `data/outcomes.json` has full rows):
+
+**The 5 labeled revivals ran 1.55x–7.18x from baseline (median ~3x)** — the
+label is not catching 30% blips. But **every one round-tripped**: retrace
+67–87% (one 35%, shortest tape), terminal ≈ baseline by tape end. Time to
+peak: 0–87 min. In this window, "revival" = fast spike-and-round-trip, not a
+sustained re-rating; value is only capturable by selling into strength.
+
+**Controls:** within 24h, most stayed <1.5x (label is honest at that horizon),
+but a couple ran anyway (DOGE 3.42x @6m, nice 3.05x @10h) — C0 false
+negatives at the margins. The multi-thousand-minute "peaks" on control rows
+are token-level repeat pumps (same tokens revive repeatedly — Up, Neném),
+not that-episode outcomes; repeat-pumper history is itself a feature.
+
+**From the alert's entry (trigger+RVOL+buyers, 27 alerts):** median peak
+within 24h = **1.05x** (half the alerts never move 5%); 3/27 (11%) reached
+2–3x, all peaking ≤10 min after alert, all round-tripping (terminal
+0.36–0.60x). Median terminal at 24h = **0.76x — holding alerts is negative
+expectancy**; the signal as measured is a fast-scalp signal, not a hold
+signal.
+
+**Consequences adopted:**
+1. Outcome labels become **graded** (peak @1h/6h/24h, terminal @24h,
+   retrace, time-to-peak) — the regression targets Arham asked for.
+2. The product event is redefined as **"≥2x within 24h of alert"**
+   (capturable, unambiguous); C0 remains the episode segmenter only.
+3. Models gain a magnitude head (quantile regression P10/P50/P90 of forward
+   multiple) alongside classification.
+4. No 10–20x appeared in 14 days × 130 pools — tail events need far more
+   tape; expect the magnitude distribution to be power-law and plan sample
+   sizes accordingly.
