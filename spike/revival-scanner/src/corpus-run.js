@@ -24,7 +24,7 @@ const PLAN_PATH = path.join(CORPUS, 'plan.json');
 fs.mkdirSync(LOGS, { recursive: true });
 
 const DAY = 86400;
-const MAX_ATTEMPTS = 10;
+const MAX_ATTEMPTS = 60; // ECONNRESET storms: each retry still banks checkpointed progress, so grind through
 
 function buildPlan() {
   const headSol = estimateHead('solana');
