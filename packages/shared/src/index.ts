@@ -7,6 +7,8 @@ export {
   SOL_ADDRESS_REGEX,
   EVM_ADDRESS_REGEX,
   detectContractAddresses,
+  isEvmAddress,
+  normalizeContractAddress,
   REFERRALS,
   getPresetTemplate,
   injectReferralIntoCustomTemplate,

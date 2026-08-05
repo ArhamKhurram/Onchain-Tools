@@ -2,6 +2,7 @@ import { readFileSync, writeFileSync, existsSync } from 'fs';
 import { join, dirname } from 'path';
 import { fileURLToPath } from 'url';
 import { mergeEnrichmentPatch } from './enrichmentMerge.js';
+import { normalizeContractAddress } from '@oct/shared';
 import type { ContractEntry } from '@oct/shared';
 
 // ContractEntry is now canonical in @oct/shared; re-export it so existing
@@ -65,8 +66,12 @@ class ContractLog {
     }
   }
 
+  // Rows written before addresses were canonicalised keep their original
+  // casing, so every lookup compares normalised forms rather than raw strings.
+  // (Chain-aware: a no-op for case-sensitive base58 Solana mints.)
   hasAddress(address: string): boolean {
-    return this.entries.some((e) => e.address === address);
+    const key = normalizeContractAddress(address);
+    return this.entries.some((e) => normalizeContractAddress(e.address) === key);
   }
 
   logContract(entry: ContractEntry): ContractEntry {
@@ -90,8 +95,9 @@ class ContractLog {
 
   deleteContract(messageId: string, address: string): boolean {
     const before = this.entries.length;
+    const key = normalizeContractAddress(address);
     this.entries = this.entries.filter(
-      (e) => !(e.messageId === messageId && e.address === address),
+      (e) => !(e.messageId === messageId && normalizeContractAddress(e.address) === key),
     );
     if (this.entries.length < before) {
       this.save();
@@ -102,8 +108,9 @@ class ContractLog {
 
   updateEvmChain(address: string, evmChain: string): boolean {
     let changed = false;
+    const key = normalizeContractAddress(address);
     for (const entry of this.entries) {
-      if (entry.address === address && entry.chain === 'evm' && !entry.evmChain) {
+      if (normalizeContractAddress(entry.address) === key && entry.chain === 'evm' && !entry.evmChain) {
         entry.evmChain = evmChain;
         changed = true;
       }

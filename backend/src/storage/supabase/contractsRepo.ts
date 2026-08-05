@@ -1,6 +1,21 @@
 import type { ContractEntry, ContractEnrichmentPatch, EnrichContractOptions } from '../../utils/contractLog.js';
 import { mergeEnrichmentPatch } from '../../utils/enrichmentMerge.js';
+import { isEvmAddress } from '../../utils/contract.js';
 import { BaseRepo, throwIfError } from './client.js';
+
+/**
+ * How an address column must be matched, per chain.
+ *
+ * EVM addresses are case-insensitive hex and stored rows predate
+ * canonicalisation (a scanner bot's embed logged a checksummed row, the
+ * caller's own post a lowercase one), so they match with `ilike` — Postgres
+ * treats a wildcard-free pattern as case-insensitive equality, and hex has no
+ * `%`/`_` to expand. Solana mints are base58 and case-SENSITIVE, so folding
+ * their case would match a different token; they stay on `eq`.
+ */
+function addressMatchesInsensitively(address: string): boolean {
+  return isEvmAddress(address);
+}
 
 export class ContractsRepo extends BaseRepo {
   async getContracts(userId: string, limit = 100, since?: string): Promise<ContractEntry[]> {
@@ -95,12 +110,15 @@ export class ContractsRepo extends BaseRepo {
   }
 
   async deleteContract(userId: string, messageId: string, address: string): Promise<boolean> {
-    const { count } = await this.supabase
+    const query = this.supabase
       .from('contracts')
       .delete({ count: 'exact' })
       .eq('user_id', userId)
-      .eq('message_id', messageId)
-      .eq('address', address);
+      .eq('message_id', messageId);
+
+    const { count } = await (addressMatchesInsensitively(address)
+      ? query.ilike('address', address)
+      : query.eq('address', address));
 
     return (count ?? 0) > 0;
   }
@@ -110,11 +128,14 @@ export class ContractsRepo extends BaseRepo {
   }
 
   async updateEvmChain(userId: string, address: string, evmChain: string): Promise<boolean> {
-    const { data } = await this.supabase
+    const base = this.supabase
       .from('contracts')
       .update({ evm_chain: evmChain })
-      .eq('user_id', userId)
-      .eq('address', address)
+      .eq('user_id', userId);
+
+    const { data } = await (addressMatchesInsensitively(address)
+      ? base.ilike('address', address)
+      : base.eq('address', address))
       .eq('chain', 'evm')
       .is('evm_chain', null)
       .select('id');
@@ -256,11 +277,14 @@ export class ContractsRepo extends BaseRepo {
   }
 
   async hasAddress(userId: string, address: string): Promise<boolean> {
-    const { count } = await this.supabase
+    const query = this.supabase
       .from('contracts')
       .select('id', { count: 'exact', head: true })
-      .eq('user_id', userId)
-      .eq('address', address);
+      .eq('user_id', userId);
+
+    const { count } = await (addressMatchesInsensitively(address)
+      ? query.ilike('address', address)
+      : query.eq('address', address));
 
     return (count ?? 0) > 0;
   }
