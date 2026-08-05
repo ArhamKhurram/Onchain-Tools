@@ -395,13 +395,6 @@ export default function RadarTable({ embedded: _embedded = false }: { embedded?:
     [contracts, qualityForContractGlobal],
   );
 
-  // One buildRadar pass per (contracts, quality) change; the muted counter and
-  // the visible table both derive from it rather than each paying for their own.
-  const radarRows = useMemo(
-    () => buildRadar(contracts, qualityForContract),
-    [contracts, qualityForContract],
-  );
-
   // Counted off the unfiltered set so the toggle still shows a number once the
   // rows it refers to have been filtered out.
   const mutedOnlyCount = useMemo(

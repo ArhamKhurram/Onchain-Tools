@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   contractCallerKey,
   resolveCallerTier,
@@ -33,6 +33,10 @@ interface ScoresResponse {
   windowDays: number;
   contracts: number;
   pricedTokens: number;
+  /** The window held more rows than the backend would read — scores cover less than the window. */
+  truncated?: boolean;
+  /** Timestamp of the oldest row the scores were actually built from. */
+  coversFrom?: string;
   scores: CallerScore[];
   /** Absent from older backends; room preference degrades to global. */
   roomScores?: RoomCallerScores;
@@ -92,6 +96,22 @@ export function useCallerQuality() {
       clearInterval(timer);
     };
   }, []);
+
+  // Scoring exclusions change who is on the board, so don't make the user wait
+  // out the refresh interval to see their own edit land.
+  const exclusionSig = JSON.stringify(
+    useAppStore((s) => s.config?.callerScoreExclusions) ?? [],
+  );
+  const firstRun = useRef(true);
+  useEffect(() => {
+    if (firstRun.current) {
+      firstRun.current = false;
+      return;
+    }
+    void loadScores(true).then((data) => {
+      if (data) setScores(data);
+    });
+  }, [exclusionSig]);
 
   const byKey = useMemo(() => {
     const map = new Map<string, CallerScore>();
@@ -159,6 +179,9 @@ export function useCallerQuality() {
     loaded: scores != null,
     windowDays: scores?.windowDays,
     pricedTokens: scores?.pricedTokens,
+    contractsScanned: scores?.contracts,
+    truncated: scores?.truncated ?? false,
+    coversFrom: scores?.coversFrom,
     scores: scores?.scores ?? [],
   };
 }

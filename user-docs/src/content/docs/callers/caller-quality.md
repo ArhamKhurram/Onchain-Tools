@@ -37,6 +37,18 @@ rated callers with:
 
 A caller stays **unrated** until they have enough priced calls to score fairly.
 
+## What doesn't get scored
+
+Enrichment bots like **Rick** repost an embed for every contract that crosses the
+feed. Those are scans, not calls — scored, a bot ends up describing the room's
+average rather than anyone's judgement, sitting mid-leaderboard on hundreds of
+"calls" it never made. Known bots are left out of scoring by default, and you can
+add your own under **Not scored** in **Settings → Caller Quality** (a display
+name, or a caller key like `discord:123456`).
+
+This is **not** a mute. An excluded author still posts, still shows in the feed,
+and its embeds still enrich your contracts — it just doesn't get a band.
+
 ## Two toggles worth knowing
 
 - **Keep muted callers reachable** — collapses muted callers' contracts behind

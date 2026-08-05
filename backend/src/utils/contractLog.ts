@@ -12,7 +12,22 @@ export type { ContractEntry } from '@oct/shared';
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const DATA_DIR = process.env.OCT_DATA_DIR || process.env.TRENCHCORD_DATA_DIR || join(__dirname, '../../data');
 const LOG_PATH = join(DATA_DIR, 'contracts.json');
-const MAX_ENTRIES = 2000;
+/**
+ * Local-mode retention. Rows past this are dropped, permanently — the whole
+ * array is rewritten on every log, so this is a deliberate ceiling on file size
+ * and write cost, not an oversight.
+ *
+ * It is also the real retention limit for caller scores in local mode: scores
+ * are derived on read from this log, so a caller whose rows have rolled off has
+ * no history left to score. On a busy feed 2000 rows can be a couple of days,
+ * well short of the 30-day scoring window. Raise it via
+ * `OCT_CONTRACT_LOG_MAX` if you want a longer leaderboard and can afford the
+ * larger rewrite per contract. (Hosted mode keeps everything in Postgres and is
+ * unaffected.)
+ */
+const MAX_ENTRIES =
+  Number.parseInt(process.env.OCT_CONTRACT_LOG_MAX ?? process.env.TRENCHCORD_CONTRACT_LOG_MAX ?? '', 10) ||
+  2000;
 
 export type ContractEnrichmentPatch = Partial<
   Pick<
