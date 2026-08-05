@@ -1,5 +1,5 @@
 import { Router } from 'express';
-import { buildCallerScores } from '@oct/shared';
+import { buildCallerScores, buildRoomCallerScores } from '@oct/shared';
 import { getPeaks } from '../../alerts/tokenPeakStore.js';
 import type { RouterContext } from '../context.js';
 import { getUserId, safeError } from '../shared.js';
@@ -42,13 +42,20 @@ export function createCallersRoutes(ctx: RouterContext): Router {
       const since = new Date(Date.now() - windowDays * 86_400_000).toISOString();
       const contracts = await storage.getContracts(userId, MAX_CONTRACTS, since);
       const peaks = await getPeaks(contracts.map((c) => c.address));
-      const scores = buildCallerScores(contracts, (addr) => peaks.get(addr.toLowerCase()), windowDays);
+      const peakFor = (addr: string) => peaks.get(addr.toLowerCase());
+      const scores = buildCallerScores(contracts, peakFor, windowDays);
+      // Room-scoped scores derive from the same persisted inputs (contract
+      // rows already carry room_ids in both storage impls), so like the global
+      // list they are computed on read rather than stored — no second thing to
+      // keep in sync.
+      const roomScores = buildRoomCallerScores(contracts, peakFor, windowDays);
 
       const payload = {
         windowDays,
         contracts: contracts.length,
         pricedTokens: peaks.size,
         scores,
+        roomScores,
       };
       cache.set(userId, { at: Date.now(), windowDays, payload });
       res.json(payload);
