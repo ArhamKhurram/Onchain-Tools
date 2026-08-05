@@ -2,6 +2,11 @@
 
 All notable changes to Trenchcord are documented here.
 
+## 2026-08-05
+
+### Fixed
+- **Swapping rooms works inside Workspace panels** — the room dropdown in a Workspace room-feed panel opened and listed everything, but picking a room did nothing: it was switching the Feed page's first pane instead of the panel you were looking at. Panels now change their own room, and the choice is saved right away, so it survives a reload without a trip through Customize Layout. Picking a room while editing the layout still waits for Save, like every other layout change.
+
 ## 2026-07-31
 
 ### Added

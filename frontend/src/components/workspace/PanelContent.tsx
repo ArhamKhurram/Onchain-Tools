@@ -8,9 +8,10 @@ import type { WorkspacePanelSlot } from '../../types/workspace';
 
 interface PanelContentProps {
   panel: WorkspacePanelSlot;
+  onRoomChange: (roomId: string) => void;
 }
 
-export default function PanelContent({ panel }: PanelContentProps) {
+export default function PanelContent({ panel, onRoomChange }: PanelContentProps) {
   const roomId = panel.config?.roomId;
 
   const content = (() => {
@@ -30,6 +31,7 @@ export default function PanelContent({ panel }: PanelContentProps) {
             paneCount={1}
             editMode={false}
             variant="workspace"
+            onRoomChange={onRoomChange}
           />
         );
       case 'contracts':
