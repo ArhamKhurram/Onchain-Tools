@@ -49,6 +49,14 @@ def load() -> pd.DataFrame:
     df["chainId"] = (df["chain"] == "bsc").astype(int)
     df = df[df["warm"] == 1].copy()
     df = df.dropna(subset=["peak_24h", "label2x"])
+    # Data-quality filter: peak_24h > 100x is physically implausible for a real
+    # token — every such row is a near-zero dormancy-baseline division artifact
+    # (baseline price ~1e-5, 0-1 unique buyers). 19/12879 = 0.15% of episodes.
+    # Left in, they inject fake positives into label2x and blow up the log-peak
+    # magnitude target. Excluded, and reported in TRAINING_REPORT limitations.
+    n_before = len(df)
+    df = df[df["peak_24h"] <= 100].copy()
+    globals()["_dropped_outliers"] = n_before - len(df)
     return df
 
 

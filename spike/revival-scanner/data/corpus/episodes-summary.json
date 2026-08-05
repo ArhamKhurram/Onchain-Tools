@@ -1,0 +1,23 @@
+{
+ "generatedAt": "2026-08-05T14:15:34.103Z",
+ "summary": {
+  "sol-w1": {
+   "pools": 45990,
+   "rows": 2447836,
+   "episodes": 3309,
+   "endTs": 1783930734
+  },
+  "sol-w2": {
+   "pools": 46418,
+   "rows": 2502498,
+   "episodes": 3424,
+   "endTs": 1785738640
+  },
+  "bsc-w1": {
+   "pools": 15508,
+   "rows": 3181566,
+   "episodes": 6146,
+   "endTs": 1785826579
+  }
+ }
+}
