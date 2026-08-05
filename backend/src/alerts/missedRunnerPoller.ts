@@ -224,16 +224,69 @@ class MissedRunnerPoller {
     this.timer = null;
   }
 
+  // The active-user scan used to pull EVERY user's full settings JSONB every
+  // sweep (3 min) just to read two subtrees — the single largest source of
+  // Supabase egress in prod (each blob is tens of KB; ~480 sweeps/day).
+  // Now: select only the two subtrees shouldPollUser inspects, and cache the
+  // resulting id list. Cost: a newly-enabled user waits at most one TTL for
+  // their first sweep — the in-app test route is unaffected.
+  private activeIdsCache: { ids: string[]; at: number } | null = null;
+
   private async loadActiveUserIds(): Promise<string[]> {
     if (!this.db) return [];
-    const { data, error } = await this.db.from('user_configs').select('user_id, settings');
+    const ttl = Number.parseInt(process.env.MISSED_RUNNER_USERSCAN_TTL_MS ?? '', 10) || 900_000;
+    if (this.activeIdsCache && Date.now() - this.activeIdsCache.at < ttl) {
+      return this.activeIdsCache.ids;
+    }
+    const { data, error } = await this.db
+      .from('user_configs')
+      .select('user_id, missed_runner:settings->missedRunner, pushover:settings->pushover');
     if (error) {
       console.warn('[MissedRunnerPoller] Failed to load user configs:', error.message);
+      return this.activeIdsCache?.ids ?? [];
+    }
+    const ids = (data ?? [])
+      .filter((row: any) =>
+        shouldPollUser({
+          missedRunner: row.missed_runner ?? undefined,
+          pushover: row.pushover ?? undefined,
+        } as Partial<AppConfig>),
+      )
+      .map((row: any) => row.user_id as string);
+    this.activeIdsCache = { ids, at: Date.now() };
+    return ids;
+  }
+
+  // Column-scoped contract read for the candidate scan. getContracts()'s
+  // select('*') drags the message text and every enrichment column across the
+  // wire for up to 500 rows per user per sweep; the candidate builder only
+  // needs these nine fields (buildTokenCandidates + resolveMcAtCall).
+  private async loadContractsSlim(userId: string, since: string): Promise<ContractEntry[]> {
+    if (!this.db) {
+      return getStorageProvider().getContracts(userId, 500, since);
+    }
+    const { data, error } = await this.db
+      .from('contracts')
+      .select('address, chain, evm_chain, timestamp, fdv_at_call, fdv_at_call_display, token_symbol, token_name, channel_name')
+      .eq('user_id', userId)
+      .gt('timestamp', since)
+      .order('timestamp', { ascending: false })
+      .limit(500);
+    if (error) {
+      console.warn(`[MissedRunnerPoller] Slim contract load failed for ${userId}:`, error.message);
       return [];
     }
-    return (data ?? [])
-      .filter((row) => shouldPollUser((row.settings ?? {}) as Partial<AppConfig>))
-      .map((row) => row.user_id as string);
+    return (data ?? []).map((row: any) => ({
+      address: row.address,
+      chain: row.chain,
+      evmChain: row.evm_chain ?? undefined,
+      timestamp: row.timestamp,
+      fdvAtCall: row.fdv_at_call ?? undefined,
+      fdvAtCallDisplay: row.fdv_at_call_display ?? undefined,
+      tokenSymbol: row.token_symbol ?? undefined,
+      tokenName: row.token_name ?? undefined,
+      channelName: row.channel_name ?? undefined,
+    })) as ContractEntry[];
   }
 
   private async loadHoldingWallets(userId: string): Promise<TrackedWalletRow[]> {
@@ -296,7 +349,7 @@ class MissedRunnerPoller {
     if (!sendToast && !sendPush) return;
 
     const since = new Date(Date.now() - mr.lookbackHours * 3_600_000).toISOString();
-    const contracts = await storage.getContracts(userId, 500, since);
+    const contracts = await this.loadContractsSlim(userId, since);
     const candidates = buildTokenCandidates(contracts);
     if (candidates.length === 0) return;
 

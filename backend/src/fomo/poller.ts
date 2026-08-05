@@ -140,7 +140,17 @@ class FomoPoller {
     await syncAllTrackedFollows(this.client, ids);
   }
 
+  // At the pinned 10s prod interval this query ran ~260k times/month — small
+  // rows, brutal frequency (~1 GB/month of Supabase egress on its own). The
+  // tracked set changes rarely; a short memo keeps fan-out fresh enough (a
+  // newly-tracked trader joins within TTL) while cutting reads ~6x+.
+  private trackedUsersCache: { list: TrackedFomoUserRef[]; at: number } | null = null;
+
   private async loadTrackedUsers(): Promise<TrackedFomoUserRef[]> {
+    const ttl = Number.parseInt(process.env.FOMO_TRACKED_CACHE_MS ?? '', 10) || 60_000;
+    if (this.trackedUsersCache && Date.now() - this.trackedUsersCache.at < ttl) {
+      return this.trackedUsersCache.list;
+    }
     const { data, error } = await this.db!
       .from('fomo_tracked_users')
       .select('fomo_user_id, fomo_handle, display_name');
@@ -155,7 +165,9 @@ class FomoPoller {
         displayName: row.display_name ?? null,
       });
     }
-    return [...byId.values()];
+    const list = [...byId.values()];
+    this.trackedUsersCache = { list, at: Date.now() };
+    return list;
   }
 
   private async poll(): Promise<void> {
