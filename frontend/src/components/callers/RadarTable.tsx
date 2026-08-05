@@ -386,11 +386,18 @@ export default function RadarTable({ embedded: _embedded = false }: { embedded?:
   const [revealMuted, setRevealMuted] = useState(false);
   const { qualityForContract, showMuted } = useCallerQuality();
 
+  // One buildRadar pass per (contracts, quality) change; the muted counter and
+  // the visible table both derive from it rather than each paying for their own.
+  const radarRows = useMemo(
+    () => buildRadar(contracts, qualityForContract),
+    [contracts, qualityForContract],
+  );
+
   // Counted off the unfiltered set so the toggle still shows a number once the
   // rows it refers to have been filtered out.
   const mutedOnlyCount = useMemo(
-    () => buildRadar(contracts, qualityForContract).filter((r) => r.allMuted).length,
-    [contracts, qualityForContract],
+    () => radarRows.filter((r) => r.allMuted).length,
+    [radarRows],
   );
 
   const activeColumns = useMemo(
@@ -424,7 +431,7 @@ export default function RadarTable({ embedded: _embedded = false }: { embedded?:
   }, [fetchContracts]);
 
   const rows = useMemo(() => {
-    const all = buildRadar(contracts, qualityForContract).filter(
+    const all = radarRows.filter(
       // Mentions still count muted callers inside the row; what's dropped here is
       // a token *only* muted callers ever touched.
       (r) => !r.allMuted || !showMuted || revealMuted,
@@ -513,8 +520,8 @@ export default function RadarTable({ embedded: _embedded = false }: { embedded?:
       return b.lastMentionAt - a.lastMentionAt;
     });
   }, [
-    contracts, windowFilter, mentionWindow, sortKey, sortDir, liveMc, overlaps,
-    qualityForContract, showMuted, revealMuted,
+    radarRows, windowFilter, mentionWindow, sortKey, sortDir, liveMc, overlaps,
+    showMuted, revealMuted,
   ]);
 
   const refreshOne = async (address: string, evmChain?: string) => {
