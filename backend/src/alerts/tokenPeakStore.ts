@@ -122,6 +122,37 @@ export async function recordPeak(peak: {
   if (error) console.error('[TokenPeaks] upsert failed:', error.message);
 }
 
+/**
+ * Fold an already-fetched market-cap observation into the peak store.
+ *
+ * The 3-min sampler misses spikes between passes, so `bestMultiple` understates
+ * the true ATH. OCT fetches live MC in several other places anyway — token
+ * snapshot refreshes (Radar), the Dex fallback, the missed-runner poller — and
+ * throwing those numbers away while the sampler sleeps was pure waste. This is
+ * the fire-and-forget hook those paths call: extra samples at zero extra
+ * upstream cost. It must never slow or fail its caller, hence void + catch.
+ *
+ * Peaks remain an *observed floor*, not an exact ATH — more observations narrow
+ * the gap, nothing closes it. The UI words it accordingly.
+ */
+export function recordPeakObservation(obs: {
+  address: string;
+  mcNow?: number;
+  chain?: 'evm' | 'sol';
+  evmChain?: string;
+}): void {
+  if (obs.mcNow == null || !(obs.mcNow > 0)) return;
+  const chain: 'evm' | 'sol' = obs.chain ?? (obs.address.startsWith('0x') ? 'evm' : 'sol');
+  void recordPeak({
+    address: obs.address,
+    chain,
+    evmChain: obs.evmChain,
+    mcNow: obs.mcNow,
+  }).catch((err) =>
+    console.error('[TokenPeaks] observation failed:', (err as Error)?.message),
+  );
+}
+
 /** Peaks for a set of addresses, keyed lowercase. Missing addresses are absent. */
 export async function getPeaks(addresses: string[]): Promise<Map<string, number>> {
   const out = new Map<string, number>();
