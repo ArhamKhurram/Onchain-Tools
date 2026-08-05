@@ -11,13 +11,16 @@ import {
   setCached,
   leaderboardCacheKey,
   hodlersCacheKey,
+  getFomoCacheStats,
   LEADERBOARD_TTL_MS,
   HODLERS_TTL_MS,
 } from './cache.js';
+import { getFomoUpstreamHealth } from './health.js';
 import { fetchWorkerHealth, isFomoProxyMode } from './proxy-client.js';
 import {
   getFomoServiceClient,
   extractLeaderboardEntries,
+  loadFomoTokenRotatedAt,
   matchHoldersToTracked,
   networkIdFromContract,
   type FomoTrackedUserRow,
@@ -99,11 +102,16 @@ async function resolveFomoUser(client: FomoClientLike, query: string): Promise<R
 export function createFomoRouter(wsServer: WsServer): Router {
   const router = Router();
 
-  // GET /api/fomo/status — whether the shared FOMO account is configured.
+  // GET /api/fomo/status — one-glance health of the whole FOMO pipeline:
+  // config, proxy/worker, poller, upstream errors, token age, cache.
   router.get('/status', async (_req, res) => {
-    const refreshToken = await resolveFomoRefreshToken();
+    const [refreshToken, tokenRotatedAt, worker] = await Promise.all([
+      resolveFomoRefreshToken(),
+      loadFomoTokenRotatedAt(),
+      fetchWorkerHealth(),
+    ]);
     const poller = getFomoPollerStatus();
-    const worker = await fetchWorkerHealth();
+    const upstream = getFomoUpstreamHealth();
     res.json({
       configured: !!refreshToken,
       proxyMode: isFomoProxyMode(),
@@ -114,7 +122,16 @@ export function createFomoRouter(wsServer: WsServer): Router {
       trackedUserCount: poller.trackedUserCount ?? null,
       lastPollAt: poller.lastPollAt ?? null,
       lastPollError: poller.lastPollError ?? null,
+      lastPollErrorAt: poller.lastPollErrorAt ?? null,
       lastSuccessfulPollAt: poller.lastSuccessfulPollAt ?? null,
+      // Upstream FOMO API health as seen from this process (resets on deploy).
+      upstream,
+      // Privy refresh-token age: fomo_poll_state.updated_at moves only on rotation.
+      refreshTokenRotatedAt: tokenRotatedAt,
+      refreshTokenAgeSec: tokenRotatedAt
+        ? Math.max(0, Math.floor((Date.now() - Date.parse(tokenRotatedAt)) / 1000))
+        : null,
+      cache: getFomoCacheStats(),
       ensureFollows: process.env.FOMO_ENSURE_FOLLOWS !== 'false',
     });
   });

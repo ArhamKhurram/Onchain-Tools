@@ -40,6 +40,7 @@ class FomoPoller {
   private loggedSample = false;
   private lastPollAt: string | null = null;
   private lastPollError: string | null = null;
+  private lastPollErrorAt: string | null = null;
   private lastSuccessfulPollAt: string | null = null;
   private trackedUserCount = 0;
   private status: FomoPollerStatus = { active: false, reason: 'no_supabase' };
@@ -124,6 +125,7 @@ class FomoPoller {
       trackedUserCount: this.trackedUserCount,
       lastPollAt: this.lastPollAt,
       lastPollError: this.lastPollError,
+      lastPollErrorAt: this.lastPollErrorAt,
       lastSuccessfulPollAt: this.lastSuccessfulPollAt,
     };
   }
@@ -195,6 +197,7 @@ class FomoPoller {
         } catch (err) {
           hadError = true;
           this.lastPollError = (err as Error)?.message ?? String(err);
+          this.lastPollErrorAt = new Date().toISOString();
           console.warn(`[FomoPoller] Activity poll failed for ${trader.fomoUserId}:`, this.lastPollError);
         }
       }
@@ -275,6 +278,7 @@ export interface FomoPollerStatus {
   trackedUserCount?: number;
   lastPollAt?: string | null;
   lastPollError?: string | null;
+  lastPollErrorAt?: string | null;
   lastSuccessfulPollAt?: string | null;
 }
 
