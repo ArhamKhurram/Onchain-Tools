@@ -3,6 +3,7 @@ import { parseCallerKey, type CallerTier, type CallerTierEntry, type FeedChromeP
 import { isHostedMode } from '../../storage/index.js';
 import type { RouterContext } from '../context.js';
 import { getUserId, safeError } from '../shared.js';
+import { clearCallerScoreCache } from './callers.js';
 
 const CALLER_TIERS: CallerTier[] = ['muted', 'normal', 'trusted'];
 const FEED_CHROME_PRESETS: FeedChromePreset[] = ['terminal', 'masthead', 'rail'];
@@ -20,6 +21,24 @@ function trimTo(value: unknown, max: number): string {
  * unparseable key or unknown tier are dropped, not coerced — a silently
  * rewritten mute is worse than a missing one.
  */
+/**
+ * Scoring exclusions are free text (a caller key or a display name), so bound
+ * the count and length the same way tiers are. Blank entries are dropped rather
+ * than stored — an empty exclusion would match nothing but still cost a row.
+ */
+function sanitizeCallerExclusions(input: unknown): string[] {
+  if (!Array.isArray(input)) return [];
+  const out: string[] = [];
+  const seen = new Set<string>();
+  for (const raw of input.slice(0, MAX_CALLER_TIER_ENTRIES)) {
+    const value = trimTo(raw, MAX_CALLER_FIELD_LEN).trim();
+    if (!value || seen.has(value)) continue;
+    seen.add(value);
+    out.push(value);
+  }
+  return out;
+}
+
 function sanitizeCallerTiers(input: unknown): CallerTierEntry[] {
   if (!Array.isArray(input)) return [];
   const seen = new Set<string>();
@@ -67,7 +86,7 @@ export function createConfigRoutes(ctx: RouterContext): Router {
 
   router.put('/config', async (req, res) => {
     const userId = getUserId(req);
-    const { globalHighlightedUsers, contractDetection, guildColors, dmColors, telegramColors, enabledGuilds, hiddenUsers, callerTiers, callerTierShowMuted, callerQualityRanking, evmAddressColor, solAddressColor, openInDiscordApp, openInTelegramApp, messageSounds, soundSettings, channelSounds, pushover, missedRunner, contractLinkTemplates, contractClickAction, showFullContractAddress, autoOpenHighlightedContracts, signalConvergenceWindowMinutes, globalKeywordPatterns, keywordAlertsEnabled, desktopNotifications, toastAlertsEnabled, toastPosition, mentionsUserEnabled, mentionsRoleEnabled, mentionsHereEnabled, mentionsEveryoneEnabled, badgeClickAction, chattingEnabled, messageDisplay, feedChromePreset, compactModeAvatars, roleColors, mobileZoomScale, splitLayout, paneRoomIds, paneLocks, gridMirror, seenAnnouncements, discordProxyUrl, workspaceLayout, discordBotDm } = req.body;
+    const { globalHighlightedUsers, contractDetection, guildColors, dmColors, telegramColors, enabledGuilds, hiddenUsers, callerTiers, callerTierShowMuted, callerQualityRanking, callerScoreExclusions, evmAddressColor, solAddressColor, openInDiscordApp, openInTelegramApp, messageSounds, soundSettings, channelSounds, pushover, missedRunner, contractLinkTemplates, contractClickAction, showFullContractAddress, autoOpenHighlightedContracts, signalConvergenceWindowMinutes, globalKeywordPatterns, keywordAlertsEnabled, desktopNotifications, toastAlertsEnabled, toastPosition, mentionsUserEnabled, mentionsRoleEnabled, mentionsHereEnabled, mentionsEveryoneEnabled, badgeClickAction, chattingEnabled, messageDisplay, feedChromePreset, compactModeAvatars, roleColors, mobileZoomScale, splitLayout, paneRoomIds, paneLocks, gridMirror, seenAnnouncements, discordProxyUrl, workspaceLayout, discordBotDm } = req.body;
 
     // The Discord proxy only makes sense in local mode (the connection leaves the
     // user's own machine). In hosted mode the server IP is fixed, and honouring a
@@ -92,6 +111,9 @@ export function createConfigRoutes(ctx: RouterContext): Router {
       ...(callerTiers !== undefined && { callerTiers: sanitizeCallerTiers(callerTiers) }),
       ...(callerTierShowMuted !== undefined && { callerTierShowMuted: Boolean(callerTierShowMuted) }),
       ...(callerQualityRanking !== undefined && { callerQualityRanking: Boolean(callerQualityRanking) }),
+      ...(callerScoreExclusions !== undefined && {
+        callerScoreExclusions: sanitizeCallerExclusions(callerScoreExclusions),
+      }),
       ...(evmAddressColor !== undefined && { evmAddressColor }),
       ...(solAddressColor !== undefined && { solAddressColor }),
       ...(openInDiscordApp !== undefined && { openInDiscordApp }),
@@ -165,6 +187,10 @@ export function createConfigRoutes(ctx: RouterContext): Router {
       ...(seenAnnouncements !== undefined && { seenAnnouncements }),
       ...(workspaceLayout !== undefined && { workspaceLayout }),
     });
+
+    // Scores are cached for a couple of minutes; excluding someone should read
+    // as instant, not as "the setting didn't take".
+    if (callerScoreExclusions !== undefined) clearCallerScoreCache(userId);
 
     // Reconnect Discord so the new proxy takes effect immediately (local mode).
     if (proxyChanged) {

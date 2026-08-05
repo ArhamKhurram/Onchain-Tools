@@ -336,6 +336,14 @@ export interface AppConfig {
   callerTierShowMuted?: boolean;
   /** Rank the contract feed and Radar by caller quality instead of time only. */
   callerQualityRanking?: boolean;
+  /**
+   * Extra authors kept out of earned scoring, on top of the known bots in
+   * `DEFAULT_EXCLUDED_CALLERS`. Each entry is a caller key (`discord:123`) or a
+   * display name. Scoring-only — an excluded author's messages and enrichment
+   * are unaffected, which is what makes this the right tool for a bot and the
+   * mute tier the wrong one.
+   */
+  callerScoreExclusions?: string[];
   messageSounds: boolean;
   soundSettings: SoundSettings;
   channelSounds: Record<string, SoundConfig>;
