@@ -27,3 +27,5 @@ editing history.
 | [008](../008-local-loopback/) | Local mode binds loopback |
 | [009](../009-branch-topology/) | Branch topology: `main` / `dev` |
 | [010](../010-event-driven-announce/) | Changelog announcements are event-driven, not scheduled |
+| [011](../011-sniper-custody/) | The sniper never holds a wallet key |
+| [012](../012-venue-tenancy/) | Users bring their own venue accounts (multi-tenant) |
