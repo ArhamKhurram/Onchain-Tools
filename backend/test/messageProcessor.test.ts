@@ -11,7 +11,11 @@ const gateway = {
   getMemberRoleColor: (_roles: string[] | undefined) => '#ff0000',
 } as unknown as GatewayManager;
 
+// Deliberately EIP-55 checksummed, the way a scanner bot prints it. Detection
+// canonicalises EVM addresses to lowercase so a checksummed embed and the
+// caller's own lowercase post describe the same token.
 const EVM = '0x1f9840a85d5aF5bf1D1762F925BDADdC4201F984';
+const EVM_CANON = EVM.toLowerCase();
 
 const rawMsg = (over: Partial<DiscordMessage> = {}): DiscordMessage =>
   ({
@@ -35,7 +39,7 @@ describe('processDiscordMessage (shared via backend shim)', () => {
   it('detects a contract address when contractDetection is on', () => {
     const r = processDiscordMessage(gateway, rawMsg({ content: `buy ${EVM}` }), undefined, undefined, undefined, ctx({}));
     expect(r.hasContractAddress).toBe(true);
-    expect(r.contractAddresses).toContain(EVM);
+    expect(r.contractAddresses).toContain(EVM_CANON);
   });
 
   it('skips contract detection when the flag is off', () => {
@@ -53,7 +57,7 @@ describe('processDiscordMessage (shared via backend shim)', () => {
       undefined, undefined, undefined, ctx({}),
     );
     expect(r.hasContractAddress).toBe(true);
-    expect(r.contractAddresses).toContain(EVM);
+    expect(r.contractAddresses).toContain(EVM_CANON);
   });
 
   it('detects a contract in embed title, fields, footer and author', () => {
@@ -62,21 +66,21 @@ describe('processDiscordMessage (shared via backend shim)', () => {
       rawMsg({ content: '', embeds: [{ title: 'PEPE/WETH', fields: [{ name: 'Contract', value: EVM }] }] }),
       undefined, undefined, undefined, ctx({}),
     );
-    expect(inField.contractAddresses).toContain(EVM);
+    expect(inField.contractAddresses).toContain(EVM_CANON);
 
     const inFooter = processDiscordMessage(
       gateway,
       rawMsg({ content: '', embeds: [{ footer: { text: EVM } }] }),
       undefined, undefined, undefined, ctx({}),
     );
-    expect(inFooter.contractAddresses).toContain(EVM);
+    expect(inFooter.contractAddresses).toContain(EVM_CANON);
 
     const inAuthor = processDiscordMessage(
       gateway,
       rawMsg({ content: '', embeds: [{ author: { name: `scanner ${EVM}` } }] }),
       undefined, undefined, undefined, ctx({}),
     );
-    expect(inAuthor.contractAddresses).toContain(EVM);
+    expect(inAuthor.contractAddresses).toContain(EVM_CANON);
   });
 
   it('still honours the detection flag for embed contracts', () => {

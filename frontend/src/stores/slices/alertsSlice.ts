@@ -10,9 +10,14 @@ import {
   persistNotificationsLastReadAt,
   countUnreadNotifications,
 } from '../appStore.helpers';
+import { dedupeContractAlert, type ContractAlertSeen } from '../../utils/alertDedupe';
 
 const _initialNotificationHistory = loadNotificationHistory();
 const _initialNotificationsLastReadAt = loadNotificationsLastReadAt();
+
+// Session-only, deliberately outside the store: this is transient bookkeeping,
+// not state anything renders or persists.
+let _contractAlertSeen: ContractAlertSeen = {};
 
 export interface AlertsSlice {
   alerts: Alert[];
@@ -20,7 +25,8 @@ export interface AlertsSlice {
   notificationsLastReadAt: number;
   unreadNotificationCount: number;
 
-  addAlert: (alert: Alert) => void;
+  /** False when the alert was dropped as a duplicate contract scan. */
+  addAlert: (alert: Alert) => boolean;
   dismissAlert: (alertId: string) => void;
   markNotificationsRead: () => void;
   clearNotificationHistory: () => void;
@@ -33,6 +39,13 @@ export const createAlertsSlice: StateCreator<AppState, [], [], AlertsSlice> = (s
   unreadNotificationCount: countUnreadNotifications(_initialNotificationHistory, _initialNotificationsLastReadAt),
 
   addAlert: (alert) => {
+    // The same call arrives twice within moments — once from the caller's bare
+    // address, once from the scanner bot's embed reply (and, before the two
+    // transports were made exclusive, potentially from both). One toast.
+    const { duplicate, seen } = dedupeContractAlert(alert, _contractAlertSeen, Date.now());
+    _contractAlertSeen = seen;
+    if (duplicate) return false;
+
     set((state) => {
       const updated = [alert, ...state.alerts];
       if (updated.length > MAX_ALERTS) updated.length = MAX_ALERTS;
@@ -47,6 +60,7 @@ export const createAlertsSlice: StateCreator<AppState, [], [], AlertsSlice> = (s
         unreadNotificationCount: countUnreadNotifications(history, state.notificationsLastReadAt),
       };
     });
+    return true;
   },
 
   dismissAlert: (alertId) => {

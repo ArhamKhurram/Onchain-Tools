@@ -162,7 +162,8 @@ export function useWebSocket() {
               reason: alertData.reason,
               timestamp: Date.now(),
             };
-            addAlert(alert);
+            // Suppressed as a duplicate contract scan → no toast, no sound.
+            if (!addAlert(alert)) return;
 
             if (!IS_POPOUT) {
               const cfg = useAppStore.getState().config;
