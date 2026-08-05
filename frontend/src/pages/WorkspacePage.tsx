@@ -40,12 +40,16 @@ export default function WorkspacePage() {
   const [draft, setDraft] = useState<WorkspaceLayout>(savedLayout);
   const [saving, setSaving] = useState(false);
   const [roomPick, setRoomPick] = useState<RoomPickTarget>(null);
+  // Optimistic copy of an out-of-edit-mode change while its config write is in
+  // flight. Dropped the moment the saved layout comes back.
+  const [pendingLayout, setPendingLayout] = useState<WorkspaceLayout | null>(null);
 
   useEffect(() => {
     if (!editMode) setDraft(savedLayout);
+    setPendingLayout(null);
   }, [editMode, savedLayout]);
 
-  const layout = editMode ? draft : savedLayout;
+  const layout = editMode ? draft : (pendingLayout ?? savedLayout);
 
   const handleSave = useCallback(async () => {
     setSaving(true);
@@ -73,6 +77,25 @@ export default function WorkspacePage() {
   const handleConfigurePanel = (panel: WorkspacePanelSlot) => {
     setRoomPick({ mode: 'configure', panelId: panel.id });
   };
+
+  // Room picked from inside a room panel's own header switcher. In edit mode it
+  // joins the unsaved draft like every other layout tweak; outside edit mode it
+  // is a live change, so it persists immediately through the same config path
+  // the "Save layout" button uses.
+  const handlePanelRoomChange = useCallback(
+    (panelId: string, roomId: string) => {
+      if (editMode) {
+        setDraft((prev) => updatePanelConfig(prev, panelId, { roomId }));
+        return;
+      }
+      const next = updatePanelConfig(savedLayout, panelId, { roomId });
+      // Show the new room right away; the saved config takes over as soon as the
+      // write lands (or we roll back if it fails).
+      setPendingLayout(next);
+      void updateConfig({ workspaceLayout: next }).catch(() => setPendingLayout(null));
+    },
+    [editMode, savedLayout, updateConfig],
+  );
 
   const handleRoomSelect = (roomId: string) => {
     if (!roomPick) return;
@@ -116,7 +139,9 @@ export default function WorkspacePage() {
         editMode={editMode}
         saving={saving}
         onStartEdit={() => {
-          setDraft(savedLayout);
+          // Start from what is on screen, which includes a room switch whose
+          // config write may still be in flight.
+          setDraft(layout);
           setEditMode(true);
         }}
         onCancel={handleCancel}
@@ -132,6 +157,7 @@ export default function WorkspacePage() {
         onChange={setDraft}
         onRemovePanel={handleRemovePanel}
         onConfigurePanel={handleConfigurePanel}
+        onPanelRoomChange={handlePanelRoomChange}
       />
       <RoomPickerModal
         open={roomPick !== null}
