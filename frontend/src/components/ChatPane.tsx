@@ -517,11 +517,15 @@ export default function ChatPane({ roomId, paneIndex, paneCount, editMode, varia
       ? 'rgb(var(--oct-feed-bg))'
       : activeRoom?.color || 'rgb(var(--oct-feed-bg))';
 
+  // Workspace panels reuse ChatPane with paneIndex 0; marking that pane active
+  // would silently retarget the FEED's pane-0 to workspace clicks.
+  const handlePaneFocus = isWorkspace ? undefined : () => setActivePane(paneIndex);
+
   return (
     <div
       className={`flex-1 flex flex-col min-w-0 h-full relative ${ringClass}`}
       style={{ backgroundColor: paneBg }}
-      onMouseDownCapture={() => setActivePane(paneIndex)}
+      onMouseDownCapture={handlePaneFocus}
       onDragOver={(e) => { if (editMode && !locked) { e.preventDefault(); setDragOver(true); } }}
       onDragLeave={(e) => { if (editMode && !e.currentTarget.contains(e.relatedTarget as Node)) setDragOver(false); }}
       onDrop={handleDrop}
