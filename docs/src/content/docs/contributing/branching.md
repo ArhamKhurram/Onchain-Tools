@@ -28,10 +28,11 @@ gitGraph
 | `dev` | `main` plus work that is not ready to deploy | nowhere (CI only) |
 
 The split is by **intent, not by feature list**. Features cross it as they ship,
-so naming them here would age badly. As of 2026-08-07 the only thing held back on
-`dev` is **LP automation** (`lp-automation/`, its dashboard page, its `/api/lp`
-routes, its Foundry CI job). The **sniper is not** — it shipped to `main` and is
-live in the console; see [the sniper docs](../../architecture/sniper/).
+so naming them here would age badly — as of 2026-08-07 both of the features that
+once defined the split are gone from it. The **sniper** shipped to `main` and is
+live in the console (see [the sniper docs](../../architecture/sniper/)); **LP
+automation** was retired outright in #80 rather than shipped. `dev` currently
+holds only the video work, and stays as the place unshippable work goes next.
 
 ## The rules
 
