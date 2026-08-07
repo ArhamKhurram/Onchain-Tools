@@ -115,6 +115,18 @@ export class SlotsharkExecutor implements Executor {
 }
 
 /**
+ * The `region` column on sniper_venue_credentials is free text; SlotsharkRegion
+ * is a two-member union that indexes a compile-time base-URL table. Narrowing
+ * here is threat T4 (SSRF) enforcement: an unrecognised value must fall back to
+ * a known host, never be interpolated into one. Never `new URL(input, base)` —
+ * `//evil.com/x` escapes to another host.
+ */
+export function narrowRegion(raw: string | null | undefined): SlotsharkRegion {
+  const v = raw?.trim().toLowerCase();
+  return v === 'eu' ? 'eu' : 'us';
+}
+
+/**
  * Slotshark accepts slippage in 1-10000. Clamp rather than default: a rule that
  * somehow carries an out-of-range value must not silently become 20% tolerant.
  */

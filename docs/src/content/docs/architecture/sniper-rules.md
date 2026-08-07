@@ -9,6 +9,18 @@ The rule schema is the most important artifact in the system. Phase 3's compiler
 has to emit it, the console has to render it, and the risk gate has to enforce it.
 Get it precise here and the rest follows.
 
+:::caution[Three of these fields are stored and inert]
+The schema below shipped whole, but **`handles`, `interactionTypes` and `matcher`
+gate nothing today** — OCT reads no tweets, so the matcher is never invoked and
+the fan-out index is never built (see [what shipped](../sniper/#what-shipped-in-the-alpha)).
+They are persisted so a rule written today still means the same thing when the
+feed lands at M2. The console shows them inside a disabled fieldset headed
+`TRIGGER — STORED, NOT WIRED`, and the migration says the same thing in a column
+comment. The idempotency machinery below is likewise built but only ever exercised
+by console fires, and the ERD is the *design* — what the database actually holds is
+[at the end of this page](#what-the-shipped-schema-actually-is).
+:::
+
 ## SnipeRule fields
 
 | Field | Type | Meaning |
@@ -180,6 +192,22 @@ unset scoring weights; `sizeUnit` differing from any wallet's `unit`; a matcher
 over the depth or node cap; a regex that fails linear-time validation;
 `ladderSplit` not summing to 1; an `execParams.chain` differing from the rule's
 `chain`.
+
+**As shipped this is two functions, not one.** `validateRuleStructure` runs on
+create and patch so a half-finished draft can still be saved; the full
+`validateRule` runs only on arm, where the wallet-dependent checks live. The one
+crossing is `no_mint`, which is enforced at create rather than at arm — the
+migration's `sniper_rules_phase1_needs_mint` `CHECK` would reject that `INSERT`
+in hosted mode anyway, and having local and hosted refuse identically matters more
+than the tidiness of the split. Four separate acts, none of which can be combined
+in a single request: **create** (forced `state:'draft'`, `dryRun:true`) → **arm**
+(`confirm:'ARM'`) → **go live** (`confirm:'GO_LIVE'`, a different endpoint) →
+**fire** (`confirm:'FIRE'`). Saving a rule can never fire it.
+
+Note what arming does **not** mean in the alpha: it does not make OCT watch
+anything. It means the rule may be fired live by the fire button. A dry-run fire
+works from any state, so a draft can be rehearsed before it is ever armed; a live
+fire requires `armed`.
 
 ## Fire lifecycle
 
@@ -373,3 +401,40 @@ Notes on the shape:
   venues arrive per user later ([ADR-012](../../adr/012-venue-tenancy/)); a GMGN row
   appears at M11 when users connect their own GMGN credential.
 - `FILLS` has no `wallet_id`; the wallet is derived through `SNIPER_FIRES`.
+
+## What the shipped schema actually is
+
+The ERD above is the design. `supabase/migrations/20260807120000_sniper_rules_fires_budget.sql`
+created **five** tables — `sniper_wallets`, `sniper_rules`, `sniper_budget`,
+`sniper_fires`, `sniper_state` — and deliberately not the rest. Each omission is a
+consequence of the alpha having no tweet feed and no reconciler:
+
+| Designed | Shipped as | Why |
+| --- | --- | --- |
+| `RULE_HANDLES`, `RULE_WALLETS`, `WATCHED_HANDLES`, `HANDLE_SUBSCRIPTIONS` | `handles text[]` and `wallet_ids uuid[]` on the rule row | those tables exist to build the fan-out index; there is nothing to fan out from yet. They land with M2, alongside the code that reads them |
+| `FILLS` | `signature` / `amount` columns on the fire row | `FILLS` is 1:0..1 with the fire and exists to hold what a reconciler writes. There is no reconciler |
+| `EXECUTION_VENUES` | a `check (venue in (…))` constraint mirroring the `Venue` union | a table buys per-user venue rows, which is M11; a constraint buys the same integrity today and cannot drift from the union by an `INSERT` |
+| `RULE_MATCHES`, `CANDIDATE_TOKENS` | not created | Phase 2 and the tweet path |
+
+Two properties of the shipped tables are worth stating because they are not in the
+ERD at all:
+
+- **Select-own RLS, and no insert/update/delete policy on any of the five.** The
+  only writer is the backend's service role, through `/sniper/v1`. A browser — or
+  an XSS payload running inside the console — cannot raise its own daily cap, zero
+  its own `spent_today`, un-trip its own kill switch or forge a fire row, because
+  no policy exists that would let it. Contrast `sniper_venue_credentials`, where
+  the *write* is exactly the thing that must not touch the backend and therefore
+  goes direct from the user's client to Vault.
+- **The reservation is a `SECURITY DEFINER` function, not three round trips.**
+  `sniper_reserve_leg` / `sniper_release_leg` are service-role only, with a
+  fail-closed role check (`auth.role()` is `NULL` for a direct Postgres connection,
+  and a `NULL` `IF` is false — so the naive comparison would have handed a
+  money-spending primitive to anything holding a connection string). It returns the
+  same refusal strings the in-memory store does, so both are indistinguishable to
+  `executeFire`.
+
+`sniper_fires` also carries three columns the design never anticipated: `dry_run`
+(a money log must never be ambiguous about whether a row spent real funds), and
+`resolution` / `resolved_at` / `resolved_note` — the human stand-in for the
+reconciler.

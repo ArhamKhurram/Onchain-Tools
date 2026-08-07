@@ -92,6 +92,12 @@ Notes that make this diagram honest:
 - The fomo-worker exists because fomo.family sits behind Cloudflare; API calls
   must originate from a real stealth Chromium page
   ([ADR-005](../../adr/005-fomo-worker/)).
+- **The sniper is not on this diagram, and the omission is worth naming.** It
+  ships inside `oct-backend`, but on a control plane of its own at `/sniper/v1`
+  that deliberately sits outside `REST /api` — a money-spending endpoint must not
+  inherit local mode's wildcard CORS. It talks to one outbound dependency the
+  diagram does not show, the execution venue (Slotshark). See
+  [the sniper docs](../sniper/).
 
 ## The core pipeline
 

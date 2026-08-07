@@ -72,6 +72,72 @@ export async function getVenueSecret(userId: string, venue: Venue): Promise<stri
 }
 
 /**
+ * Connection METADATA — everything the console is allowed to know about a venue
+ * link. Deliberately does not select `secret_id`, let alone the secret: the
+ * habit that no secret material leaves Postgres is what keeps the API surface
+ * honest, and a "last 4 characters" fingerprint would require this backend to
+ * read the token, which is the exact thing being avoided.
+ */
+export interface VenueConnection {
+  venue: Venue;
+  connected: boolean;
+  region: string | null;
+  walletAddress: string | null;
+  label: string | null;
+  updatedAt: string | null;
+}
+
+export async function getVenueConnection(userId: string, venue: Venue): Promise<VenueConnection> {
+  const empty: VenueConnection = {
+    venue,
+    connected: false,
+    region: null,
+    walletAddress: null,
+    label: null,
+    updatedAt: null,
+  };
+  if (venue === 'dryrun') return empty;
+
+  if (!isHostedMode()) {
+    // Local mode's "connection" is two env vars. There is nothing to look up
+    // and nothing this backend could write — connecting locally is editing
+    // backend/.env, which the process must not do to itself.
+    return {
+      venue,
+      connected: !!process.env[LOCAL_ENV_VAR[venue]]?.trim(),
+      region: process.env.SLOTSHARK_REGION?.trim() || null,
+      walletAddress: null,
+      label: null,
+      updatedAt: null,
+    };
+  }
+
+  const client = getServiceClient();
+  if (!client) return empty;
+
+  const { data, error } = await client
+    .from('sniper_venue_credentials')
+    .select('venue, wallet_address, region, label, updated_at')
+    .eq('user_id', userId)
+    .eq('venue', venue)
+    .maybeSingle();
+  if (error) {
+    console.error(`[sniper] venue metadata read failed for venue "${venue}":`, error.message);
+    return empty;
+  }
+  if (!data) return empty;
+
+  return {
+    venue,
+    connected: true,
+    region: (data.region as string | null) ?? null,
+    walletAddress: (data.wallet_address as string | null) ?? null,
+    label: (data.label as string | null) ?? null,
+    updatedAt: (data.updated_at as string | null) ?? null,
+  };
+}
+
+/**
  * Hosted-mode, backend-initiated connect/rotate. Exists for admin/testing use
  * before a connect-account UI ships (M12) — the intended production path is
  * the user's own client calling `sniper_store_venue_credential` directly, so

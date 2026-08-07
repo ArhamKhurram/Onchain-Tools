@@ -2,6 +2,19 @@
 
 All notable changes to Trenchcord are documented here.
 
+## 2026-08-07
+
+### Added
+- **Sniper (alpha)** — a new tab for firing a buy you wrote down in advance. Connect your own Slotshark account, add the wallets you snipe from with a per-fire cap, a daily cap and a limit on open positions, then save a rule: which token, how much, from which wallets, at what slippage. Press fire and OCT sends it, splitting a ladder across wallets and legs, and logs every attempt with the outcome and the reason.
+- **Nothing fires by accident.** A new rule is a dry run, and a dry run exercises the full path — including your caps — without moving money. Arming it, taking it live and firing it are three further, separate confirmations. A kill switch on the status bar blocks every buy from the console at once and survives a restart.
+- **Your venue token stays yours.** Connecting Slotshark writes the token straight into an encrypted vault from your own browser; it never passes through our servers at connect time and is read only at the moment a buy is sent. It can't be read back afterwards, by anyone. On desktop it stays in your local `.env` and never leaves your machine.
+
+### Notes
+- **Triggers still live in Slotshark, not in OCT.** This alpha does not watch Twitter. Automatic tweet-to-buy triggers are the ones in your own Slotshark account — they fire without OCT and OCT is never told, so the caps and kill switch above bind the buys you fire from the console, and only those. The tab says so on every screen.
+- A Slotshark API token can sell and withdraw, not just buy, so the funded balance is the amount at risk. Keep it to what you'd accept losing, and rotate the token if you ever doubt it.
+- If a send times out, OCT marks it **unknown** rather than retrying — retrying a buy that actually landed buys twice. Check it in Slotshark and resolve the row; the tab keeps a running count of any waiting on you.
+- Solana through Slotshark only for now. The Sniper doesn't sell — exits are still yours to manage.
+
 ## 2026-08-05
 
 ### Fixed

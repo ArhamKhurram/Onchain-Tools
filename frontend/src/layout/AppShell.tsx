@@ -18,6 +18,7 @@ const NAV: { to: string; label: string; end?: boolean }[] = [
   { to: routes.feed, label: 'Feed' },
   { to: routes.callers, label: 'Callers' },
   { to: routes.fomo, label: 'FOMO' },
+  { to: routes.sniper, label: 'Sniper' },
   { to: routes.directory, label: 'Directory' },
   { to: routes.portfolio, label: 'Portfolio' },
   { to: routes.workspace, label: 'Workspace' },

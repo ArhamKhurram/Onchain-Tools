@@ -16,6 +16,16 @@ API token**. There is no wallet private key anywhere, on any chain.
 Slotshark's token is the dangerous one, and it is dangerous in the worst way: it can
 move funds **off** the platform. Detail in threat T3.
 
+:::caution[The alpha's automatic path is outside every control on this page]
+In the alpha the tweet → buy loop runs inside the operator's own Slotshark
+account. OCT is never told when it fires, so `executeFire` is never reached on
+that path and none of the caps, the kill switch or the dry-run flag bind it —
+they bind console-fired buys only. Bounding automatic buys means bounding them in
+Slotshark, or funding the wallet with less. That makes **minimum funded balance**
+(T3, and open question 3 in the [overview](../sniper/)) the load-bearing control
+in this release rather than one control among several.
+:::
+
 ## Custody: none — the venue is custodial
 
 **Slotshark** is the only Phase 1 venue. The account holder funds a wallet in
@@ -55,14 +65,26 @@ Postgres**, via the `vault.decrypted_secrets` view, called through two
 (`supabase/migrations/20260730170000_sniper_venue_credentials.sql`):
 
 - **`sniper_store_venue_credential`** — grantable to `authenticated`. A user's own
-  client calls this **directly against Supabase**, so a connected token can cross
-  the wire straight from the user's browser/desktop app to Supabase and **never
-  touch the OCT backend at connect time** — the same direct RLS-scoped write
-  pattern `frontend/src` already uses for `useTrackedWallets`/`useHoldingWallets`.
+  client calls this **directly against Supabase**, so a connected token crosses the
+  wire straight from the user's browser/desktop app to Supabase and **never touches
+  the OCT backend at connect time** — the same direct RLS-scoped write pattern
+  `frontend/src` already uses for `useTrackedWallets`/`useHoldingWallets`.
 - **`sniper_get_venue_secret`** — `service_role` only, no grant to `authenticated`
   or `anon`. This is the *only* way a plaintext token comes back out, and the only
   caller is `backend/src/sniper/venueCredentials.ts` at the moment `executeFire`
   is about to send. It is never cached past that call.
+
+**Both halves are now built** (M5, 2026-08-07). The connect UI is
+`frontend/src/components/sniper/VenueConnectPanel.tsx`: the token lives in a
+component-local `useState`, is passed to the RPC as an argument, and is cleared in
+the `finally` of submit whether the write succeeded or not — never a store, never
+`localStorage`, never a URL, never a prop that outlives the form. There is
+deliberately **no reveal, no copy and no fingerprint** in that UI, because none is
+possible once the secret is inside Vault, and offering one would require keeping a
+readable copy somewhere. Rotating means pasting a new token; disconnecting deletes
+the metadata row and the vault secret together. Local mode has no connect UI at
+all — it reads `SLOTSHARK_API_TOKEN` from `backend/.env`, and the console will not
+write that file.
 
 The metadata table (`sniper_venue_credentials`: venue, wallet address, region,
 label) is a normal RLS-gated table a user can `select` their own rows from, for a
@@ -111,7 +133,7 @@ legal review, and is a decision to be recorded rather than drifted into.
 | --- | --- | --- | --- |
 | T1 | **Bait token engineered to win Phase 2 scoring** | hard per-fire cap; unpublished scoring function; per-user salt on ties; sellability check on the best candidate only; cheap authority/LP rejections; surface in the UI that laddering *increases* this exposure | **High.** The salt randomizes ties; bait that genuinely dominates still wins. A funded farmer beats any public deterministic rule. Design output: Phase 2 carries a lower cap than Phase 1 |
 | T2 | **Leaked J7 JWT** | encrypt at rest; **never returned by any API**; mask in logs — note the Socket.IO handshake `40{"token":...}` is exactly what a debug log prints; liveness heartbeat if a busy feed goes quiet | **Medium.** An attacker cannot spend — they read our firehose, can get the account banned, and can silently blind the sniper via session invalidation. No programmatic rotation and no session list, so **we cannot detect misuse** |
-| T3 | **Leaked Slotshark token — total drain** | held only by the executor, never in a client; **keep the funded Slotshark balance minimal — this is the primary control**; rotate on any suspicion; reconcile every venue fill against our fire log, an unmatched fill means compromise | **Critical.** The bearer token authorizes `/sell` *and* `/wallets/withdraw`, not just buy — confirmed live, with no token scoping, no buy-only mode, no IP pinning, no withdrawal 2FA. A leaked token sells every position to SOL and withdraws the whole balance to any address: **total drain of all funded wallets**, not bounded by the next fire. There is no request-level allowlist we control. Contrast T9 |
+| T3 | **Leaked Slotshark token — total drain** | held only by the executor, never in a client; **keep the funded Slotshark balance minimal — this is the primary control, and in the alpha it is very nearly the only one**; rotate on any suspicion; ~~reconcile every venue fill against our fire log, an unmatched fill means compromise~~ — **not available**: reconciliation needs a venue fill-history endpoint this repo cannot verify (see [execution](../sniper-execution/)), so an unmatched fill is not something OCT can currently detect | **Critical.** The bearer token authorizes `/sell` *and* `/wallets/withdraw`, not just buy — confirmed live, with no token scoping, no buy-only mode, no IP pinning, no withdrawal 2FA. A leaked token sells every position to SOL and withdraws the whole balance to any address: **total drain of all funded wallets**, not bounded by the next fire. There is no request-level allowlist we control. Contrast T9 |
 | T4 | **SSRF via operator- or stream-supplied URL** | operator input **never becomes a URL host** — it selects from a compile-time enum, or is a path appended to a pinned base. **Never `new URL(userInput, base)`** — `//evil.com/x` escapes to another host. For `ai_suggestion_update`, parse the image basename only, **never fetch the URL**, and validate it is a well-formed base58 32-byte pubkey before treating it as a mint. No custom RPC in v1 | **Low if enforced.** Add an ESLint `no-restricted-syntax` rule against `new URL(` with a non-literal base so it is enforced, not remembered |
 | T5 | **Prompt injection into the Phase 3 compiler** | the model emits a *proposal*, never executes; strict schema validation; **caps clamped server-side regardless of what the model emits**; approval diff; bound and linear-time-validate any emitted regex | **Low-medium.** A schema cannot tell a good mint from an attacker's, and humans approve carelessly — **the server-side clamps are what actually hold** |
 | T6 | **Runaway fires / retry drain** | durable claim before the first external call; atomic reservation not check-then-spend; persisted attempt ceiling; **global fires-per-minute breaker** distinct from per-rule caps; **anomaly auto-kill** trips the switch rather than merely alerting; retry the send only when the previous attempt is provably dead | **Low-medium.** Remaining edges are clock skew and genuinely ambiguous outcomes, handled by the reconciler |
@@ -120,7 +142,7 @@ legal review, and is a decision to be recorded rather than drifted into.
 | T9 | **Leaked GMGN token (contrast to T3)** | held only by the executor, never in a client; rotate on suspicion; reconcile every fill against our fire log | **Medium, apparently contained (unverified).** GMGN's documented surface is swap / order / quote / portfolio — it *appears* to expose no withdrawal or transfer endpoint, so a leaked GMGN signing key likely cannot move funds off-platform. That is a real containment advantage over Slotshark, but it rests on absence-from-docs, not confirmation — do not rely on it as a control |
 | T10 | **Custodial API token stolen from the operator's machine** | never write a venue token to a client bundle; store via OS keychain (`safeStorage`), not plaintext env; minimal funded balance; rotate on suspicion | **Follows the venue.** There is no wallet key to steal — only the venue token — so the blast radius is exactly T3 (Slotshark: total drain) or T9 (GMGN: apparently contained). Custodial venues remove *our* server-side honeypot; they do not make a token on an infected machine safe |
 | T11 | **Supabase service-role key leak** | rotate; keep out of any client bundle (`lib/supabase.ts` already throws at import if a `VITE_SUPABASE_SERVICE*` var exists — keep that); move the audit log outside this credential's reach | **High today**, and fused with `TOKEN_ENCRYPTION_KEY` in the same environment. **Vault does not lower this**: the service role still satisfies `sniper_get_venue_secret`'s only check, so it remains the single credential that unlocks every stored sniper token too |
-| T12 | **Local control-plane authentication** | The local-mode API relies on loopback binding rather than a credential ([ADR-008](../../adr/008-local-loopback/)), which is weaker than it appears for browser-originated requests. Required before any sniper route is exposed locally: a per-boot bearer token in a `0600` file under `OCT_DATA_DIR`, a strict `Origin`/`Host` check, and sniper routes mounted **outside** the existing `/api` router. See [execution](../sniper-execution/) | **Tracked as pre-existing work, deliberately under-specified here.** This page is published publicly, so it states the required fix rather than a reproduction for an unpatched surface in a shipped build. Details live in the private issue; the sniper must not extend that surface until it is closed |
+| T12 | **Local control-plane authentication** | The local-mode API relies on loopback binding rather than a credential ([ADR-008](../../adr/008-local-loopback/)), which is weaker than it appears for browser-originated requests. All three requirements shipped **for the sniper surface**: a per-boot bearer token in a `0600` file under `OCT_DATA_DIR`, a strict `Origin`/`Host` check, and the routes mounted **outside** `/api` — at `/sniper/v1`, ahead of the CORS middleware. See [execution](../sniper-execution/#the-control-plane-is-part-of-this) | **Closed for the money-spending surface; still open for the pre-existing one.** The sniper did not extend `/api`, which was the condition on shipping it. The older `/api` routes are unchanged and still rely on ADR-008's argument, so this row stays open — deliberately under-specified here, because this page is public and that surface is in a shipped build. Details in the private issue |
 
 | T13 | **Aggregate honeypot — the multi-tenant venue-token store** | per-user tokens in **Supabase Vault**, not app-level AES-GCM — decrypted only inside Postgres, only by the service role, only at fire time (see [Storage](#storage-where-a-venue-token-lives-at-rest)); **prefer the contained-token venue (GMGN) as the multi-tenant execution default**; adopt scoped Slotshark tokens the moment the custom OAuth integration ships; **do not mass-onboard raw sell+withdraw Slotshark tokens** ([ADR-012](../../adr/012-venue-tenancy/)) | **Depends on venue mix.** A store of GMGN tokens is bounded by T9 (apparently no off-platform withdrawal); a store of raw Slotshark tokens is bounded by T3 (total drain) *times every connected user* — which is why broad Slotshark multi-tenant waits for scoped tokens. Vault removes the app-env key as an independent path to the secret but, per T11, does not bound the service-role path. The full multi-tenant threat rewrite is held pending the GMGN third-party-ToS answer |
 

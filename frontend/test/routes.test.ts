@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { consoleOriginPath } from '../src/lib/routes';
+import { consoleOriginPath, routes } from '../src/lib/routes';
 
 // This standalone vitest config has no `base`, so import.meta.env.BASE_URL is
 // Vite's default '/' here, which makes consoleOriginPath fall through to its
@@ -27,5 +27,28 @@ describe('consoleOriginPath', () => {
 
   it('defaults to home when called with no argument', () => {
     expect(consoleOriginPath()).toBe('/dashboard/');
+  });
+});
+
+describe('routes', () => {
+  it('registers the sniper route', () => {
+    expect(routes.sniper).toBe('/sniper');
+  });
+
+  it('gives every route a leading slash', () => {
+    // The bug this guards: routes.ts values carry a leading slash while the
+    // <Route path> children in App.tsx deliberately do not. A value added
+    // without the slash reads fine in App.tsx but produces a NavLink `to` that
+    // resolves RELATIVE to the current page, so the nav entry silently lands on
+    // /callers/sniper from the Callers page.
+    for (const [name, path] of Object.entries(routes)) {
+      expect(`${name}:${path.startsWith('/')}`).toBe(`${name}:true`);
+    }
+  });
+
+  it('has no duplicate paths', () => {
+    // Two names sharing a path means one page is unreachable through the nav.
+    const paths = Object.values(routes);
+    expect(new Set(paths).size).toBe(paths.length);
   });
 });
