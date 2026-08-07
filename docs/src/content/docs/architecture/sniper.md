@@ -6,9 +6,24 @@ sidebar:
 ---
 
 A snipe rule says "if one of these accounts posts text matching this pattern, buy
-this token, this size, within this window." Two new workspaces implement it: a
+this token, this size, within this window." The full design has two services: a
 **social-stream** service that holds the tweet firehose, and a **sniper** service
 that matches tweets against rules and fires.
+
+:::caution[What exists today — read this before the design]
+**Half of that is built, and it is not the tweet half.** The alpha shipped on
+2026-08-07: `backend/src/sniper/` (the rule store, the risk gate, `executeFire`
+and the Slotshark executor), the `/sniper/v1` control plane, and the console's
+**Sniper** tab. There is **no social-stream service, no J7 socket and no
+matcher wired to anything** — OCT does not read a tweet. The automatic tweet →
+buy loop runs inside the operator's own Slotshark account and never calls back
+into OCT, so every control on this page binds **console-fired buys only**. See
+the [alpha trigger decision](#scope-and-phasing) and
+[what shipped](#what-shipped-in-the-alpha).
+
+Everything below that is not marked as shipped is design. It has been reviewed,
+not built.
+:::
 
 The target is **under 500 ms** from tweet frame to transaction submitted. Under
 1 s is acceptable; 2–3 s means the system is overloaded. That number is not a
@@ -47,6 +62,42 @@ is where all the genuine difficulty lives — see
 [Phase 2: target resolution](../sniper-phase2/). Phase 3 compiles natural
 language into a rule the operator approves; the model is never in the execution
 path.
+
+## What shipped in the alpha
+
+Shipped 2026-08-07, on `main`. Read this as the boundary between this design and
+the running system.
+
+| Built | Where | Note |
+| --- | --- | --- |
+| Rule / wallet / budget / fire store | `sniper/storeInterface.ts` + `stores/` | a **sibling** of `StorageProvider`, `userId`-first; JSON local, Supabase hosted |
+| Durable schema + the atomic reservation | `supabase/migrations/20260807120000_sniper_rules_fires_budget.sql` | five tables, select-own RLS with **no** insert/update/delete policy; `sniper_reserve_leg` / `sniper_release_leg` are service-role only |
+| `executeFire` + the risk gate | `sniper/executeFire.ts` | unchanged in shape from [execution](../sniper-execution/): kill switch, claim, reservation, send, record |
+| Slotshark executor (`POST /buy`) | `sniper/executors/slotshark.ts` | region is a compile-time enum, per T4 |
+| Control plane | `backend/src/api/sniper/` at `/sniper/v1` | mounted **before** `app.use(cors())`, own auth, own rate limit — closes T12 for this surface |
+| Per-user venue connect (hosted) | `frontend/.../VenueConnectPanel.tsx` → Vault RPC | the token goes browser → Vault; the backend reads it only at fire time |
+| Console tab | `frontend/src/pages/SniperPage.tsx` | Rules / Fires / Wallets / Venues, with the trigger-reality notice pinned above all four |
+
+**Not built, and named here so nobody assumes otherwise:**
+
+- **No tweet path of any kind.** No social-stream workspace, no J7 socket, no
+  lane dedupe, no join window, no matcher invocation, no fan-out index. The
+  `handles` / `interactionTypes` / `matcher` fields are persisted and inert; the
+  rule form shows them under a disabled fieldset labelled as such.
+- **No reconciler.** `sniper/reconcile.ts` is an interface and a `TODO`: it needs
+  a venue fill-history query, and the only Slotshark endpoint this repo can verify
+  is `POST /buy`. Consequence, stated in the UI: an `unknown` leg **holds its
+  reservation indefinitely** and is never retried. The alpha's substitute is a
+  human — `POST /sniper/v1/fires/:id/resolve` records what the operator found in
+  Slotshark's dashboard. That does not scale, and M2 would make it untenable.
+- **No trigger API.** `sniper/executors/slotsharkTriggers.ts` is a seam whose
+  every method throws. Whether Slotshark exposes trigger CRUD, and whether any
+  fire notification could reach OCT, is unverified — today's evidence is that
+  their trade notifications go out through their own Telegram bot, i.e. never to
+  us. Nothing calls this file.
+- **Fires are polled, not pushed.** The console re-reads `GET /fires` on a timer;
+  there is no `sniper_fire` WebSocket frame, because taking the `WsServer` would
+  force the router to be constructed after the CORS middleware it must precede.
 
 ## System context
 
@@ -101,6 +152,12 @@ Notes that make this diagram honest:
   omits it so no code path can reach the operator key.
 
 ## Container view
+
+**Design, not the shipped shape.** Only the right-hand box exists today, and it
+is a module inside `oct-backend` rather than its own workspace: `SniperStore`,
+`executeFire` and the executor registry are real; the socket, the lane dedupe,
+the join, the fan-out index and the matcher invocation are not. Nothing crosses
+the `TweetSource` edge, because nothing produces one.
 
 ```mermaid
 flowchart LR
@@ -225,47 +282,65 @@ Detail in [sniper execution](../sniper-execution/) and
 not a Phase 1 venue. They become relevant at M11, when a user's own GMGN credential
 is the thing being signed with.
 
-This is greenfield. A repo-wide grep for `sniper|slotshark|j7tracker|tweet`
-returns three incidental hits: a `.gitignore` comment about tweet drafts, and the
-`alpha_sniper` placeholder username in the landing mockup
-(`landing/src/components/Hero.tsx`, `landing/src/components/landing/EnterSection.tsx`).
+This page was written when the work was greenfield — a repo-wide grep for
+`sniper|slotshark|j7tracker|tweet` returned three incidental hits. It no longer
+is: `backend/src/sniper/`, `backend/src/api/sniper/`, `frontend/src/components/sniper/`
+and the `sniper_*` tables are all real. The reuse decisions above held; the one
+that mattered most in practice was the last column — `SniperStore` shipped as a
+sibling of `StorageProvider`, not an extension of it.
 
 ## Milestones
 
 Each one is testable and proves something specific.
 
-### The alpha (current target, `feat/sniper-m3`)
+### The alpha — shipped 2026-08-07
 
-A usable, self-serve sniper *without* the social-stream stack. Bundle:
+A usable, self-serve sniper *without* the social-stream stack. What the bundle
+turned out to be:
 
-- **M3** — Slotshark executor live on a minimally funded Solana wallet.
-- **M5** — per-user venue connect flow: the operator pastes their Slotshark
-  API key, it goes into Vault, venue status is shown.
-- **Sniper console tab** — a new page + `/api/sniper/*` routes + nav entry
-  (mirrors the LP dashboard's page/routes/nav-gating pattern), from which the
-  operator connects keys, sees status, and fires a manual test buy — dry-run
-  (`OCT_SNIPER_DRY_RUN=1`) first, then live.
-- **Triggering** — Slotshark's own Twitter-feed triggers, configured through
-  their API (no J7). See the alpha trigger decision under [Scope](#scope-and-phasing).
+- **M3** — the Slotshark executor and the whole fire path behind it, reachable
+  from the console. **Shipped as code; the empirical half is still open** — no
+  live fill has been observed, so Slotshark's error taxonomy is still the guessed
+  table in [execution](../sniper-execution/) and everything unrecognized falls
+  through to `unknown`.
+- **M5** — per-user venue connect flow: the operator pastes their Slotshark API
+  key, their own client writes it into Vault, venue status is shown. Rotate and
+  disconnect too. **Shipped.**
+- **Sniper console tab** — page, nav entry and a `/sniper/v1` control plane, from
+  which the operator manages wallets and rules, sees the fire log, and fires a
+  manual test buy — dry-run first, then live. **Shipped**, with one deliberate
+  divergence from the original sketch: the routes are **not** `/api/sniper/*` and
+  do not follow the LP dashboard's mounting pattern, because `/api` is the prefix
+  a money endpoint must not sit behind (T12, and
+  [execution](../sniper-execution/#the-control-plane-is-part-of-this)).
+- **Triggering** — Slotshark's own Twitter-feed triggers, configured **in their
+  dashboard**, not through OCT. The originally-planned "configured through their
+  API" half did not survive contact: no trigger endpoint is verifiable from this
+  repo, so `slotsharkTriggers.ts` throws rather than guessing one. See the alpha
+  trigger decision under [Scope](#scope-and-phasing).
 
-Explicitly **out of the alpha:** M2 (J7 socket), M4 (adversarial risk-gate
-tests — the caps still bind via M1's gate, but the full adversarial suite
-waits), Phase 2 resolution (M8–M10), and multi-venue (M11). The alpha ships to
-`dev`, then to `main` once it actually fires.
+Explicitly **out of the alpha, and still out:** M2 (J7 socket), M4 (adversarial
+risk-gate tests — the caps bind via M1's gate and are unit-tested, but the full
+adversarial suite waits), Phase 2 resolution (M8–M10), and multi-venue (M11).
 
-| # | Milestone | Proves |
-| --- | --- | --- |
-| M1 | Fire path against `OCT_SNIPER_DRY_RUN=1`, no funded wallet, dry-run executor only | the whole fire path, risk gate included, with no money at risk |
-| M2 | J7 socket in shadow mode: log every tweet, fire nothing — **deferred past the alpha; Slotshark's native Twitter triggers carry the alpha instead (see Scope)** | real hop latencies replace the table above; lane-reversal frequency measured |
-| M3 | Slotshark executor live on a minimally funded wallet, Solana | the custodial fire path end-to-end, and Slotshark's error taxonomy built empirically rather than guessed |
-| M4 | Risk gate adversarial tests: ladder, multi-wallet, day rollover, restart replay | the caps actually bind — the tests are listed in [execution](../sniper-execution/) |
-| M5 | Per-user venue-account connect flow (hosted): user links their own Slotshark account, token into Vault | multi-tenant execution over users' own accounts, never the operator's — [ADR-012](../../adr/012-venue-tenancy/) |
-| M6 | Latency probe: real tweet → fill measured on live fires | whether the venue can hold the 500 ms budget — **gates any hot-path or sub-second commitment (M10–M11)** |
-| M7 | Slotshark scoped-token adoption, once the custom OAuth integration ships | bounds threat T3 from total drain to a bad buy — the highest-leverage security win available |
-| M8 | Launch feed shadow harness: log tweet → creation-arrival delta and coverage | which feed to buy, on evidence |
-| M9 | Phase 2 resolution in shadow mode: persist `CANDIDATE_TOKENS`, select, fire nothing | whether the scorer picks what the operator would have |
-| M10 | Phase 2 live at a structurally lower cap | — |
-| M11 | GMGN as a **per-user connected** venue: users add their own GMGN credential, EVM/BSC leg behind it | multi-chain execution without the operator's key ever being a trading credential |
+| # | Milestone | Status | Proves |
+| --- | --- | --- | --- |
+| M1 | Fire path against `OCT_SNIPER_DRY_RUN=1`, no funded wallet, dry-run executor only | **done** | the whole fire path, risk gate included, with no money at risk |
+| M2 | J7 socket in shadow mode: log every tweet, fire nothing | **deferred past the alpha** — Slotshark's native Twitter triggers carry it instead (see Scope) | real hop latencies replace the table above; lane-reversal frequency measured |
+| M3 | Slotshark executor live on a minimally funded wallet, Solana | **code done, unproven** — the path is shipped and fireable; no live fill observed yet, so the error taxonomy is still guessed | the custodial fire path end-to-end, and Slotshark's error taxonomy built empirically rather than guessed |
+| M4 | Risk gate adversarial tests: ladder, multi-wallet, day rollover, restart replay | **open** | the caps actually bind — the tests are listed in [execution](../sniper-execution/) |
+| M5 | Per-user venue-account connect flow (hosted): user links their own Slotshark account, token into Vault | **done** | multi-tenant execution over users' own accounts, never the operator's — [ADR-012](../../adr/012-venue-tenancy/) |
+| M6 | Latency probe: real tweet → fill measured on live fires | **open, and not meaningful until M2** — the alpha's trigger latency is Slotshark's and unobservable to us | whether the venue can hold the 500 ms budget — **gates any hot-path or sub-second commitment (M10–M11)** |
+| M7 | Slotshark scoped-token adoption, once the custom OAuth integration ships | **open** — gated on the venue, not on us | bounds threat T3 from total drain to a bad buy — the highest-leverage security win available |
+| M8 | Launch feed shadow harness: log tweet → creation-arrival delta and coverage | **open** | which feed to buy, on evidence |
+| M9 | Phase 2 resolution in shadow mode: persist `CANDIDATE_TOKENS`, select, fire nothing | **open** | whether the scorer picks what the operator would have |
+| M10 | Phase 2 live at a structurally lower cap | **open** | — |
+| M11 | GMGN as a **per-user connected** venue: users add their own GMGN credential, EVM/BSC leg behind it | **open** | multi-chain execution without the operator's key ever being a trading credential |
+
+One milestone that was never on the list and is now needed: **the reconciler**.
+[Execution](../sniper-execution/) has it landing with M3; it did not, because it
+needs a venue fill-history endpoint nobody here can verify. Until it exists, an
+indeterminate send holds its budget reservation until a human resolves it.
 
 ## Open questions
 

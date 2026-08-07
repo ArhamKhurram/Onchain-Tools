@@ -217,4 +217,73 @@ export interface BudgetRow {
 
 export type ReservationResult =
   | { ok: true }
-  | { ok: false; reason: 'per_fire_cap' | 'daily_cap' | 'max_open' | 'unit_mismatch' | 'no_wallet' };
+  // `contended` is the hosted store's concurrent-writer fallthrough: the SQL
+  // debited zero rows and then failed every diagnostic predicate on re-read,
+  // which means another fire moved the row in between. Widening the union is
+  // the honest option — misreporting it as `daily_cap` would tell an operator
+  // their cap is exhausted when it is not. The in-memory and JSON stores are
+  // single-threaded with no await between check and mutation, so they never
+  // return it.
+  | {
+      ok: false;
+      reason: 'per_fire_cap' | 'daily_cap' | 'max_open' | 'unit_mismatch' | 'no_wallet' | 'contended';
+    };
+
+// ---------------------------------------------------------------------------
+// Wallets and the fire log
+// ---------------------------------------------------------------------------
+//
+// These live here rather than in store.ts because three store implementations
+// (in-memory, JSON, Supabase) and the API layer all speak them; store.ts is now
+// one implementation among three.
+
+export interface WalletConfig {
+  walletId: string;
+  label: string;
+  /** Custodial venue holding this wallet. `dryrun` is not a venue you can fund. */
+  venue: Exclude<Venue, 'dryrun'>;
+  /**
+   * Venue-side pubkey, passed verbatim to Slotshark's POST /buy.
+   * CASE-SENSITIVE — base58 lowercased is a different, still-plausible address,
+   * which is a silent way to send funds nowhere. Never normalise this.
+   */
+  address: string;
+  chain: Chain;
+  unit: SizeUnit;
+  /** Caps a single leg. The authoritative per-fire cap is min(this, rule.perFireCap). */
+  perFireCap: number;
+  /** Total native-unit spend allowed per UTC day. */
+  dailyCap: number;
+  /** Max simultaneously-open positions. */
+  maxOpen: number;
+}
+
+export interface FireRecord {
+  id: string;
+  ruleId: string;
+  userId: string;
+  triggerKey: string;
+  walletId: string;
+  legNo: number;
+  attempts: number;
+  mint: string;
+  amount: number;
+  state: 'filled' | 'expired' | 'aborted' | 'unknown';
+  /**
+   * Whether this row spent real money. Taken from `registry.isDryRun(rule)` at
+   * fire time, NOT from `rule.dryRun` — the process-level OCT_SNIPER_DRY_RUN
+   * overrides the rule flag, so the rule flag alone would mislabel every row
+   * fired while the process switch was on. Without this field a synthetic
+   * dry-run fill and a real one are indistinguishable in the log, which is the
+   * most dangerous ambiguity a money log can carry.
+   */
+  dryRun: boolean;
+  venue: Venue;
+  signature?: string;
+  abortReason?: string;
+  /** Human resolution of an `unknown` leg. See POST /sniper/v1/fires/:id/resolve. */
+  resolution?: 'filled' | 'not_filled';
+  resolvedAt?: number;
+  resolvedNote?: string;
+  at: number;
+}

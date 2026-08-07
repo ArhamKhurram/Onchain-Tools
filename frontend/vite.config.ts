@@ -28,6 +28,10 @@ export default defineConfig({
     strictPort: true,
     proxy: {
       '/api': 'http://localhost:3001',
+      // The sniper control plane deliberately does NOT sit under /api, so it
+      // needs its own entry — without one, a dev console with VITE_API_URL unset
+      // requests /sniper/v1/* from the vite server itself and gets index.html.
+      '/sniper/v1': 'http://localhost:3001',
       '/ws': {
         target: 'ws://localhost:3001',
         ws: true,

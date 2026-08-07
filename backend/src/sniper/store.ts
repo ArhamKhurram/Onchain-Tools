@@ -1,103 +1,134 @@
-// SniperStore — rules, wallets, per-day budgets, kill switch, and the fire log.
+// InMemorySniperStore — the reference SniperStore implementation.
 //
-// M1 is an in-memory implementation. It is deliberately a SIBLING of the generic
-// StorageProvider, not an extension: the sniper's shape (budgets, fires, kill
-// switch) has nothing to do with Discord/Telegram/contract persistence.
+// It is no longer the only one (see stores/jsonSniperStore.ts and
+// stores/supabaseSniperStore.ts), but it stays: it is the fastest correct
+// implementation for unit tests, and it is the definition of what the other two
+// must do. When the three disagree, this file is right.
 //
-// The reservation (`reserveLeg`) is the one method that must be atomic. In this
-// in-memory store, "atomic" is free — Node is single-threaded and the check and
-// the mutation happen in one synchronous function with no `await` between them.
-// In hosted mode this becomes the single UPDATE ... RETURNING statement in the
-// docs, whose predicate keys on (wallet_id, chain, day, unit) for the same reason
-// the signature below does.
+// The reservation (`reserveLeg`) is the one method that must be atomic. Here
+// "atomic" is free — Node is single-threaded and the check and the mutation
+// happen in one function with no `await` between them. In hosted mode it becomes
+// the single `sniper_reserve_leg` plpgsql call, whose predicate keys on
+// (wallet_id, chain, day, unit) for the same reason the signature below does.
 
+import { randomUUID } from 'crypto';
+import type {
+  SniperStore,
+  ClampCapsParams,
+  KillState,
+  ReserveParams,
+  ReleaseParams,
+  ResolveFireParams,
+} from './storeInterface.js';
 import type {
   BudgetRow,
   Chain,
+  FireRecord,
   ReservationResult,
-  SizeUnit,
+  RuleState,
   SnipeRule,
+  WalletConfig,
 } from './types.js';
 
-export interface WalletConfig {
-  walletId: string;
-  chain: Chain;
-  unit: SizeUnit;
-  /** Caps a single leg. The authoritative per-fire cap is min(this, rule.perFireCap). */
-  perFireCap: number;
-  /** Total native-unit spend allowed per UTC day. */
-  dailyCap: number;
-  /** Max simultaneously-open positions. */
-  maxOpen: number;
-}
-
-export interface FireRecord {
-  ruleId: string;
-  userId: string;
-  triggerKey: string;
-  walletId: string;
-  legNo: number;
-  mint: string;
-  amount: number;
-  state: 'filled' | 'expired' | 'aborted' | 'unknown';
-  signature?: string;
-  abortReason?: string;
-  at: number;
-}
+// Re-exported so the many existing importers of `WalletConfig`/`FireRecord`
+// from this module keep working; the definitions moved to types.ts because
+// three store implementations and the API layer all speak them now.
+export type { WalletConfig, FireRecord } from './types.js';
 
 /** YYYY-MM-DD in UTC, from an injected clock so tests are deterministic. */
 export function utcDay(now: number): string {
   return new Date(now).toISOString().slice(0, 10);
 }
 
-export class InMemorySniperStore {
+/**
+ * Composite map key. NUL separator, same reasoning as idempotency.ts:39-45 — it
+ * cannot appear in a userId, rule id or wallet id, so two distinct pairs can
+ * never collide into one key the way a space separator could. Written as an
+ * escape so this file stays plain text to git and grep.
+ */
+function key(...parts: string[]): string {
+  return parts.join('\u0000');
+}
+
+interface UserState {
+  killSwitch: boolean;
+  trippedAt: number | null;
+  trippedReason: string | null;
+}
+
+export class InMemorySniperStore implements SniperStore {
   private rules = new Map<string, SnipeRule>();
   private wallets = new Map<string, WalletConfig>();
   private budgets = new Map<string, BudgetRow>();
-  private killSwitch = false;
-  private fires: FireRecord[] = [];
+  private state = new Map<string, UserState>();
+  private fires = new Map<string, FireRecord>();
 
   // --- rules ---
-  putRule(rule: SnipeRule): void {
-    this.rules.set(rule.id, rule);
+  async putRule(userId: string, rule: SnipeRule): Promise<void> {
+    this.rules.set(key(userId, rule.id), { ...rule, userId });
   }
-  getRule(id: string): SnipeRule | undefined {
-    return this.rules.get(id);
+  async getRule(userId: string, id: string): Promise<SnipeRule | null> {
+    return this.rules.get(key(userId, id)) ?? null;
   }
-  armedRules(): SnipeRule[] {
-    return [...this.rules.values()].filter((r) => r.state === 'armed');
+  async listRules(userId: string): Promise<SnipeRule[]> {
+    return [...this.rules.values()].filter((r) => r.userId === userId);
   }
-  setRuleState(id: string, state: SnipeRule['state']): void {
-    const r = this.rules.get(id);
+  async deleteRule(userId: string, id: string): Promise<boolean> {
+    return this.rules.delete(key(userId, id));
+  }
+  async setRuleState(userId: string, id: string, state: RuleState): Promise<void> {
+    const r = this.rules.get(key(userId, id));
     if (r) r.state = state;
+  }
+  async setRuleDryRun(userId: string, id: string, dryRun: boolean): Promise<void> {
+    const r = this.rules.get(key(userId, id));
+    if (r) r.dryRun = dryRun;
   }
 
   // --- wallets ---
-  putWallet(cfg: WalletConfig): void {
-    this.wallets.set(cfg.walletId, cfg);
+  async putWallet(userId: string, cfg: WalletConfig): Promise<void> {
+    this.wallets.set(key(userId, cfg.walletId), cfg);
   }
-  getWallet(id: string): WalletConfig | undefined {
-    return this.wallets.get(id);
+  async getWallet(userId: string, walletId: string): Promise<WalletConfig | null> {
+    return this.wallets.get(key(userId, walletId)) ?? null;
+  }
+  async listWallets(userId: string): Promise<WalletConfig[]> {
+    const out: WalletConfig[] = [];
+    for (const [k, v] of this.wallets) {
+      if (k.startsWith(`${userId}\u0000`)) out.push(v);
+    }
+    return out;
+  }
+  async deleteWallet(userId: string, walletId: string): Promise<boolean> {
+    return this.wallets.delete(key(userId, walletId));
   }
 
-  // --- kill switch (survives conceptually; here it is process state) ---
-  isKilled(): boolean {
-    return this.killSwitch;
+  // --- kill switch ---
+  async isKilled(userId: string): Promise<boolean> {
+    return this.state.get(userId)?.killSwitch ?? false;
   }
-  setKillSwitch(on: boolean): void {
-    this.killSwitch = on;
+  async getKillState(userId: string): Promise<KillState> {
+    const s = this.state.get(userId);
+    return { on: s?.killSwitch ?? false, reason: s?.trippedReason ?? null, trippedAt: s?.trippedAt ?? null };
+  }
+  async setKillSwitch(userId: string, on: boolean, reason: string | null): Promise<void> {
+    this.state.set(userId, {
+      killSwitch: on,
+      trippedAt: on ? Date.now() : null,
+      trippedReason: on ? reason : null,
+    });
   }
 
-  private budgetKey(walletId: string, chain: Chain, day: string): string {
-    return `${walletId} ${chain} ${day}`;
+  private budgetKey(userId: string, walletId: string, chain: Chain, day: string): string {
+    return key(userId, walletId, chain, day);
   }
 
   /** Upsert the day's budget row from wallet config — this is the rollover guard. */
-  private ensureBudget(walletId: string, chain: Chain, day: string): BudgetRow | null {
-    const key = this.budgetKey(walletId, chain, day);
-    const existing = this.budgets.get(key);
+  private ensureBudget(userId: string, walletId: string, chain: Chain, day: string): BudgetRow | null {
+    const k = this.budgetKey(userId, walletId, chain, day);
+    const existing = this.budgets.get(k);
     if (existing) return existing;
-    const cfg = this.wallets.get(walletId);
+    const cfg = this.wallets.get(key(userId, walletId));
     if (!cfg || cfg.chain !== chain) return null;
     const row: BudgetRow = {
       walletId,
@@ -110,7 +141,7 @@ export class InMemorySniperStore {
       spentToday: 0,
       openPositions: 0,
     };
-    this.budgets.set(key, row);
+    this.budgets.set(k, row);
     return row;
   }
 
@@ -119,14 +150,8 @@ export class InMemorySniperStore {
    * wallet's day budget. Returns ok only if it debited exactly one row. The unit
    * check prevents comparing incommensurable numbers (5 SOL vs a 1000-USDC cap).
    */
-  reserveLeg(params: {
-    walletId: string;
-    chain: Chain;
-    unit: SizeUnit;
-    day: string;
-    amountWithFees: number;
-  }): ReservationResult {
-    const row = this.ensureBudget(params.walletId, params.chain, params.day);
+  async reserveLeg(userId: string, params: ReserveParams): Promise<ReservationResult> {
+    const row = this.ensureBudget(userId, params.walletId, params.chain, params.day);
     if (!row) return { ok: false, reason: 'no_wallet' };
     if (row.unit !== params.unit) return { ok: false, reason: 'unit_mismatch' };
     if (params.amountWithFees > row.perFireCap) return { ok: false, reason: 'per_fire_cap' };
@@ -139,28 +164,79 @@ export class InMemorySniperStore {
   }
 
   /** Release a reservation (a provably-dead send, or a dry-run synthetic close). */
-  releaseLeg(params: {
-    walletId: string;
-    chain: Chain;
-    day: string;
-    amountWithFees: number;
-    closePosition: boolean;
-  }): void {
-    const row = this.budgets.get(this.budgetKey(params.walletId, params.chain, params.day));
+  async releaseLeg(userId: string, params: ReleaseParams): Promise<void> {
+    const row = this.budgets.get(this.budgetKey(userId, params.walletId, params.chain, params.day));
     if (!row) return;
     row.spentToday = Math.max(0, row.spentToday - params.amountWithFees);
     if (params.closePosition) row.openPositions = Math.max(0, row.openPositions - 1);
   }
 
-  budgetSnapshot(walletId: string, chain: Chain, day: string): BudgetRow | undefined {
-    return this.budgets.get(this.budgetKey(walletId, chain, day));
+  /** Lower today's snapshotted caps to a reduced wallet config. Never raises. */
+  async clampBudgetCaps(userId: string, p: ClampCapsParams): Promise<void> {
+    const row = this.budgets.get(this.budgetKey(userId, p.walletId, p.chain, p.day));
+    if (!row) return;
+    row.perFireCap = Math.min(row.perFireCap, p.perFireCap);
+    row.dailyCap = Math.min(row.dailyCap, p.dailyCap);
+    row.maxOpen = Math.min(row.maxOpen, p.maxOpen);
+  }
+
+  async budgetSnapshot(userId: string, walletId: string, chain: Chain, day: string): Promise<BudgetRow | null> {
+    return this.budgets.get(this.budgetKey(userId, walletId, chain, day)) ?? null;
+  }
+
+  async listBudget(userId: string, day: string): Promise<BudgetRow[]> {
+    const prefix = `${userId}\u0000`;
+    const out: BudgetRow[] = [];
+    for (const [k, row] of this.budgets) {
+      if (k.startsWith(prefix) && row.day === day) out.push(row);
+    }
+    return out;
   }
 
   // --- fire log (reconciliation substrate) ---
-  recordFire(rec: FireRecord): void {
-    this.fires.push(rec);
+  async recordFire(userId: string, rec: Omit<FireRecord, 'id'>): Promise<FireRecord> {
+    // Upsert on (rule, trigger, wallet, leg) rather than append, mirroring the
+    // hosted store's ON CONFLICT target so a retry updates `attempts` in place
+    // instead of producing a second row for the same leg.
+    const prior = [...this.fires.values()].find(
+      (f) =>
+        f.userId === userId &&
+        f.ruleId === rec.ruleId &&
+        f.triggerKey === rec.triggerKey &&
+        f.walletId === rec.walletId &&
+        f.legNo === rec.legNo,
+    );
+    const row: FireRecord = { ...rec, userId, id: prior?.id ?? randomUUID() };
+    this.fires.set(row.id, row);
+    return row;
   }
-  fireLog(): readonly FireRecord[] {
-    return this.fires;
+
+  async getFire(userId: string, id: string): Promise<FireRecord | null> {
+    const f = this.fires.get(id);
+    return f && f.userId === userId ? f : null;
+  }
+
+  async fireLog(userId: string, limit = 200): Promise<FireRecord[]> {
+    return [...this.fires.values()]
+      .filter((f) => f.userId === userId)
+      .sort((a, b) => b.at - a.at)
+      .slice(0, limit);
+  }
+
+  async resolveFire(userId: string, id: string, r: ResolveFireParams): Promise<FireRecord | null> {
+    const f = this.fires.get(id);
+    if (!f || f.userId !== userId) return null;
+    // The guard and the write happen with no `await` between them, which is what
+    // makes the transition atomic here — the same property `reserveLeg` relies
+    // on. Returning null rather than re-writing is what makes a second resolve a
+    // no-op instead of a second budget credit; see storeInterface.resolveFire.
+    if (f.state !== 'unknown' || f.resolution) return null;
+    f.resolution = r.resolution;
+    f.resolvedAt = r.at;
+    f.resolvedNote = r.note;
+    // `not_filled` means the operator checked the venue and the send never
+    // landed, so the leg is no longer indeterminate — it expired.
+    if (r.resolution === 'not_filled') f.state = 'expired';
+    return f;
   }
 }

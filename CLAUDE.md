@@ -69,9 +69,20 @@ done.** `strict: true` is on everywhere. Coverage is unit tests over pure functi
 only — there are no integration or end-to-end tests, so the compiler still carries
 most of the weight on anything involving I/O.
 
-The sniper lives **only** on this branch — `main` does not carry it (it was
-reverted from `main` in #55). See the branch topology below before moving work
-between branches.
+**LP automation is retired.** It lived only on `dev`, never shipped, and was
+deleted in #80 — workspace, dashboard page, `/api/lp` routes and Foundry CI job.
+Don't re-add it to either branch. The applied migrations were left in place and a
+new migration drops the tables; `lp_automation_policies` survives because prod
+has the table.
+
+**The sniper ships from `main`.** `backend/src/sniper/` came onto `main` in #79
+(dormant and unwired) and is now wired: the `/sniper/v1` control plane
+(`backend/src/api/sniper/`) and the console's Sniper tab
+(`frontend/src/pages/SniperPage.tsx`).
+
+With LP gone and the sniper shipped, `dev` currently holds nothing that `main`
+lacks except the video work. It stays as the integration branch — the split is by
+intent, not by feature list.
 
 ---
 
@@ -140,6 +151,34 @@ hosted). `auth/encryption.ts` is AES-256-GCM (`TOKEN_ENCRYPTION_KEY`, 64 hex cha
 Discord tokens at rest. `gateway/userGatewayPool.ts` manages per-user gateways with
 30-min idle eviction; `gateway/state.ts` holds the single global gateway for local mode.
 
+### Sniper — the one subsystem that spends money
+
+`backend/src/sniper/` executes operator-declared buys at a custodial venue
+(Slotshark, Solana). Four things about it are structural, not stylistic:
+
+- **`executeFire` is the only function allowed to spend**, and every control —
+  kill switch, trigger claim, per-fire/per-trigger/daily caps, max open positions
+  — is a step *inside* it. `fireOrchestrator.ts` is its only caller.
+- **The control plane mounts at `/sniper/v1`, not under `/api`, and it is mounted
+  in `index.ts` *before* `app.use(cors())`.** Local `/api` is wildcard-CORS with
+  `userId = 'local'` and no credential, which is survivable for read endpoints and
+  not for one that spends. It carries its own body parser, rate limit and auth
+  (`api/sniper/auth.ts`: per-boot bearer token in a `0600` file for local,
+  Supabase bearer for hosted, plus a strict `Origin`/`Host` check). Don't
+  "tidy" it into `api/routes/`.
+- **`SniperStore` (`sniper/storeInterface.ts`) is a sibling of `StorageProvider`,
+  not an extension** — same `userId`-first convention, different shape. JSON in
+  local, Supabase in hosted, picked by `sniper/stores/index.ts`.
+- **The venue token is read late and never escapes the call frame.** In hosted
+  mode the user's own client writes it straight into Supabase Vault; the backend
+  reads it via a service-role RPC at the moment of firing. It is never logged,
+  never returned by any response, never held in frontend state.
+
+In the alpha OCT runs no tweet feed: the automatic tweet→buy loop lives inside the
+operator's Slotshark account and never calls back, so OCT's caps and kill switch
+bind console-fired buys only. The console says so permanently and the docs lead
+with it — see the [sniper overview](https://arhamkhurram.github.io/Onchain-Tools/architecture/sniper/).
+
 ---
 
 ## Frontend (`frontend/src`)
@@ -149,7 +188,13 @@ else `App`) → `App.tsx` (`BrowserRouter`, base `/dashboard/`, all pages lazy) 
 `AppProviders.tsx` (boots `useWebSocket`, `useClientGateway`, `useSignalConvergence`,
 auth session, initial data loads) → `layout/AppShell.tsx` (persistent chrome + `<Outlet/>`).
 
-Pages (`pages/`): Dashboard, Feed, Wallets, Portfolio, Callers (radar), Workspace, Settings, Login.
+Pages (`pages/`): Dashboard, Feed, Wallets, Portfolio, Callers (radar), Sniper,
+Workspace, Settings, Login.
+
+The Sniper page is page-local state, not a store slice (like Portfolio and FOMO),
+and talks to `/sniper/v1` through `lib/sniperApi.ts` rather than `apiFetch` —
+`API_BASE` is `VITE_API_URL + '/api'`, which is the one prefix the control plane
+must not sit behind.
 
 ### State — `stores/appStore.ts` (one large Zustand store)
 
@@ -236,36 +281,37 @@ plan. Prefer extracting from them over adding more:
 
 ### Branch topology
 
-Two long-lived branches. **You are on `dev`** — the integration branch that
-nothing merges out of; it exists to prove production and the unshipped work
-still compose.
+Two long-lived branches. **`dev` is an integration branch that nothing merges
+out of** — it exists to prove production and the unshipped work still compose.
 
 ```
                  production work
                          │
 main      ───●───────────●────────────●─────►   production (Railway + Vercel)
-              ╲           ╲            ╲            no sniper
+              ╲           ╲            ╲            production code only
                ╲ merge     ╲ merge      ╲ merge
-dev       ───────●─────●─────●─────●──────●─►   YOU ARE HERE
-                       │           │                (main ∪ sniper)
-                      sniper work
+dev       ───────●─────●─────●─────●──────●─►   integration: main ∪ unshipped work
+                       │           │
+                   unshipped work
 ```
 
 - **Production feature** → PR into `main` → then merge `main` down into `dev`.
-- **Sniper work** → branch off `dev`, PR back into `dev`. It never reaches
-  `main`.
-- **Never merge `dev` into `main`.** It would drag the sniper back in. This is
-  why the old `feature → dev → main` promotion flow no longer applies.
+- **Work that must not deploy yet** (today that is `lp-automation/`) → branch off
+  `dev`, PR back into `dev`. It never reaches `main`.
+- **Never merge `dev` into `main`.** It would drag whatever `dev` is holding into
+  production. This is why the old `feature → dev → main` promotion flow no longer
+  applies.
 - Do not push straight to `main`; PR + green CI first.
 
-**Merging `main` down into `dev` deletes the sniper module.** `main` reverted
-the dormant sniper in #55, and that revert propagates: it removes all 26 sniper
-files with no conflict, because `dev`'s copy and the revert's deletion never
-touch the same lines. Check `backend/src/sniper/` survives every `main` → `dev`
-merge and restore it from the pre-merge commit if not.
+**The sniper is production code and lives on `main`.** It was reverted from
+`main` in #55, restored dormant in #79, and wired up immediately after; ignore
+any older note claiming `main` ships without it. In particular the warning that a
+`main` → `dev` merge silently deletes `backend/src/sniper/` is **obsolete** —
+that deletion was the #55 revert propagating downward, and #79 superseded it.
 
 `main` deploys to Railway (backend) and Vercel (frontend + landing). `dev`
-deploys nowhere — it is for CI and local work.
+deploys nowhere — it is for CI and local work. The `LP-Feats` branch was retired
+on 2026-08-03 (tag `archive/LP-Feats`); its work had all landed on `dev`.
 - **Before finishing any change:** `npm run typecheck` (and the relevant `build`).
 - **Docs:** update the [roadmap](https://arhamkhurram.github.io/Onchain-Tools/roadmap/)
   when scoping features, `CHANGELOG.md` when shipping.

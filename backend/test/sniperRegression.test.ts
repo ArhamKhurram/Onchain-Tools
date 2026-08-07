@@ -13,10 +13,11 @@ import type { SnipeRule, NormalizedTweet, SendOutcome } from '../src/sniper/type
 
 const NOW = 1_785_000_000_000;
 const DAY = new Date(NOW).toISOString().slice(0, 10);
+const U = 'u1';
 
 function rule(over: Partial<SnipeRule> = {}): SnipeRule {
   return {
-    id: 'r1', userId: 'u1', name: 't', state: 'armed', chain: 'sol', venue: 'dryrun',
+    id: 'r1', userId: U, name: 't', state: 'armed', chain: 'sol', venue: 'dryrun',
     handles: ['elon'], interactionTypes: ['tweet'],
     matcher: { op: 'leaf', pattern: { pattern: 'doge', matchMode: 'includes' } },
     phase: 1, mint: 'MINT1', entryStyle: 'single', ladderSplit: null,
@@ -32,10 +33,12 @@ const tweet: NormalizedTweet = {
   text: 'doge to the moon', createdAt: NOW, firstSeenAt: NOW,
 };
 
-function harness(opts: { outcomeFor?: () => SendOutcome; walletCap?: number } = {}) {
+async function harness(opts: { outcomeFor?: () => SendOutcome; walletCap?: number } = {}) {
   const store = new InMemorySniperStore();
-  store.putWallet({
-    walletId: 'w1', chain: 'sol', unit: 'SOL',
+  await store.putWallet(U, {
+    walletId: 'w1', label: 'main', venue: 'slotshark',
+    address: 'So11111111111111111111111111111111111111112',
+    chain: 'sol', unit: 'SOL',
     perFireCap: opts.walletCap ?? 1000, dailyCap: 1000, maxOpen: 50,
   });
   return {
@@ -49,39 +52,39 @@ function harness(opts: { outcomeFor?: () => SendOutcome; walletCap?: number } = 
 describe('regression: rule.perFireCap is actually enforced', () => {
   it('aborts a leg exceeding the RULE cap even when the wallet budget would allow it', async () => {
     // Wallet cap is generous (1000); the rule cap is the binding one.
-    const deps = harness({ walletCap: 1000 });
+    const deps = await harness({ walletCap: 1000 });
     const r = rule({ sizeTotal: 10, perFireCap: 2, perTriggerCap: 1000 });
-    deps.store.putRule(r);
+    await deps.store.putRule(U, r);
     const res = await executeFire(r, tweet, deps);
     expect(res.legs[0].state).toBe('aborted');
     expect(res.legs[0].reason).toBe('per_fire_cap');
     // Nothing was spent.
-    expect(deps.store.budgetSnapshot('w1', 'sol', DAY)?.spentToday ?? 0).toBe(0);
+    expect((await deps.store.budgetSnapshot(U, 'w1', 'sol', DAY))?.spentToday ?? 0).toBe(0);
   });
 });
 
 describe('regression: an executor that THROWS must not leak a reservation', () => {
   it('records unknown and holds the reservation instead of escaping', async () => {
-    const deps = harness({
+    const deps = await harness({
       outcomeFor: () => { throw new Error('kaboom'); },
     });
     const r = rule();
-    deps.store.putRule(r);
+    await deps.store.putRule(U, r);
     // Must not reject.
     const res = await executeFire(r, tweet, deps);
     expect(res.legs[0].state).toBe('unknown');
     // Reservation intentionally held — the send may have landed.
-    expect(deps.store.budgetSnapshot('w1', 'sol', DAY)!.openPositions).toBe(1);
+    expect((await deps.store.budgetSnapshot(U, 'w1', 'sol', DAY))!.openPositions).toBe(1);
     // And the fire is recorded, so a reconciler has something to work from.
-    expect(deps.store.fireLog().some((f) => f.state === 'unknown')).toBe(true);
+    expect((await deps.store.fireLog(U)).some((f) => f.state === 'unknown')).toBe(true);
   });
 });
 
 describe('regression: idempotency claim happens BEFORE any send', () => {
   it('a throwing executor still consumes the trigger claim', async () => {
-    const deps = harness({ outcomeFor: () => { throw new Error('kaboom'); } });
+    const deps = await harness({ outcomeFor: () => { throw new Error('kaboom'); } });
     const r = rule();
-    deps.store.putRule(r);
+    await deps.store.putRule(U, r);
     await executeFire(r, tweet, deps);
     // Second delivery of the same trigger must be suppressed even though the
     // first one never completed a send. If the claim were taken after the send
