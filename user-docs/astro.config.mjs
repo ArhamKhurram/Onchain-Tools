@@ -55,6 +55,7 @@ export default defineConfig({
         { label: 'Rooms & Feed', autogenerate: { directory: 'feed' } },
         { label: 'Callers', autogenerate: { directory: 'callers' } },
         { label: 'FOMO', autogenerate: { directory: 'fomo' } },
+        { label: 'Sniper', autogenerate: { directory: 'sniper' } },
         { label: 'Portfolio & Wallets', autogenerate: { directory: 'portfolio' } },
         { label: 'Alerts', autogenerate: { directory: 'alerts' } },
         { label: 'Settings Reference', autogenerate: { directory: 'settings' } },

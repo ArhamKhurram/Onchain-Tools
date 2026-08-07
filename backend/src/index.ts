@@ -21,6 +21,7 @@ import type { TelegramMessageProcessorContext } from './telegram/messageProcesso
 import { WsServer } from './ws/server.js';
 import { createRouter } from './api/routes.js';
 import { createBotRouter } from './api/routes/bot.js';
+import { createSniperRouter } from './api/sniper/router.js';
 import { requireBotAuth } from './auth/botAuth.js';
 import { startBot } from './bot/index.js';
 import { getStorageProvider, isHostedMode } from './storage/index.js';
@@ -599,6 +600,25 @@ const app = express();
 if (isHostedMode()) {
   app.set('trust proxy', 1);
 }
+
+// Sniper control plane. Mounted FIRST, ahead of the app-wide cors() below, so
+// that the CORS policy binding it is its own (api/sniper/auth.ts) and never the
+// one configured here. In local mode index.ts falls through to a wildcard
+// `app.use(cors())` and auth/middleware.ts sets req.userId = 'local' with no
+// credential — together that would let any web page the operator visits author
+// an armed rule with caps of its own choosing, and every control in executeFire
+// would be intact and irrelevant. The sniper's own layer allows exactly the
+// console's origin (loopback in local, ALLOWED_ORIGINS in hosted, fail-closed
+// when that is unset) and answers everything else 403 with no CORS headers.
+// See docs/architecture/sniper-security.md T12 and ADR-008's limits.
+// It carries its own body parser, its own rate limit and its own auth for the
+// same reason: it must not inherit anything mounted after this line.
+//
+// ORDERING CONSTRAINT, for whoever edits this next: createSniperRouter() takes
+// no arguments on purpose. Giving it `wsServer` (e.g. to broadcast fire events)
+// would force it below `new WsServer(...)`, i.e. below the cors() call it must
+// precede. The Fires tab polls instead.
+app.use('/sniper/v1', createSniperRouter());
 
 // CORS: restrict origins in hosted mode, allow all in local mode
 if (isHostedMode()) {
