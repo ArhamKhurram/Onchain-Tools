@@ -31,9 +31,13 @@ open it without a token configured.
 5. Click one of the matching requests and find the **Request Headers**.
 6. Copy the value of the **`authorization`** header — that's your token.
 
-![Finding the authorization header in the Network tab](/discord_token.png)
-
 Paste it into **Settings → Tokens**.
+
+:::caution[Don't screenshot this step]
+The `authorization` header **is** your token. A screenshot of that Network-tab
+panel is as good as handing someone your account, so don't paste one into a
+support thread or an issue.
+:::
 
 ## Multiple accounts
 

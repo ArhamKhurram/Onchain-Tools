@@ -1,6 +1,8 @@
 # Changelog
 
-All notable changes to Trenchcord are documented here.
+All notable changes to Onchain Tools are documented here. Entries before the
+rename still say "Trenchcord" — that was the product's name at the time, and
+they're left as the record of what shipped.
 
 ## 2026-08-07
 
