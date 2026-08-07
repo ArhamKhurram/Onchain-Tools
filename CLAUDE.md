@@ -69,15 +69,20 @@ done.** `strict: true` is on everywhere. Coverage is unit tests over pure functi
 only — there are no integration or end-to-end tests, so the compiler still carries
 most of the weight on anything involving I/O.
 
-**LP automation does not live on this branch.** The `lp-automation/` workspace,
-its dashboard page, its `/api/lp` routes and its Foundry CI job are `dev`-only.
-`main` carries production code and nothing else — don't re-add them here; see
-the branch topology below.
+**LP automation is retired.** It lived only on `dev`, never shipped, and was
+deleted in #80 — workspace, dashboard page, `/api/lp` routes and Foundry CI job.
+Don't re-add it to either branch. The applied migrations were left in place and a
+new migration drops the tables; `lp_automation_policies` survives because prod
+has the table.
 
-**The sniper does live here.** `backend/src/sniper/` came onto `main` in #79
+**The sniper ships from `main`.** `backend/src/sniper/` came onto `main` in #79
 (dormant and unwired) and is now wired: the `/sniper/v1` control plane
 (`backend/src/api/sniper/`) and the console's Sniper tab
-(`frontend/src/pages/SniperPage.tsx`) ship from `main`.
+(`frontend/src/pages/SniperPage.tsx`).
+
+With LP gone and the sniper shipped, `dev` currently holds nothing that `main`
+lacks except the video work. It stays as the integration branch — the split is by
+intent, not by feature list.
 
 ---
 
