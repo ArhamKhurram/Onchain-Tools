@@ -10,6 +10,7 @@ interface WorkspacePanelChromeProps {
   editMode: boolean;
   onRemove: () => void;
   onConfigure: () => void;
+  onRoomChange: (roomId: string) => void;
 }
 
 export default function WorkspacePanelChrome({
@@ -17,6 +18,7 @@ export default function WorkspacePanelChrome({
   editMode,
   onRemove,
   onConfigure,
+  onRoomChange,
 }: WorkspacePanelChromeProps) {
   const rooms = useAppStore((s) => s.rooms);
   const roomName = useMemo(() => {
@@ -79,7 +81,7 @@ export default function WorkspacePanelChrome({
         )}
       </div>
       <div className="flex flex-col flex-1 min-h-0 overflow-hidden">
-        <PanelContent panel={panel} />
+        <PanelContent panel={panel} onRoomChange={onRoomChange} />
       </div>
     </div>
   );

@@ -21,6 +21,17 @@ scoring weights ship unset and a rule with unset weights cannot arm.
 
 ## Scope and phasing
 
+**Alpha trigger decision (2026-08-05).** The sniper alpha (M3 + M5 + the
+console tab) fires from **Slotshark's own Twitter-feed triggers**, configured
+through their API as part of the venue connect flow — OCT does not run its own
+tweet socket yet. The J7 socket (M2), the latency table below, and every hop
+budget tied to it are **deferred until after the alpha ships**; switching the
+trigger source from Slotshark's feed to our own J7 lane is an explicit later
+migration, not an implicit upgrade. Consequences accepted with this: the
+alpha's trigger latency is whatever Slotshark delivers (unmeasured, outside
+our control), and trigger configuration lives in their account, bounded by the
+same token that authorizes execution.
+
 The phases look similar and are not. The difference is *when the target is bound*.
 
 | | Phase 1 | Phase 2 | Phase 3 |
@@ -146,6 +157,14 @@ Notes:
 Nothing in this table is measured. It is an allocation against the 500 ms target,
 to be replaced with real numbers by Milestone M2.
 
+:::note[Does not apply to the alpha]
+This budget describes the **J7 hot path, which the alpha does not use** (see the
+alpha trigger decision under [Scope](#scope-and-phasing)). While the alpha fires
+from Slotshark's Twitter triggers, the trigger→submit latency is Slotshark's,
+not ours, and none of the hops below are on the critical path. This table
+becomes live only when the J7 socket lands (M2+).
+:::
+
 | # | Hop | Allotment | Notes |
 | --- | --- | --- | --- |
 | 1 | J7 → our socket | 50–150 ms | vendor path, not ours; region failover is the only dial |
@@ -215,10 +234,29 @@ returns three incidental hits: a `.gitignore` comment about tweet drafts, and th
 
 Each one is testable and proves something specific.
 
+### The alpha (current target, `feat/sniper-m3`)
+
+A usable, self-serve sniper *without* the social-stream stack. Bundle:
+
+- **M3** — Slotshark executor live on a minimally funded Solana wallet.
+- **M5** — per-user venue connect flow: the operator pastes their Slotshark
+  API key, it goes into Vault, venue status is shown.
+- **Sniper console tab** — a new page + `/api/sniper/*` routes + nav entry
+  (mirrors the LP dashboard's page/routes/nav-gating pattern), from which the
+  operator connects keys, sees status, and fires a manual test buy — dry-run
+  (`OCT_SNIPER_DRY_RUN=1`) first, then live.
+- **Triggering** — Slotshark's own Twitter-feed triggers, configured through
+  their API (no J7). See the alpha trigger decision under [Scope](#scope-and-phasing).
+
+Explicitly **out of the alpha:** M2 (J7 socket), M4 (adversarial risk-gate
+tests — the caps still bind via M1's gate, but the full adversarial suite
+waits), Phase 2 resolution (M8–M10), and multi-venue (M11). The alpha ships to
+`dev`, then to `main` once it actually fires.
+
 | # | Milestone | Proves |
 | --- | --- | --- |
 | M1 | Fire path against `OCT_SNIPER_DRY_RUN=1`, no funded wallet, dry-run executor only | the whole fire path, risk gate included, with no money at risk |
-| M2 | J7 socket in shadow mode: log every tweet, fire nothing | real hop latencies replace the table above; lane-reversal frequency measured |
+| M2 | J7 socket in shadow mode: log every tweet, fire nothing — **deferred past the alpha; Slotshark's native Twitter triggers carry the alpha instead (see Scope)** | real hop latencies replace the table above; lane-reversal frequency measured |
 | M3 | Slotshark executor live on a minimally funded wallet, Solana | the custodial fire path end-to-end, and Slotshark's error taxonomy built empirically rather than guessed |
 | M4 | Risk gate adversarial tests: ladder, multi-wallet, day rollover, restart replay | the caps actually bind — the tests are listed in [execution](../sniper-execution/) |
 | M5 | Per-user venue-account connect flow (hosted): user links their own Slotshark account, token into Vault | multi-tenant execution over users' own accounts, never the operator's — [ADR-012](../../adr/012-venue-tenancy/) |

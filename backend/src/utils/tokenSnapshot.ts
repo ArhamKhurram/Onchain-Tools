@@ -1,6 +1,7 @@
 import { enrichFromDexScreener } from './tokenEnrichment.js';
 import { enrichFromGmgn, resolveGmgnChain } from './gmgnEnrichment.js';
 import type { TokenEnrichment } from './rickEmbedParser.js';
+import { recordPeakObservation } from '../alerts/tokenPeakStore.js';
 import {
   getCatalogEntry,
   upsertCatalogFromEnrichment,
@@ -11,6 +12,21 @@ import {
 } from '../storage/tokenCatalog.js';
 
 export async function enrichToken(address: string, chainSlug?: string): Promise<TokenEnrichment | null> {
+  const enrichment = await fetchEnrichment(address, chainSlug);
+  // Every enrichment fetch is also a live-MC observation; fold it into the
+  // token peaks so the 3-min sampler isn't the only pair of eyes (fire-and-
+  // forget — must never slow the enrichment path).
+  if (enrichment) {
+    recordPeakObservation({
+      address,
+      mcNow: enrichment.fdvAtCall,
+      evmChain: enrichment.evmChain,
+    });
+  }
+  return enrichment;
+}
+
+async function fetchEnrichment(address: string, chainSlug?: string): Promise<TokenEnrichment | null> {
   const chainsToTry: string[] = [];
   if (chainSlug && chainSlug !== 'unknown') {
     chainsToTry.push(chainSlug);

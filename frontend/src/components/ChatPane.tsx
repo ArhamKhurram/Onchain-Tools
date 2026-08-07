@@ -39,11 +39,17 @@ interface ChatPaneProps {
   paneCount: number;
   editMode: boolean;
   variant?: 'grid' | 'popout' | 'workspace';
+  /**
+   * Owner of the pane's room when it is not a Feed split pane (workspace
+   * panels). When provided, the header room switcher reports the pick here
+   * instead of writing to the Feed's paneRoomIds.
+   */
+  onRoomChange?: (roomId: string) => void;
   onMoveLeft?: () => void;
   onMoveRight?: () => void;
 }
 
-export default function ChatPane({ roomId, paneIndex, paneCount, editMode, variant = 'grid', onMoveLeft, onMoveRight }: ChatPaneProps) {
+export default function ChatPane({ roomId, paneIndex, paneCount, editMode, variant = 'grid', onRoomChange, onMoveLeft, onMoveRight }: ChatPaneProps) {
   const isPopout = variant === 'popout';
   const isWorkspace = variant === 'workspace';
   const rooms = useAppStore((s) => s.rooms);
@@ -82,8 +88,21 @@ export default function ChatPane({ roomId, paneIndex, paneCount, editMode, varia
   const isGrid = useAppStore((s) => s.config?.splitLayout === 'grid');
   const setActivePane = useAppStore((s) => s.setActivePane);
   const togglePaneLock = useAppStore((s) => s.togglePaneLock);
-  const locked = useAppStore((s) => s.paneLocks[paneIndex] ?? false);
+  // Pane locks belong to the Feed's split panes. A workspace panel owns its own
+  // room, so it must not inherit the lock state of Feed pane 0.
+  const feedPaneLocked = useAppStore((s) => s.paneLocks[paneIndex] ?? false);
+  const locked = isWorkspace ? false : feedPaneLocked;
   const [dragOver, setDragOver] = useState(false);
+
+  // Where a room pick goes: the owner's callback when there is one, otherwise
+  // this pane's slot in the Feed layout.
+  const selectRoom = useCallback(
+    (nextRoomId: string) => {
+      if (onRoomChange) onRoomChange(nextRoomId);
+      else setPaneRoom(paneIndex, nextRoomId);
+    },
+    [onRoomChange, setPaneRoom, paneIndex],
+  );
 
   // Focus filter is local to each pane so split panes stay independent.
   const [focusFilter, setFocusFilterState] = useState<FocusFilter>(null);
@@ -501,7 +520,7 @@ export default function ChatPane({ roomId, paneIndex, paneCount, editMode, varia
     setDragOver(false);
     const data = e.dataTransfer.getData('text/plain');
     if (data.startsWith('room:')) {
-      setPaneRoom(paneIndex, data.slice(5));
+      selectRoom(data.slice(5));
     } else if (data.startsWith('pane:')) {
       const from = Number(data.slice(5));
       if (!Number.isNaN(from)) swapPanes(from, paneIndex);
@@ -517,11 +536,15 @@ export default function ChatPane({ roomId, paneIndex, paneCount, editMode, varia
       ? 'rgb(var(--oct-feed-bg))'
       : activeRoom?.color || 'rgb(var(--oct-feed-bg))';
 
+  // Workspace panels reuse ChatPane with paneIndex 0; marking that pane active
+  // would silently retarget the FEED's pane-0 to workspace clicks.
+  const handlePaneFocus = isWorkspace ? undefined : () => setActivePane(paneIndex);
+
   return (
     <div
       className={`flex-1 flex flex-col min-w-0 h-full relative ${ringClass}`}
       style={{ backgroundColor: paneBg }}
-      onMouseDownCapture={() => setActivePane(paneIndex)}
+      onMouseDownCapture={handlePaneFocus}
       onDragOver={(e) => { if (editMode && !locked) { e.preventDefault(); setDragOver(true); } }}
       onDragLeave={(e) => { if (editMode && !e.currentTarget.contains(e.relatedTarget as Node)) setDragOver(false); }}
       onDrop={handleDrop}
@@ -565,7 +588,7 @@ export default function ChatPane({ roomId, paneIndex, paneCount, editMode, varia
                   {switcherOptions.map((opt) => (
                     <button
                       key={opt.id}
-                      onClick={() => { setPaneRoom(paneIndex, opt.id); setSwitcherOpen(false); }}
+                      onClick={() => { selectRoom(opt.id); setSwitcherOpen(false); }}
                       className={`w-full flex items-center gap-2 px-3 py-1.5 text-left font-mono text-xs uppercase tracking-wide truncate transition-colors duration-100 ${
                         opt.id === roomId
                           ? 'bg-oct-accent-dim text-oct-accent'

@@ -166,14 +166,16 @@ function handleLiveMessage(gw: GatewayManager, rawMsg: DiscordMessage & { _chann
     if (!frontend.isHighlighted && !(frontend.matchedKeywords?.length && cfg.keywordAlertsEnabled)) {
       const addr = frontend.contractAddresses[0] ?? 'address';
       const short = addr.length > 12 ? `${addr.slice(0, 6)}…${addr.slice(-4)}` : addr;
-      state.addAlert({
+      const shown = state.addAlert({
         id: `alert-cg-${frontend.id}-${Date.now()}`,
         type: 'contract_address',
         message: frontend,
         reason: `Contract scan: ${short} · ${frontend.channelName}`,
         timestamp: Date.now(),
       });
-      if (cfg.messageSounds) playContractAlertSound(ss?.contractAlert);
+      // Suppressed as a duplicate scan (the caller's post and the scanner
+      // bot's embed reply are the same call) → no toast, no second chime.
+      if (shown && cfg.messageSounds) playContractAlertSound(ss?.contractAlert);
     }
   }
 

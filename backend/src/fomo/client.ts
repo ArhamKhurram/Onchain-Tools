@@ -16,6 +16,7 @@ import stealth from 'puppeteer-extra-plugin-stealth';
 import type { FomoCredentials, FomoCallResult, FomoTokenMetadata, FomoClientLike } from './types.js';
 import { getFomoServiceClient, loadPersistedFomoRefreshToken } from './store.js';
 import { FomoProxyClient, isFomoProxyMode } from './proxy-client.js';
+import { recordFomoUpstreamError, recordFomoUpstreamSuccess } from './health.js';
 
 chromium.use(stealth());
 
@@ -266,10 +267,19 @@ export class FomoClient implements FomoClientLike {
 
     if (result.status === 401) {
       console.error('[FOMO] 401 Unauthorized — attempting JWT refresh...');
+      recordFomoUpstreamError(path, 401, 'JWT rejected (refreshing)', result.text);
       this.jwt = null;
       await retry(() => this.refreshJwt(), 3, 1500);
     } else if (!result.status || result.status < 200 || result.status >= 300) {
       console.error('[FOMO]', result.text?.slice?.(0, 2000) ?? 'Non-OK response');
+      recordFomoUpstreamError(
+        path,
+        result.status,
+        result.errorMessage ?? result.text?.slice?.(0, 200) ?? `HTTP ${result.status}`,
+        result.text,
+      );
+    } else {
+      recordFomoUpstreamSuccess();
     }
 
     return result;

@@ -16,6 +16,27 @@ export interface ContractDetectionResult {
   addresses: string[];
 }
 
+const EVM_ADDRESS_EXACT = /^0x[a-fA-F0-9]{40}$/;
+
+/** True for a bare EVM (0x + 40 hex) address — the only case-insensitive form. */
+export function isEvmAddress(address: string): boolean {
+  return EVM_ADDRESS_EXACT.test(address.trim());
+}
+
+/**
+ * Canonical form of a contract address, for storage keys and comparisons.
+ *
+ * EVM addresses are hex and case-insensitive — the same token reaches us
+ * lowercase from a caller's plain post and EIP-55 checksummed from a Rick
+ * embed — so they are folded to lowercase. **Solana addresses are base58 and
+ * case-SENSITIVE**: `abc…` and `Abc…` are different mints, so anything that is
+ * not a bare EVM address is returned trimmed but otherwise untouched.
+ */
+export function normalizeContractAddress(address: string): string {
+  const trimmed = address.trim();
+  return EVM_ADDRESS_EXACT.test(trimmed) ? trimmed.toLowerCase() : trimmed;
+}
+
 export function detectContractAddresses(content: string): ContractDetectionResult {
   const addresses: string[] = [];
 
@@ -26,10 +47,24 @@ export function detectContractAddresses(content: string): ContractDetectionResul
 
   const evmMatches = stripped.match(EVM_ADDRESS_REGEX);
   if (evmMatches) {
-    addresses.push(...evmMatches);
+    // Canonicalise here — the earliest point every ingestion path shares (the
+    // backend pipeline and the browser Discord gateway both land here). One
+    // message can also carry the same address in two casings; keep one.
+    for (const match of evmMatches) {
+      const normalized = normalizeContractAddress(match);
+      if (!addresses.includes(normalized)) addresses.push(normalized);
+    }
   }
 
-  const solMatches = stripped.match(SOL_ADDRESS_REGEX);
+  // Blank out EVM hits before the base58 pass. Base58 omits 0/O/I/l, so an
+  // EIP-55 checksummed address whose hex happens to avoid them (e.g.
+  // 0x2Ec39B…cfffF) is itself a valid 41-char base58 run once its leading "0"
+  // is dropped — and it is mixed case, so it cleared the Solana heuristics
+  // below. One checksummed address therefore reported twice: the real EVM one
+  // and a phantom "x2Ec39B…" mint, each with its own row and its own toast.
+  const solScan = stripped.replace(EVM_ADDRESS_REGEX, ' ');
+
+  const solMatches = solScan.match(SOL_ADDRESS_REGEX);
   if (solMatches) {
     for (const match of solMatches) {
       if (match.length >= 32 && !addresses.includes(match)) {

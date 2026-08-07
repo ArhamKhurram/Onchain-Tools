@@ -2,6 +2,7 @@
 // so Railway never launches Playwright locally.
 
 import type { FomoCallResult, FomoCredentials } from './types.js';
+import { recordFomoUpstreamError, recordFomoUpstreamSuccess } from './health.js';
 
 const DEBUG = process.env.DEBUG === 'true';
 
@@ -103,21 +104,40 @@ export class FomoProxyClient {
   ): Promise<FomoCallResult<T>> {
     if (!this.initialized) await this.init();
 
-    const res = await workerFetch('/v1/call', {
-      method: 'POST',
-      body: JSON.stringify({
-        path: apiPath,
-        method: opts.method ?? 'GET',
-        body: opts.body ?? null,
-      }),
-    });
+    let res: Response;
+    try {
+      res = await workerFetch('/v1/call', {
+        method: 'POST',
+        body: JSON.stringify({
+          path: apiPath,
+          method: opts.method ?? 'GET',
+          body: opts.body ?? null,
+        }),
+      });
+    } catch (err) {
+      // Worker unreachable/timed out — never got an upstream status at all.
+      recordFomoUpstreamError('worker-transport', null, (err as Error)?.message ?? String(err));
+      throw err;
+    }
 
     if (!res.ok) {
       const text = await res.text();
+      recordFomoUpstreamError(apiPath, res.status, `worker call failed: ${text.slice(0, 200)}`, text);
       throw new Error(`FOMO worker call failed (${res.status}): ${text.slice(0, 500)}`);
     }
 
-    return (await res.json()) as FomoCallResult<T>;
+    const result = (await res.json()) as FomoCallResult<T>;
+    if (result.status >= 200 && result.status < 300) {
+      recordFomoUpstreamSuccess();
+    } else {
+      recordFomoUpstreamError(
+        apiPath,
+        result.status || null,
+        result.errorMessage ?? result.text?.slice?.(0, 200) ?? `HTTP ${result.status}`,
+        result.text,
+      );
+    }
+    return result;
   }
 
   getTopHolders(tokenAddress: string, networkId: number) {

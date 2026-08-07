@@ -113,6 +113,7 @@ export function useSettingsForm() {
   const [callerTiers, setCallerTiers] = useState<CallerTierEntry[]>([]);
   const [callerTierShowMuted, setCallerTierShowMuted] = useState(true);
   const [callerQualityRanking, setCallerQualityRanking] = useState(false);
+  const [callerScoreExclusions, setCallerScoreExclusions] = useState<string[]>([]);
   const [signalConvergenceWindowMinutes, setSignalConvergenceWindowMinutes] = useState(30);
   const [globalKeywordPatterns, setGlobalKeywordPatterns] = useState<KeywordPattern[]>([]);
   const [keywordAlertsEnabled, setKeywordAlertsEnabled] = useState(true);
@@ -202,6 +203,7 @@ export function useSettingsForm() {
       setCallerTiers(config.callerTiers ?? []);
       setCallerTierShowMuted(config.callerTierShowMuted ?? true);
       setCallerQualityRanking(config.callerQualityRanking ?? false);
+      setCallerScoreExclusions(config.callerScoreExclusions ?? []);
       setSignalConvergenceWindowMinutes(config.signalConvergenceWindowMinutes ?? 30);
       setGlobalKeywordPatterns(config.globalKeywordPatterns ?? []);
       setKeywordAlertsEnabled(config.keywordAlertsEnabled ?? true);
@@ -302,9 +304,10 @@ export function useSettingsForm() {
       splitLayout !== (config.splitLayout === 'grid' ? 'grid' : 'row') ||
       callerTierShowMuted !== (config.callerTierShowMuted ?? true) ||
       callerQualityRanking !== (config.callerQualityRanking ?? false) ||
-      JSON.stringify(callerTiers) !== JSON.stringify(config.callerTiers ?? [])
+      JSON.stringify(callerTiers) !== JSON.stringify(config.callerTiers ?? []) ||
+      JSON.stringify(callerScoreExclusions) !== JSON.stringify(config.callerScoreExclusions ?? [])
     );
-  }, [callerTiers, callerTierShowMuted, callerQualityRanking, config, globalUsers, contractDetection, guildColors, dmColors, telegramColors, enabledGuilds, evmAddressColor, solAddressColor,
+  }, [callerTiers, callerTierShowMuted, callerQualityRanking, callerScoreExclusions, config, globalUsers, contractDetection, guildColors, dmColors, telegramColors, enabledGuilds, evmAddressColor, solAddressColor,
     openInDiscordApp, openInTelegramApp, messageSounds, soundSettings, channelSounds, pushoverEnabled, pushoverAppToken, pushoverUserKey, pushoverPriority, pushoverSound, pushoverTriggers, pushoverFilters, discordBotDm,
     missedRunnerEnabled, missedRunnerMultiplier, missedRunnerLookbackHours, missedRunnerCooldownHours, missedRunnerMinMcAtCall, missedRunnerNotifyVia,
     solPlatform, evmPlatform, customSolUrl, customEvmUrl, contractClickAction, showFullContractAddress, autoOpenHighlightedContracts, signalConvergenceWindowMinutes,
@@ -362,6 +365,7 @@ export function useSettingsForm() {
         callerTiers,
         callerTierShowMuted,
         callerQualityRanking,
+        callerScoreExclusions,
         signalConvergenceWindowMinutes,
         globalKeywordPatterns,
         keywordAlertsEnabled,
@@ -527,7 +531,8 @@ export function useSettingsForm() {
     setMissedRunnerTestLoading, missedRunnerTestResult, setMissedRunnerTestResult, solPlatform, setSolPlatform, evmPlatform,
     setEvmPlatform, customSolUrl, setCustomSolUrl, customEvmUrl, setCustomEvmUrl, contractClickAction,
     setContractClickAction, showFullContractAddress, setShowFullContractAddress, autoOpenHighlightedContracts, setAutoOpenHighlightedContracts,
-    callerTiers, setCallerTiers, callerTierShowMuted, setCallerTierShowMuted, callerQualityRanking, setCallerQualityRanking, signalConvergenceWindowMinutes,
+    callerTiers, setCallerTiers, callerTierShowMuted, setCallerTierShowMuted, callerQualityRanking, setCallerQualityRanking,
+    callerScoreExclusions, setCallerScoreExclusions, signalConvergenceWindowMinutes,
     setSignalConvergenceWindowMinutes, globalKeywordPatterns, setGlobalKeywordPatterns, keywordAlertsEnabled, setKeywordAlertsEnabled, desktopNotifications,
     setDesktopNotifications, toastAlertsEnabled, setToastAlertsEnabled, toastPosition, setToastPosition, mentionsUserEnabled,
     setMentionsUserEnabled, mentionsRoleEnabled, setMentionsRoleEnabled, mentionsHereEnabled, setMentionsHereEnabled, mentionsEveryoneEnabled,

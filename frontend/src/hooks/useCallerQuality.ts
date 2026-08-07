@@ -1,12 +1,14 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   contractCallerKey,
   resolveCallerTier,
   effectiveBand,
   callerRank,
+  pickRoomScore,
   type CallerBand,
   type CallerScore,
   type CallerTier,
+  type RoomCallerScores,
 } from '@oct/shared';
 import type { ContractEntry } from '../types';
 import { useAppStore } from '../stores/appStore';
@@ -23,13 +25,21 @@ export interface CallerQuality {
   /** Sort weight — higher floats up. */
   rank: number;
   score?: CallerScore;
+  /** Where `score` came from — a rated in-room record, or the global one. */
+  scoreScope?: 'room' | 'global';
 }
 
 interface ScoresResponse {
   windowDays: number;
   contracts: number;
   pricedTokens: number;
+  /** The window held more rows than the backend would read — scores cover less than the window. */
+  truncated?: boolean;
+  /** Timestamp of the oldest row the scores were actually built from. */
+  coversFrom?: string;
   scores: CallerScore[];
+  /** Absent from older backends; room preference degrades to global. */
+  roomScores?: RoomCallerScores;
 }
 
 let cached: ScoresResponse | null = null;
@@ -87,41 +97,91 @@ export function useCallerQuality() {
     };
   }, []);
 
+  // Scoring exclusions change who is on the board, so don't make the user wait
+  // out the refresh interval to see their own edit land.
+  const exclusionSig = JSON.stringify(
+    useAppStore((s) => s.config?.callerScoreExclusions) ?? [],
+  );
+  const firstRun = useRef(true);
+  useEffect(() => {
+    if (firstRun.current) {
+      firstRun.current = false;
+      return;
+    }
+    void loadScores(true).then((data) => {
+      if (data) setScores(data);
+    });
+  }, [exclusionSig]);
+
   const byKey = useMemo(() => {
     const map = new Map<string, CallerScore>();
     for (const s of scores?.scores ?? []) map.set(s.key, s);
     return map;
   }, [scores]);
 
+  /** roomId -> (caller key -> that caller's score inside that room). */
+  const byRoom = useMemo(() => {
+    const map = new Map<string, Map<string, CallerScore>>();
+    for (const [roomId, roomScores] of Object.entries(scores?.roomScores ?? {})) {
+      const inner = new Map<string, CallerScore>();
+      for (const s of roomScores) inner.set(s.key, s);
+      map.set(roomId, inner);
+    }
+    return map;
+  }, [scores]);
+
   const qualityFor = useCallback(
-    (key: string, roomIds: string[] = []): CallerQuality => {
+    (key: string, roomIds: string[] = [], scope: 'room' | 'global' = 'room'): CallerQuality => {
+      // Manual tiers stay room-aware in BOTH scopes — a room-scoped mute is a
+      // deliberate statement and applies wherever that room context appears.
+      // The scope only chooses which *earned* record backs the band.
       const tier = resolveCallerTier(callerTiers, key, roomIds);
-      const score = byKey.get(key);
+      const picked =
+        scope === 'room'
+          ? pickRoomScore(roomIds, (roomId) => byRoom.get(roomId)?.get(key), byKey.get(key))
+          : { score: byKey.get(key), scope: 'global' as const };
       return {
         key,
         tier,
-        band: effectiveBand(tier, score?.band),
-        rank: callerRank(tier, score?.band),
-        score,
+        band: effectiveBand(tier, picked.score?.band),
+        rank: callerRank(tier, picked.score?.band),
+        score: picked.score,
+        scoreScope: picked.score ? picked.scope : undefined,
       };
     },
-    [callerTiers, byKey],
+    [callerTiers, byKey, byRoom],
   );
 
+  /** Room-scoped surfaces (chat feed, contract feed): in-room record first. */
   const qualityForContract = useCallback(
     (entry: ContractEntry): CallerQuality => qualityFor(contractCallerKey(entry), entry.roomIds ?? []),
+    [qualityFor],
+  );
+
+  /**
+   * Global-band variant for surfaces that aggregate across rooms — the Radar
+   * merges every room's calls into one table, so painting a row with one
+   * room's band would misattribute it. Room-scoped manual mutes still apply.
+   */
+  const qualityForContractGlobal = useCallback(
+    (entry: ContractEntry): CallerQuality =>
+      qualityFor(contractCallerKey(entry), entry.roomIds ?? [], 'global'),
     [qualityFor],
   );
 
   return {
     qualityFor,
     qualityForContract,
+    qualityForContractGlobal,
     rankingEnabled,
     showMuted,
     /** Null until the first fetch lands — used to keep "unrated" from flashing. */
     loaded: scores != null,
     windowDays: scores?.windowDays,
     pricedTokens: scores?.pricedTokens,
+    contractsScanned: scores?.contracts,
+    truncated: scores?.truncated ?? false,
+    coversFrom: scores?.coversFrom,
     scores: scores?.scores ?? [],
   };
 }

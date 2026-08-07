@@ -23,7 +23,7 @@ const DEFAULT_LOOKBACK_HOURS = 72;
 const MAX_TOKENS_PER_PASS = 120;
 const LOCAL_USER_ID = 'local';
 
-interface SampleTarget {
+export interface SampleTarget {
   address: string;
   chain: 'evm' | 'sol';
   evmChain?: string;

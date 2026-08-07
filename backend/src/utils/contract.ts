@@ -4,6 +4,8 @@
 import {
   detectContractAddresses,
   buildContractUrl,
+  isEvmAddress,
+  normalizeContractAddress,
   REFERRALS,
   getPresetTemplate,
   injectReferralIntoCustomTemplate,
@@ -12,6 +14,8 @@ import {
 export {
   detectContractAddresses,
   buildContractUrl,
+  isEvmAddress,
+  normalizeContractAddress,
   getPresetTemplate,
   injectReferralIntoCustomTemplate,
 };
@@ -83,7 +87,7 @@ export function extractEvmChainFromGmgnLinks(
   while ((m = regex.exec(fullText)) !== null) {
     const slug = m[1].toLowerCase();
     if (GMGN_EVM_CHAINS.has(slug)) {
-      results.push({ address: m[2], chain: slug });
+      results.push({ address: normalizeContractAddress(m[2]), chain: slug });
     }
   }
   return results;

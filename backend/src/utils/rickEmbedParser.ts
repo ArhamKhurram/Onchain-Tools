@@ -4,7 +4,7 @@
  * Description packs FDV / Liq / Vol / Age as emoji-labeled metrics.
  */
 
-import { detectContractAddresses } from './contract.js';
+import { detectContractAddresses, normalizeContractAddress } from './contract.js';
 import { lookupCachedMessage } from './messageReplyCache.js';
 
 export interface TokenEnrichment {
@@ -88,8 +88,11 @@ function looksLikeRick(embeds: EmbedLike[], authorUsername?: string): boolean {
 }
 
 function extractAddress(blob: string): string | null {
+  // Rick prints EVM addresses EIP-55 checksummed while the caller's own post is
+  // usually all-lowercase; normalise so both describe the same token. Base58
+  // (Solana) is case-sensitive and passes through untouched.
   const evm = blob.match(ADDR_RE);
-  if (evm) return evm[0];
+  if (evm) return normalizeContractAddress(evm[0]);
   const labeled = blob.match(/(?:CA|Contract)[:\s`]*([1-9A-HJ-NP-Za-km-z]{32,44})/i);
   if (labeled) return labeled[1];
   return null;

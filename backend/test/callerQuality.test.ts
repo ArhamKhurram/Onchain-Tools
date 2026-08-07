@@ -7,10 +7,16 @@ import {
   bandFromRates,
   scoreCaller,
   buildCallerScores,
+  buildRoomCallerScores,
+  pickRoomScore,
   effectiveBand,
   callerRank,
   median,
+  isExcludedCaller,
+  normalizeCallerName,
+  DEFAULT_EXCLUDED_CALLERS,
   MIN_RATED_CALLS,
+  type CallerScore,
   type CallerTierEntry,
   type RatedCall,
 } from '@oct/shared';
@@ -210,6 +216,193 @@ describe('buildCallerScores', () => {
 
   it('ignores rows with no author', () => {
     expect(buildCallerScores([contract({ authorId: '' })], peakFor, 30)).toHaveLength(0);
+  });
+
+  // Rick reposts an embed for every contract in the room. Scored, it becomes the
+  // room's own average wearing a caller's clothes.
+  it('leaves the known enrichment bot out of the leaderboard by default', () => {
+    const scores = buildCallerScores(
+      [
+        contract({ address: 'aaa', authorId: '900', authorName: 'Rick', fdvAtCall: 10_000, messageId: 'm1' }),
+        contract({ address: 'bbb', authorId: '900', authorName: 'Rick', fdvAtCall: 1_000, messageId: 'm2' }),
+        contract({ address: 'aaa', authorId: '1', authorName: 'haider', fdvAtCall: 10_000, messageId: 'm3' }),
+      ],
+      peakFor,
+      30,
+    );
+    expect(scores.map((s) => s.key)).toEqual(['discord:1']);
+  });
+
+  it('excludes the bot on Telegram too — the platform is not the point', () => {
+    const scores = buildCallerScores(
+      [contract({ authorId: '900', authorName: 'Rick', messageId: 'tg_-100123_5', fdvAtCall: 10_000, address: 'aaa' })],
+      peakFor,
+      30,
+    );
+    expect(scores).toHaveLength(0);
+  });
+
+  it('honours a configured exclusion by caller key', () => {
+    const rows = [
+      contract({ address: 'aaa', authorId: '1', authorName: 'haider', fdvAtCall: 10_000, messageId: 'm1' }),
+      contract({ address: 'bbb', authorId: '2', authorName: 'owari', fdvAtCall: 1_000, messageId: 'm2' }),
+    ];
+    const scores = buildCallerScores(rows, peakFor, 30, {
+      exclude: [...DEFAULT_EXCLUDED_CALLERS, 'discord:2'],
+    });
+    expect(scores.map((s) => s.key)).toEqual(['discord:1']);
+  });
+
+  // The bot's rows are still the enrichment source; only its score is dropped.
+  it('scores the humans who called a token the bot also reposted', () => {
+    const scores = buildCallerScores(
+      [
+        contract({ address: 'aaa', authorId: '900', authorName: 'Rick', fdvAtCall: 50_000, messageId: 'm1' }),
+        contract({ address: 'aaa', authorId: '1', authorName: 'haider', fdvAtCall: 10_000, messageId: 'm2' }),
+      ],
+      peakFor,
+      30,
+    );
+    expect(scores).toHaveLength(1);
+    expect(scores[0].medianMultiple).toBeCloseTo(10);
+  });
+
+  it('can be told to score everyone', () => {
+    const scores = buildCallerScores(
+      [contract({ address: 'aaa', authorId: '900', authorName: 'Rick', fdvAtCall: 10_000, messageId: 'm1' })],
+      peakFor,
+      30,
+      { exclude: [] },
+    );
+    expect(scores).toHaveLength(1);
+  });
+});
+
+describe('isExcludedCaller', () => {
+  const rick = contract({ authorId: '900', authorName: 'Rick' });
+
+  it('matches the known bot by display name, decoration and case included', () => {
+    expect(isExcludedCaller(rick)).toBe(true);
+    expect(isExcludedCaller(contract({ authorName: 'rick' }))).toBe(true);
+    expect(isExcludedCaller(contract({ authorName: ' Rick 🤖 ' }))).toBe(true);
+  });
+
+  // Substring matching would sweep up half the humans in the room.
+  it('does not swallow names that merely contain a bot name', () => {
+    expect(isExcludedCaller(contract({ authorName: 'Patrick' }))).toBe(false);
+    expect(isExcludedCaller(contract({ authorName: 'rickardo' }))).toBe(false);
+  });
+
+  it('matches a caller key exactly and never as a name', () => {
+    expect(isExcludedCaller(rick, ['discord:900'])).toBe(true);
+    expect(isExcludedCaller(rick, ['discord:901'])).toBe(false);
+    expect(isExcludedCaller(rick, ['telegram:900'])).toBe(false);
+  });
+
+  it('is inert with an empty or blank exclusion set', () => {
+    expect(isExcludedCaller(rick, [])).toBe(false);
+    expect(isExcludedCaller(rick, ['', '   '])).toBe(false);
+  });
+
+  it('normalizes names for comparison', () => {
+    expect(normalizeCallerName('Rick 🤖')).toBe('rick');
+    expect(normalizeCallerName('Owari_#1')).toBe('owari1');
+  });
+});
+
+describe('buildRoomCallerScores', () => {
+  const peaks = new Map<string, number>([
+    ['aaa', 100_000],
+    ['bbb', 10_000],
+  ]);
+  const peakFor = (addr: string) => peaks.get(addr.toLowerCase());
+
+  it('scores the same caller separately per room', () => {
+    const scores = buildRoomCallerScores(
+      [
+        // Sharp in room-a (10x), top-ticked bbb in room-b (floored to 1x).
+        contract({ address: 'aaa', fdvAtCall: 10_000, roomIds: ['room-a'], messageId: 'm1' }),
+        contract({ address: 'bbb', fdvAtCall: 40_000, roomIds: ['room-b'], messageId: 'm2' }),
+      ],
+      peakFor,
+      30,
+    );
+    expect(scores['room-a'][0].medianMultiple).toBeCloseTo(10);
+    expect(scores['room-b'][0].medianMultiple).toBe(1);
+  });
+
+  it('counts a contract in every room it landed in', () => {
+    const scores = buildRoomCallerScores(
+      [contract({ address: 'aaa', fdvAtCall: 10_000, roomIds: ['room-a', 'room-b'], messageId: 'm1' })],
+      peakFor,
+      30,
+    );
+    expect(scores['room-a'][0].rated).toBe(1);
+    expect(scores['room-b'][0].rated).toBe(1);
+  });
+
+  it('dedupes a caller/token pair within a room, like the global scorer', () => {
+    const scores = buildRoomCallerScores(
+      [
+        contract({ address: 'aaa', fdvAtCall: 10_000, roomIds: ['room-a'], messageId: 'm1', timestamp: '2026-07-29T12:00:00.000Z' }),
+        contract({ address: 'aaa', fdvAtCall: 90_000, roomIds: ['room-a'], messageId: 'm2', timestamp: '2026-07-29T13:00:00.000Z' }),
+      ],
+      peakFor,
+      30,
+    );
+    expect(scores['room-a']).toHaveLength(1);
+    expect(scores['room-a'][0].calls).toBe(1);
+    expect(scores['room-a'][0].medianMultiple).toBeCloseTo(10);
+  });
+
+  it('drops rows with no rooms rather than inventing a bucket', () => {
+    expect(
+      buildRoomCallerScores([contract({ roomIds: [] })], peakFor, 30),
+    ).toEqual({});
+  });
+});
+
+describe('pickRoomScore', () => {
+  const score = (over: Partial<CallerScore>): CallerScore => ({
+    key: 'discord:1',
+    displayName: 'haider',
+    calls: 20,
+    rated: 15,
+    band: 'solid',
+    ...over,
+  });
+
+  it('prefers a rated room score over the global one', () => {
+    const room = score({ band: 'elite', rated: 12 });
+    const global = score({ band: 'mixed' });
+    const picked = pickRoomScore(['room-a'], () => room, global);
+    expect(picked.score).toBe(room);
+    expect(picked.scope).toBe('room');
+  });
+
+  // A caller with 3 calls in this room and 40 globally should show their global
+  // band, not flash unrated off a thin in-room sample.
+  it('falls back to global when the room record is unrated or missing', () => {
+    const global = score({ band: 'solid' });
+    expect(pickRoomScore(['room-a'], () => score({ band: 'unrated', rated: 3 }), global))
+      .toEqual({ score: global, scope: 'global' });
+    expect(pickRoomScore(['room-a'], () => undefined, global))
+      .toEqual({ score: global, scope: 'global' });
+    expect(pickRoomScore([], () => score({ band: 'elite' }), global))
+      .toEqual({ score: global, scope: 'global' });
+  });
+
+  it('takes the largest rated sample when several rooms match', () => {
+    const thin = score({ band: 'elite', rated: 10 });
+    const deep = score({ band: 'mixed', rated: 30 });
+    const byRoom: Record<string, CallerScore> = { a: thin, b: deep };
+    const picked = pickRoomScore(['a', 'b'], (id) => byRoom[id], undefined);
+    expect(picked.score).toBe(deep);
+  });
+
+  it('returns global scope with no score at all', () => {
+    expect(pickRoomScore(['a'], () => undefined, undefined))
+      .toEqual({ score: undefined, scope: 'global' });
   });
 });
 

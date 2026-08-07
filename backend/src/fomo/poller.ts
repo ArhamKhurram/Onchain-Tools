@@ -40,6 +40,7 @@ class FomoPoller {
   private loggedSample = false;
   private lastPollAt: string | null = null;
   private lastPollError: string | null = null;
+  private lastPollErrorAt: string | null = null;
   private lastSuccessfulPollAt: string | null = null;
   private trackedUserCount = 0;
   private status: FomoPollerStatus = { active: false, reason: 'no_supabase' };
@@ -124,6 +125,7 @@ class FomoPoller {
       trackedUserCount: this.trackedUserCount,
       lastPollAt: this.lastPollAt,
       lastPollError: this.lastPollError,
+      lastPollErrorAt: this.lastPollErrorAt,
       lastSuccessfulPollAt: this.lastSuccessfulPollAt,
     };
   }
@@ -140,7 +142,17 @@ class FomoPoller {
     await syncAllTrackedFollows(this.client, ids);
   }
 
+  // At the pinned 10s prod interval this query ran ~260k times/month — small
+  // rows, brutal frequency (~1 GB/month of Supabase egress on its own). The
+  // tracked set changes rarely; a short memo keeps fan-out fresh enough (a
+  // newly-tracked trader joins within TTL) while cutting reads ~6x+.
+  private trackedUsersCache: { list: TrackedFomoUserRef[]; at: number } | null = null;
+
   private async loadTrackedUsers(): Promise<TrackedFomoUserRef[]> {
+    const ttl = Number.parseInt(process.env.FOMO_TRACKED_CACHE_MS ?? '', 10) || 60_000;
+    if (this.trackedUsersCache && Date.now() - this.trackedUsersCache.at < ttl) {
+      return this.trackedUsersCache.list;
+    }
     const { data, error } = await this.db!
       .from('fomo_tracked_users')
       .select('fomo_user_id, fomo_handle, display_name');
@@ -155,7 +167,9 @@ class FomoPoller {
         displayName: row.display_name ?? null,
       });
     }
-    return [...byId.values()];
+    const list = [...byId.values()];
+    this.trackedUsersCache = { list, at: Date.now() };
+    return list;
   }
 
   private async poll(): Promise<void> {
@@ -183,6 +197,7 @@ class FomoPoller {
         } catch (err) {
           hadError = true;
           this.lastPollError = (err as Error)?.message ?? String(err);
+          this.lastPollErrorAt = new Date().toISOString();
           console.warn(`[FomoPoller] Activity poll failed for ${trader.fomoUserId}:`, this.lastPollError);
         }
       }
@@ -263,6 +278,7 @@ export interface FomoPollerStatus {
   trackedUserCount?: number;
   lastPollAt?: string | null;
   lastPollError?: string | null;
+  lastPollErrorAt?: string | null;
   lastSuccessfulPollAt?: string | null;
 }
 

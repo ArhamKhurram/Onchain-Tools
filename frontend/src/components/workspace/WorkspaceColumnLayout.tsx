@@ -10,6 +10,7 @@ interface WorkspaceColumnLayoutProps {
   onChange: (layout: WorkspaceLayout) => void;
   onRemovePanel: (panelId: string) => void;
   onConfigurePanel: (panel: WorkspacePanelSlot) => void;
+  onPanelRoomChange: (panelId: string, roomId: string) => void;
 }
 
 const H_HANDLE = (editMode: boolean) =>
@@ -23,6 +24,7 @@ export default function WorkspaceColumnLayout({
   onChange,
   onRemovePanel,
   onConfigurePanel,
+  onPanelRoomChange,
 }: WorkspaceColumnLayoutProps) {
   const { columns } = layout;
   const colCount = columns.length;
@@ -81,6 +83,7 @@ export default function WorkspaceColumnLayout({
                 onDropOnColumn={(e) => handleDropOnColumn(column.id, e)}
                 onRemovePanel={onRemovePanel}
                 onConfigurePanel={onConfigurePanel}
+                onPanelRoomChange={onPanelRoomChange}
                 onMovePanel={(panelId, toIndex) =>
                   onChange(movePanel(layout, panelId, column.id, toIndex))
                 }
@@ -106,6 +109,7 @@ interface ColumnStackProps {
   onDropOnColumn: (e: React.DragEvent) => void;
   onRemovePanel: (panelId: string) => void;
   onConfigurePanel: (panel: WorkspacePanelSlot) => void;
+  onPanelRoomChange: (panelId: string, roomId: string) => void;
   onMovePanel: (panelId: string, toIndex: number) => void;
 }
 
@@ -118,6 +122,7 @@ function ColumnStack({
   onDropOnColumn,
   onRemovePanel,
   onConfigurePanel,
+  onPanelRoomChange,
   onMovePanel,
 }: ColumnStackProps) {
   const panelCount = column.panels.length;
@@ -171,6 +176,7 @@ function ColumnStack({
           editMode={editMode}
           onRemove={() => onRemovePanel(panel.id)}
           onConfigure={() => onConfigurePanel(panel)}
+          onRoomChange={(roomId) => onPanelRoomChange(panel.id, roomId)}
         />
       </div>
     );
@@ -214,6 +220,7 @@ function ColumnStack({
                 editMode={editMode}
                 onRemove={() => onRemovePanel(panel.id)}
                 onConfigure={() => onConfigurePanel(panel)}
+                onRoomChange={(roomId) => onPanelRoomChange(panel.id, roomId)}
               />
             </div>
           </Panel>

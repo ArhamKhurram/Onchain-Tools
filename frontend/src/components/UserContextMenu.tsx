@@ -98,6 +98,10 @@ export default function UserContextMenu({
                 <TrendingUp size={11} className="shrink-0" />
                 <span>
                   {BAND_LABELS[callerQuality.band]} · {callerQuality.score.rated} rated
+                  {/* Say which record this is — an in-room band and a global
+                      band can legitimately disagree, and an unlabeled number
+                      would read as a contradiction. */}
+                  {callerQuality.scoreScope === 'room' ? ' · this room' : ''}
                 </span>
               </div>
               <div className="pl-4">

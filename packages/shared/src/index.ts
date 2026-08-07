@@ -7,6 +7,8 @@ export {
   SOL_ADDRESS_REGEX,
   EVM_ADDRESS_REGEX,
   detectContractAddresses,
+  isEvmAddress,
+  normalizeContractAddress,
   REFERRALS,
   getPresetTemplate,
   injectReferralIntoCustomTemplate,
@@ -39,6 +41,9 @@ export {
   MIN_RATED_CALLS,
   SLOP_MULTIPLE,
   BAND_LABELS,
+  DEFAULT_EXCLUDED_CALLERS,
+  normalizeCallerName,
+  isExcludedCaller,
   callerKey,
   parseCallerKey,
   contractCallerKey,
@@ -47,6 +52,8 @@ export {
   bandFromRates,
   scoreCaller,
   buildCallerScores,
+  buildRoomCallerScores,
+  pickRoomScore,
   effectiveBand,
   callerRank,
 } from './callerQuality.js';
@@ -55,6 +62,7 @@ export type {
   CallerBand,
   RatedCall,
   CallerScore,
+  RoomCallerScores,
   PeakLookup,
 } from './callerQuality.js';
 

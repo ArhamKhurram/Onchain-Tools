@@ -3,6 +3,10 @@ import type { WsServer } from '../../ws/server.js';
 import { getFomoServiceClient } from '../../fomo/store.js';
 import { isHostedMode } from '../../storage/index.js';
 import { requireAdmin, adminGatingConfigured } from '../../auth/admin.js';
+import {
+  startTokenPeakBackfill,
+  getBackfillStatus,
+} from '../../alerts/tokenPeakBackfill.js';
 
 export interface AdminStats {
   mode: 'local' | 'hosted';
@@ -158,6 +162,27 @@ export function createAdminRoutes(wsServer: WsServer): Router {
     }
 
     res.json(stats);
+  });
+
+  // Token-peak backfill (Sprint 1 / A1) — seeds `token_peaks` for tokens called
+  // before the sampler's first pass, so historical calls earn scores. Admin
+  // routine rather than a script: prod is a Railway container with no shell
+  // story for one-offs, while this reuses the running server's env, storage
+  // provider, and enrichment path, and works identically in local mode (where
+  // requireAdmin is a no-op on a loopback-only bind). Idempotent — tokens with
+  // an existing peak are skipped, and recordPeak is a max-upsert.
+  router.post('/admin/token-peaks/backfill', requireAdmin, (req, res) => {
+    const body = (req.body ?? {}) as { lookbackDays?: unknown; force?: unknown };
+    const result = startTokenPeakBackfill({
+      lookbackDays: typeof body.lookbackDays === 'number' ? body.lookbackDays : undefined,
+      force: body.force === true,
+    });
+    // 409 when a run is already in flight — the caller can watch it instead.
+    res.status(result.started ? 202 : 409).json(result);
+  });
+
+  router.get('/admin/token-peaks/backfill', requireAdmin, (_req, res) => {
+    res.json(getBackfillStatus());
   });
 
   return router;

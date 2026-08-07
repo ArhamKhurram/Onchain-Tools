@@ -31,6 +31,7 @@ const DEFAULT_CONFIG: AppConfig = {
   callerTiers: [],
   callerTierShowMuted: true,
   callerQualityRanking: false,
+  callerScoreExclusions: [],
   messageSounds: false,
   soundSettings: {
     highlight: { ...DEFAULT_SOUND_CONFIG },

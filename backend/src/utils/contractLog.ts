@@ -2,6 +2,7 @@ import { readFileSync, writeFileSync, existsSync } from 'fs';
 import { join, dirname } from 'path';
 import { fileURLToPath } from 'url';
 import { mergeEnrichmentPatch } from './enrichmentMerge.js';
+import { normalizeContractAddress } from '@oct/shared';
 import type { ContractEntry } from '@oct/shared';
 
 // ContractEntry is now canonical in @oct/shared; re-export it so existing
@@ -11,7 +12,22 @@ export type { ContractEntry } from '@oct/shared';
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const DATA_DIR = process.env.OCT_DATA_DIR || process.env.TRENCHCORD_DATA_DIR || join(__dirname, '../../data');
 const LOG_PATH = join(DATA_DIR, 'contracts.json');
-const MAX_ENTRIES = 2000;
+/**
+ * Local-mode retention. Rows past this are dropped, permanently — the whole
+ * array is rewritten on every log, so this is a deliberate ceiling on file size
+ * and write cost, not an oversight.
+ *
+ * It is also the real retention limit for caller scores in local mode: scores
+ * are derived on read from this log, so a caller whose rows have rolled off has
+ * no history left to score. On a busy feed 2000 rows can be a couple of days,
+ * well short of the 30-day scoring window. Raise it via
+ * `OCT_CONTRACT_LOG_MAX` if you want a longer leaderboard and can afford the
+ * larger rewrite per contract. (Hosted mode keeps everything in Postgres and is
+ * unaffected.)
+ */
+const MAX_ENTRIES =
+  Number.parseInt(process.env.OCT_CONTRACT_LOG_MAX ?? process.env.TRENCHCORD_CONTRACT_LOG_MAX ?? '', 10) ||
+  2000;
 
 export type ContractEnrichmentPatch = Partial<
   Pick<
@@ -65,8 +81,12 @@ class ContractLog {
     }
   }
 
+  // Rows written before addresses were canonicalised keep their original
+  // casing, so every lookup compares normalised forms rather than raw strings.
+  // (Chain-aware: a no-op for case-sensitive base58 Solana mints.)
   hasAddress(address: string): boolean {
-    return this.entries.some((e) => e.address === address);
+    const key = normalizeContractAddress(address);
+    return this.entries.some((e) => normalizeContractAddress(e.address) === key);
   }
 
   logContract(entry: ContractEntry): ContractEntry {
@@ -90,8 +110,9 @@ class ContractLog {
 
   deleteContract(messageId: string, address: string): boolean {
     const before = this.entries.length;
+    const key = normalizeContractAddress(address);
     this.entries = this.entries.filter(
-      (e) => !(e.messageId === messageId && e.address === address),
+      (e) => !(e.messageId === messageId && normalizeContractAddress(e.address) === key),
     );
     if (this.entries.length < before) {
       this.save();
@@ -102,8 +123,9 @@ class ContractLog {
 
   updateEvmChain(address: string, evmChain: string): boolean {
     let changed = false;
+    const key = normalizeContractAddress(address);
     for (const entry of this.entries) {
-      if (entry.address === address && entry.chain === 'evm' && !entry.evmChain) {
+      if (normalizeContractAddress(entry.address) === key && entry.chain === 'evm' && !entry.evmChain) {
         entry.evmChain = evmChain;
         changed = true;
       }
