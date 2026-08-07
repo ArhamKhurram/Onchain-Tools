@@ -36,8 +36,9 @@ convention.
 
 Two Supabase projects — dev `zcvubfadvdwjxgodznxh`, prod
 `vmlxyqzjdaegkfylxfka`. Apply to dev first, verify, then prod. `main`'s
-migration set must always describe the prod database (this is why the LP
-migration stays on `main` even though LP code doesn't).
+migration set must always describe the prod database — which is why a
+migration outlives the feature that needed it: `lp_automation_policies` stays
+on `main` even though no LP code does.
 
 ## fomo-worker (VPS)
 

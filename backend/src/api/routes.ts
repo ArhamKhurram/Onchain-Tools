@@ -15,7 +15,6 @@ import { createAlertsRoutes } from './routes/alerts.js';
 import { createCallersRoutes } from './routes/callers.js';
 import { createAdminRoutes } from './routes/admin.js';
 import { createPushoverRoutes } from './routes/pushover.js';
-import { createLpRoutes } from './routes/lp.js';
 
 // Thin composition root for the /api surface. Each domain lives in its own
 // sub-router under ./routes/; the shared gateway/telegram/storage context is
@@ -38,7 +37,6 @@ export function createRouter(wsServer: WsServer): Router {
   router.use(createAdminRoutes(wsServer)); // /admin/stats (operator only)
   router.use(createPushoverRoutes(ctx));   // /pushover/signal-convergence
 
-  router.use('/lp', createLpRoutes());          // /lp/policy, /lp/pools/candidates, /lp/status
   router.use('/fomo', createFomoRouter(wsServer));
   router.use('/portfolio', createPortfolioRouter());
 

@@ -9,7 +9,6 @@ const DirectoryPage = lazy(() => import('./pages/DirectoryPage'));
 const FomoPage = lazy(() => import('./pages/FomoPage'));
 const PortfolioPage = lazy(() => import('./pages/PortfolioPage'));
 const CallersPage = lazy(() => import('./pages/CallersPage'));
-const LpAutomationPage = lazy(() => import('./pages/LpAutomationPage'));
 const WorkspacePage = lazy(() => import('./pages/WorkspacePage'));
 const SettingsPage = lazy(() => import('./pages/SettingsPage'));
 const LoginPage = lazy(() => import('./pages/LoginPage'));
@@ -35,7 +34,6 @@ export default function App() {
               <Route index element={<DashboardPage />} />
               <Route path="feed" element={<FeedPage />} />
               <Route path="callers" element={<CallersPage />} />
-              <Route path="lp" element={<LpAutomationPage />} />
               <Route path="fomo" element={<FomoPage />} />
               <Route path="directory" element={<DirectoryPage />} />
               {/* Renamed from /wallets — keep old links working. */}

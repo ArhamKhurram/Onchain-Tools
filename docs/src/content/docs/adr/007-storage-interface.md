@@ -25,7 +25,7 @@ config-store and contract-log singletons, ignores `userId`) and
 through this interface.
 
 Hosted-only, service-role-only tables (FOMO, token catalog, wallets,
-missed-runner, LP policies) deliberately **bypass** the interface with their
+missed-runner) deliberately **bypass** the interface with their
 own service clients — a local implementation would be dead code. `token_peaks`
 is the one exception with a JSON mirror, so the desktop app can score callers.
 

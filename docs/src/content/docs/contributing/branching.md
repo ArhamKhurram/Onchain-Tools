@@ -12,29 +12,28 @@ compose. Full rationale in [ADR-009](../../adr/009-branch-topology/).
 ```mermaid
 gitGraph
   commit id: "base"
-  commit id: "non-LP feature"
+  commit id: "feature"
   branch dev
-  commit id: "LP feature"
+  commit id: "sniper work"
   checkout main
   commit id: "another feature"
   checkout dev
   merge main
-  commit id: "more LP"
+  commit id: "more sniper"
 ```
 
 | Branch | Contains | Deploys |
 | --- | --- | --- |
-| `main` | production code, **no LP, no sniper** | Railway (backend) + Vercel (frontend/landing) |
-| `dev` | everything (`main` ∪ LP automation ∪ sniper) | nowhere (CI only) |
+| `main` | production code, **no sniper** | Railway (backend) + Vercel (frontend/landing) |
+| `dev` | everything (`main` ∪ sniper) | nowhere (CI only) |
 
 ## The rules
 
 1. **Production feature** → PR into `main` → then merge `main` down into `dev`.
-2. **LP or sniper work** → branch off `dev`, PR back into `dev`. It never
+2. **Sniper work** → branch off `dev`, PR back into `dev`. It never
    reaches `main`.
-3. **Never merge `dev` into `main`.** It would drag `lp-automation/` and the
-   sniper into production. The old `feature → dev → main` promotion flow no
-   longer applies.
+3. **Never merge `dev` into `main`.** It would drag the sniper into production.
+   The old `feature → dev → main` promotion flow no longer applies.
 4. **No direct pushes to `main`** — PR + green CI first (branch protection).
 
 ## Merging `main` down into `dev`

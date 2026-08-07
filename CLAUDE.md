@@ -38,7 +38,7 @@ The switch is read in exactly two places:
 ## Monorepo layout (npm workspaces)
 
 Root `package.json` declares
-`workspaces: [packages/*, backend, frontend, landing, fomo-worker, lp-automation]`.
+`workspaces: [packages/*, backend, frontend, landing, fomo-worker]`.
 `desktop` is not a workspace (invoked via `npm --prefix desktop`).
 
 - `backend/` (`oct-backend`) — Express + WebSocket server → **Railway**.
@@ -46,14 +46,6 @@ Root `package.json` declares
 - `landing/` — React + Vite marketing site, served at `/` → **Vercel**.
 - `fomo-worker/` (`oct-fomo-worker`) — always-on Playwright worker for the
   Cloudflare-gated FOMO API → **VPS**. Its `dist/` is gitignored; `src/` is tracked.
-- `lp-automation/` (`oct-lp-automation`) — autonomous Uniswap V3 LP position
-  manager for Robinhood Chain → **Railway** (`ponslive-worker`, no public
-  networking). **Holds a signing key over real funds**, which is exactly why it is
-  a separate process rather than a backend module like the Discord bot: the
-  backend ingests arbitrary Discord/Telegram input, and a bug there must not be
-  able to reach a signer. Read `LP_AUTOMATION_PLAN.md` §4 before touching
-  `contracts/` or anything that builds a transaction. Its Solidity is tested by
-  Foundry in CI only — `npm run test` does not cover it.
 - `desktop/` — Electron shell bundling backend + frontend.
 - `supabase/` — migrations. (The generated Supabase types live in
   `packages/shared/src/database.types.ts` so backend + frontend can import them.)
@@ -64,8 +56,8 @@ Root `package.json` declares
 ```bash
 npm install              # installs all workspaces
 npm run dev              # backend + frontend + landing together
-npm run typecheck        # backend + frontend + lp-automation (tsc --noEmit)
-npm run test             # backend + frontend + lp-automation (vitest)
+npm run typecheck        # backend + frontend (tsc --noEmit)
+npm run test             # backend + frontend (vitest)
 npm run build            # backend + frontend
 npm run build:vercel     # landing + frontend, merged for Vercel
 npm run build:railway    # backend only
@@ -77,13 +69,9 @@ done.** `strict: true` is on everywhere. Coverage is unit tests over pure functi
 only — there are no integration or end-to-end tests, so the compiler still carries
 most of the weight on anything involving I/O.
 
-The `lp-automation` Solidity is **not** covered by `npm run test`. It runs under
-Foundry in CI (`.github/workflows/ci.yml`, job `contracts`), which is its only
-automated verification — treat a red run there as blocking.
-
-LP automation and the sniper live **only** on this branch — `main` carries
-neither (the sniper was reverted from `main` in #55). See the branch topology
-below before moving work between branches.
+The sniper lives **only** on this branch — `main` does not carry it (it was
+reverted from `main` in #55). See the branch topology below before moving work
+between branches.
 
 ---
 
@@ -256,19 +244,18 @@ still compose.
                  production work
                          │
 main      ───●───────────●────────────●─────►   production (Railway + Vercel)
-              ╲           ╲            ╲            no LP, no sniper
+              ╲           ╲            ╲            no sniper
                ╲ merge     ╲ merge      ╲ merge
 dev       ───────●─────●─────●─────●──────●─►   YOU ARE HERE
-                       │           │                (main ∪ LP ∪ sniper)
-                    LP / sniper work
+                       │           │                (main ∪ sniper)
+                      sniper work
 ```
 
 - **Production feature** → PR into `main` → then merge `main` down into `dev`.
-- **LP or sniper work** → branch off `dev`, PR back into `dev`. It never reaches
+- **Sniper work** → branch off `dev`, PR back into `dev`. It never reaches
   `main`.
-- **Never merge `dev` into `main`.** It would drag `lp-automation/` and the
-  sniper back in. This is why the old `feature → dev → main` promotion flow no
-  longer applies.
+- **Never merge `dev` into `main`.** It would drag the sniper back in. This is
+  why the old `feature → dev → main` promotion flow no longer applies.
 - Do not push straight to `main`; PR + green CI first.
 
 **Merging `main` down into `dev` deletes the sniper module.** `main` reverted
@@ -277,14 +264,8 @@ files with no conflict, because `dev`'s copy and the revert's deletion never
 touch the same lines. Check `backend/src/sniper/` survives every `main` → `dev`
 merge and restore it from the pre-merge commit if not.
 
-LP is safer: the commit that removed `lp-automation/` from `main` was merged
-here with `-s ours`, so git already considers it merged. If a `main` → `dev`
-merge ever proposes deleting `lp-automation/` again, something has gone wrong;
-do not accept it.
-
 `main` deploys to Railway (backend) and Vercel (frontend + landing). `dev`
-deploys nowhere — it is for CI and local work. The `LP-Feats` branch was retired
-on 2026-08-03 (tag `archive/LP-Feats`); its work had all landed here.
+deploys nowhere — it is for CI and local work.
 - **Before finishing any change:** `npm run typecheck` (and the relevant `build`).
 - **Docs:** update the [roadmap](https://arhamkhurram.github.io/Onchain-Tools/roadmap/)
   when scoping features, `CHANGELOG.md` when shipping.

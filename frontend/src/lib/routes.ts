@@ -3,7 +3,6 @@ export const routes = {
   home: '/',
   feed: '/feed',
   callers: '/callers',
-  lpAutomation: '/lp',
   fomo: '/fomo',
   // The tracked-wallet directory — formerly '/wallets', which now 301s here
   // (see App.tsx) so old bookmarks survive the rename.

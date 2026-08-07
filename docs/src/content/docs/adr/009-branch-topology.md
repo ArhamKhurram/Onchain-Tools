@@ -7,6 +7,22 @@ sidebar:
 ---
 
 **Status:** Accepted — amended 2026-08-03 (the `LP-Feats` branch was retired)
+and 2026-08-07 (LP automation was removed from `dev` entirely)
+
+:::note[2026-08-07 amendment]
+LP automation — the `lp-automation/` workspace, its dashboard, its `/api/lp`
+routes and its Foundry CI job — was deleted from `dev`. **The topology below
+still stands, but the sniper is now its only tenant.** Read every "LP and
+sniper" rule in Context and Decision as "sniper": those two sections are
+preserved as the historical record of why the split was made, not as a
+description of what is on the branch today.
+
+The database side of that removal is recorded in
+`supabase/migrations/20260807120000_drop_lp_automation_worker_tables.sql`: the
+ten LP migration files were left in place (applied history is append-only) and
+a new migration drops the two dev-only worker tables. `lp_automation_policies`
+survives on both branches for the reason given in the Consequences below.
+:::
 
 ## Context
 
@@ -39,10 +55,11 @@ already contain; the ref is preserved as the tag `archive/LP-Feats`.
 
 - The old `feature → dev → main` promotion flow is dead; `dev` exists only to
   prove composition (CI runs there, deploys nowhere).
-- `main`'s `.gitignore` ignores `lp-automation/` wholesale so branch
-  switching can never stage LP files onto `main`.
-- The LP Supabase migration stays on `main` because prod already has the
-  table — `main`'s migration set must describe the database it deploys to.
+- The `lp_automation_policies` migration stays on `main` because prod already
+  has the table — `main`'s migration set must describe the database it deploys
+  to. `dev` keeps it for the same reason plus one more: dropping it there would
+  make `dev`'s schema diverge from `main`'s to no purpose, since nothing on
+  either branch reads it any more.
 - **Merging `main` into `dev` deletes the sniper module.** `main` reverted the
   dormant sniper in #55; that revert propagates down and removes all 26 sniper
   files with no conflict, because `dev`'s copy and the revert's deletion have

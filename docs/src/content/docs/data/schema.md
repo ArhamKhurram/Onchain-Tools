@@ -114,13 +114,20 @@ Reading notes:
 | `fomo_activity_cursors` | Global poll progress per FOMO trader | PK `fomo_user_id` (text) |
 | `fomo_poll_state` | Singleton: global poll cursor + the **rotating Privy refresh token** | PK `id boolean` with `CHECK (id)` — at most one row |
 
-### LP automation
+### LP automation (retired)
 
-`lp_automation_policies` exists in the migration set even on `main` (prod
-already has the table, and main's migrations must describe the database it
-deploys to — the LP *code* lives on `dev`). It is versioned and
-append-only: a trigger rejects any UPDATE that changes anything besides
-`is_active`, and a partial unique index enforces one active version per user.
+`lp_automation_policies` is documented here because prod still has the table,
+and this page describes the prod database. **No code on any branch reads it.**
+LP automation was removed from `dev` on 2026-08-07 and never shipped to `main`;
+the table stays in both migration sets because a branch's migrations must
+describe the database it deploys to, and prod's already has it. The two other
+LP tables (`lp_automation_settings`, `lp_automation_commands`) reached the dev
+project only and were dropped by
+`20260807120000_drop_lp_automation_worker_tables.sql`.
+
+For the record, since the table is still live: it is versioned and append-only.
+A trigger rejects any UPDATE that changes anything besides `is_active`, and a
+partial unique index enforces one active version per user.
 
 ## Row-level security
 
@@ -136,7 +143,9 @@ poller/fan-out work; browser clients go through these policies:
   own; the poller writes with the service role.
 - **Read + append, never modify**: `lp_automation_policies` — browsers can
   read and append versions; retiring a version goes through the
-  `SECURITY DEFINER` function `lp_append_policy` (service-role only).
+  `SECURITY DEFINER` function `lp_append_policy` (service-role only). Retired
+  along with the rest of LP automation; the policies are still enforced on the
+  live table, but nothing exercises them.
 - **Deny-all (service-role only)**: `fomo_trade_events`, `fomo_poll_state`,
   `fomo_activity_cursors`, `fomo_trade_deliveries`, `token_catalog`,
   `token_peaks` — RLS enabled with zero policies.
