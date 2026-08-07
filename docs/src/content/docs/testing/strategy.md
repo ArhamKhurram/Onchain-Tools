@@ -52,8 +52,7 @@ built dist), then one-shot vitest in backend and frontend. Per-workspace:
 4. Build: backend, frontend, landing
 
 Wire this to branch protection — a red run blocks the merge, and that is the
-gate that stops a broken commit reaching Railway/Vercel. (The Foundry job for
-the LP Safe module lives on `dev`.)
+gate that stops a broken commit reaching Railway/Vercel.
 
 ## Test inventory (18 files, ~179 cases)
 

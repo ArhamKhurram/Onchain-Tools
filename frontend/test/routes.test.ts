@@ -18,11 +18,11 @@ describe('consoleOriginPath', () => {
   });
 
   it('resolves a named route under the base with a single slash, not doubled', () => {
-    expect(consoleOriginPath('/lp')).toBe('/dashboard/lp');
+    expect(consoleOriginPath('/feed')).toBe('/dashboard/feed');
   });
 
   it('prepends a slash to a bare path segment', () => {
-    expect(consoleOriginPath('lp')).toBe('/dashboard/lp');
+    expect(consoleOriginPath('feed')).toBe('/dashboard/feed');
   });
 
   it('defaults to home when called with no argument', () => {

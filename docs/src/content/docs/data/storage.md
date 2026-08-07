@@ -63,7 +63,7 @@ with it.
 
 ## What deliberately bypasses the interface
 
-The wallet, FOMO, token-catalog, token-peak, missed-runner, and LP-policy
+The wallet, FOMO, token-catalog, token-peak, and missed-runner
 tables talk to Supabase through their own service clients
 (`backend/src/fomo/store.ts`, `storage/tokenCatalog.ts`,
 `alerts/tokenPeakStore.ts`). This is intentional: those tables are

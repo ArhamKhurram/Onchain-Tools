@@ -1,8 +1,9 @@
 // ESLint flat config for the console workspace.
 //
 // This exists for ONE reason: `react-hooks/rules-of-hooks`. A `useMemo` placed
-// after an early `return` in LpAutomationPage passed `tsc --noEmit`, passed
-// `vite build`, and passed a signed-out smoke test — then blanked the whole page
+// after an early `return` in a console page (commit f382999) passed
+// `tsc --noEmit`, passed `vite build`, and passed a signed-out smoke test —
+// then blanked the whole page
 // (with an empty browser console) the moment auth resolved and the hook count
 // changed. Only a linter catches that class of bug, so `rules-of-hooks` is an
 // error and CI fails on it. Do not downgrade it.

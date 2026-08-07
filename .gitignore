@@ -135,16 +135,12 @@ dist
 .yarn/install-state.gz
 .pnp.*
 
-# Runtime data: JSON stores (local-mode config, contracts, LP policies) and
-# uploaded sounds. Ignored wholesale rather than file-by-file — the old per-file
-# list meant every new local store had to remember to add itself, and one of them
-# (lp-policies.json, which holds spend caps) didn't. Keep the checked-in default.
+# Runtime data: JSON stores (local-mode config, contracts) and uploaded sounds.
+# Ignored wholesale rather than file-by-file — the old per-file list meant every
+# new local store had to remember to add itself, and one holding spend caps
+# didn't. Keep the checked-in default.
 backend/data/*
 !backend/data/config.default.json
-
-# LP automation runtime state: the audit trail of every position action
-# (config.ts auditLogPath) plus pm2/worker logs. Same wholesale rule as above.
-lp-automation/data/
 
 # Discord / tweet posting drafts (local only)
 posts/
