@@ -1,6 +1,7 @@
 import { Router } from 'express';
 import type { WsServer } from '../ws/server.js';
 import { createFomoRouter } from '../fomo/routes.js';
+import { createPumpfunRouter } from '../pumpfun/routes.js';
 import { createPortfolioRouter } from '../portfolio/routes.js';
 import { createRouterContext } from './context.js';
 import { createAuthRoutes } from './routes/auth.js';
@@ -38,6 +39,7 @@ export function createRouter(wsServer: WsServer): Router {
   router.use(createPushoverRoutes(ctx));   // /pushover/signal-convergence
 
   router.use('/fomo', createFomoRouter(wsServer));
+  router.use('/pumpfun', createPumpfunRouter());
   router.use('/portfolio', createPortfolioRouter());
 
   return router;
