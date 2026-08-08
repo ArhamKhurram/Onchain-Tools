@@ -65,7 +65,8 @@ const VENDOR_ERROR_TEXT_LIMIT = 500;
  */
 export type PumpfunErrorKind =
   | 'config-missing' // PUMPFUN_API_KEY not set — the module is inert.
-  | 'auth-rejected' // 401/403 — the key was refused.
+  | 'auth-rejected' // 401/403 — the shared x-api-key was refused.
+  | 'auth-expired' // 401/403 on a USER-bearer call — the pump session lapsed; reconnect.
   | 'unexpected-shape' // 2xx, but not the shape we parse — the API changed.
   | 'request-failed'; // network, timeout, 5xx, or any other non-2xx.
 
@@ -97,6 +98,24 @@ export class PumpfunAuthError extends PumpfunError {
   constructor(readonly endpoint: string) {
     super('auth-rejected', `pump.fun API rejected the x-api-key for ${endpoint}.`);
     this.name = 'PumpfunAuthError';
+  }
+}
+
+/**
+ * A USER's pump.fun session bearer was refused (401/403) on a keyed-with-bearer
+ * leaderboard call. Distinct from PumpfunAuthError, which is the SHARED app key
+ * being refused: this one is per-user and actionable by the user — their ~30-day
+ * JWT lapsed or was revoked and they must reconnect. The route maps it to 401
+ * with a reconnect signal rather than the 502 the shared-key faults get.
+ *
+ * INVARIANT (inherited): the message is built from the endpoint path only. The
+ * bearer is NEVER part of it — see leaderboardClient.ts, which constructs the
+ * detail from request context rather than forwarding a caught error.
+ */
+export class PumpfunSessionExpiredError extends PumpfunError {
+  constructor(readonly endpoint: string) {
+    super('auth-expired', `pump.fun session was rejected for ${endpoint}; reconnect your account.`);
+    this.name = 'PumpfunSessionExpiredError';
   }
 }
 

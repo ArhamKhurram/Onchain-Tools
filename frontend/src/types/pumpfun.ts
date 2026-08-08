@@ -318,6 +318,181 @@ export function formatSol(n: number | null): string {
   return n >= 1 ? n.toFixed(2) : n.toFixed(4);
 }
 
+// ---------------------------------------------------------------------------
+// User-login leaderboard (KEYED WITH THE OPERATOR'S OWN pump.fun BEARER)
+//
+// A THIRD trust tier, above the keyed-callouts and keyless-profile surfaces: the
+// leaderboard is fetched with the operator's own 30-day pump.fun session JWT, so
+// it is genuinely per-user and gated on a connected session. The token NEVER
+// reaches the frontend — the console POSTs it once to the connect route and from
+// then on only ever sees the status shape below, never the bearer. There is
+// deliberately no client type that carries the token: nothing here should be able
+// to hold, log, or render it.
+// ---------------------------------------------------------------------------
+
+/** The window a leaderboard is ranked over. */
+export type PumpLeaderboardWindow = '7d' | '30d' | 'all';
+
+/** The window switch's options, in display order. */
+export const PUMP_LEADERBOARD_WINDOWS: readonly PumpLeaderboardWindow[] = ['7d', '30d', 'all'] as const;
+
+/**
+ * One ranked trader row. `walletAddress` is what the Track button feeds into the
+ * tracked list, and it is nullable on purpose: the upstream response shape is
+ * unverified (we have no bearer to test against), so a row that arrives without a
+ * usable wallet still renders — its Track button simply disables rather than the
+ * whole board dropping the row.
+ */
+export interface PumpLeaderboardEntry {
+  rank: number | null;
+  walletAddress: string | null;
+  handle: string | null;
+  displayName: string | null;
+  pnl: number | null;
+}
+
+/**
+ * Connection status exactly as the STATUS route reports it — connected/expiry
+ * only, NEVER the token. `needsReconnect` lets the backend say "a session exists
+ * but is expired or was rejected upstream" without the frontend having to reason
+ * about the raw expiry itself.
+ */
+export interface PumpConnectionStatus {
+  connected: boolean;
+  /** ISO timestamp the pump.fun JWT expires, when the backend can surface it. */
+  expiresAt: string | null;
+  needsReconnect: boolean;
+}
+
+/** The four states the connect UI branches on. `unknown` = status not yet known. */
+export type PumpConnectionState = 'unknown' | 'disconnected' | 'connected' | 'reconnect';
+
+export interface PumpConnectionSummary {
+  state: PumpConnectionState;
+  /** Whole days until expiry when known; a past/zero value collapses to `reconnect`. */
+  daysLeft: number | null;
+}
+
+const DAY_MS = 86_400_000;
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
+
+/** First non-empty string among the candidate keys, else null. */
+function pickStr(row: Record<string, unknown>, keys: string[]): string | null {
+  for (const k of keys) {
+    const v = row[k];
+    if (typeof v === 'string' && v.trim() !== '') return v;
+  }
+  return null;
+}
+
+/** First finite number among the candidate keys, else null. */
+function pickNum(row: Record<string, unknown>, keys: string[]): number | null {
+  for (const k of keys) {
+    const v = row[k];
+    if (typeof v === 'number' && Number.isFinite(v)) return v;
+  }
+  return null;
+}
+
+/**
+ * Narrow the leaderboard response into rows, dropping-not-throwing per row the way
+ * the backend client does. Accepts either a bare array or a `{ entries: [...] }`
+ * envelope, since the wire shape is unverified.
+ *
+ * TODO(verify): confirm these field spellings against a live pump session. We have
+ * no bearer to test with, so each field reads several likely key names; the
+ * operator validates against their real connection. A wallet that fails base58 is
+ * kept as null (the row still ranks) rather than smuggled into the tracked list,
+ * where an invalid address would track-but-never-load.
+ */
+export function normalizePumpLeaderboard(parsed: unknown): PumpLeaderboardEntry[] {
+  const rows: unknown[] = Array.isArray(parsed)
+    ? parsed
+    : isRecord(parsed) && Array.isArray(parsed.entries)
+      ? (parsed.entries as unknown[])
+      : [];
+  const out: PumpLeaderboardEntry[] = [];
+  for (const row of rows) {
+    if (!isRecord(row)) continue; // one junk row must not blank the board
+    const walletRaw = pickStr(row, ['walletAddress', 'wallet', 'address']);
+    const walletAddress = walletRaw && isPumpWallet(walletRaw) ? walletRaw.trim() : null;
+    out.push({
+      rank: pickNum(row, ['rank']),
+      walletAddress,
+      handle: pickStr(row, ['handle', 'username']),
+      displayName: pickStr(row, ['displayName', 'name']),
+      pnl: pickNum(row, ['pnl', 'pnlUsd', 'realizedPnl', 'totalPnl']),
+    });
+  }
+  return out;
+}
+
+/** Days until the pump JWT expires; null when there is no readable timestamp. */
+export function pumpDaysLeft(expiresAt: string | null, now: number = Date.now()): number | null {
+  if (!expiresAt) return null;
+  const t = Date.parse(expiresAt);
+  if (!Number.isFinite(t)) return null;
+  return Math.ceil((t - now) / DAY_MS);
+}
+
+/**
+ * Collapse a raw status into the state the connect UI renders. Pure so the
+ * branch table is unit-tested rather than discovered by clicking:
+ *   - null status  -> `unknown` (caller shows a spinner, never a false "connect")
+ *   - needsReconnect-> `reconnect` outright, whatever expiresAt says
+ *   - not connected -> `disconnected` (show the connect panel)
+ *   - connected     -> `connected`, unless the expiry is already in the past, in
+ *                      which case it is a `reconnect` even though the flag lagged.
+ */
+export function describePumpConnection(
+  status: PumpConnectionStatus | null,
+  now: number = Date.now(),
+): PumpConnectionSummary {
+  if (status === null) return { state: 'unknown', daysLeft: null };
+  if (status.needsReconnect) return { state: 'reconnect', daysLeft: null };
+  if (!status.connected) return { state: 'disconnected', daysLeft: null };
+  const daysLeft = pumpDaysLeft(status.expiresAt, now);
+  if (daysLeft !== null && daysLeft <= 0) return { state: 'reconnect', daysLeft };
+  return { state: 'connected', daysLeft };
+}
+
+/** Track-button state for a leaderboard row against the tracked-wallet set. */
+export type LeaderboardTrackState = 'tracked' | 'trackable' | 'no-wallet';
+
+/**
+ * Decide how a row's Track button renders. A row with no usable wallet is
+ * `no-wallet` (disabled, nothing to track); an already-tracked wallet is
+ * `tracked` (disabled, like FOMO's "Tracked"); otherwise `trackable`.
+ */
+export function leaderboardTrackState(
+  entry: PumpLeaderboardEntry,
+  trackedAddresses: Set<string>,
+): LeaderboardTrackState {
+  if (!entry.walletAddress) return 'no-wallet';
+  return trackedAddresses.has(entry.walletAddress) ? 'tracked' : 'trackable';
+}
+
+/** A trader's display label: handle, then display name, then a truncated wallet. */
+export function leaderboardLabel(entry: PumpLeaderboardEntry): string {
+  if (entry.handle) return `@${entry.handle}`;
+  if (entry.displayName) return entry.displayName;
+  if (entry.walletAddress) return truncateAddress(entry.walletAddress);
+  return 'Unknown trader';
+}
+
+/** Compact signed USD PnL: 1_234 -> "+$1.2K", -2_000_000 -> "-$2.0M". Null -> em dash. */
+export function formatPnlUsd(value: number | null): string {
+  if (value == null || !Number.isFinite(value)) return '—';
+  const sign = value >= 0 ? '+' : '-';
+  const abs = Math.abs(value);
+  if (abs >= 1_000_000) return `${sign}$${(abs / 1_000_000).toFixed(1)}M`;
+  if (abs >= 1_000) return `${sign}$${(abs / 1_000).toFixed(1)}K`;
+  return `${sign}$${abs.toFixed(0)}`;
+}
+
 export type TradeSide = 'buy' | 'sell' | 'unknown';
 
 /**

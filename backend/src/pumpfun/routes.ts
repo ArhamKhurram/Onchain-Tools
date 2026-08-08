@@ -14,6 +14,14 @@ import {
   PumpfunError,
 } from './client.js';
 import {
+  getPumpfunLeaderboardClient,
+  looksLikeJwt,
+  decodeJwtExpiry,
+  sessionStatus,
+} from './leaderboardClient.js';
+import type { PumpLeaderboardTimeframe } from './types.js';
+import { getStorageProvider } from '../storage/index.js';
+import {
   getCached,
   setCached,
   tokenCalloutsCacheKey,
@@ -22,6 +30,8 @@ import {
   communityCacheKey,
   walletTransactionsCacheKey,
   walletBalanceCacheKey,
+  leaderboardCacheKey,
+  rankedCallersCacheKey,
   TOP_COMMUNITIES_CACHE_KEY,
   TRENDING_FEED_CACHE_KEY,
   TOKEN_CALLOUTS_TTL_MS,
@@ -32,7 +42,31 @@ import {
   TRENDING_FEED_TTL_MS,
   WALLET_TRANSACTIONS_TTL_MS,
   WALLET_BALANCE_TTL_MS,
+  LEADERBOARD_TTL_MS,
 } from './cache.js';
+
+// This router is mounted under /api/pumpfun, so authMiddleware has already run
+// and req.userId is set ('local' in local mode, the Supabase user id in hosted).
+// The leaderboard/session routes are the FIRST in this module that are genuinely
+// user-scoped — they read a per-user secret — but they still spend nothing, so
+// /api (not the sniper control plane) remains the correct home.
+function getUserId(req: { userId?: string }): string {
+  return req.userId ?? 'local';
+}
+
+// A pump session bearer is a ~30-day JWT. Bound what a client may submit on
+// connect so a junk paste can't be stored as a "token" and an oversized blob
+// can't be used to bloat storage. JWTs are well under this.
+const MAX_PUMP_TOKEN_LEN = 4096;
+
+// The three accepted leaderboard windows. A path/query value outside this set is
+// rejected before any upstream call rather than passed through blindly.
+const LEADERBOARD_TIMEFRAMES: PumpLeaderboardTimeframe[] = ['7d', '30d', 'all'];
+
+// Bound the rows returned to a client. The upstream board can be long; a caller
+// asks for a slice via ?limit and we cap it so a single response stays sane.
+const DEFAULT_LEADERBOARD_LIMIT = 50;
+const MAX_LEADERBOARD_LIMIT = 200;
 
 // Cap on the batch PnL mint list. The endpoint is a single POST that fans out
 // per mint, so an unbounded list is an amplification lever; 100 is generous for a
@@ -98,6 +132,13 @@ function sendPumpfunError(res: Response, err: unknown): void {
     switch (err.kind) {
       case 'config-missing':
         res.status(503).json({ error: 'PUMPFUN_API_KEY not set; pump.fun integration is disabled.' });
+        return;
+      case 'auth-expired':
+        // The USER's pump session lapsed (not the shared app key). 401 + an
+        // explicit reconnect flag so the console can prompt a re-connect rather
+        // than treat it as an upstream fault. The message is path-only by the
+        // PumpfunError invariant and carries no bearer.
+        res.status(401).json({ error: err.message, reconnect: true, connected: false });
         return;
       case 'auth-rejected':
       case 'unexpected-shape':
@@ -263,6 +304,169 @@ export function createPumpfunRouter(): Router {
   router.get('/feed', async (_req, res) => {
     if (gatedOnMissingKey(res)) return;
     await serveCached(res, TRENDING_FEED_CACHE_KEY, TRENDING_FEED_TTL_MS, () => client.getTrendingFeed());
+  });
+
+  // -------------------------------------------------------------------------
+  // Pump session (per-user bearer) — connect / status / disconnect.
+  //
+  // The token is a credential the user pastes from their own pump.fun session.
+  // It is stored (encrypted at rest in hosted mode) and NEVER echoed back: every
+  // response below is the token-free `sessionStatus(...)` projection. These
+  // routes do NOT gate on PUMPFUN_API_KEY — the leaderboard uses the user's
+  // bearer, not the shared key, so it works without one.
+  // -------------------------------------------------------------------------
+
+  const leaderboardClient = getPumpfunLeaderboardClient();
+
+  // GET /api/pumpfun/session — connection status. Returns only
+  // { connected, expiresAt?, updatedAt? }; never the token.
+  router.get('/session', async (req, res) => {
+    const storage = getStorageProvider();
+    try {
+      const session = await storage.getPumpSession(getUserId(req));
+      res.json(sessionStatus(session));
+    } catch (err) {
+      console.error('[PumpfunAPI] Failed to read pump session status:', err instanceof Error ? err.message : err);
+      res.status(500).json({ error: 'Failed to read pump.fun session status.' });
+    }
+  });
+
+  // POST /api/pumpfun/session — connect: store the pasted bearer. Body { token }.
+  // Validates structure and expiry BEFORE storing so obvious junk / already-dead
+  // tokens are rejected with a clear reason rather than silently kept.
+  router.post('/session', async (req, res) => {
+    const body: unknown = req.body;
+    const token = typeof body === 'object' && body !== null ? (body as Record<string, unknown>).token : undefined;
+
+    if (typeof token !== 'string' || token.trim() === '') {
+      return res.status(400).json({ error: 'Body must include a non-empty "token" string.' });
+    }
+    const trimmed = token.trim();
+    if (trimmed.length > MAX_PUMP_TOKEN_LEN) {
+      return res.status(400).json({ error: 'That token is too long to be a pump.fun session bearer.' });
+    }
+    if (!looksLikeJwt(trimmed)) {
+      return res.status(400).json({ error: 'That does not look like a pump.fun session token (expected a JWT).' });
+    }
+    // Reject a token that is already expired. `exp` may be undecodable on an
+    // unverified shape, in which case we do not block — we store it and let the
+    // status/expiry surface whatever the JWT actually carries.
+    const exp = decodeJwtExpiry(trimmed);
+    if (exp !== null && exp * 1000 <= Date.now()) {
+      return res.status(400).json({ error: 'That pump.fun session has already expired; connect a fresh one.' });
+    }
+
+    const storage = getStorageProvider();
+    try {
+      await storage.setPumpSession(getUserId(req), trimmed);
+      // Re-read so the response reflects exactly what was stored (updatedAt), and
+      // is built from the token-free projection — never from the request body.
+      const session = await storage.getPumpSession(getUserId(req));
+      res.json(sessionStatus(session));
+    } catch (err) {
+      // Do NOT surface the underlying error verbatim: it is the one place a
+      // storage/crypto error could reference the value being stored.
+      console.error('[PumpfunAPI] Failed to store pump session:', err instanceof Error ? err.message : 'unknown');
+      res.status(500).json({ error: 'Failed to store pump.fun session.' });
+    }
+  });
+
+  // DELETE /api/pumpfun/session — disconnect: clear the stored bearer.
+  router.delete('/session', async (req, res) => {
+    const storage = getStorageProvider();
+    try {
+      await storage.setPumpSession(getUserId(req), null);
+      res.json({ connected: false });
+    } catch (err) {
+      console.error('[PumpfunAPI] Failed to clear pump session:', err instanceof Error ? err.message : err);
+      res.status(500).json({ error: 'Failed to disconnect pump.fun session.' });
+    }
+  });
+
+  // -------------------------------------------------------------------------
+  // Leaderboard (keyed with the user's bearer). Reads the stored token late,
+  // calls coin-communities with it, and caches the narrowed rows per (user,
+  // window). 409 when no token is connected; the client maps a 401 (expired
+  // session) to a reconnect prompt via sendPumpfunError.
+  // -------------------------------------------------------------------------
+
+  // Clamp ?limit to [1, MAX]; default when absent or unparseable.
+  const parseLimit = (raw: unknown): number => {
+    const n = typeof raw === 'string' ? Number.parseInt(raw, 10) : NaN;
+    if (!Number.isFinite(n) || n <= 0) return DEFAULT_LEADERBOARD_LIMIT;
+    return Math.min(n, MAX_LEADERBOARD_LIMIT);
+  };
+
+  // GET /api/pumpfun/leaderboard?window=7d&limit=50
+  router.get('/leaderboard', async (req, res) => {
+    const windowParam = typeof req.query.window === 'string' ? req.query.window : '7d';
+    if (!LEADERBOARD_TIMEFRAMES.includes(windowParam as PumpLeaderboardTimeframe)) {
+      return res.status(400).json({ error: `Invalid window. Use one of: ${LEADERBOARD_TIMEFRAMES.join(', ')}.` });
+    }
+    const timeframe = windowParam as PumpLeaderboardTimeframe;
+    const limit = parseLimit(req.query.limit);
+    const userId = getUserId(req);
+
+    const storage = getStorageProvider();
+    let bearer: string;
+    try {
+      const session = await storage.getPumpSession(userId);
+      if (!session) {
+        // Not an upstream fault — the user simply hasn't connected. 409 with a
+        // clear reason and a connected:false flag the console can key on.
+        return res.status(409).json({ error: 'Connect your pump.fun account to see the leaderboard.', connected: false });
+      }
+      bearer = session.token; // read late; used once below; never returned.
+    } catch (err) {
+      console.error('[PumpfunAPI] Failed to read pump session:', err instanceof Error ? err.message : err);
+      return res.status(500).json({ error: 'Failed to read pump.fun session.' });
+    }
+
+    // Serve cached rows if fresh, else fetch with the bearer, cache, and slice.
+    const cacheKey = leaderboardCacheKey(userId, timeframe);
+    const cached = getCached<Awaited<ReturnType<typeof leaderboardClient.getCalloutLeaderboard>>>(cacheKey);
+    if (cached !== null) {
+      return res.json(cached.slice(0, limit));
+    }
+    try {
+      const rows = await leaderboardClient.getCalloutLeaderboard(bearer, timeframe);
+      setCached(cacheKey, rows, LEADERBOARD_TTL_MS);
+      res.json(rows.slice(0, limit));
+    } catch (err) {
+      sendPumpfunError(res, err);
+    }
+  });
+
+  // GET /api/pumpfun/leaderboard/ranked — the ranked-callers board (no window).
+  router.get('/leaderboard/ranked', async (req, res) => {
+    const limit = parseLimit(req.query.limit);
+    const userId = getUserId(req);
+
+    const storage = getStorageProvider();
+    let bearer: string;
+    try {
+      const session = await storage.getPumpSession(userId);
+      if (!session) {
+        return res.status(409).json({ error: 'Connect your pump.fun account to see the leaderboard.', connected: false });
+      }
+      bearer = session.token;
+    } catch (err) {
+      console.error('[PumpfunAPI] Failed to read pump session:', err instanceof Error ? err.message : err);
+      return res.status(500).json({ error: 'Failed to read pump.fun session.' });
+    }
+
+    const cacheKey = rankedCallersCacheKey(userId);
+    const cached = getCached<Awaited<ReturnType<typeof leaderboardClient.getRankedCallers>>>(cacheKey);
+    if (cached !== null) {
+      return res.json(cached.slice(0, limit));
+    }
+    try {
+      const rows = await leaderboardClient.getRankedCallers(bearer);
+      setCached(cacheKey, rows, LEADERBOARD_TTL_MS);
+      res.json(rows.slice(0, limit));
+    } catch (err) {
+      sendPumpfunError(res, err);
+    }
   });
 
   return router;
