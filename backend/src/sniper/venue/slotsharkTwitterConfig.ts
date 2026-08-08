@@ -524,6 +524,14 @@ function writeSizing(
 ): TwitterConfigResult<TwitterConfigBody> {
   // Only the keys the union carries are written, so the "exactly one" rule is
   // enforced by construction rather than by a count of what the caller sent.
+  //
+  // But the union is only a compile-time guarantee. This client will be driven
+  // by an NL layer parsing untrusted JSON, so a `sizing` with a missing or bogus
+  // `kind` must be rejected — otherwise both branches fall through and a config
+  // is built with no buy size, which sizes every fire at 0 SOL and never fills.
+  if (sizing.kind !== 'buy' && sizing.kind !== 'sell' && sizing.kind !== 'both') {
+    return fail('sizing_required');
+  }
   if (sizing.kind === 'buy' || sizing.kind === 'both') {
     if (!Number.isFinite(sizing.amount) || sizing.amount <= 0) return fail('invalid_amount');
     out.amount = sizing.amount;
