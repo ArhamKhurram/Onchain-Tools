@@ -62,6 +62,10 @@ export class JsonStorageProvider implements StorageProvider {
     return contractLog.getContracts(limit, since);
   }
 
+  async getContractByMessage(_userId: string, messageId: string, address: string): Promise<ContractEntry | null> {
+    return contractLog.getContractByMessage(messageId, address);
+  }
+
   async logContract(_userId: string, entry: ContractEntry): Promise<ContractEntry> {
     return contractLog.logContract(entry);
   }

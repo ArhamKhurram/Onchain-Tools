@@ -31,7 +31,7 @@ import { UserGatewayPool } from './gateway/userGatewayPool.js';
 import { buildContractUrl, detectEvmChainFromContent, extractEvmChainFromGmgnLinks, resolveEvmChainFromApi } from './utils/contract.js';
 import { tryParseTokenEnrichment, buildRickReplyContext } from './utils/rickEmbedParser.js';
 import { enrichToken, persistEnrichment } from './utils/tokenSnapshot.js';
-import { needsMetadataFallback } from './utils/enrichmentMerge.js';
+import { resolveFallbackTarget, recordFallbackFdv } from './utils/dexFallback.js';
 import { cacheDiscordMessage } from './utils/messageReplyCache.js';
 import type { TokenEnrichment } from './utils/rickEmbedParser.js';
 import { processDiscordMessage } from './utils/messageProcessor.js';
@@ -187,15 +187,12 @@ function scheduleDexFallback(
   setTimeout(async () => {
     try {
       const storage = getStorageProvider();
-      const recent = await storage.getContracts(userId, 20);
-      const hit = recent.find(
-        (c) =>
-          c.messageId === messageId
-          && c.address.toLowerCase() === address.toLowerCase()
-          && needsMetadataFallback(c),
-      );
+      const hit = await resolveFallbackTarget(storage, userId, address, messageId);
       if (!hit) return;
       const enrichment = await enrichToken(address, hit.evmChain);
+      // Report the outcome either way: a fetch that comes back without an MC is
+      // what stops the next mention of an unpriceable address re-asking.
+      recordFallbackFdv(address, enrichment?.fdvAtCall);
       if (!enrichment) return;
       await applyTokenEnrichment(wsServer, userId, enrichment, { channelId, messageId });
     } catch (err) {

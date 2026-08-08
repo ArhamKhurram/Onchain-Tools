@@ -19,6 +19,8 @@ export interface StorageProvider {
   isUserHighlighted(userId: string, discordUserId: string, roomId?: string, username?: string | null): Promise<boolean>;
 
   getContracts(userId: string, limit?: number, since?: string): Promise<ContractEntry[]>;
+  /** One specific logged row, for callers that know exactly which row they mean. */
+  getContractByMessage(userId: string, messageId: string, address: string): Promise<ContractEntry | null>;
   logContract(userId: string, entry: ContractEntry): Promise<ContractEntry>;
   deleteContract(userId: string, messageId: string, address: string): Promise<boolean>;
   deleteAllContracts(userId: string): Promise<void>;

@@ -108,6 +108,18 @@ class ContractLog {
     return result.slice(0, limit);
   }
 
+  // Entries are unshifted, so the first match is the newest — which is the one
+  // a caller holding a (messageId, address) pair means, on the rare message
+  // that logs the same address twice.
+  getContractByMessage(messageId: string, address: string): ContractEntry | null {
+    const key = normalizeContractAddress(address);
+    return (
+      this.entries.find(
+        (e) => e.messageId === messageId && normalizeContractAddress(e.address) === key,
+      ) ?? null
+    );
+  }
+
   deleteContract(messageId: string, address: string): boolean {
     const before = this.entries.length;
     const key = normalizeContractAddress(address);

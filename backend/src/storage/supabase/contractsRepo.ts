@@ -40,6 +40,39 @@ export class ContractsRepo extends BaseRepo {
     return data.map((row) => this.mapContractRow(row));
   }
 
+  /**
+   * Resolve one specific logged row by the message it came from.
+   *
+   * Deliberately not `getContracts(20)` + `.find()`, which is how the two
+   * enrichment fallback timers used to locate their target: on a busy feed the
+   * row they scheduled themselves for had already scrolled out of that window
+   * by the time they fired seconds later, so the fallback quietly did nothing
+   * and `fdv_at_call` stayed null. A `(message_id, address)` filter does not
+   * care how much has been logged since.
+   *
+   * `.limit(1)` on a timestamp-descending order because one message can log the
+   * same address twice — the same ambiguity `enrichContract` absorbs.
+   */
+  async getContractByMessage(userId: string, messageId: string, address: string): Promise<ContractEntry | null> {
+    const query = this.supabase
+      .from('contracts')
+      .select('*')
+      .eq('user_id', userId)
+      .eq('message_id', messageId);
+
+    const { data, error } = await (addressMatchesInsensitively(address)
+      ? query.ilike('address', address)
+      : query.eq('address', address))
+      .order('timestamp', { ascending: false })
+      .limit(1);
+
+    // Surface a query failure rather than swallow it as row-not-found — the
+    // window scan this replaced threw, which showed up as a "Dex fallback
+    // failed" log. A silent skip would hide a broken fallback as a missing FDV.
+    throwIfError({ error }, 'Failed to look up contract by message');
+    return data?.[0] ? this.mapContractRow(data[0]) : null;
+  }
+
   async logContract(userId: string, entry: ContractEntry): Promise<ContractEntry> {
     const isFirstSeen = !(await this.hasAddress(userId, entry.address));
     let toInsert = entry;

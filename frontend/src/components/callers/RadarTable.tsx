@@ -184,7 +184,18 @@ function buildRadar(
     const sorted = [...group].sort(
       (a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime(),
     );
-    const withMc = sorted.find((c) => c.fdvAtCall != null && c.fdvAtCall > 0);
+    // MC@call is the FIRST call's market cap. Take the earliest row that has an
+    // FDV, but only if it was captured close to first-seen — otherwise a repeat
+    // mention hours later (which now gets its own FDV) would have its live MC
+    // stamped onto the original call, turning an honest blank into a wrong
+    // denominator in the multiple. Missing beats wrong.
+    const firstMs = new Date(sorted[0].timestamp).getTime();
+    const withMc = sorted.find(
+      (c) =>
+        c.fdvAtCall != null &&
+        c.fdvAtCall > 0 &&
+        new Date(c.timestamp).getTime() - firstMs <= MC_AT_CALL_MAX_LAG_MS,
+    );
     if (withMc) {
       row.mcAtCall = withMc.fdvAtCall;
       row.mcAtCallDisplay = withMc.fdvAtCallDisplay;
@@ -193,6 +204,12 @@ function buildRadar(
 
   return [...map.values()];
 }
+
+// An FDV counts as the group's MC@call only if captured within this of the
+// first mention — the arrival burst of one call event, not a re-mention hours
+// later. Beyond it, the group's MC@call stays blank rather than borrowing a
+// later row's live market cap.
+const MC_AT_CALL_MAX_LAG_MS = 900_000; // 15 min
 
 type MentionWindow = '15m' | '1h' | '4h';
 

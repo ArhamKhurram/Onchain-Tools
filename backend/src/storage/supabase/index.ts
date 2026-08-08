@@ -94,6 +94,10 @@ export class SupabaseStorageProvider implements StorageProvider {
     return this.contracts.getContracts(userId, limit, since);
   }
 
+  getContractByMessage(userId: string, messageId: string, address: string): Promise<ContractEntry | null> {
+    return this.contracts.getContractByMessage(userId, messageId, address);
+  }
+
   logContract(userId: string, entry: ContractEntry): Promise<ContractEntry> {
     return this.contracts.logContract(userId, entry);
   }

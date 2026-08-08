@@ -24,6 +24,9 @@ import type { AppConfig, FrontendMessage, MissedRunnerConfig, MissedRunnerNotify
 import type { WsServer } from '../ws/server.js';
 
 const DEFAULT_INTERVAL_MS = 180_000; // 3 min
+// An FDV represents the group's MC@call only if captured within this of the
+// first mention — the same call event, not a re-mention hours later.
+const MC_AT_CALL_MAX_LAG_MS = 900_000; // 15 min
 
 const DEFAULT_MISSED_RUNNER: MissedRunnerConfig = {
   enabled: false,
@@ -107,7 +110,17 @@ function resolveMcAtCall(group: ContractEntry[]): {
   const sorted = [...group].sort(
     (a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime(),
   );
-  const withMc = sorted.find((c) => c.fdvAtCall != null && c.fdvAtCall > 0);
+  // MC@call is the first call's market cap. Take the earliest row with an FDV,
+  // but only if captured close to first-seen — otherwise a repeat mention hours
+  // later (which now gets its own FDV) would stamp its live MC onto the original
+  // call, turning an honest blank into a wrong multiplier. Missing beats wrong.
+  const firstMs = new Date(sorted[0].timestamp).getTime();
+  const withMc = sorted.find(
+    (c) =>
+      c.fdvAtCall != null &&
+      c.fdvAtCall > 0 &&
+      new Date(c.timestamp).getTime() - firstMs <= MC_AT_CALL_MAX_LAG_MS,
+  );
   if (!withMc?.fdvAtCall) return null;
   return {
     mcAtCall: withMc.fdvAtCall,
