@@ -29,7 +29,13 @@ import { fireRuleNow } from '../../sniper/fireOrchestrator.js';
 import { getSniperRuntime } from '../../sniper/runtime.js';
 import { utcDay } from '../../sniper/store.js';
 import { validateRule, validateRuleStructure } from '../../sniper/validateRule.js';
-import { getVenueConnection } from '../../sniper/venueCredentials.js';
+import { getVenueConnection, getVenueSecret } from '../../sniper/venueCredentials.js';
+import {
+  SlotsharkDashboard,
+  VendorAuthError,
+  VendorContractError,
+  VendorRequestError,
+} from '../../sniper/venue/slotsharkDashboard.js';
 import type {
   BudgetRow,
   Chain,
@@ -98,6 +104,19 @@ function validateWalletShape(w: WalletConfig): string | null {
   if (!unitOk) return 'unit_chain_mismatch';
   return null;
 }
+
+// Deliberately NOT validated here: `maxOpen` against the venue's task-account
+// count. One durable nonce account carries one in-flight transaction, so a
+// wallet with 6 of them cannot execute a 7th concurrent fire — OCT would
+// authorize a fire that times out and lands as `unknown`, stranding its
+// reservation until someone resolves it by hand.
+//
+// It is still not checked on this path, because reading the count means calling
+// Slotshark, and that would make creating a wallet fail whenever their API is
+// down. The check belongs where both numbers are already on screen: the import
+// flow surfaces `nonceCount` and warns there. If you are tempted to move it
+// here, note that the count also changes whenever the operator deploys more, so
+// a value captured at write time is stale by definition.
 
 /**
  * The first walletId in `walletIds` that is not one of this caller's wallets,
@@ -309,6 +328,57 @@ export function createSniperRouter(): Router {
       res.json({ venues });
     } catch (err) {
       bad(res, 500, 'venues_failed', (err as Error)?.message);
+    }
+  });
+
+  /**
+   * The wallets that exist AT THE VENUE, for the "import" affordance on the
+   * wallet form. Read-only, and deliberately not merged with GET /wallets: one
+   * is what OCT governs, the other is what Slotshark holds, and conflating them
+   * would imply OCT's caps apply to a wallet it has never been told about.
+   *
+   * Balances are fetched per wallet (their API has no batch endpoint) and a
+   * failed balance degrades that row to `balanceSol: null` rather than failing
+   * the list — an unreachable balance should not block importing an address.
+   */
+  router.get('/venues/:venue/wallets', async (req, res) => {
+    const venue = req.params.venue as Venue;
+    if (!FUNDABLE_VENUES.includes(venue as Exclude<Venue, 'dryrun'>)) {
+      return bad(res, 400, 'invalid_venue');
+    }
+    try {
+      const userId = userIdOf(req);
+      const secret = await getVenueSecret(userId, venue);
+      if (!secret) return bad(res, 409, 'no_credential');
+
+      const api = new SlotsharkDashboard({ apiToken: secret });
+      const wallets = await api.listWallets();
+      const withBalances = await Promise.all(
+        wallets.map(async (w) => {
+          try {
+            const b = await api.walletBalance(w.pubkey);
+            return { ...w, balanceSol: b.balanceSol };
+          } catch {
+            return { ...w, balanceSol: null };
+          }
+        }),
+      );
+
+      // Which of them OCT already governs, so the UI can show "imported"
+      // instead of offering a duplicate that would fail the unique constraint.
+      const known = new Set(
+        (await getSniperRuntime().store.listWallets(userId))
+          .filter((w) => w.venue === venue)
+          .map((w) => w.address),
+      );
+      res.json({
+        wallets: withBalances.map((w) => ({ ...w, imported: known.has(w.pubkey) })),
+      });
+    } catch (err) {
+      if (err instanceof VendorAuthError) return bad(res, 502, 'venue_rejected_credential');
+      if (err instanceof VendorContractError) return bad(res, 502, 'venue_contract_changed', err.message);
+      if (err instanceof VendorRequestError) return bad(res, 502, 'venue_unreachable', err.message);
+      bad(res, 500, 'venue_wallets_failed', (err as Error)?.message);
     }
   });
 

@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { X } from 'lucide-react';
 import { isSolAddress, type SniperWallet } from '../../types/sniper';
 import type { SniperWalletDraft } from '../../hooks/useSniperWallets';
+import { useVenueWallets } from '../../hooks/useVenueWallets';
 
 const DEFAULTS: SniperWalletDraft = {
   label: '',
@@ -30,7 +31,22 @@ export default function SniperWalletFormModal({ open, mode, wallet, onClose, onS
   const [values, setValues] = useState<SniperWalletDraft>(DEFAULTS);
   const [fieldError, setFieldError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
+  const [picking, setPicking] = useState(false);
   const labelRef = useRef<HTMLInputElement>(null);
+  const venueWallets = useVenueWallets();
+
+  /**
+   * One durable nonce account ("task account") carries one in-flight
+   * transaction, so the venue physically cannot run more concurrent fires than
+   * it has deployed. Above that, OCT authorizes a fire that times out and lands
+   * as `unknown`, which holds its reservation until someone resolves it by
+   * hand — so this is worth saying at the form rather than discovering later.
+   *
+   * A warning, not a block: the count changes whenever the operator deploys
+   * more, and this value is only as fresh as the last import.
+   */
+  const picked = venueWallets.wallets.find((w) => w.pubkey === values.address.trim());
+  const overCapacity = picked && picked.nonceCount >= 0 && values.maxOpen > picked.nonceCount;
 
   useEffect(() => {
     if (!open) return;
@@ -50,6 +66,7 @@ export default function SniperWalletFormModal({ open, mode, wallet, onClose, onS
     );
     setFieldError(null);
     setSubmitting(false);
+    setPicking(false);
     setTimeout(() => labelRef.current?.focus(), 50);
   }, [open, mode, wallet]);
 
@@ -140,9 +157,57 @@ export default function SniperWalletFormModal({ open, mode, wallet, onClose, onS
           </div>
 
           <div>
-            <label htmlFor="sniper-wallet-address" className={LABEL}>
-              Venue wallet address
-            </label>
+            <div className="flex items-baseline justify-between mb-1.5">
+              <label htmlFor="sniper-wallet-address" className={`${LABEL} mb-0`}>
+                Venue wallet address
+              </label>
+              {mode === 'add' && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setPicking((p) => !p);
+                    if (venueWallets.wallets.length === 0) void venueWallets.load(values.venue);
+                  }}
+                  className="text-xs font-mono uppercase tracking-wide text-oct-accent hover:underline disabled:opacity-50"
+                  disabled={submitting}
+                >
+                  {picking ? 'Cancel' : 'Import from Slotshark'}
+                </button>
+              )}
+            </div>
+
+            {picking && (
+              <div className="mb-2 border-2 border-oct-border rounded-cockpit bg-oct-bg divide-y-2 divide-oct-border">
+                {venueWallets.loading && <p className="px-3 py-2 text-xs text-oct-muted">Loading…</p>}
+                {venueWallets.error && <p className="px-3 py-2 text-xs text-oct-flame">{venueWallets.error}</p>}
+                {!venueWallets.loading && !venueWallets.error && venueWallets.wallets.length === 0 && (
+                  <p className="px-3 py-2 text-xs text-oct-muted">No wallets on the venue.</p>
+                )}
+                {venueWallets.wallets.map((w) => (
+                  <button
+                    key={w.pubkey}
+                    type="button"
+                    disabled={w.imported}
+                    onClick={() => {
+                      setValues((v) => ({ ...v, address: w.pubkey, label: v.label || w.label }));
+                      setPicking(false);
+                    }}
+                    className="w-full text-left px-3 py-2 hover:bg-oct-surface-raised disabled:opacity-50 disabled:cursor-not-allowed"
+                  >
+                    <span className="font-mono text-sm text-oct-text">{w.label || 'Unlabelled'}</span>
+                    <span className="block font-mono text-[11px] text-oct-muted truncate">{w.pubkey}</span>
+                    <span className="block font-mono text-[11px] text-oct-muted">
+                      {w.balanceSol === null ? 'balance unavailable' : `${w.balanceSol} SOL`}
+                      {' · '}
+                      {w.nonceCount < 0 ? 'task accounts unknown' : `${w.nonceCount} task accounts`}
+                      {!w.enabled && ' · DISABLED AT VENUE'}
+                      {w.imported && ' · already added'}
+                    </span>
+                  </button>
+                ))}
+              </div>
+            )}
+
             <input
               id="sniper-wallet-address"
               type="text"
@@ -231,6 +296,16 @@ export default function SniperWalletFormModal({ open, mode, wallet, onClose, onS
               />
             </div>
           </div>
+
+          {overCapacity && picked && (
+            <p className="text-xs text-oct-yellow leading-relaxed">
+              This wallet has <span className="font-mono">{picked.nonceCount}</span> task accounts at Slotshark, so it
+              can only run {picked.nonceCount} buys at once. A max open of{' '}
+              <span className="font-mono">{values.maxOpen}</span> lets OCT authorize a fire the venue cannot execute —
+              it times out, records as <span className="font-mono">unknown</span>, and holds its reservation until you
+              resolve it. Lower this, or deploy more task accounts at Slotshark.
+            </p>
+          )}
 
           {/* The two directions are NOT symmetric, and saying so is the point:
               a raise is deferred so it cannot re-authorise a fire today's budget
