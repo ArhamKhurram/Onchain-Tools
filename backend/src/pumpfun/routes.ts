@@ -139,19 +139,26 @@ export function createPumpfunRouter(): Router {
   const router = Router();
   const client = getPumpfunClient();
 
-  // Self-gate: if the key is unset the whole surface is a clean 503, and the
-  // server still boots. Applied once here rather than per-route so a new route
-  // cannot forget it.
-  router.use((_req, res, next) => {
-    if (!isPumpfunConfigured()) {
-      res.status(503).json({ error: 'PUMPFUN_API_KEY not set; pump.fun integration is disabled.' });
-      return;
-    }
-    next();
-  });
+  // Self-gate the KEYED routes only. The callouts/community/profile surface
+  // lives on coin-communities and needs PUMPFUN_API_KEY; unset, those are a
+  // clean 503 and the server still boots. It is applied per-route below rather
+  // than router-wide because the trades/balance/pnl routes read from
+  // profile-api.pump.fun, which is keyless — gating them on a key they never use
+  // would make the whole activity feature unreachable without a key it does not
+  // need.
+  // Returns true (and sends a 503) when the KEYED coin-communities surface is
+  // asked for without PUMPFUN_API_KEY. Called at the top of each keyed handler
+  // rather than as middleware: an inline middleware arg perturbs Express's
+  // path-param typing, and the keyless trades/balance/pnl routes must NOT gate.
+  const gatedOnMissingKey = (res: Response): boolean => {
+    if (isPumpfunConfigured()) return false;
+    res.status(503).json({ error: 'PUMPFUN_API_KEY not set; pump.fun callouts are disabled.' });
+    return true;
+  };
 
   // GET /api/pumpfun/token/:mint/callouts — a token's public callouts.
   router.get('/token/:mint/callouts', async (req, res) => {
+    if (gatedOnMissingKey(res)) return;
     const { mint } = req.params;
     if (!isValidMint(mint)) {
       return res.status(400).json({ error: 'Invalid token mint.' });
@@ -163,6 +170,7 @@ export function createPumpfunRouter(): Router {
 
   // GET /api/pumpfun/token/:mint/community — a token's community summary.
   router.get('/token/:mint/community', async (req, res) => {
+    if (gatedOnMissingKey(res)) return;
     const { mint } = req.params;
     if (!isValidMint(mint)) {
       return res.status(400).json({ error: 'Invalid token mint.' });
@@ -172,6 +180,7 @@ export function createPumpfunRouter(): Router {
 
   // GET /api/pumpfun/wallet/:address/callouts — a caller's callout history.
   router.get('/wallet/:address/callouts', async (req, res) => {
+    if (gatedOnMissingKey(res)) return;
     const { address } = req.params;
     if (!isValidAddress(address)) {
       return res.status(400).json({ error: 'Invalid wallet address.' });
@@ -232,6 +241,7 @@ export function createPumpfunRouter(): Router {
 
   // GET /api/pumpfun/wallet/:address — a caller's public profile.
   router.get('/wallet/:address', async (req, res) => {
+    if (gatedOnMissingKey(res)) return;
     const { address } = req.params;
     if (!isValidAddress(address)) {
       return res.status(400).json({ error: 'Invalid wallet address.' });
@@ -243,6 +253,7 @@ export function createPumpfunRouter(): Router {
 
   // GET /api/pumpfun/communities/top — the top communities board.
   router.get('/communities/top', async (_req, res) => {
+    if (gatedOnMissingKey(res)) return;
     await serveCached(res, TOP_COMMUNITIES_CACHE_KEY, TOP_COMMUNITIES_TTL_MS, () =>
       client.getTopCommunities(),
     );
@@ -250,6 +261,7 @@ export function createPumpfunRouter(): Router {
 
   // GET /api/pumpfun/feed — the public trending feed slice.
   router.get('/feed', async (_req, res) => {
+    if (gatedOnMissingKey(res)) return;
     await serveCached(res, TRENDING_FEED_CACHE_KEY, TRENDING_FEED_TTL_MS, () => client.getTrendingFeed());
   });
 
