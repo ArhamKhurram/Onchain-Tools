@@ -20,6 +20,8 @@ import {
   walletCalloutsCacheKey,
   walletProfileCacheKey,
   communityCacheKey,
+  walletTransactionsCacheKey,
+  walletBalanceCacheKey,
   TOP_COMMUNITIES_CACHE_KEY,
   TRENDING_FEED_CACHE_KEY,
   TOKEN_CALLOUTS_TTL_MS,
@@ -28,7 +30,14 @@ import {
   COMMUNITY_TTL_MS,
   TOP_COMMUNITIES_TTL_MS,
   TRENDING_FEED_TTL_MS,
+  WALLET_TRANSACTIONS_TTL_MS,
+  WALLET_BALANCE_TTL_MS,
 } from './cache.js';
+
+// Cap on the batch PnL mint list. The endpoint is a single POST that fans out
+// per mint, so an unbounded list is an amplification lever; 100 is generous for a
+// wallet's held/traded set and bounds the upstream call.
+const MAX_PNL_MINTS = 100;
 
 // A Solana address is base58 (no 0, O, I, l), 32-44 chars. A token mint may also
 // be given as an EVM 0x-hex address on the chains coin-communities.xyz indexes.
@@ -44,6 +53,35 @@ export function isValidMint(value: string): boolean {
 /** A wallet address: base58 only. */
 export function isValidAddress(value: string): boolean {
   return BASE58_RE.test(value);
+}
+
+/**
+ * Validate the POST /pnl body `{ mints: [...] }`. Returns the mint list on
+ * success, or a string reason on failure that the route turns into a 400. Every
+ * element must be a valid mint (base58 or EVM) — a junk mint must never reach the
+ * upstream POST — and the list must be non-empty and within MAX_PNL_MINTS.
+ * Exported so the validation is unit-testable the way the address validators are.
+ */
+export function parseMintsBody(body: unknown): { mints: string[] } | { error: string } {
+  if (typeof body !== 'object' || body === null || Array.isArray(body)) {
+    return { error: 'Body must be a JSON object with a "mints" array.' };
+  }
+  const mints = (body as Record<string, unknown>).mints;
+  if (!Array.isArray(mints)) {
+    return { error: 'Body must include a "mints" array.' };
+  }
+  if (mints.length === 0) {
+    return { error: 'The "mints" array must not be empty.' };
+  }
+  if (mints.length > MAX_PNL_MINTS) {
+    return { error: `The "mints" array must hold at most ${MAX_PNL_MINTS} entries.` };
+  }
+  for (const m of mints) {
+    if (typeof m !== 'string' || !isValidMint(m)) {
+      return { error: 'The "mints" array must contain only valid token mints.' };
+    }
+  }
+  return { mints: mints as string[] };
 }
 
 /**
@@ -141,6 +179,55 @@ export function createPumpfunRouter(): Router {
     await serveCached(res, walletCalloutsCacheKey(address), WALLET_CALLOUTS_TTL_MS, () =>
       client.getWalletCallouts(address),
     );
+  });
+
+  // GET /api/pumpfun/wallet/:address/transactions — a wallet's activity, paged.
+  // ?cursor threads the next page; ?dustFilter (default true) is honored when set
+  // to 'false'. Served from profile-api.pump.fun (keyless), NOT the keyed host.
+  router.get('/wallet/:address/transactions', async (req, res) => {
+    const { address } = req.params;
+    if (!isValidAddress(address)) {
+      return res.status(400).json({ error: 'Invalid wallet address.' });
+    }
+    const cursor = typeof req.query.cursor === 'string' ? req.query.cursor : undefined;
+    const dustFilter = req.query.dustFilter !== 'false';
+    await serveCached(
+      res,
+      walletTransactionsCacheKey(address, cursor, dustFilter),
+      WALLET_TRANSACTIONS_TTL_MS,
+      () => client.getWalletTransactions(address, { cursor, dustFilter }),
+    );
+  });
+
+  // GET /api/pumpfun/wallet/:address/balance — a wallet's holdings summary.
+  router.get('/wallet/:address/balance', async (req, res) => {
+    const { address } = req.params;
+    if (!isValidAddress(address)) {
+      return res.status(400).json({ error: 'Invalid wallet address.' });
+    }
+    await serveCached(res, walletBalanceCacheKey(address), WALLET_BALANCE_TTL_MS, () =>
+      client.getWalletBalance(address),
+    );
+  });
+
+  // POST /api/pumpfun/wallet/:address/pnl — per-token realized/unrealized PnL for
+  // a caller-supplied mint list. Uncached: a POST over a variable mint set (see
+  // cache.ts). Both the wallet param and every mint in the body are validated
+  // before the upstream call so no junk reaches profile-api.
+  router.post('/wallet/:address/pnl', async (req, res) => {
+    const { address } = req.params;
+    if (!isValidAddress(address)) {
+      return res.status(400).json({ error: 'Invalid wallet address.' });
+    }
+    const parsed = parseMintsBody(req.body);
+    if ('error' in parsed) {
+      return res.status(400).json({ error: parsed.error });
+    }
+    try {
+      res.json(await client.getWalletPnl(address, parsed.mints));
+    } catch (err) {
+      sendPumpfunError(res, err);
+    }
   });
 
   // GET /api/pumpfun/wallet/:address — a caller's public profile.

@@ -201,3 +201,283 @@ describe('the key never leaks into an error', () => {
     });
   }
 });
+
+// ---------------------------------------------------------------------------
+// Wallet activity / PnL / balance — the SECOND host (profile-api.pump.fun),
+// which is keyless. These specs also pin the security boundary: the keyed
+// coin-communities credential must NEVER ride out to profile-api.
+// ---------------------------------------------------------------------------
+
+const WALLET = '9xQeWvG816bUx9EPjHmaT23yvVM2ZWbrrpZb9PusVFin';
+const COIN_MINT = '4k3Dyjzvzp8eMZWUXbBCjEvwSkkk59S5iCNLY3QrkX6R';
+
+// A raw SWAP row for a BUY: token_out is SOL, token_in is the coin.
+const BUY_ROW = {
+  tx_hash: 'sig-buy-1',
+  block_time: 1_700_000_000,
+  fee: 5000,
+  transaction_type: 'BUY',
+  type: 'SWAP',
+  sol_value: 1.5,
+  token_in: {
+    amount: 1_000_000_000, // 6-decimal coin → 1000 units
+    mint: COIN_MINT,
+    metadata: { symbol: 'DOGE2', name: 'Doge Two', decimals: 6, program: 'spl-token', icon: null },
+  },
+  token_out: {
+    amount: 1_500_000_000,
+    mint: 'So11111111111111111111111111111111111111112',
+    metadata: { symbol: 'SOL', name: 'Solana', decimals: 9, program: 'spl-token', icon: null },
+  },
+};
+
+// A raw SWAP row for a SELL: the legs reverse (token_in is SOL, token_out coin).
+const SELL_ROW = {
+  tx_hash: 'sig-sell-1',
+  block_time: 1_700_000_100,
+  fee: 5000,
+  transaction_type: 'SELL',
+  type: 'SWAP',
+  sol_value: 2.0,
+  token_in: {
+    amount: 2_000_000_000,
+    mint: 'So11111111111111111111111111111111111111112',
+    metadata: { symbol: 'SOL', name: 'Solana', decimals: 9, program: 'spl-token', icon: null },
+  },
+  token_out: {
+    amount: 500_000_000, // 6-decimal coin → 500 units
+    mint: COIN_MINT,
+    metadata: { symbol: 'DOGE2', name: 'Doge Two', decimals: 6, program: 'spl-token', icon: null },
+  },
+};
+
+describe('wallet transactions (profile-api, keyless)', () => {
+  it('narrows a BUY: side=BUY and the non-SOL leg (token_in) is the coin', async () => {
+    mockFetch(200, JSON.stringify({ transactions: [BUY_ROW], pagination: { has_more: false } }));
+    const page = await api().getWalletTransactions(WALLET);
+    expect(page.items).toHaveLength(1);
+    const tx = page.items[0]!;
+    expect(tx.type).toBe('SWAP');
+    if (tx.type !== 'SWAP') throw new Error('narrowing failed');
+    expect(tx.side).toBe('BUY');
+    expect(tx.token).toBe(COIN_MINT);
+    expect(tx.tokenSymbol).toBe('DOGE2');
+    expect(tx.solValue).toBe(1.5);
+    expect(tx.amount).toBe(1000); // 1_000_000_000 scaled by 6 decimals
+  });
+
+  it('narrows a SELL: side=SELL and the non-SOL leg (token_out) is the coin', async () => {
+    mockFetch(200, JSON.stringify({ transactions: [SELL_ROW], pagination: { has_more: false } }));
+    const page = await api().getWalletTransactions(WALLET);
+    const tx = page.items[0]!;
+    if (tx.type !== 'SWAP') throw new Error('narrowing failed');
+    expect(tx.side).toBe('SELL');
+    expect(tx.token).toBe(COIN_MINT);
+    expect(tx.amount).toBe(500); // 500_000_000 scaled by 6 decimals
+  });
+
+  it('preserves an unknown type (CREATE_COIN) as OTHER rather than dropping it', async () => {
+    const CREATE = { tx_hash: 'sig-create-1', block_time: 1, fee: 0, type: 'CREATE_COIN', mint: COIN_MINT };
+    const MYSTERY = { tx_hash: 'sig-mystery-1', block_time: 2, fee: 0, type: 'FUTURE_TYPE_2027' };
+    mockFetch(200, JSON.stringify({ transactions: [BUY_ROW, CREATE, MYSTERY], pagination: { has_more: false } }));
+    const page = await api().getWalletTransactions(WALLET);
+    // All three survive: the known SWAP plus two unmodeled types.
+    expect(page.items).toHaveLength(3);
+    const create = page.items[1]!;
+    expect(create.type).toBe('OTHER');
+    if (create.type !== 'OTHER') throw new Error('narrowing failed');
+    expect(create.rawType).toBe('CREATE_COIN');
+    // The full raw row is preserved for a consumer that wants the unmodeled shape.
+    expect(create.raw.mint).toBe(COIN_MINT);
+    const mystery = page.items[2]!;
+    if (mystery.type !== 'OTHER') throw new Error('narrowing failed');
+    expect(mystery.rawType).toBe('FUTURE_TYPE_2027');
+  });
+
+  it('narrows a TRANSFER with its direction and transferred leg', async () => {
+    const XFER = {
+      tx_hash: 'sig-xfer-1',
+      block_time: 3,
+      fee: 5000,
+      type: 'TRANSFER',
+      transaction_type: 'RECEIVE',
+      direction: 'IN',
+      token_transferred: { amount: 42, mint: COIN_MINT, metadata: { symbol: 'DOGE2', decimals: 6 } },
+      from_address: 'FRoMxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx',
+      to_address: WALLET,
+    };
+    mockFetch(200, JSON.stringify({ transactions: [XFER], pagination: { has_more: false } }));
+    const tx = (await api().getWalletTransactions(WALLET)).items[0]!;
+    expect(tx.type).toBe('TRANSFER');
+    if (tx.type !== 'TRANSFER' && tx.type !== 'FEE_CLAIM') throw new Error('narrowing failed');
+    expect(tx.direction).toBe('IN');
+    expect(tx.transactionType).toBe('RECEIVE');
+    expect(tx.tokenTransferred?.mint).toBe(COIN_MINT);
+    expect(tx.toAddress).toBe(WALLET);
+  });
+
+  it('drops a malformed row (missing tx_hash) but keeps an unknown type', async () => {
+    mockFetch(
+      200,
+      JSON.stringify({
+        transactions: [BUY_ROW, { type: 'SWAP', no: 'tx_hash' }, 42, null, { tx_hash: 'x', type: 'WEIRD' }],
+        pagination: { has_more: false },
+      }),
+    );
+    const page = await api().getWalletTransactions(WALLET);
+    // The BUY and the unknown-type row survive; the object without tx_hash, the
+    // number and the null are dropped.
+    expect(page.items).toHaveLength(2);
+    expect(page.items[1]!.type).toBe('OTHER');
+  });
+
+  it('threads the pagination cursor through and back out', async () => {
+    const spy = mockFetch(
+      200,
+      JSON.stringify({ transactions: [], pagination: { has_more: true, next_cursor: 'CURSOR_2', total: 250 } }),
+    );
+    const page = await api().getWalletTransactions(WALLET, { cursor: 'CURSOR_1', dustFilter: false });
+    // The cursor and dustFilter=false are on the outbound query string...
+    const url = spy.mock.calls[0]![0] as string;
+    expect(url).toContain('cursor=CURSOR_1');
+    expect(url).toContain('dustFilter=false');
+    // ...and the next cursor is surfaced for the follow-up page.
+    expect(page.pagination.hasMore).toBe(true);
+    expect(page.pagination.nextCursor).toBe('CURSOR_2');
+    expect(page.pagination.total).toBe(250);
+  });
+
+  it('defaults dustFilter to true when not specified', async () => {
+    const spy = mockFetch(200, JSON.stringify({ transactions: [], pagination: { has_more: false } }));
+    await api().getWalletTransactions(WALLET);
+    const url = spy.mock.calls[0]![0] as string;
+    expect(url).toContain('dustFilter=true');
+    expect(url).not.toContain('cursor=');
+  });
+
+  it('throws unexpected-shape when the transactions array is missing', async () => {
+    mockFetch(200, JSON.stringify({ pagination: { has_more: false } }));
+    await expect(api().getWalletTransactions(WALLET)).rejects.toMatchObject({ kind: 'unexpected-shape' });
+  });
+});
+
+describe('wallet PnL (profile-api POST, 201)', () => {
+  it('treats 201 as success and parses null figures for an untraded mint', async () => {
+    const body = {
+      success: true,
+      data: [
+        {
+          mint: COIN_MINT,
+          unrealized: null,
+          realized: null,
+          total_buy_spend: { sol: null, usd: null },
+          total_buy_amount: null,
+          has_transfers: false,
+          has_untrusted_basis: false,
+          fee: null,
+          fee_detail: null,
+        },
+      ],
+    };
+    mockFetch(201, JSON.stringify(body)); // NOTE: 201, not 200.
+    const rows = await api().getWalletPnl(WALLET, [COIN_MINT]);
+    expect(rows).toHaveLength(1);
+    expect(rows[0]!.mint).toBe(COIN_MINT);
+    expect(rows[0]!.unrealized).toBeNull();
+    expect(rows[0]!.totalBuySpend).toEqual({ sol: null, usd: null });
+    expect(rows[0]!.hasTransfers).toBe(false);
+  });
+
+  it('parses populated PnL figures', async () => {
+    const body = {
+      data: [
+        {
+          mint: COIN_MINT,
+          unrealized: 12.5,
+          realized: -3.25,
+          total_buy_spend: { sol: 4.0, usd: 600 },
+          total_buy_amount: 1000,
+          has_transfers: true,
+          has_untrusted_basis: false,
+          fee: 0.01,
+          fee_detail: { creator: 0.01 },
+        },
+      ],
+    };
+    mockFetch(201, JSON.stringify(body));
+    const [row] = await api().getWalletPnl(WALLET, [COIN_MINT]);
+    expect(row!.realized).toBe(-3.25);
+    expect(row!.totalBuySpend).toEqual({ sol: 4.0, usd: 600 });
+    expect(row!.hasTransfers).toBe(true);
+    expect(row!.feeDetail).toEqual({ creator: 0.01 });
+  });
+
+  it('sends the mint list in the POST body as { tokens: [{ mint }] }', async () => {
+    const spy = mockFetch(201, JSON.stringify({ data: [] }));
+    await api().getWalletPnl(WALLET, [COIN_MINT]);
+    const init = spy.mock.calls[0]![1] as RequestInit;
+    expect(init.method).toBe('POST');
+    expect(JSON.parse(init.body as string)).toEqual({ tokens: [{ mint: COIN_MINT }] });
+  });
+
+  it('drops a malformed PnL row (missing mint)', async () => {
+    mockFetch(201, JSON.stringify({ data: [{ mint: COIN_MINT, realized: 1 }, { realized: 2 }, null] }));
+    const rows = await api().getWalletPnl(WALLET, [COIN_MINT]);
+    expect(rows).toHaveLength(1);
+  });
+
+  it('throws unexpected-shape when data is missing', async () => {
+    mockFetch(201, JSON.stringify({ success: true }));
+    await expect(api().getWalletPnl(WALLET, [COIN_MINT])).rejects.toMatchObject({ kind: 'unexpected-shape' });
+  });
+});
+
+describe('wallet balance (profile-api, keyless)', () => {
+  it('passes a holdings summary object through untouched', async () => {
+    mockFetch(200, JSON.stringify({ totalSol: 12.3, holdings: [{ mint: COIN_MINT, amount: 100 }] }));
+    const summary = await api().getWalletBalance(WALLET);
+    expect(summary.totalSol).toBe(12.3);
+  });
+
+  it('throws unexpected-shape when the body is not an object', async () => {
+    mockFetch(200, JSON.stringify([1, 2, 3]));
+    await expect(api().getWalletBalance(WALLET)).rejects.toMatchObject({ kind: 'unexpected-shape' });
+  });
+});
+
+describe('the profile-api host is keyless and separate from the keyed host', () => {
+  it('never attaches the coin-communities x-api-key to a profile-api request', async () => {
+    // The key IS set in env (beforeEach) — the point is that the keyless code path
+    // does not read or send it. If it leaked, this would catch it.
+    const spy = mockFetch(200, JSON.stringify({ transactions: [], pagination: { has_more: false } }));
+    await api().getWalletTransactions(WALLET);
+    const [url, init] = spy.mock.calls[0]! as [string, RequestInit];
+    // Right host...
+    expect(url.startsWith('https://profile-api.pump.fun')).toBe(true);
+    // ...and no credential of any kind on the wire.
+    const headers = (init.headers ?? {}) as Record<string, string>;
+    expect('x-api-key' in headers).toBe(false);
+    expect(headers['x-api-key']).toBeUndefined();
+    expect(init.credentials).toBe('omit');
+  });
+
+  it('routes profile-api POST (pnl) to profile-api.pump.fun without the key', async () => {
+    const spy = mockFetch(201, JSON.stringify({ data: [] }));
+    await api().getWalletPnl(WALLET, [COIN_MINT]);
+    const [url, init] = spy.mock.calls[0]! as [string, RequestInit];
+    expect(url.startsWith('https://profile-api.pump.fun')).toBe(true);
+    const headers = (init.headers ?? {}) as Record<string, string>;
+    expect('x-api-key' in headers).toBe(false);
+  });
+
+  it('still sends the x-api-key to the KEYED coin-communities host (contrast)', async () => {
+    // Same client instance, same env — the keyed path must keep sending the key,
+    // proving the two paths are genuinely distinct and not both stripped.
+    const spy = mockFetch(200, JSON.stringify({ callouts: [] }));
+    await api().getTokenCallouts(COIN_MINT);
+    const [url, init] = spy.mock.calls[0]! as [string, RequestInit];
+    expect(url.startsWith('https://api.coin-communities.xyz')).toBe(true);
+    const headers = (init.headers ?? {}) as Record<string, string>;
+    expect(headers['x-api-key']).toBe(KEY);
+  });
+});

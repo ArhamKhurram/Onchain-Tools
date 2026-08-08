@@ -20,9 +20,33 @@
 // string in this file is constructed from a fixed path + a vendor-authored body,
 // never from anything carrying the key.
 
-import type { PumpCallout, PumpFeedItem, PumpCommunity, PumpUser } from './types.js';
+import type {
+  PumpCallout,
+  PumpFeedItem,
+  PumpCommunity,
+  PumpUser,
+  PumpTokenMeta,
+  PumpTokenLeg,
+  PumpTransaction,
+  PumpPagination,
+  PumpTransactionsPage,
+  PumpMoney,
+  PumpTokenPnl,
+  PumpBalanceSummary,
+} from './types.js';
 
 const BASE = 'https://api.coin-communities.xyz/api/v1';
+
+// The SECOND host. Wallet activity, PnL and balance live here, not on
+// coin-communities.xyz. Verified live: FULLY OPEN — no key, no cookie, no bearer.
+// It is a bare origin (paths already carry their own segments), kept as a
+// distinct constant so no call can accidentally send a profile-api path to the
+// keyed base or vice versa.
+const PROFILE_BASE = 'https://profile-api.pump.fun';
+
+// The native SOL mint, used to pick the non-SOL leg of a swap when deriving which
+// coin was bought/sold. Wrapped-SOL and native-SOL share this mint in these rows.
+const SOL_MINT = 'So11111111111111111111111111111111111111112';
 
 // The API answers a settings/console screen, not a fire path — a slow call
 // should fail and let the caller retry rather than hold a request open.
@@ -246,6 +270,146 @@ function parseUser(v: unknown): PumpUser {
   };
 }
 
+// --- profile-api narrowers. Same drop-not-throw discipline as the callout
+// narrowers above, with one addition: an UNKNOWN transaction `type` is not a
+// malformed row — it is preserved as the OTHER variant. Only a row that is not an
+// object, or lacks the `tx_hash` that keys it, is dropped. ---
+
+function parseTokenMeta(v: unknown): PumpTokenMeta | null {
+  if (!isRecord(v)) return null;
+  return {
+    symbol: str(v.symbol),
+    name: str(v.name),
+    decimals: num(v.decimals),
+    program: str(v.program),
+    icon: str(v.icon),
+  };
+}
+
+function parseTokenLeg(v: unknown): PumpTokenLeg | null {
+  if (!isRecord(v)) return null;
+  return {
+    amount: num(v.amount),
+    mint: str(v.mint),
+    metadata: parseTokenMeta(v.metadata),
+  };
+}
+
+/** Scale a raw on-chain amount by its token decimals. Missing decimals → raw. */
+function applyDecimals(amount: number | null, decimals: number | null): number | null {
+  if (amount === null) return null;
+  if (decimals === null || decimals < 0) return amount;
+  return amount / 10 ** decimals;
+}
+
+/**
+ * Pick the non-SOL leg of a swap by mint, so the coin is identified even if the
+ * venue's `transaction_type` is wrong or missing. Falls back to whichever leg is
+ * present when neither carries an identifiable mint.
+ */
+function nonSolLeg(a: PumpTokenLeg | null, b: PumpTokenLeg | null): PumpTokenLeg | null {
+  if (a?.mint && a.mint !== SOL_MINT) return a;
+  if (b?.mint && b.mint !== SOL_MINT) return b;
+  return a ?? b;
+}
+
+/**
+ * Narrow one activity row into the `PumpTransaction` union. Returns null only for
+ * a non-object row or one missing `tx_hash` (the dedup key, the transaction
+ * analogue of a callout's `id`). An unrecognised `type` is NEVER null — it lands
+ * in the OTHER variant with its raw row intact.
+ */
+function parseTransaction(v: unknown): PumpTransaction | null {
+  if (!isRecord(v)) return null;
+  const txHash = str(v.tx_hash);
+  if (!txHash) return null;
+
+  const blockTime = num(v.block_time);
+  const fee = num(v.fee);
+  const type = str(v.type);
+  const transactionType = str(v.transaction_type);
+
+  if (type === 'SWAP') {
+    const tokenIn = parseTokenLeg(v.token_in);
+    const tokenOut = parseTokenLeg(v.token_out);
+    const coin = nonSolLeg(tokenIn, tokenOut);
+    return {
+      type: 'SWAP',
+      txHash,
+      blockTime,
+      fee,
+      side: transactionType,
+      tokenIn,
+      tokenOut,
+      solValue: num(v.sol_value),
+      token: coin?.mint ?? null,
+      tokenSymbol: coin?.metadata?.symbol ?? null,
+      amount: applyDecimals(coin?.amount ?? null, coin?.metadata?.decimals ?? null),
+    };
+  }
+
+  if (type === 'TRANSFER' || type === 'FEE_CLAIM') {
+    return {
+      type,
+      txHash,
+      blockTime,
+      fee,
+      transactionType,
+      direction: str(v.direction),
+      tokenTransferred: parseTokenLeg(v.token_transferred),
+      fromAddress: str(v.from_address),
+      toAddress: str(v.to_address),
+    };
+  }
+
+  // CREATE_COIN and anything pump.fun adds later: preserved, not dropped.
+  return {
+    type: 'OTHER',
+    rawType: type,
+    txHash,
+    blockTime,
+    fee,
+    transactionType,
+    raw: v,
+  };
+}
+
+function parsePagination(v: unknown): PumpPagination {
+  const r = isRecord(v) ? v : {};
+  return {
+    hasMore: bool(r.has_more),
+    nextCursor: str(r.next_cursor),
+    total: num(r.total),
+  };
+}
+
+function parseMoney(v: unknown): PumpMoney | null {
+  if (!isRecord(v)) return null;
+  return { sol: num(v.sol), usd: num(v.usd) };
+}
+
+/**
+ * Narrow one PnL row. `mint` keys the row and is the one hard requirement; every
+ * numeric field may legitimately be null (a mint the wallet never traded still
+ * gets a row, with nulls). `fee_detail` is an opaque vendor breakdown.
+ */
+function parsePnl(v: unknown): PumpTokenPnl | null {
+  if (!isRecord(v)) return null;
+  const mint = str(v.mint);
+  if (!mint) return null;
+  return {
+    mint,
+    unrealized: num(v.unrealized),
+    realized: num(v.realized),
+    totalBuySpend: parseMoney(v.total_buy_spend),
+    totalBuyAmount: num(v.total_buy_amount),
+    hasTransfers: bool(v.has_transfers),
+    hasUntrustedBasis: bool(v.has_untrusted_basis),
+    fee: num(v.fee),
+    feeDetail: isRecord(v.fee_detail) ? v.fee_detail : null,
+  };
+}
+
 export class PumpfunClient {
   /**
    * Low-level GET. Reads the key late, sends it as `x-api-key`, and sends NO
@@ -356,6 +520,112 @@ export class PumpfunClient {
       throw new PumpfunContractError(path, 'expected { items: [...] }');
     }
     return raw.items.map(parseFeedItem).filter((i): i is PumpFeedItem => i !== null);
+  }
+
+  /**
+   * Low-level request to profile-api.pump.fun. UNLIKE `get()` above, this reads
+   * NO key and attaches NO `x-api-key` — the host is open, and sending the
+   * coin-communities credential to a different origin would leak it for nothing.
+   * `credentials: 'omit'` keeps cookies off the wire too. GET and POST share this
+   * one path; a POST carries a JSON body and the matching content-type.
+   *
+   * Reuses the full PumpfunError taxonomy for symmetry with the keyed layer. An
+   * auth refusal is not expected here (the host takes no credential) but the
+   * mapping is kept so a surprise 401/403 still surfaces as a typed failure rather
+   * than an unexpected-shape. NOTE: POST /v2/pnl answers 201, so success is `res.ok`
+   * (any 2xx), not a literal 200.
+   */
+  private async profileFetch(
+    path: string,
+    init: { method: 'GET' } | { method: 'POST'; body: unknown },
+  ): Promise<unknown> {
+    const headers: Record<string, string> = { accept: 'application/json' };
+    let body: string | undefined;
+    if (init.method === 'POST') {
+      headers['content-type'] = 'application/json';
+      body = JSON.stringify(init.body);
+    }
+
+    let res: Response;
+    try {
+      res = await fetch(`${PROFILE_BASE}${path}`, {
+        method: init.method,
+        headers,
+        body,
+        credentials: 'omit',
+        signal: AbortSignal.timeout(TIMEOUT_MS),
+      });
+    } catch (err) {
+      const detail = err instanceof Error && err.name === 'TimeoutError' ? 'timed out' : 'network error';
+      throw new PumpfunRequestError(path, 0, detail);
+    }
+
+    if (res.status === 401 || res.status === 403) throw new PumpfunAuthError(path);
+
+    const text = await res.text();
+    if (!res.ok) {
+      throw new PumpfunRequestError(path, res.status, text.slice(0, VENDOR_ERROR_TEXT_LIMIT));
+    }
+
+    if (text.length === 0) throw new PumpfunContractError(path, 'empty body');
+    try {
+      return JSON.parse(text) as unknown;
+    } catch {
+      throw new PumpfunContractError(path, 'body was not JSON');
+    }
+  }
+
+  /**
+   * A wallet's activity (buys/sells/transfers/fee-claims/…), newest first, one
+   * cursor page at a time. `dustFilter` defaults true to match the verified call;
+   * pass a `cursor` from a prior page's `pagination.nextCursor` to continue. An
+   * unknown row `type` is preserved (see parseTransaction), so the returned count
+   * reflects the wallet's real activity rather than only the modeled subset.
+   */
+  async getWalletTransactions(
+    wallet: string,
+    opts: { cursor?: string; dustFilter?: boolean } = {},
+  ): Promise<PumpTransactionsPage> {
+    const params = new URLSearchParams();
+    params.set('dustFilter', String(opts.dustFilter ?? true));
+    if (opts.cursor) params.set('cursor', opts.cursor);
+    const path = `/transactions/${encodeURIComponent(wallet)}?${params.toString()}`;
+    const raw = await this.profileFetch(path, { method: 'GET' });
+    if (!isRecord(raw) || !Array.isArray(raw.transactions)) {
+      throw new PumpfunContractError(path, 'expected { transactions: [...] }');
+    }
+    const items = raw.transactions.map(parseTransaction).filter((t): t is PumpTransaction => t !== null);
+    return { items, pagination: parsePagination(raw.pagination) };
+  }
+
+  /**
+   * Per-token realized/unrealized PnL for a wallet, in one batched POST. The body
+   * is `{ tokens: [{ mint }] }`; the response is `{ data: [...] }` at HTTP 201.
+   * A mint the wallet never traded still comes back as a row with null figures,
+   * so the caller gets one row per requested mint (barring a malformed one).
+   */
+  async getWalletPnl(wallet: string, mints: string[]): Promise<PumpTokenPnl[]> {
+    const path = `/v2/pnl/batch/${encodeURIComponent(wallet)}?version=v2`;
+    const raw = await this.profileFetch(path, {
+      method: 'POST',
+      body: { tokens: mints.map((mint) => ({ mint })) },
+    });
+    if (!isRecord(raw) || !Array.isArray(raw.data)) {
+      throw new PumpfunContractError(path, 'expected { data: [...] }');
+    }
+    return raw.data.map(parsePnl).filter((p): p is PumpTokenPnl => p !== null);
+  }
+
+  /**
+   * A wallet's balance/holdings summary. The body shape was not enumerated by
+   * recon, so it is asserted to be an object and passed through untouched (see
+   * PumpBalanceSummary) rather than narrowed to fields we have not verified.
+   */
+  async getWalletBalance(wallet: string): Promise<PumpBalanceSummary> {
+    const path = `/balance/summary/${encodeURIComponent(wallet)}`;
+    const raw = await this.profileFetch(path, { method: 'GET' });
+    if (!isRecord(raw)) throw new PumpfunContractError(path, 'expected a balance summary object');
+    return raw;
   }
 }
 

@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { isValidMint, isValidAddress } from '../src/pumpfun/routes';
+import { isValidMint, isValidAddress, parseMintsBody } from '../src/pumpfun/routes';
 
 // A real Solana mint (WSOL) and wallet, plus a real EVM address, as the accepted
 // cases; junk of every wrong shape as the rejected cases. The route calls these
@@ -52,5 +52,44 @@ describe('isValidAddress', () => {
     for (const bad of ['', 'nope', '../secrets', 'IIIIIIIIIIIIIIIIIIIIIIIIIIIIIIII']) {
       expect(isValidAddress(bad)).toBe(false);
     }
+  });
+});
+
+describe('parseMintsBody (POST /pnl body validation)', () => {
+  it('accepts a body with an array of valid mints (base58 and EVM)', () => {
+    const out = parseMintsBody({ mints: [SOL_MINT, EVM] });
+    expect(out).toEqual({ mints: [SOL_MINT, EVM] });
+  });
+
+  it('rejects a non-object body', () => {
+    for (const bad of [null, undefined, 'mints', 42, [SOL_MINT]]) {
+      expect(parseMintsBody(bad)).toHaveProperty('error');
+    }
+  });
+
+  it('rejects a missing or non-array mints field', () => {
+    expect(parseMintsBody({})).toHaveProperty('error');
+    expect(parseMintsBody({ mints: 'nope' })).toHaveProperty('error');
+    expect(parseMintsBody({ mints: {} })).toHaveProperty('error');
+  });
+
+  it('rejects an empty mints array', () => {
+    expect(parseMintsBody({ mints: [] })).toHaveProperty('error');
+  });
+
+  it('rejects an array carrying a junk mint (must never reach the upstream POST)', () => {
+    for (const junk of ['nope', '', '../../etc/passwd', `${SOL_MINT}/x`, 42, null]) {
+      expect(parseMintsBody({ mints: [SOL_MINT, junk] })).toHaveProperty('error');
+    }
+  });
+
+  it('rejects an over-long mints array (amplification guard)', () => {
+    const many = Array.from({ length: 101 }, () => SOL_MINT);
+    expect(parseMintsBody({ mints: many })).toHaveProperty('error');
+  });
+
+  it('accepts a mints array exactly at the cap', () => {
+    const capped = Array.from({ length: 100 }, () => SOL_MINT);
+    expect(parseMintsBody({ mints: capped })).toEqual({ mints: capped });
   });
 });

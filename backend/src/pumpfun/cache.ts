@@ -71,6 +71,16 @@ export function communityCacheKey(mint: string): string {
   return `community:${mint}`;
 }
 
+// Activity is paged and filtered, so the cache line is keyed by the exact query
+// (wallet + cursor + dustFilter): a different page or filter is a different read.
+export function walletTransactionsCacheKey(address: string, cursor: string | undefined, dustFilter: boolean): string {
+  return `wallet-transactions:${address}:${cursor ?? ''}:${dustFilter}`;
+}
+
+export function walletBalanceCacheKey(address: string): string {
+  return `wallet-balance:${address}`;
+}
+
 export const TOP_COMMUNITIES_CACHE_KEY = 'communities:top';
 export const TRENDING_FEED_CACHE_KEY = 'feed:trending';
 
@@ -81,5 +91,11 @@ export const TOKEN_CALLOUTS_TTL_MS = Number.parseInt(process.env.PUMPFUN_TOKEN_C
 export const WALLET_CALLOUTS_TTL_MS = Number.parseInt(process.env.PUMPFUN_WALLET_CALLOUTS_CACHE_MS ?? '', 10) || 120 * 1000;
 export const WALLET_PROFILE_TTL_MS = Number.parseInt(process.env.PUMPFUN_WALLET_PROFILE_CACHE_MS ?? '', 10) || 5 * 60 * 1000;
 export const COMMUNITY_TTL_MS = Number.parseInt(process.env.PUMPFUN_COMMUNITY_CACHE_MS ?? '', 10) || 5 * 60 * 1000;
+// Activity moves as fast as callouts (fresh swaps land constantly); a balance
+// summary turns over a little slower. PnL is a POST over a caller-supplied mint
+// list and is served uncached (see routes.ts) — a cache line per mint permutation
+// buys little and the key would be unwieldy.
+export const WALLET_TRANSACTIONS_TTL_MS = Number.parseInt(process.env.PUMPFUN_WALLET_TRANSACTIONS_CACHE_MS ?? '', 10) || 60 * 1000;
+export const WALLET_BALANCE_TTL_MS = Number.parseInt(process.env.PUMPFUN_WALLET_BALANCE_CACHE_MS ?? '', 10) || 120 * 1000;
 export const TOP_COMMUNITIES_TTL_MS = Number.parseInt(process.env.PUMPFUN_TOP_CACHE_MS ?? '', 10) || 5 * 60 * 1000;
 export const TRENDING_FEED_TTL_MS = Number.parseInt(process.env.PUMPFUN_TRENDING_CACHE_MS ?? '', 10) || 5 * 60 * 1000;
