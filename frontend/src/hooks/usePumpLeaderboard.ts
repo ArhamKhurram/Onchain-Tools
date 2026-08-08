@@ -12,10 +12,10 @@ import {
 // — the operator's pump session expired and needs a reconnect, not a retry.
 //
 // WIRE-PARAM NOTE: reconciled against the shipped backend. The route reads
-// `req.query.window` (GET /pumpfun/leaderboard?window=7d) — the upstream
-// coin-communities path uses `timeframe` as a path segment, but that never
-// surfaces as our query-param name. Kept as a named constant so the wire contract
-// is stated in one place rather than buried in the URL template below.
+// `req.query.window` (GET /pumpfun/leaderboard?window=1d) and maps 1d/1w/1m to the
+// upstream `period` query (daily/weekly/monthly); that mapping is the backend's,
+// so it never surfaces as our query-param name. Kept as a named constant so the
+// wire contract is stated in one place rather than buried in the URL template below.
 const LEADERBOARD_WINDOW_PARAM = 'window';
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -48,10 +48,10 @@ export interface PumpLeaderboardHook {
 /**
  * @param enabled Only fetch when a session is connected. Gating here (rather than
  *   not mounting the hook) keeps the window switch's state stable across a
- *   reconnect, so the operator does not lose their 7d/30d/all choice.
+ *   reconnect, so the operator does not lose their 1D/1W/1M choice.
  */
 export function usePumpLeaderboard(enabled: boolean): PumpLeaderboardHook {
-  const [window, setWindow] = useState<PumpLeaderboardWindow>('7d');
+  const [window, setWindow] = useState<PumpLeaderboardWindow>('1d');
   const [entries, setEntries] = useState<PumpLeaderboardEntry[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);

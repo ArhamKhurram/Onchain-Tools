@@ -12,10 +12,10 @@ import {
   sessionStatus,
 } from '../src/pumpfun/leaderboardClient';
 
-// A distinctive bearer so any leak into a response or an error message is caught
-// by a substring check. It is what authenticates AS the user, so the sharpest
-// invariant of this whole feature is that it never rides out.
-const BEARER = 'eyBEARER-secret-never-logged-xyz.payload.sig';
+// A distinctive session token so any leak into a response or an error message is
+// caught by a substring check. It is what authenticates AS the user, so the
+// sharpest invariant of this whole feature is that it never rides out.
+const TOKEN = 'eyTOKEN-secret-never-logged-xyz.payload.sig';
 
 function mockFetch(status: number, body: string) {
   const spy = vi.fn(async () => new Response(body, { status }));
@@ -30,162 +30,178 @@ afterEach(() => {
 
 const api = () => new PumpfunLeaderboardClient();
 
-// A well-formed leaderboard row (best guess at the unverified shape).
+// A well-formed leaderboard row (the verified /pnl-leaderboard shape).
 const GOOD_ROW = {
   rank: 1,
   walletAddress: '9xQeWvG816bUx9EPjHmaT23yvVM2ZWbrrpZb9PusVFin',
-  userId: 'u1',
   username: 'vee',
-  displayName: 'Vee',
-  profileImageUrl: 'https://img/vee.png',
-  userTwitterUrl: 'https://x.com/vee',
+  xUsername: 'vee_x',
+  profileImage: 'https://img/vee.png',
+  pnlSol: 812.4,
   pnlUsd: '125000', // string number — must coerce
-  calloutCount: 42,
-  winRate: 0.66,
+  pnlPercent: 66,
+  realizedPnlSol: 800,
+  realizedPnlUsd: 123_000,
+  unrealizedPnlSol: 12.4,
+  unrealizedPnlUsd: 2000,
+  buySpendSol: 400,
+  lastRefreshedAtMs: 1_733_000_000_000,
 };
 
-describe('bearer transport', () => {
-  it('sends Authorization: Bearer and no x-api-key or cookies', async () => {
-    const spy = mockFetch(200, JSON.stringify({ leaderboard: [] }));
-    await api().getCalloutLeaderboard(BEARER, '7d');
+describe('session-cookie transport', () => {
+  it('sends Cookie: auth_token=<token> and no x-api-key or Authorization', async () => {
+    const spy = mockFetch(200, JSON.stringify({ entries: [] }));
+    await api().getPnlLeaderboard(TOKEN, 'daily');
     const [url, init] = spy.mock.calls[0]! as [string, RequestInit];
     const headers = init.headers as Record<string, string>;
-    expect(headers.authorization).toBe(`Bearer ${BEARER}`);
+    expect(headers.cookie).toBe(`auth_token=${TOKEN}`);
+    expect('authorization' in headers).toBe(false);
     expect('x-api-key' in headers).toBe(false);
     expect(init.credentials).toBe('omit');
-    // The window is a PATH segment, not a query param.
-    expect(url).toContain('/leaderboard/callouts/7d');
-    expect(url).not.toContain('?');
+    // Hits frontend-api-v3.pump.fun/pnl-leaderboard with the period as a query.
+    expect(url).toContain('https://frontend-api-v3.pump.fun/pnl-leaderboard?');
+    expect(url).toContain('period=daily');
   });
 
-  it('puts the timeframe in the path for 30d and all', async () => {
-    const spy = mockFetch(200, JSON.stringify({ leaderboard: [] }));
-    await api().getCalloutLeaderboard(BEARER, '30d');
-    await api().getCalloutLeaderboard(BEARER, 'all');
-    expect(spy.mock.calls[0]![0] as string).toContain('/leaderboard/callouts/30d');
-    expect(spy.mock.calls[1]![0] as string).toContain('/leaderboard/callouts/all');
+  it('defaults sort to combined and carries the limit query', async () => {
+    const spy = mockFetch(200, JSON.stringify({ entries: [] }));
+    await api().getPnlLeaderboard(TOKEN, 'weekly', { limit: 200 });
+    const url = spy.mock.calls[0]![0] as string;
+    expect(url).toContain('period=weekly');
+    expect(url).toContain('sort=combined');
+    expect(url).toContain('limit=200');
   });
 
-  it('hits the ranked endpoint for getRankedCallers', async () => {
-    const spy = mockFetch(200, JSON.stringify({ leaderboard: [] }));
-    await api().getRankedCallers(BEARER);
-    expect(spy.mock.calls[0]![0] as string).toContain('/leaderboard/callouts/ranked');
+  it('maps each period into the query', async () => {
+    const spy = mockFetch(200, JSON.stringify({ entries: [] }));
+    await api().getPnlLeaderboard(TOKEN, 'daily');
+    await api().getPnlLeaderboard(TOKEN, 'weekly');
+    await api().getPnlLeaderboard(TOKEN, 'monthly');
+    expect(spy.mock.calls[0]![0] as string).toContain('period=daily');
+    expect(spy.mock.calls[1]![0] as string).toContain('period=weekly');
+    expect(spy.mock.calls[2]![0] as string).toContain('period=monthly');
+  });
+
+  it('honours an explicit sort', async () => {
+    const spy = mockFetch(200, JSON.stringify({ entries: [] }));
+    await api().getPnlLeaderboard(TOKEN, 'daily', { sort: 'realized' });
+    expect(spy.mock.calls[0]![0] as string).toContain('sort=realized');
   });
 });
 
 describe('response narrowing', () => {
   it('parses a good row and coerces string numbers', async () => {
-    mockFetch(200, JSON.stringify({ leaderboard: [GOOD_ROW] }));
-    const rows = await api().getCalloutLeaderboard(BEARER, '7d');
+    mockFetch(200, JSON.stringify({ entries: [GOOD_ROW] }));
+    const rows = await api().getPnlLeaderboard(TOKEN, 'daily');
     expect(rows).toHaveLength(1);
     expect(rows[0]!.walletAddress).toBe(GOOD_ROW.walletAddress);
     expect(rows[0]!.rank).toBe(1);
     expect(rows[0]!.pnlUsd).toBe(125_000); // coerced from string
     expect(rows[0]!.username).toBe('vee');
+    expect(rows[0]!.xUsername).toBe('vee_x');
+    expect(rows[0]!.buySpendSol).toBe(400);
   });
 
-  it('reads several envelope spellings and a bare array', async () => {
-    for (const body of [
-      JSON.stringify({ data: [GOOD_ROW] }),
-      JSON.stringify({ callers: [GOOD_ROW] }),
-      JSON.stringify({ entries: [GOOD_ROW] }),
-      JSON.stringify([GOOD_ROW]), // bare array
-    ]) {
-      mockFetch(200, body);
-      const rows = await api().getCalloutLeaderboard(BEARER, '7d');
-      expect(rows).toHaveLength(1);
-    }
+  it('degrades an optional field to null without dropping the row', async () => {
+    const { xUsername: _x, pnlUsd: _p, ...noOptionals } = GOOD_ROW;
+    mockFetch(200, JSON.stringify({ entries: [noOptionals] }));
+    const rows = await api().getPnlLeaderboard(TOKEN, 'daily');
+    expect(rows).toHaveLength(1);
+    expect(rows[0]!.xUsername).toBeNull();
+    expect(rows[0]!.pnlUsd).toBeNull();
+    expect(rows[0]!.walletAddress).toBe(GOOD_ROW.walletAddress);
   });
 
-  it('reads alternate field spellings (wallet, handle, pnl)', async () => {
-    const alt = { rank: 2, wallet: 'AltWa11etxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx', handle: 'zed', pnl: 4200 };
-    mockFetch(200, JSON.stringify({ leaderboard: [alt] }));
-    const rows = await api().getCalloutLeaderboard(BEARER, '7d');
-    expect(rows[0]!.walletAddress).toBe(alt.wallet);
-    expect(rows[0]!.username).toBe('zed');
-    expect(rows[0]!.pnlUsd).toBe(4200);
-  });
-
-  it('drops a malformed row (no wallet address) without failing the list', async () => {
-    mockFetch(200, JSON.stringify({ leaderboard: [GOOD_ROW, { username: 'no-wallet' }, 42, null] }));
-    const rows = await api().getCalloutLeaderboard(BEARER, '7d');
+  it('drops a malformed row (no wallet, or no rank) without failing the list', async () => {
+    mockFetch(
+      200,
+      JSON.stringify({
+        entries: [GOOD_ROW, { rank: 2, username: 'no-wallet' }, { walletAddress: 'x', username: 'no-rank' }, 42, null],
+      }),
+    );
+    const rows = await api().getPnlLeaderboard(TOKEN, 'daily');
     expect(rows).toHaveLength(1);
     expect(rows[0]!.walletAddress).toBe(GOOD_ROW.walletAddress);
   });
 
-  it('throws unexpected-shape for a non-array body (object with no row array)', async () => {
-    mockFetch(200, JSON.stringify({ notRows: true, total: 5 }));
-    await expect(api().getCalloutLeaderboard(BEARER, '7d')).rejects.toMatchObject({ kind: 'unexpected-shape' });
-    await expect(api().getCalloutLeaderboard(BEARER, '7d')).rejects.toBeInstanceOf(PumpfunContractError);
+  it('throws unexpected-shape for a non-array entries (or a bare array)', async () => {
+    for (const body of [
+      JSON.stringify({ entries: 5 }),
+      JSON.stringify({ notEntries: [GOOD_ROW] }),
+      JSON.stringify([GOOD_ROW]), // a bare array is NOT the verified envelope
+    ]) {
+      mockFetch(200, body);
+      await expect(api().getPnlLeaderboard(TOKEN, 'daily')).rejects.toMatchObject({ kind: 'unexpected-shape' });
+    }
   });
 
   it('throws unexpected-shape when a 200 body is not JSON (HTML error page)', async () => {
     mockFetch(200, '<!doctype html><title>oops</title>');
-    await expect(api().getRankedCallers(BEARER)).rejects.toMatchObject({ kind: 'unexpected-shape' });
+    await expect(api().getPnlLeaderboard(TOKEN, 'daily')).rejects.toBeInstanceOf(PumpfunContractError);
   });
 });
 
-describe('error taxonomy: a bearer refusal is auth-expired, not auth-rejected', () => {
+describe('error taxonomy: a session refusal is auth-expired, not auth-rejected', () => {
   it('maps a 401 to auth-expired (session lapsed → reconnect)', async () => {
     mockFetch(401, JSON.stringify({ error: 'unauthorized' }));
-    await expect(api().getCalloutLeaderboard(BEARER, '7d')).rejects.toMatchObject({ kind: 'auth-expired' });
-    await expect(api().getCalloutLeaderboard(BEARER, '7d')).rejects.toBeInstanceOf(PumpfunSessionExpiredError);
+    await expect(api().getPnlLeaderboard(TOKEN, 'daily')).rejects.toMatchObject({ kind: 'auth-expired' });
+    await expect(api().getPnlLeaderboard(TOKEN, 'daily')).rejects.toBeInstanceOf(PumpfunSessionExpiredError);
   });
 
   it('maps a 403 to auth-expired as well', async () => {
     mockFetch(403, 'forbidden');
-    await expect(api().getRankedCallers(BEARER)).rejects.toMatchObject({ kind: 'auth-expired' });
+    await expect(api().getPnlLeaderboard(TOKEN, 'weekly')).rejects.toMatchObject({ kind: 'auth-expired' });
   });
 
   it('maps a 500 to request-failed', async () => {
     mockFetch(500, 'internal error');
-    await expect(api().getCalloutLeaderboard(BEARER, '7d')).rejects.toMatchObject({ kind: 'request-failed' });
+    await expect(api().getPnlLeaderboard(TOKEN, 'daily')).rejects.toMatchObject({ kind: 'request-failed' });
   });
 
   it('maps a network throw to request-failed', async () => {
     vi.stubGlobal('fetch', vi.fn(async () => {
       throw new TypeError('fetch failed');
     }));
-    await expect(api().getCalloutLeaderboard(BEARER, '7d')).rejects.toBeInstanceOf(PumpfunRequestError);
+    await expect(api().getPnlLeaderboard(TOKEN, 'daily')).rejects.toBeInstanceOf(PumpfunRequestError);
   });
 });
 
-describe('the bearer NEVER leaks into an error message', () => {
+describe('the session token NEVER leaks into an error message', () => {
   // Every failure path where the client builds the message from request context
-  // must omit the bearer. The network-throw case is sharpest: even an underlying
-  // error whose OWN message quotes the Authorization header must not be forwarded
+  // must omit the token. The network-throw case is sharpest: even an underlying
+  // error whose OWN message quotes the Cookie header must not be forwarded
   // verbatim — that is the one frame where the token could ride out.
   const scenarios: Array<[string, () => void]> = [
     ['session refusal (401)', () => mockFetch(401, JSON.stringify({ error: 'unauthorized' }))],
     ['vendor 4xx body', () => mockFetch(400, JSON.stringify({ error: 'bad request' }))],
     ['vendor 5xx body', () => mockFetch(503, 'upstream down')],
     [
-      'network throw quoting the Authorization header',
+      'network throw quoting the Cookie header',
       () =>
         vi.stubGlobal('fetch', vi.fn(async () => {
-          throw new Error(`connect failed with header authorization: Bearer ${BEARER}`);
+          throw new Error(`connect failed with header cookie: auth_token=${TOKEN}`);
         })),
     ],
   ];
 
   for (const [name, setup] of scenarios) {
-    it(`omits the bearer on a ${name}`, async () => {
+    it(`omits the token on a ${name}`, async () => {
       setup();
       try {
-        await api().getCalloutLeaderboard(BEARER, '7d');
+        await api().getPnlLeaderboard(TOKEN, 'daily');
         throw new Error('expected the call to reject');
       } catch (err) {
         expect(err).toBeInstanceOf(PumpfunError);
-        expect((err as Error).message).not.toContain(BEARER);
+        expect((err as Error).message).not.toContain(TOKEN);
       }
     });
   }
 
-  it('never places the bearer in the fetched URL either', async () => {
-    const spy = mockFetch(200, JSON.stringify({ leaderboard: [] }));
-    await api().getCalloutLeaderboard(BEARER, '7d');
+  it('never places the token in the fetched URL either', async () => {
+    const spy = mockFetch(200, JSON.stringify({ entries: [] }));
+    await api().getPnlLeaderboard(TOKEN, 'daily');
     const url = spy.mock.calls[0]![0] as string;
-    expect(url).not.toContain(BEARER);
+    expect(url).not.toContain(TOKEN);
   });
 });
 

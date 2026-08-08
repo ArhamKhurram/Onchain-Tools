@@ -259,45 +259,62 @@ export interface PumpTokenPnl {
 }
 
 // ---------------------------------------------------------------------------
-// Callout leaderboard (coin-communities.xyz, keyed with the USER's pump bearer).
+// PnL leaderboard (frontend-api-v3.pump.fun, keyed with the USER's pump session
+// cookie).
 //
 // A THIRD path, distinct from both the shared-x-api-key callouts layer and the
-// keyless profile-api layer: these endpoints require a per-user Authorization:
-// Bearer <pump session JWT>. See leaderboardClient.ts.
+// keyless profile-api layer: this endpoint requires the user's own pump.fun
+// session cookie (`auth_token=<jwt>`). See leaderboardClient.ts.
 //
-// TODO(verify): the row shape below is UNVERIFIED — we have no live bearer to
-// probe with. Every field is narrowed defensively (drop-not-throw), the client
-// reads each field from several plausible key spellings, and the whole shape
-// must be confirmed against a real pump session before this is trusted. Only
-// `walletAddress` is treated as mandatory (it keys the row and is what the Track
-// button needs); a row without it is dropped.
+// VERIFIED against a live logged-in session: the row shape below is the one the
+// real `/pnl-leaderboard` response carries, so fields are read by their exact
+// key rather than guessed across spellings. `rank` and `walletAddress` are the
+// two hard requirements (rank orders the board, walletAddress keys the row and
+// is what the Track button needs); a row missing either is dropped, everything
+// else degrades to null so a shape drift costs a field, not the row.
 // ---------------------------------------------------------------------------
 
-/** The leaderboard window. A PATH segment on the callouts endpoint, not a query. */
-export type PumpLeaderboardTimeframe = '7d' | '30d' | 'all';
+/**
+ * The leaderboard period. A QUERY param on `/pnl-leaderboard` (`period=`).
+ * `daily` is the UI's 1D (the response labels it "24h"), `weekly` is 1W,
+ * `monthly` is 1M. There is no all-time board on this endpoint.
+ */
+export type PumpLeaderboardPeriod = 'daily' | 'weekly' | 'monthly';
+
+/** How the board is ranked. A QUERY param (`sort=`); the console asks for `combined`. */
+export type PumpLeaderboardSort = 'realized' | 'unrealized' | 'combined';
 
 /**
- * One ranked caller on the callout leaderboard. `walletAddress` is the only hard
- * requirement; everything else degrades to null so a shape drift costs a field,
- * not the row. `pnlUsd` is the caller's realized PnL in USD over the window.
+ * One ranked trader on the PnL leaderboard. `rank` and `walletAddress` are the
+ * hard requirements (row dropped if either is absent); every other field
+ * degrades to null so a shape drift costs a field, not the row. The `*Sol`/`*Usd`
+ * pairs are the trader's PnL in each denomination over the window.
  */
 export interface PumpLeaderboardEntry {
-  /** Position on the board (1-based). Null if the API omits it (we can re-derive). */
-  rank: number | null;
-  /** The caller's wallet — the dedup/track key. MANDATORY (row dropped if absent). */
+  /** Position on the board (1-based). MANDATORY (row dropped if absent). */
+  rank: number;
+  /** The trader's wallet — the dedup/track key. MANDATORY (row dropped if absent). */
   walletAddress: string;
-  userId: string | null;
-  /** The @handle. */
+  /** The pump.fun @handle. */
   username: string | null;
-  displayName: string | null;
-  profileImageUrl: string | null;
-  userTwitterUrl: string | null;
-  /** Realized PnL in USD over the window. */
+  /** The linked X/Twitter handle, when the trader connected one. */
+  xUsername: string | null;
+  /** Avatar URL. */
+  profileImage: string | null;
+  /** Combined PnL in SOL over the window. */
+  pnlSol: number | null;
+  /** Combined PnL in USD over the window — what the board renders green/red. */
   pnlUsd: number | null;
-  /** Number of calls made over the window, when present. */
-  calloutCount: number | null;
-  /** Win rate / hit rate as a fraction (0..1) when present. */
-  winRate: number | null;
+  /** Combined PnL as a percentage of buy spend, when present. */
+  pnlPercent: number | null;
+  realizedPnlSol: number | null;
+  realizedPnlUsd: number | null;
+  unrealizedPnlSol: number | null;
+  unrealizedPnlUsd: number | null;
+  /** Total SOL spent buying over the window (the PnL denominator). */
+  buySpendSol: number | null;
+  /** Epoch ms the upstream figures were last refreshed, when present. */
+  lastRefreshedAtMs: number | null;
 }
 
 /**

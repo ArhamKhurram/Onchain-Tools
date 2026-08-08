@@ -1,4 +1,4 @@
-import { Plus, RefreshCw, Trophy } from 'lucide-react';
+import { ExternalLink, Plus, RefreshCw, Trophy } from 'lucide-react';
 import {
   formatPnlUsd,
   leaderboardLabel,
@@ -23,7 +23,7 @@ const LB_ASC_FIRST: readonly LbSortKey[] = ['rank', 'handle'];
 const LB_COLUMNS: readonly SortColumn<PumpLeaderboardEntry, LbSortKey>[] = [
   { key: 'rank', type: 'numeric', get: (e) => e.rank },
   { key: 'handle', type: 'text', get: (e) => leaderboardLabel(e) },
-  { key: 'pnl', type: 'numeric', get: (e) => e.pnl },
+  { key: 'pnl', type: 'numeric', get: (e) => e.pnlUsd },
 ];
 
 interface PumpLeaderboardProps {
@@ -35,14 +35,14 @@ interface PumpLeaderboardProps {
 }
 
 const WINDOW_LABEL: Record<PumpLeaderboardWindow, string> = {
-  '7d': '7D',
-  '30d': '30D',
-  all: 'ALL',
+  '1d': '1D',
+  '1w': '1W',
+  '1m': '1M',
 };
 
 // The ranked leaderboard list — a close mirror of FomoLeaderboard's chrome
 // (brutal-card, timeframe pills, per-row Track button, "Tracked" disabled once
-// added). The differences are pump-shaped: the window is 7d/30d/all, the row key
+// added). The differences are pump-shaped: the window is 1D/1W/1M, the row key
 // is the wallet, and a row without a usable wallet shows a disabled Track (there
 // is nothing to add) rather than being dropped.
 export default function PumpLeaderboard({ board, trackedAddresses, onTrack }: PumpLeaderboardProps) {
@@ -129,17 +129,32 @@ export default function PumpLeaderboard({ board, trackedAddresses, onTrack }: Pu
             {sortedEntries.map((entry, i) => {
               const state = leaderboardTrackState(entry, trackedAddresses);
               const disabled = state !== 'trackable';
-              const pnl = entry.pnl;
+              const pnl = entry.pnlUsd;
               return (
                 <li
-                  key={entry.walletAddress ?? `${entry.handle ?? entry.displayName ?? 'row'}-${i}`}
+                  key={entry.walletAddress ?? `${entry.username ?? 'row'}-${i}`}
                   className="flex items-center gap-3 px-4 py-3 hover:bg-oct-surface-raised/60 transition-colors"
                 >
                   <span className="w-6 text-xs font-mono font-bold text-oct-muted tabular-nums">
                     {entry.rank ?? i + 1}
                   </span>
                   <div className="min-w-0 flex-1">
-                    <div className="font-bold text-oct-text truncate">{leaderboardLabel(entry)}</div>
+                    <div className="flex items-center gap-1.5 min-w-0">
+                      <span className="font-bold text-oct-text truncate">{leaderboardLabel(entry)}</span>
+                      {entry.xUsername && (
+                        <a
+                          href={`https://x.com/${entry.xUsername}`}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          onClick={(e) => e.stopPropagation()}
+                          title={`@${entry.xUsername} on X`}
+                          className="shrink-0 inline-flex items-center gap-0.5 text-[10px] font-mono text-oct-muted hover:text-oct-accent transition-colors"
+                        >
+                          <ExternalLink size={10} />
+                          <span className="truncate max-w-[80px]">@{entry.xUsername}</span>
+                        </a>
+                      )}
+                    </div>
                     <div className="text-xs text-oct-muted truncate">
                       PnL{' '}
                       <span

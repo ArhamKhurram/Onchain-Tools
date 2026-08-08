@@ -19,7 +19,7 @@ import {
   decodeJwtExpiry,
   sessionStatus,
 } from './leaderboardClient.js';
-import type { PumpLeaderboardTimeframe } from './types.js';
+import type { PumpLeaderboardPeriod } from './types.js';
 import { getStorageProvider } from '../storage/index.js';
 import {
   getCached,
@@ -31,7 +31,6 @@ import {
   walletTransactionsCacheKey,
   walletBalanceCacheKey,
   leaderboardCacheKey,
-  rankedCallersCacheKey,
   TOP_COMMUNITIES_CACHE_KEY,
   TRENDING_FEED_CACHE_KEY,
   TOKEN_CALLOUTS_TTL_MS,
@@ -59,9 +58,19 @@ function getUserId(req: { userId?: string }): string {
 // can't be used to bloat storage. JWTs are well under this.
 const MAX_PUMP_TOKEN_LEN = 4096;
 
-// The three accepted leaderboard windows. A path/query value outside this set is
-// rejected before any upstream call rather than passed through blindly.
-const LEADERBOARD_TIMEFRAMES: PumpLeaderboardTimeframe[] = ['7d', '30d', 'all'];
+// The leaderboard ?window param → the upstream `period` query value. Both the
+// console's short spelling (1d/1w/1m) and the upstream spelling (daily/weekly/
+// monthly) are accepted so either can be passed without a translation surprise; a
+// value outside this map is rejected before any upstream call. There is no
+// all-time board on this endpoint, so `all` is deliberately absent.
+const WINDOW_TO_PERIOD: Record<string, PumpLeaderboardPeriod> = {
+  '1d': 'daily',
+  daily: 'daily',
+  '1w': 'weekly',
+  weekly: 'weekly',
+  '1m': 'monthly',
+  monthly: 'monthly',
+};
 
 // Bound the rows returned to a client. The upstream board can be long; a caller
 // asks for a slice via ?limit and we cap it so a single response stays sane.
@@ -384,31 +393,37 @@ export function createPumpfunRouter(): Router {
   });
 
   // -------------------------------------------------------------------------
-  // Leaderboard (keyed with the user's bearer). Reads the stored token late,
-  // calls coin-communities with it, and caches the narrowed rows per (user,
-  // window). 409 when no token is connected; the client maps a 401 (expired
-  // session) to a reconnect prompt via sendPumpfunError.
+  // Leaderboard (keyed with the user's pump session cookie). Reads the stored
+  // token late, calls frontend-api-v3.pump.fun with it as `Cookie: auth_token`,
+  // and caches the narrowed rows per (user, period). 409 when no token is
+  // connected; the client maps a 401 (expired session) to a reconnect prompt via
+  // sendPumpfunError.
   // -------------------------------------------------------------------------
 
-  // Clamp ?limit to [1, MAX]; default when absent or unparseable.
+  // Clamp ?limit to [1, MAX]; default when absent or unparseable. This bounds the
+  // slice returned to the caller — the upstream fetch always asks for MAX so one
+  // cached board (per user+period) serves every limit.
   const parseLimit = (raw: unknown): number => {
     const n = typeof raw === 'string' ? Number.parseInt(raw, 10) : NaN;
     if (!Number.isFinite(n) || n <= 0) return DEFAULT_LEADERBOARD_LIMIT;
     return Math.min(n, MAX_LEADERBOARD_LIMIT);
   };
 
-  // GET /api/pumpfun/leaderboard?window=7d&limit=50
+  // GET /api/pumpfun/leaderboard?window=1d&limit=50
+  // window is 1d|1w|1m (daily|weekly|monthly also accepted); mapped to the
+  // upstream `period` query. The board is cached per (user, period) and sliced to
+  // ?limit, so a limit change reuses the cached rows rather than re-fetching.
   router.get('/leaderboard', async (req, res) => {
-    const windowParam = typeof req.query.window === 'string' ? req.query.window : '7d';
-    if (!LEADERBOARD_TIMEFRAMES.includes(windowParam as PumpLeaderboardTimeframe)) {
-      return res.status(400).json({ error: `Invalid window. Use one of: ${LEADERBOARD_TIMEFRAMES.join(', ')}.` });
+    const windowParam = typeof req.query.window === 'string' ? req.query.window.toLowerCase() : '1d';
+    const period = WINDOW_TO_PERIOD[windowParam];
+    if (!period) {
+      return res.status(400).json({ error: 'Invalid window. Use one of: 1d, 1w, 1m.' });
     }
-    const timeframe = windowParam as PumpLeaderboardTimeframe;
     const limit = parseLimit(req.query.limit);
     const userId = getUserId(req);
 
     const storage = getStorageProvider();
-    let bearer: string;
+    let token: string;
     try {
       const session = await storage.getPumpSession(userId);
       if (!session) {
@@ -416,52 +431,20 @@ export function createPumpfunRouter(): Router {
         // clear reason and a connected:false flag the console can key on.
         return res.status(409).json({ error: 'Connect your pump.fun account to see the leaderboard.', connected: false });
       }
-      bearer = session.token; // read late; used once below; never returned.
+      token = session.token; // read late; used once below; never returned.
     } catch (err) {
       console.error('[PumpfunAPI] Failed to read pump session:', err instanceof Error ? err.message : err);
       return res.status(500).json({ error: 'Failed to read pump.fun session.' });
     }
 
-    // Serve cached rows if fresh, else fetch with the bearer, cache, and slice.
-    const cacheKey = leaderboardCacheKey(userId, timeframe);
-    const cached = getCached<Awaited<ReturnType<typeof leaderboardClient.getCalloutLeaderboard>>>(cacheKey);
+    // Serve cached rows if fresh, else fetch with the token, cache, and slice.
+    const cacheKey = leaderboardCacheKey(userId, period);
+    const cached = getCached<Awaited<ReturnType<typeof leaderboardClient.getPnlLeaderboard>>>(cacheKey);
     if (cached !== null) {
       return res.json(cached.slice(0, limit));
     }
     try {
-      const rows = await leaderboardClient.getCalloutLeaderboard(bearer, timeframe);
-      setCached(cacheKey, rows, LEADERBOARD_TTL_MS);
-      res.json(rows.slice(0, limit));
-    } catch (err) {
-      sendPumpfunError(res, err);
-    }
-  });
-
-  // GET /api/pumpfun/leaderboard/ranked — the ranked-callers board (no window).
-  router.get('/leaderboard/ranked', async (req, res) => {
-    const limit = parseLimit(req.query.limit);
-    const userId = getUserId(req);
-
-    const storage = getStorageProvider();
-    let bearer: string;
-    try {
-      const session = await storage.getPumpSession(userId);
-      if (!session) {
-        return res.status(409).json({ error: 'Connect your pump.fun account to see the leaderboard.', connected: false });
-      }
-      bearer = session.token;
-    } catch (err) {
-      console.error('[PumpfunAPI] Failed to read pump session:', err instanceof Error ? err.message : err);
-      return res.status(500).json({ error: 'Failed to read pump.fun session.' });
-    }
-
-    const cacheKey = rankedCallersCacheKey(userId);
-    const cached = getCached<Awaited<ReturnType<typeof leaderboardClient.getRankedCallers>>>(cacheKey);
-    if (cached !== null) {
-      return res.json(cached.slice(0, limit));
-    }
-    try {
-      const rows = await leaderboardClient.getRankedCallers(bearer);
+      const rows = await leaderboardClient.getPnlLeaderboard(token, period, { limit: MAX_LEADERBOARD_LIMIT });
       setCached(cacheKey, rows, LEADERBOARD_TTL_MS);
       res.json(rows.slice(0, limit));
     } catch (err) {
