@@ -6,6 +6,7 @@
   "scripts": {
     "dev": "remotion studio src/index.ts",
     "render:showcase": "remotion render src/index.ts Showcase out/showcase.mp4",
+    "render:rollout": "remotion render src/index.ts Rollout out/rollout.mp4",
     "render:guide": "remotion render src/index.ts Guide out/guide.mp4",
     "typecheck": "tsc --noEmit"
   },

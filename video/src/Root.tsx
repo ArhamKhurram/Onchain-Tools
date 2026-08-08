@@ -4,6 +4,7 @@ import { video, guideVideo } from './brand';
 import { Showcase, SHOWCASE_DURATION } from './compositions/Showcase';
 import { Guide, GUIDE_DURATION } from './compositions/Guide';
 import { Launch, LAUNCH_DURATION } from './compositions/Launch';
+import { Rollout, ROLLOUT_DURATION } from './compositions/Rollout';
 
 export const RemotionRoot: React.FC = () => (
   <>
@@ -11,6 +12,14 @@ export const RemotionRoot: React.FC = () => (
       id="Launch"
       component={Launch}
       durationInFrames={LAUNCH_DURATION}
+      fps={video.fps}
+      width={video.width}
+      height={video.height}
+    />
+    <Composition
+      id="Rollout"
+      component={Rollout}
+      durationInFrames={ROLLOUT_DURATION}
       fps={video.fps}
       width={video.width}
       height={video.height}

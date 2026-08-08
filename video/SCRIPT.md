@@ -178,3 +178,47 @@ and pace product shots, then apply it to OCT's own screens.
 shadcn/ui is likewise the wrong tool for the product shots — OCT's console is not
 shadcn-based, so building with it produces a recreation, not the product. It is
 fine for incidental chrome (device frames, a clean end card) if we want it.
+
+---
+
+## Rollout cut — pump.fun
+
+**Target:** ~45s, 1920×1080, same calm discipline as the Launch cut — slow
+push-ins, cross-dissolves, one small lower-third line per beat, ending on the
+still wordmark. Composition: `src/compositions/Rollout.tsx` (registered as
+`Rollout`; render with `npm run render:rollout`).
+
+**Why this one is recreated, not captured.** pump.fun trader tracking is a *new*
+feature, so there is no `demo.mp4` to punch into the way Launch does. The panels
+are native recreations in the ConsoleUI idiom (mono type, surface cards, hard
+black header rails, cockpit radius), mirroring the real components in
+`frontend/src/components/pumpfun/*` — the profile header, the Recent trades
+table (Side / Token / Amount / SOL value / When), PnL per token (Realized /
+Unrealized), and the Recent callouts table (Mcap @ call / peak / multiple). When
+a real recording exists, swap these for captured shots the way Launch does.
+
+**Hero is the pump.fun trader.** Beats 1–4 all sit on the same tracked wallet
+(`@westtrades`) and spend the bulk of the runtime; FOMO and the console montage
+are brief nods so the cut lands as "pump.fun tracking, inside the one console."
+
+Timings are targets; each beat is a `Sequence` (30fps) so they retune cheaply.
+
+| # | Beat | Window | Dur | Shot | On screen |
+| --- | --- | --- | --- | --- | --- |
+| 1 | Track a trader | 0:00–0:05 | 5s | Traders tab: paste a wallet → Track; profile resolves. Slow push-in. | `Track any pump.fun trader.` (from 2s) |
+| 2 | Live buys & sells | 0:05–0:13 | 8s | Recent trades table, rows arriving; BUY green / SELL red side pills, SOL size, timestamp. | `Their buys and sells, live.` |
+| 3 | PnL per token | 0:13–0:20 | 7s | PnL table: realized + unrealized per coin, green/red. | `Realized and unrealized, per coin.` |
+| 4 | Callouts ← the payoff | 0:20–0:29 | 9s | Recent callouts: what they called, mcap @ call → peak, and the multiple. | `And what they called — mcap, and the multiple it hit.` |
+| 5 | FOMO live trades | 0:29–0:35 | 6s | fomo.family board — tracked traders' live buys/sells. | `fomo.family traders, live.` |
+| 6 | Console montage | 0:35–0:40 | 5s | Three tiles — Feed / Radar / Sniper — as "one console for all of it." | `One console for all of it.` |
+| 7 | Close | 0:40–0:45 | 5s | Cross-dissolve to clean black; OCT wordmark, then URL. | `OCT` · `onchaintools.tech` |
+
+**Sample data (all fabricated, `Rollout.tsx`).** Trader `west` / `@westtrades`,
+wallet spells FAKE like the fixtures token. Tickers are invented memecoins (TOAD,
+GIGA, GONK, MOOSE, WOJAK, NYAN). Trades run 5–25 SOL; PnL is mostly green with one
+red (WOJAK). Callouts carry the believable-not-cartoonish range: TOAD `$25.6K →
+$6.75M` `263x` down to GONK `36x`. FOMO handles (`solstice`, `degenjeff`,
+`moonboy`, `trenchlord`) are invented too.
+
+**Music:** same open item as the Launch cut — none wired yet; drop a licensed
+track in `public/audio/` and add one `<Audio/>`. Do not reuse any reference audio.
