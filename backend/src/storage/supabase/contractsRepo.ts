@@ -231,14 +231,33 @@ export class ContractsRepo extends BaseRepo {
       return existing;
     }
 
+    // Update BY PRIMARY KEY. The row was already resolved above, so re-deriving
+    // it from (user_id, message_id, address) only reintroduces ambiguity the
+    // lookup deliberately resolved with `.limit(1)`.
+    //
+    // That mismatch broke enrichment outright in production: `.single()` raises
+    // PGRST116 ("Cannot coerce the result to a single JSON object") unless
+    // exactly one row matches, and `(user_id, message_id, address)` is not
+    // unique. `ilike` is case-INSENSITIVE, so one message that logs the same
+    // address twice — or twice in different casing, which is routine for EVM
+    // where checksummed and lowercased forms are the same address — matches
+    // both rows. The lookup above absorbs that with `.limit(1)`; this update
+    // did not, and threw instead.
+    //
+    // Every enrichment write failed, from both the Rick embed path and the Dex
+    // fallback, which is why MC@CALL was empty across the radar while MC-now
+    // (read live, never stored) kept working.
+    //
+    // `id` is the primary key, so exactly one row matches or none does.
+    // `user_id` stays as defence in depth alongside RLS. `maybeSingle` because
+    // a row deleted between lookup and update is a null, not an exception.
     const { data: updated, error } = await this.supabase
       .from('contracts')
       .update(update)
+      .eq('id', row.id as string)
       .eq('user_id', userId)
-      .eq('message_id', row.message_id as string)
-      .ilike('address', address)
       .select('*')
-      .single();
+      .maybeSingle();
 
     throwIfError({ error }, 'Failed to enrich contract');
     return updated ? this.mapContractRow(updated) : null;
