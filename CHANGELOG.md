@@ -4,6 +4,12 @@ All notable changes to Onchain Tools are documented here. Entries before the
 rename still say "Trenchcord" — that was the product's name at the time, and
 they're left as the record of what shipped.
 
+## 2026-08-08
+
+### Added
+- **Track any pump.fun trader** — a new Pump.fun tab. Paste a wallet and watch their live buys and sells — which coin, how much SOL, and when — plus their realized and unrealized PnL per token, right in the console.
+- **Follow the callouts** — read what a trader is calling and the thesis behind it, or paste a token address to see everyone who called it and the market cap they called it at. The top and trending pump.fun communities are there too.
+
 ## 2026-08-07
 
 ### Added
