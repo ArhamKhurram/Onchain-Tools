@@ -34,6 +34,34 @@ export interface BotHoldersResponse {
   holders: BotHolder[];
 }
 
+/**
+ * One trader's written thesis on a token: their position, PnL, and the text.
+ * Shaped like the fomo.family "theses" panel — display-facing fields only, the
+ * raw FomoThesisEntry `[k]: any` junk narrowed away. valueUsd/pnlUsd follow the
+ * BotHolder convention so the console reuses the same USD formatters.
+ */
+export interface BotThesisEntry {
+  /** Display label: display name > handle > username. */
+  handle: string;
+  /** The trader's X/handle (fomo.family logins are X-based), or null. */
+  xHandle: string | null;
+  /** Full X profile URL when we can build one, else null. */
+  xUrl: string | null;
+  /** Avatar image URL, or null. */
+  avatar: string | null;
+  valueUsd: number;
+  pnlUsd: number;
+  /** The written thesis (comment > text). '' when the entry carries none. */
+  thesis: string;
+}
+
+export interface BotThesesResponse {
+  networkId: BotNetworkId;
+  /** Explorer URL prefix for this network (append an address). */
+  explorerBase: string;
+  theses: BotThesisEntry[];
+}
+
 export interface BotLeaderboardEntry {
   rank: number;
   handle: string | null;

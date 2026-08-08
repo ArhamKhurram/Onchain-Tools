@@ -27,6 +27,8 @@ export type {
   BotTokenInfo,
   BotHolder,
   BotHoldersResponse,
+  BotThesisEntry,
+  BotThesesResponse,
   BotLeaderboardEntry,
   BotLeaderboardResponse,
   BotSnapshotResponse,

@@ -7,7 +7,7 @@
 // backend's TTL cache (hodlers 15 min) absorbs repeat lookups of the same token.
 
 import { useCallback, useEffect, useRef, useState } from 'react';
-import type { BotHoldersResponse, BotWalletProfile } from '@oct/shared';
+import type { BotHoldersResponse, BotThesesResponse, BotWalletProfile } from '@oct/shared';
 import { getAccessToken } from '../lib/supabase';
 
 const API_BASE = import.meta.env.VITE_API_URL
@@ -66,6 +66,60 @@ export function useFomoHolders(address: string | null, network?: string | null) 
       if (seq !== requestSeq.current) return;
       setData(null);
       setError((err as Error)?.message ?? 'Failed to load holders.');
+    } finally {
+      if (seq === requestSeq.current) setLoading(false);
+    }
+  }, [address, network]);
+
+  useEffect(() => {
+    void load();
+  }, [load]);
+
+  return { data, loading, error, refresh: load };
+}
+
+/**
+ * Written FOMO theses for a token: per-trader position, PnL and thesis text.
+ * Same demand-driven contract as useFomoHolders — `address` of null idles the
+ * hook, `network` pins the chain (omit to infer from the address shape), and the
+ * backend's TTL cache (theses 3 min) absorbs repeat views of the same token.
+ */
+export function useFomoTheses(address: string | null, network?: string | null) {
+  const [data, setData] = useState<BotThesesResponse | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  // Guards against a slow first request overwriting a newer token's result.
+  const requestSeq = useRef(0);
+
+  const load = useCallback(async () => {
+    if (!address) {
+      setData(null);
+      setError(null);
+      return;
+    }
+
+    const seq = ++requestSeq.current;
+    setLoading(true);
+    setError(null);
+    try {
+      const params = new URLSearchParams();
+      if (network) params.set('network', network);
+      const qs = params.toString();
+      const res = await fomoFetch(
+        `${API_BASE}/fomo/token/${encodeURIComponent(address)}/theses${qs ? `?${qs}` : ''}`,
+      );
+      if (seq !== requestSeq.current) return;
+
+      if (!res.ok) {
+        setData(null);
+        setError(await readError(res, `Failed to load theses (${res.status}).`));
+        return;
+      }
+      setData((await res.json()) as BotThesesResponse);
+    } catch (err) {
+      if (seq !== requestSeq.current) return;
+      setData(null);
+      setError((err as Error)?.message ?? 'Failed to load theses.');
     } finally {
       if (seq === requestSeq.current) setLoading(false);
     }
