@@ -1,29 +1,76 @@
 import { ExternalLink } from 'lucide-react';
-import { formatMcap, formatMultiplier, type PumpCallout } from '../../types/pumpfun';
+import { SortHeader } from '../common/SortHeader';
+import { useSort } from '../../hooks/useSort';
+import { sortRows, type SortColumn } from '../../lib/sort';
+import { formatMcap, formatMultiplier, truncateAddress, type PumpCallout } from '../../types/pumpfun';
 
 const TH = 'px-3 py-2 font-medium';
+
+// The sortable keys of the callout table. The Token column is intentionally NOT
+// here — it identifies the coin, it does not rank the row — so it renders as a plain
+// header while the other five are click-to-sort.
+type CalloutSortKey = 'caller' | 'mcap' | 'now' | 'max' | 'when';
+
+// Text columns open A→Z; the numeric ones open biggest-first. Module-level so
+// useSort's memoised handler stays stable.
+const CALLOUT_ASC_FIRST: readonly CalloutSortKey[] = ['caller'];
+
+// How each sortable column pulls its value out of a callout. The numeric columns
+// read the RAW vendor fields (not the formatted cell text), so "$17.83M" sorts above
+// "$18M"-that-rounds-from-17.6M correctly — sorting by value, never by the display
+// string. `when` parses the ISO timestamp to epoch ms.
+const CALLOUT_COLUMNS: readonly SortColumn<PumpCallout, CalloutSortKey>[] = [
+  { key: 'caller', type: 'text', get: (c) => c.displayName ?? c.username ?? '' },
+  { key: 'mcap', type: 'numeric', get: (c) => c.calloutMarketCap },
+  { key: 'now', type: 'numeric', get: (c) => c.multiplier },
+  { key: 'max', type: 'numeric', get: (c) => c.maxMultiplier },
+  { key: 'when', type: 'numeric', get: (c) => (c.createdAt ? Date.parse(c.createdAt) : null) },
+];
 
 // A callout table, shared by the wallet panel (a caller's history) and the token
 // panel (a token's calls). Callouts are pump.fun's own attribution — the header
 // says so — and every numeric cell degrades to an em dash rather than a zero when
 // the vendor omitted it (formatMultiplier/formatMcap), so a missing basis never
 // reads as a wipe.
-export default function PumpCalloutList({ callouts }: { callouts: PumpCallout[] }) {
+//
+// The columns are click-to-sort (shared SortHeader), defaulting to newest-first. A
+// Token column surfaces WHICH coin each callout is for: its ticker when the caller
+// supplied one (the token panel knows the symbol for every row and passes it), else
+// the short mint from the callout's own tokenAddress.
+export default function PumpCalloutList({
+  callouts,
+  tokenSymbol,
+}: {
+  callouts: PumpCallout[];
+  /** Ticker for the coin when the whole list is one known token (the token panel).
+   *  Omitted in the wallet panel, where each row is a different coin. */
+  tokenSymbol?: string | null;
+}) {
+  const { sortKey, sortDir, onSort } = useSort<CalloutSortKey>('when', 'desc', CALLOUT_ASC_FIRST);
+
+  // Break ties on recency so equal-ranked calls stay newest-first, matching the
+  // default view rather than falling back to arrival order.
+  const sorted = sortRows(callouts, CALLOUT_COLUMNS, sortKey, sortDir, (a, b) => {
+    const at = a.createdAt ? Date.parse(a.createdAt) : 0;
+    const bt = b.createdAt ? Date.parse(b.createdAt) : 0;
+    return bt - at;
+  });
+
   return (
     <div className="overflow-x-auto">
-      <table className="w-full text-left border-collapse min-w-[720px]">
+      <table className="w-full text-left border-collapse min-w-[780px]">
         <thead className="sticky top-0 bg-oct-surface border-b-2 border-black z-10">
           <tr className="font-mono text-[10px] font-bold uppercase tracking-wider text-oct-muted">
-            <th className={TH}>Caller</th>
-            <th className={TH}>Call</th>
-            <th className={`${TH} text-right`}>Mcap @ call</th>
-            <th className={`${TH} text-right`}>Now</th>
-            <th className={`${TH} text-right`}>Max</th>
-            <th className={`${TH} text-right`}>When</th>
+            <SortHeader<CalloutSortKey> label="Caller" sortKey="caller" activeKey={sortKey} dir={sortDir} onSort={onSort} />
+            <th className={TH}>Token</th>
+            <SortHeader<CalloutSortKey> label="Mcap @ call" sortKey="mcap" activeKey={sortKey} dir={sortDir} onSort={onSort} align="right" />
+            <SortHeader<CalloutSortKey> label="Now" sortKey="now" activeKey={sortKey} dir={sortDir} onSort={onSort} align="right" />
+            <SortHeader<CalloutSortKey> label="Max" sortKey="max" activeKey={sortKey} dir={sortDir} onSort={onSort} align="right" />
+            <SortHeader<CalloutSortKey> label="When" sortKey="when" activeKey={sortKey} dir={sortDir} onSort={onSort} align="right" />
           </tr>
         </thead>
         <tbody>
-          {callouts.map((c) => (
+          {sorted.map((c) => (
             <tr key={c.id} className="border-b border-oct-border/50 hover:bg-oct-surface-raised/50 transition-colors align-top">
               <td className="px-3 py-2 font-mono text-xs text-oct-text">
                 <div className="flex items-center gap-1.5">
@@ -40,8 +87,8 @@ export default function PumpCalloutList({ callouts }: { callouts: PumpCallout[] 
                   <div className="text-[10px] text-oct-muted">@{c.username}</div>
                 )}
               </td>
-              <td className="px-3 py-2 font-mono text-xs text-oct-muted max-w-[280px]">
-                <span className="line-clamp-2 break-words">{c.content ?? '—'}</span>
+              <td className="px-3 py-2">
+                <CalloutToken symbol={tokenSymbol} mint={c.tokenAddress} />
               </td>
               <td className="px-3 py-2 font-mono text-xs text-oct-text text-right">{formatMcap(c.calloutMarketCap)}</td>
               <td className={`px-3 py-2 font-mono text-xs text-right ${multiplierClass(c.multiplier)}`}>
@@ -55,6 +102,34 @@ export default function PumpCalloutList({ callouts }: { callouts: PumpCallout[] 
           ))}
         </tbody>
       </table>
+    </div>
+  );
+}
+
+/**
+ * The coin a callout is about. Shows the `$TICKER` (same mono ticker styling the feed
+ * uses) when a symbol is known, and the short mint underneath as the durable
+ * identifier. With no symbol the short mint stands alone; with neither, an em dash —
+ * a callout should never look like it is about nothing.
+ */
+function CalloutToken({ symbol, mint }: { symbol?: string | null; mint: string | null }) {
+  const short = mint ? truncateAddress(mint) : null;
+  if (!symbol && !short) return <span className="font-mono text-xs text-oct-muted">—</span>;
+  return (
+    <div className="min-w-0">
+      {symbol && (
+        <span className="font-mono text-xs font-semibold text-oct-text truncate block" title={mint ?? undefined}>
+          ${symbol}
+        </span>
+      )}
+      {short && (
+        <span
+          className={`font-mono text-[10px] text-oct-muted truncate block ${symbol ? '' : 'text-xs text-oct-text'}`}
+          title={mint ?? undefined}
+        >
+          {short}
+        </span>
+      )}
     </div>
   );
 }

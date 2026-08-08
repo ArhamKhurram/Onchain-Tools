@@ -90,7 +90,9 @@ export default function PumpTokenPanel() {
                 </p>
               ) : (
                 <div className="border-2 border-oct-border rounded-cockpit overflow-hidden">
-                  <PumpCalloutList callouts={callouts.data} />
+                  {/* Every row here is the one looked-up token, so pass its symbol so
+                      each callout shows the ticker, not just the mint. */}
+                  <PumpCalloutList callouts={callouts.data} tokenSymbol={community.data?.tokenSymbol} />
                 </div>
               )}
             </section>
