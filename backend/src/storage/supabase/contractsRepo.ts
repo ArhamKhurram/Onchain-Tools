@@ -60,12 +60,16 @@ export class ContractsRepo extends BaseRepo {
       .eq('user_id', userId)
       .eq('message_id', messageId);
 
-    const { data } = await (addressMatchesInsensitively(address)
+    const { data, error } = await (addressMatchesInsensitively(address)
       ? query.ilike('address', address)
       : query.eq('address', address))
       .order('timestamp', { ascending: false })
       .limit(1);
 
+    // Surface a query failure rather than swallow it as row-not-found — the
+    // window scan this replaced threw, which showed up as a "Dex fallback
+    // failed" log. A silent skip would hide a broken fallback as a missing FDV.
+    throwIfError({ error }, 'Failed to look up contract by message');
     return data?.[0] ? this.mapContractRow(data[0]) : null;
   }
 
