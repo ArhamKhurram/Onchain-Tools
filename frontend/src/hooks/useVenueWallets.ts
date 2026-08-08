@@ -11,9 +11,10 @@ export interface VenueWallet {
   pubkey: string;
   label: string;
   /**
-   * Durable nonce accounts, shown in Slotshark's UI as "task accounts". One
-   * carries one in-flight transaction, so this is a hard ceiling on concurrent
-   * fires. `-1` means their API did not report it — unknown, not zero.
+   * Durable nonce accounts, shown in Slotshark's UI as "task accounts". A pool
+   * of concurrent in-flight transactions — one per transaction, buy OR sell,
+   * released on confirmation. `-1` means their API did not report it —
+   * unknown, not zero.
    */
   nonceCount: number;
   enabled: boolean;

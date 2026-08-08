@@ -36,17 +36,24 @@ export default function SniperWalletFormModal({ open, mode, wallet, onClose, onS
   const venueWallets = useVenueWallets();
 
   /**
-   * One durable nonce account ("task account") carries one in-flight
-   * transaction, so the venue physically cannot run more concurrent fires than
-   * it has deployed. Above that, OCT authorizes a fire that times out and lands
-   * as `unknown`, which holds its reservation until someone resolves it by
-   * hand — so this is worth saying at the form rather than discovering later.
+   * Task accounts are a pool of concurrent in-flight transactions — one per
+   * transaction, released on confirmation (confirmed with the venue
+   * 2026-08-08). Sells draw from the same pool, so `maxOpen` at or above the
+   * count leaves an exit nothing to run on at the exact moment several
+   * positions want out together.
+   *
+   * Warned at two thresholds because the two failures differ in cost: at or
+   * over the count OCT can authorize a buy the venue cannot execute (it times
+   * out, records `unknown`, and holds its reservation); below that but without
+   * headroom, entries are fine and it is the exits that get starved.
    *
    * A warning, not a block: the count changes whenever the operator deploys
    * more, and this value is only as fresh as the last import.
    */
   const picked = venueWallets.wallets.find((w) => w.pubkey === values.address.trim());
-  const overCapacity = picked && picked.nonceCount >= 0 && values.maxOpen > picked.nonceCount;
+  const capacity = picked && picked.nonceCount >= 0 ? picked.nonceCount : null;
+  const overCapacity = capacity !== null && values.maxOpen >= capacity;
+  const thinHeadroom = capacity !== null && !overCapacity && values.maxOpen * 2 > capacity;
 
   useEffect(() => {
     if (!open) return;
@@ -297,13 +304,28 @@ export default function SniperWalletFormModal({ open, mode, wallet, onClose, onS
             </div>
           </div>
 
-          {overCapacity && picked && (
+          {capacity !== null && (overCapacity || thinHeadroom) && (
             <p className="text-xs text-oct-yellow leading-relaxed">
-              This wallet has <span className="font-mono">{picked.nonceCount}</span> task accounts at Slotshark, so it
-              can only run {picked.nonceCount} buys at once. A max open of{' '}
-              <span className="font-mono">{values.maxOpen}</span> lets OCT authorize a fire the venue cannot execute —
-              it times out, records as <span className="font-mono">unknown</span>, and holds its reservation until you
-              resolve it. Lower this, or deploy more task accounts at Slotshark.
+              This wallet has <span className="font-mono">{capacity}</span> task accounts at Slotshark — a pool of{' '}
+              {capacity} transactions in flight at once, and{' '}
+              <span className="font-semibold">sells draw from it too</span>.
+              {overCapacity ? (
+                <>
+                  {' '}
+                  A max open of <span className="font-mono">{values.maxOpen}</span> can consume the whole pool, leaving
+                  an exit nothing to run on — and letting OCT authorize a buy the venue cannot execute, which times
+                  out, records as <span className="font-mono">unknown</span> and holds its reservation until you
+                  resolve it.
+                </>
+              ) : (
+                <>
+                  {' '}
+                  With <span className="font-mono">{values.maxOpen}</span> open, a moment where they all want out at
+                  once needs {values.maxOpen} more than the entries already used.
+                </>
+              )}{' '}
+              Failing to enter costs an opportunity; failing to exit costs the position. Lower this, or deploy more
+              task accounts at Slotshark.
             </p>
           )}
 

@@ -72,11 +72,23 @@ export class VendorRequestError extends Error {
  * `nonceCount` is their "task accounts" — durable nonce accounts. A Solana
  * transaction signed against a `recent_blockhash` expires in ~60-90s, which is
  * useless for a pre-signed snipe; a durable nonce does not expire until it is
- * advanced, so a buy can sit signed and ready. Advancing invalidates anything
- * else signed against the old value, so ONE nonce account carries ONE in-flight
- * transaction. That makes `nonceCount` a hard concurrency ceiling, which is why
- * we sync it rather than just the address: a wallet's `maxOpen` cap is
- * meaningless above it.
+ * advanced, so a buy can sit signed and ready.
+ *
+ * Semantics confirmed by the Slotshark dev (2026-08-08): every transaction
+ * consumes one, buy or sell alike, and it is released as soon as that
+ * transaction confirms. So this is a POOL OF CONCURRENT IN-FLIGHT
+ * TRANSACTIONS that recycles in roughly a confirmation, not a per-position
+ * allocation. The constraint is a burst, not a sustained rate.
+ *
+ * Two consequences worth carrying into any capacity check:
+ *
+ *  - A multi-leg ladder entry consumes one PER LEG, simultaneously.
+ *  - SELLS DRAW FROM THE SAME POOL, including limit-sell ladders. Exits
+ *    therefore compete with entries, and the dangerous moment is the one where
+ *    several positions hit their trigger at once — precisely when the pool is
+ *    also busiest. Failing to enter costs an opportunity; failing to exit costs
+ *    the position, so capacity should be sized with headroom for the sells
+ *    rather than spent entirely on concurrent buys.
  */
 export interface VenueWallet {
   pubkey: string;
