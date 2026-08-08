@@ -1,4 +1,4 @@
-import { ExternalLink } from 'lucide-react';
+import { ExternalLink, Heart, MessageCircle } from 'lucide-react';
 import { SortHeader } from '../common/SortHeader';
 import { useSort } from '../../hooks/useSort';
 import { sortRows, type SortColumn } from '../../lib/sort';
@@ -58,11 +58,12 @@ export default function PumpCalloutList({
 
   return (
     <div className="overflow-x-auto">
-      <table className="w-full text-left border-collapse min-w-[780px]">
+      <table className="w-full text-left border-collapse min-w-[960px]">
         <thead className="sticky top-0 bg-oct-surface border-b-2 border-black z-10">
           <tr className="font-mono text-[10px] font-bold uppercase tracking-wider text-oct-muted">
             <SortHeader<CalloutSortKey> label="Caller" sortKey="caller" activeKey={sortKey} dir={sortDir} onSort={onSort} />
             <th className={TH}>Token</th>
+            <th className={`${TH} w-full`}>Call</th>
             <SortHeader<CalloutSortKey> label="Mcap @ call" sortKey="mcap" activeKey={sortKey} dir={sortDir} onSort={onSort} align="right" />
             <SortHeader<CalloutSortKey> label="Now" sortKey="now" activeKey={sortKey} dir={sortDir} onSort={onSort} align="right" />
             <SortHeader<CalloutSortKey> label="Max" sortKey="max" activeKey={sortKey} dir={sortDir} onSort={onSort} align="right" />
@@ -73,22 +74,65 @@ export default function PumpCalloutList({
           {sorted.map((c) => (
             <tr key={c.id} className="border-b border-oct-border/50 hover:bg-oct-surface-raised/50 transition-colors align-top">
               <td className="px-3 py-2 font-mono text-xs text-oct-text">
-                <div className="flex items-center gap-1.5">
-                  <span className="truncate max-w-[120px]" title={c.displayName ?? c.username ?? undefined}>
-                    {c.displayName ?? c.username ?? '—'}
-                  </span>
-                  {c.userTwitterUrl && (
-                    <a href={c.userTwitterUrl} target="_blank" rel="noreferrer noopener" className="text-oct-muted hover:text-oct-accent shrink-0">
-                      <ExternalLink size={11} />
-                    </a>
+                <div className="flex items-center gap-2">
+                  {c.profileImageUrl ? (
+                    <img
+                      src={c.profileImageUrl}
+                      alt=""
+                      loading="lazy"
+                      className="h-6 w-6 rounded-full object-cover shrink-0 bg-oct-surface-raised"
+                      onError={(e) => {
+                        (e.currentTarget as HTMLImageElement).style.visibility = 'hidden';
+                      }}
+                    />
+                  ) : (
+                    <span className="h-6 w-6 rounded-full bg-oct-surface-raised shrink-0" />
                   )}
+                  <div className="min-w-0">
+                    <div className="flex items-center gap-1.5">
+                      <span className="truncate max-w-[110px]" title={c.displayName ?? c.username ?? undefined}>
+                        {c.displayName ?? c.username ?? '—'}
+                      </span>
+                      {c.userTwitterUrl && (
+                        <a href={c.userTwitterUrl} target="_blank" rel="noreferrer noopener" className="text-oct-muted hover:text-oct-accent shrink-0">
+                          <ExternalLink size={11} />
+                        </a>
+                      )}
+                    </div>
+                    {c.username && c.displayName && (
+                      <div className="text-[10px] text-oct-muted truncate">@{c.username}</div>
+                    )}
+                  </div>
                 </div>
-                {c.username && c.displayName && (
-                  <div className="text-[10px] text-oct-muted">@{c.username}</div>
-                )}
               </td>
               <td className="px-3 py-2">
                 <CalloutToken symbol={tokenSymbol} mint={c.tokenAddress} />
+              </td>
+              {/* The thesis itself — the whole point of a callout, and the thing the
+                  bare table left out. Wraps to a couple of lines; likes/replies sit
+                  under it as the engagement footer the app shows. */}
+              <td className="px-3 py-2 align-top">
+                {c.content ? (
+                  <p className="text-xs text-oct-text leading-snug whitespace-pre-wrap break-words line-clamp-3 max-w-[420px]">
+                    {c.content}
+                  </p>
+                ) : (
+                  <span className="text-xs text-oct-muted">—</span>
+                )}
+                {((c.likeCount ?? 0) > 0 || (c.replyCount ?? 0) > 0) && (
+                  <div className="mt-1 flex items-center gap-3 text-[10px] text-oct-muted">
+                    {(c.likeCount ?? 0) > 0 && (
+                      <span className="inline-flex items-center gap-1">
+                        <Heart size={10} /> {c.likeCount}
+                      </span>
+                    )}
+                    {(c.replyCount ?? 0) > 0 && (
+                      <span className="inline-flex items-center gap-1">
+                        <MessageCircle size={10} /> {c.replyCount}
+                      </span>
+                    )}
+                  </div>
+                )}
               </td>
               <td className="px-3 py-2 font-mono text-xs text-oct-text text-right">{formatMcap(c.calloutMarketCap)}</td>
               <td className={`px-3 py-2 font-mono text-xs text-right ${multiplierClass(c.multiplier)}`}>
