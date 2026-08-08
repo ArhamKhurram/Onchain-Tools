@@ -8,10 +8,44 @@ import {
   type PumpSwapTransaction,
   type PumpTransaction,
 } from '../../types/pumpfun';
+import { SortHeader } from '../common/SortHeader';
+import { useSort } from '../../hooks/useSort';
+import { sortRows, type SortColumn } from '../../lib/sort';
 import PumpCalloutList from './PumpCalloutList';
 import PumpStateNotice from './PumpStateNotice';
 
 const TH = 'px-3 py-2 font-medium';
+
+// The sortable trade columns. Amount is left off deliberately — it is in mixed units
+// (coin amounts across different mints), so ranking rows by it would compare apples
+// to oranges; the other four rank cleanly.
+type TradeSortKey = 'side' | 'token' | 'sol' | 'when';
+
+const TRADE_ASC_FIRST: readonly TradeSortKey[] = ['side', 'token'];
+
+/** The label used to SORT a row's side: a swap's buy/sell, else its transaction kind
+ *  (transfer, fee_claim, or the raw type). Same text the Side cell renders, so the
+ *  sort matches what the eye sees. */
+function tradeSideValue(tx: PumpTransaction): string {
+  if (tx.type === 'SWAP') return deriveTradeSide(tx);
+  if (tx.type === 'OTHER') return tx.rawType ?? 'other';
+  return tx.type.toLowerCase();
+}
+
+/** The token identifier used to sort a row: symbol first, else the mint, else blank. */
+function tradeTokenValue(tx: PumpTransaction): string {
+  if (tx.type === 'SWAP') return tx.tokenSymbol ?? tx.token ?? '';
+  if (tx.type === 'TRANSFER' || tx.type === 'FEE_CLAIM') return tx.tokenTransferred?.metadata?.symbol ?? '';
+  return '';
+}
+
+const TRADE_COLUMNS: readonly SortColumn<PumpTransaction, TradeSortKey>[] = [
+  { key: 'side', type: 'text', get: tradeSideValue },
+  { key: 'token', type: 'text', get: tradeTokenValue },
+  // Only swaps carry a SOL value; other rows sort as missing (sink to the low end).
+  { key: 'sol', type: 'numeric', get: (tx) => (tx.type === 'SWAP' ? tx.solValue : null) },
+  { key: 'when', type: 'numeric', get: (tx) => tx.blockTime },
+];
 
 // Everything for one tracked wallet: profile, recent callouts (KEYED), recent
 // trades with buy/sell side and a cursor "load more" (KEYLESS), and a deliberate
@@ -20,6 +54,18 @@ const TH = 'px-3 py-2 font-medium';
 export default function PumpWalletPanel({ address }: { address: string }) {
   const activity = usePumpWalletActivity(address);
   const { profile, callouts, transactions, pnl } = activity;
+
+  // Click-to-sort over the loaded trades, newest-first by default. Ties break on
+  // recency so an equal-keyed pair (two rows with the same side, say) still reads
+  // newest-first rather than in fetch order.
+  const { sortKey, sortDir, onSort } = useSort<TradeSortKey>('when', 'desc', TRADE_ASC_FIRST);
+  const sortedTransactions = sortRows(
+    transactions.data,
+    TRADE_COLUMNS,
+    sortKey,
+    sortDir,
+    (a, b) => (b.blockTime ?? 0) - (a.blockTime ?? 0),
+  );
 
   return (
     <div className="h-full min-h-0 overflow-auto bg-oct-bg">
@@ -118,15 +164,15 @@ export default function PumpWalletPanel({ address }: { address: string }) {
                 <table className="w-full text-left border-collapse min-w-[640px]">
                   <thead className="bg-oct-surface border-b-2 border-black">
                     <tr className="font-mono text-[10px] font-bold uppercase tracking-wider text-oct-muted">
-                      <th className={TH}>Side</th>
-                      <th className={TH}>Token</th>
+                      <SortHeader<TradeSortKey> label="Side" sortKey="side" activeKey={sortKey} dir={sortDir} onSort={onSort} />
+                      <SortHeader<TradeSortKey> label="Token" sortKey="token" activeKey={sortKey} dir={sortDir} onSort={onSort} />
                       <th className={`${TH} text-right`}>Amount</th>
-                      <th className={`${TH} text-right`}>SOL value</th>
-                      <th className={`${TH} text-right`}>When</th>
+                      <SortHeader<TradeSortKey> label="SOL value" sortKey="sol" activeKey={sortKey} dir={sortDir} onSort={onSort} align="right" />
+                      <SortHeader<TradeSortKey> label="When" sortKey="when" activeKey={sortKey} dir={sortDir} onSort={onSort} align="right" />
                     </tr>
                   </thead>
                   <tbody>
-                    {transactions.data.map((tx) => (
+                    {sortedTransactions.map((tx) => (
                       <TradeRow key={tx.txHash} tx={tx} />
                     ))}
                   </tbody>

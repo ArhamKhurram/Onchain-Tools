@@ -1,6 +1,9 @@
 import { useEffect, useMemo, useState } from 'react';
-import { RefreshCw, Copy, Check, Users, ChevronUp, ChevronDown, Eye, EyeOff } from 'lucide-react';
+import { RefreshCw, Copy, Check, Users, Eye, EyeOff } from 'lucide-react';
 import { useAppStore } from '../../stores/appStore';
+import { SortHeader } from '../common/SortHeader';
+import { useSort } from '../../hooks/useSort';
+import { compareNumeric, compareText, type SortDir } from '../../lib/sort';
 import { useFomoHolderOverlap } from '../../hooks/useFomoHolderOverlap';
 import SignalConvergenceBadge from '../SignalConvergenceBadge';
 import {
@@ -233,7 +236,9 @@ type SortKey =
   | 'quality'
   | 'recent';
 
-type SortDir = 'asc' | 'desc';
+// Text columns read better opened A→Z; every numeric column opens descending
+// (biggest on top). Module-level so useSort's memoised handler stays stable.
+const RADAR_ASC_FIRST: readonly SortKey[] = ['token', 'firstCaller'];
 
 function WindowMentionsHeader({
   window: mentionWindow,
@@ -247,7 +252,7 @@ function WindowMentionsHeader({
   onSort: (key: SortKey) => void;
 }) {
   return (
-    <SortHeader
+    <SortHeader<SortKey>
       label={mentionWindow}
       sortKey="windowMentions"
       activeKey={sortKey}
@@ -255,49 +260,6 @@ function WindowMentionsHeader({
       onSort={onSort}
       align="right"
     />
-  );
-}
-
-function SortHeader({
-  label,
-  sortKey,
-  activeKey,
-  dir,
-  onSort,
-  align = 'left',
-}: {
-  label: string;
-  sortKey: SortKey;
-  activeKey: SortKey;
-  dir: SortDir;
-  onSort: (key: SortKey) => void;
-  align?: 'left' | 'right';
-}) {
-  const active = activeKey === sortKey;
-  return (
-    <th className={`px-3 py-2 font-medium ${align === 'right' ? 'text-right' : ''}`}>
-      <button
-        type="button"
-        onClick={() => onSort(sortKey)}
-        className={`inline-flex items-center gap-1 uppercase tracking-wider transition-colors ${
-          align === 'right' ? 'flex-row-reverse ml-auto' : ''
-        } ${active ? 'text-oct-accent' : 'text-oct-muted hover:text-oct-text'}`}
-      >
-        <span>{label}</span>
-        <span className={`inline-flex flex-col -space-y-1 shrink-0 ${active ? 'text-oct-accent' : 'text-oct-muted/60'}`}>
-          <ChevronUp
-            size={10}
-            strokeWidth={2.5}
-            className={active && dir === 'asc' ? 'opacity-100' : 'opacity-35'}
-          />
-          <ChevronDown
-            size={10}
-            strokeWidth={2.5}
-            className={active && dir === 'desc' ? 'opacity-100' : 'opacity-35'}
-          />
-        </span>
-      </button>
-    </th>
   );
 }
 
@@ -396,8 +358,7 @@ export default function RadarTable({ embedded: _embedded = false }: { embedded?:
   const [refreshingRow, setRefreshingRow] = useState<string | null>(null);
   const [windowFilter, setWindowFilter] = useState<'1h' | '4h' | '24h' | 'all'>('24h');
   const [mentionWindow, setMentionWindow] = useState<MentionWindow>('15m');
-  const [sortKey, setSortKey] = useState<SortKey>('recent');
-  const [sortDir, setSortDir] = useState<SortDir>('desc');
+  const { sortKey, sortDir, onSort: handleSort } = useSort<SortKey>('recent', 'desc', RADAR_ASC_FIRST);
   const [copiedAddr, setCopiedAddr] = useState<string | null>(null);
   const [visibleColumns, setVisibleColumns] = useState<Set<RadarColumnId>>(() => loadVisibleRadarColumns());
   const [revealMuted, setRevealMuted] = useState(false);
@@ -429,16 +390,6 @@ export default function RadarTable({ embedded: _embedded = false }: { embedded?:
     saveVisibleRadarColumns(cols);
   };
 
-  const handleSort = (key: SortKey) => {
-    if (sortKey === key) {
-      setSortDir((d) => (d === 'asc' ? 'desc' : 'asc'));
-    } else {
-      setSortKey(key);
-      const ascFirst: SortKey[] = ['token', 'firstCaller'];
-      setSortDir(ascFirst.includes(key) ? 'asc' : 'desc');
-    }
-  };
-
   const handleCopy = (address: string) => {
     navigator.clipboard.writeText(address);
     setCopiedAddr(address.toLowerCase());
@@ -467,19 +418,10 @@ export default function RadarTable({ embedded: _embedded = false }: { embedded?:
             return r.lastMentionAt >= cutoff;
           });
 
-    const dir = sortDir === 'asc' ? 1 : -1;
-    const cmpNum = (a: number | undefined | null, b: number | undefined | null) => {
-      const av = a ?? -Infinity;
-      const bv = b ?? -Infinity;
-      if (av === bv) return 0;
-      return av < bv ? -dir : dir;
-    };
-    const cmpStr = (a: string | undefined, b: string | undefined) => {
-      const av = (a ?? '').toLowerCase();
-      const bv = (b ?? '').toLowerCase();
-      if (av === bv) return 0;
-      return av < bv ? -dir : dir;
-    };
+    const cmpNum = (a: number | undefined | null, b: number | undefined | null) =>
+      compareNumeric(a, b, sortDir);
+    const cmpStr = (a: string | undefined, b: string | undefined) =>
+      compareText(a, b, sortDir);
 
     return [...filtered].sort((a, b) => {
       const fomoA = overlaps[a.address.toLowerCase()]?.trackedCount ?? 0;
@@ -661,7 +603,7 @@ export default function RadarTable({ embedded: _embedded = false }: { embedded?:
         <table className="w-full text-left border-collapse min-w-[900px]">
           <thead className="sticky top-0 bg-oct-surface border-b-2 border-black z-10">
             <tr className="font-mono text-[10px] font-bold uppercase tracking-wider text-oct-muted">
-              <SortHeader label="Token" sortKey="token" activeKey={sortKey} dir={sortDir} onSort={handleSort} />
+              <SortHeader<SortKey> label="Token" sortKey="token" activeKey={sortKey} dir={sortDir} onSort={handleSort} />
               {activeColumns.map((col) =>
                 col === 'windowMentions' ? (
                   <WindowMentionsHeader
@@ -672,7 +614,7 @@ export default function RadarTable({ embedded: _embedded = false }: { embedded?:
                     onSort={handleSort}
                   />
                 ) : (
-                  <SortHeader
+                  <SortHeader<SortKey>
                     key={col}
                     label={RADAR_COLUMN_LABELS[col]}
                     sortKey={col}

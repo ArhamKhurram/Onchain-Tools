@@ -8,6 +8,23 @@ import {
   type PumpLeaderboardWindow,
 } from '../../types/pumpfun';
 import type { PumpLeaderboardHook } from '../../hooks/usePumpLeaderboard';
+import { SortButton } from '../common/SortHeader';
+import { useSort } from '../../hooks/useSort';
+import { sortRows, type SortColumn } from '../../lib/sort';
+
+// Sortable dimensions of the board. It renders as a list, not a <table>, so the sort
+// controls are a small header STRIP of SortButtons above the rows rather than <th>s.
+type LbSortKey = 'rank' | 'handle' | 'pnl';
+
+// Rank and handle open ascending (1-first, A→Z); PnL opens descending (biggest gain
+// on top). Module-level so useSort's handler stays referentially stable.
+const LB_ASC_FIRST: readonly LbSortKey[] = ['rank', 'handle'];
+
+const LB_COLUMNS: readonly SortColumn<PumpLeaderboardEntry, LbSortKey>[] = [
+  { key: 'rank', type: 'numeric', get: (e) => e.rank },
+  { key: 'handle', type: 'text', get: (e) => leaderboardLabel(e) },
+  { key: 'pnl', type: 'numeric', get: (e) => e.pnl },
+];
 
 interface PumpLeaderboardProps {
   board: PumpLeaderboardHook;
@@ -30,6 +47,17 @@ const WINDOW_LABEL: Record<PumpLeaderboardWindow, string> = {
 // is nothing to add) rather than being dropped.
 export default function PumpLeaderboard({ board, trackedAddresses, onTrack }: PumpLeaderboardProps) {
   const { window, setWindow, entries, loading, error, retryable, refresh } = board;
+
+  // Default rank-ascending mirrors the server order; ties break back to rank so a
+  // re-sort by handle or PnL still reads sensibly within equal groups.
+  const { sortKey, sortDir, onSort } = useSort<LbSortKey>('rank', 'asc', LB_ASC_FIRST);
+  const sortedEntries = sortRows(
+    entries,
+    LB_COLUMNS,
+    sortKey,
+    sortDir,
+    (a, b) => (a.rank ?? Infinity) - (b.rank ?? Infinity),
+  );
 
   return (
     <div className="flex flex-col min-h-0 overflow-hidden h-full brutal-card">
@@ -65,6 +93,15 @@ export default function PumpLeaderboard({ board, trackedAddresses, onTrack }: Pu
         </button>
       </div>
 
+      {entries.length > 0 && (
+        <div className="shrink-0 flex items-center gap-3 px-4 py-1.5 border-b-2 border-black bg-oct-surface/60 font-mono text-[10px] font-bold uppercase tracking-wider">
+          <span className="text-oct-muted">sort</span>
+          <SortButton<LbSortKey> label="Rank" sortKey="rank" activeKey={sortKey} dir={sortDir} onSort={onSort} />
+          <SortButton<LbSortKey> label="Handle" sortKey="handle" activeKey={sortKey} dir={sortDir} onSort={onSort} />
+          <SortButton<LbSortKey> label="PnL" sortKey="pnl" activeKey={sortKey} dir={sortDir} onSort={onSort} />
+        </div>
+      )}
+
       <div className="flex-1 min-h-0 overflow-auto">
         {error && (
           <div className="m-4 px-4 py-3 rounded-cockpit border-2 border-oct-flame/50 bg-oct-flame/10 text-sm text-oct-text">
@@ -89,7 +126,7 @@ export default function PumpLeaderboard({ board, trackedAddresses, onTrack }: Pu
           <div className="py-16 px-6 text-center text-sm text-oct-muted">No leaderboard data.</div>
         ) : (
           <ul className="divide-y divide-oct-border">
-            {entries.map((entry, i) => {
+            {sortedEntries.map((entry, i) => {
               const state = leaderboardTrackState(entry, trackedAddresses);
               const disabled = state !== 'trackable';
               const pnl = entry.pnl;

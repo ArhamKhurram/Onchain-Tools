@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { Plus, Users, X } from 'lucide-react';
 import type { useTrackedPumpWallets } from '../../hooks/useTrackedPumpWallets';
+import { usePumpWalletNames } from '../../hooks/usePumpWalletNames';
 import { isPumpWallet, truncateAddress } from '../../types/pumpfun';
 import ConsoleEmptyState from '../console/ConsoleEmptyState';
 import PumpWalletPanel from './PumpWalletPanel';
@@ -18,6 +19,10 @@ export default function PumpTrackedWallets({ tracking }: PumpTrackedWalletsProps
   const [input, setInput] = useState('');
   const [notice, setNotice] = useState<string | null>(null);
   const [selected, setSelected] = useState<string | null>(wallets[0]?.address ?? null);
+  // Resolve each tracked wallet's pump.fun handle so the list reads as names, not
+  // raw addresses. Cached per address (one fetch each), so this does not refire as
+  // the list re-renders or selection changes.
+  const names = usePumpWalletNames(wallets.map((w) => w.address));
 
   // Keep a valid selection as the list changes: default to the first wallet, and
   // drop the selection if the selected wallet was untracked.
@@ -96,7 +101,9 @@ export default function PumpTrackedWallets({ tracking }: PumpTrackedWalletsProps
                   }`}
                   title={w.address}
                 >
-                  {truncateAddress(w.address)}
+                  {/* Name once resolved; the truncated address until then, and if it
+                      never resolves (KEYED profile host off, or no pump identity). */}
+                  {names[w.address] ?? truncateAddress(w.address)}
                 </span>
                 <button
                   type="button"
