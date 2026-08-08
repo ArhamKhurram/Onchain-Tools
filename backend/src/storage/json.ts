@@ -1,6 +1,7 @@
 import { configStore } from '../config/store.js';
 import { contractLog } from '../utils/contractLog.js';
-import type { StorageProvider } from './interface.js';
+import { pumpSessionStore } from '../pumpfun/pumpSessionStore.js';
+import type { PumpSession, StorageProvider } from './interface.js';
 import type { AppConfig, Room } from '../discord/types.js';
 import type { ContractEntry, ContractEnrichmentPatch, EnrichContractOptions } from '../utils/contractLog.js';
 
@@ -24,6 +25,16 @@ export class JsonStorageProvider implements StorageProvider {
 
   async setTokens(_userId: string, tokens: string[]): Promise<void> {
     configStore.setTokens(tokens);
+  }
+
+  // The pump.fun bearer is kept in its own plaintext store (pumpSessionStore),
+  // isolated from AppConfig so it can never leak through a config route/export.
+  async getPumpSession(_userId: string): Promise<PumpSession | null> {
+    return pumpSessionStore.getSession();
+  }
+
+  async setPumpSession(_userId: string, token: string | null): Promise<void> {
+    pumpSessionStore.setSession(token);
   }
 
   async getRooms(_userId: string): Promise<Room[]> {

@@ -1,9 +1,10 @@
-import type { StorageProvider } from '../interface.js';
+import type { PumpSession, StorageProvider } from '../interface.js';
 import type { AppConfig, Room } from '../../discord/types.js';
 import type { ContractEntry, ContractEnrichmentPatch, EnrichContractOptions } from '../../utils/contractLog.js';
 import { createServiceClient, SupabaseContext } from './client.js';
 import { ConfigRepo } from './configRepo.js';
 import { TokensRepo } from './tokensRepo.js';
+import { PumpSessionRepo } from './pumpSessionRepo.js';
 import { RoomsRepo } from './roomsRepo.js';
 import { ContractsRepo } from './contractsRepo.js';
 import { TelegramRepo } from './telegramRepo.js';
@@ -12,6 +13,7 @@ import { UserCacheRepo } from './userCacheRepo.js';
 export class SupabaseStorageProvider implements StorageProvider {
   private config: ConfigRepo;
   private tokens: TokensRepo;
+  private pumpSession: PumpSessionRepo;
   private rooms: RoomsRepo;
   private contracts: ContractsRepo;
   private telegram: TelegramRepo;
@@ -22,6 +24,7 @@ export class SupabaseStorageProvider implements StorageProvider {
 
     this.config = new ConfigRepo(ctx);
     this.tokens = new TokensRepo(ctx);
+    this.pumpSession = new PumpSessionRepo(ctx);
     this.rooms = new RoomsRepo(ctx);
     this.contracts = new ContractsRepo(ctx);
     this.telegram = new TelegramRepo(ctx);
@@ -52,6 +55,16 @@ export class SupabaseStorageProvider implements StorageProvider {
 
   setTokens(userId: string, tokens: string[]): Promise<void> {
     return this.tokens.setTokens(userId, tokens);
+  }
+
+  // ---- Pump.fun session bearer ----
+
+  getPumpSession(userId: string): Promise<PumpSession | null> {
+    return this.pumpSession.getPumpSession(userId);
+  }
+
+  setPumpSession(userId: string, token: string | null): Promise<void> {
+    return this.pumpSession.setPumpSession(userId, token);
   }
 
   // ---- Rooms ----

@@ -258,6 +258,48 @@ export interface PumpTokenPnl {
   feeDetail: Record<string, unknown> | null;
 }
 
+// ---------------------------------------------------------------------------
+// Callout leaderboard (coin-communities.xyz, keyed with the USER's pump bearer).
+//
+// A THIRD path, distinct from both the shared-x-api-key callouts layer and the
+// keyless profile-api layer: these endpoints require a per-user Authorization:
+// Bearer <pump session JWT>. See leaderboardClient.ts.
+//
+// TODO(verify): the row shape below is UNVERIFIED — we have no live bearer to
+// probe with. Every field is narrowed defensively (drop-not-throw), the client
+// reads each field from several plausible key spellings, and the whole shape
+// must be confirmed against a real pump session before this is trusted. Only
+// `walletAddress` is treated as mandatory (it keys the row and is what the Track
+// button needs); a row without it is dropped.
+// ---------------------------------------------------------------------------
+
+/** The leaderboard window. A PATH segment on the callouts endpoint, not a query. */
+export type PumpLeaderboardTimeframe = '7d' | '30d' | 'all';
+
+/**
+ * One ranked caller on the callout leaderboard. `walletAddress` is the only hard
+ * requirement; everything else degrades to null so a shape drift costs a field,
+ * not the row. `pnlUsd` is the caller's realized PnL in USD over the window.
+ */
+export interface PumpLeaderboardEntry {
+  /** Position on the board (1-based). Null if the API omits it (we can re-derive). */
+  rank: number | null;
+  /** The caller's wallet — the dedup/track key. MANDATORY (row dropped if absent). */
+  walletAddress: string;
+  userId: string | null;
+  /** The @handle. */
+  username: string | null;
+  displayName: string | null;
+  profileImageUrl: string | null;
+  userTwitterUrl: string | null;
+  /** Realized PnL in USD over the window. */
+  pnlUsd: number | null;
+  /** Number of calls made over the window, when present. */
+  calloutCount: number | null;
+  /** Win rate / hit rate as a fraction (0..1) when present. */
+  winRate: number | null;
+}
+
 /**
  * A wallet's balance/holdings summary. Its internal shape was NOT pinned down by
  * recon — the endpoint 200s with a holdings summary object whose fields were not

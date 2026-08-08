@@ -84,6 +84,18 @@ export function walletBalanceCacheKey(address: string): string {
 export const TOP_COMMUNITIES_CACHE_KEY = 'communities:top';
 export const TRENDING_FEED_CACHE_KEY = 'feed:trending';
 
+// The leaderboard is read with a PER-USER bearer, so its cache line is scoped by
+// userId as well as window — one user's board must never be served to another.
+// The cached VALUE is the narrowed row array only; the bearer is never part of a
+// cache entry (it lives in storage, read late per fetch).
+export function leaderboardCacheKey(userId: string, timeframe: string): string {
+  return `leaderboard:${userId}:${timeframe}`;
+}
+
+export function rankedCallersCacheKey(userId: string): string {
+  return `ranked-callers:${userId}`;
+}
+
 // TTLs. Callouts move fast (new calls, live multipliers) so they are short-lived;
 // the top board and trending slice turn over slowly and can sit longer. All
 // overridable by env for tuning without a redeploy.
@@ -99,3 +111,6 @@ export const WALLET_TRANSACTIONS_TTL_MS = Number.parseInt(process.env.PUMPFUN_WA
 export const WALLET_BALANCE_TTL_MS = Number.parseInt(process.env.PUMPFUN_WALLET_BALANCE_CACHE_MS ?? '', 10) || 120 * 1000;
 export const TOP_COMMUNITIES_TTL_MS = Number.parseInt(process.env.PUMPFUN_TOP_CACHE_MS ?? '', 10) || 5 * 60 * 1000;
 export const TRENDING_FEED_TTL_MS = Number.parseInt(process.env.PUMPFUN_TRENDING_CACHE_MS ?? '', 10) || 5 * 60 * 1000;
+// The leaderboard turns over quickly (live PnL, new calls); ~60s matches FOMO's
+// leaderboard cadence and keeps the per-user upstream call rate bounded.
+export const LEADERBOARD_TTL_MS = Number.parseInt(process.env.PUMPFUN_LEADERBOARD_CACHE_MS ?? '', 10) || 60 * 1000;
