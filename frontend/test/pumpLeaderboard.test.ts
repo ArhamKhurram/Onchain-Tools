@@ -56,24 +56,24 @@ describe('pump.fun sub-tab registration', () => {
 // ---------------------------------------------------------------------------
 
 describe('normalizePumpLeaderboard', () => {
-  it('reads a bare array and keeps a valid wallet trackable', () => {
+  it('reads the verified row shape and keeps a valid wallet trackable', () => {
     const rows = normalizePumpLeaderboard([
-      { rank: 1, walletAddress: WALLET, handle: 'alpha', pnl: 1234 },
+      { rank: 1, walletAddress: WALLET, username: 'alpha', xUsername: 'alpha_x', pnlUsd: 1234 },
     ]);
     expect(rows).toHaveLength(1);
     expect(rows[0]).toEqual({
       rank: 1,
       walletAddress: WALLET,
-      handle: 'alpha',
-      displayName: null,
-      pnl: 1234,
+      username: 'alpha',
+      xUsername: 'alpha_x',
+      pnlUsd: 1234,
     });
   });
 
   it('also reads an { entries: [...] } envelope', () => {
-    // The wire shape is unverified, so both a bare array and an envelope must work
-    // without the board silently blanking.
-    const rows = normalizePumpLeaderboard({ entries: [{ walletAddress: WALLET }] });
+    // The route returns a bare array, but an envelope is still accepted so a shape
+    // drift does not silently blank the board.
+    const rows = normalizePumpLeaderboard({ entries: [{ rank: 1, walletAddress: WALLET }] });
     expect(rows).toHaveLength(1);
     expect(rows[0].walletAddress).toBe(WALLET);
   });
@@ -81,15 +81,15 @@ describe('normalizePumpLeaderboard', () => {
   it('keeps a row with a bad wallet but nulls the address, never smuggling junk into tracking', () => {
     // The bug this guards: an invalid wallet passed to the tracked list would
     // track-but-never-load. The row still ranks; its wallet is simply null.
-    const rows = normalizePumpLeaderboard([{ rank: 3, wallet: 'not-a-wallet', handle: 'x' }]);
+    const rows = normalizePumpLeaderboard([{ rank: 3, wallet: 'not-a-wallet', username: 'x' }]);
     expect(rows).toHaveLength(1);
     expect(rows[0].walletAddress).toBeNull();
-    expect(rows[0].handle).toBe('x');
+    expect(rows[0].username).toBe('x');
   });
 
-  it('accepts alternate field spellings for wallet and pnl', () => {
-    const rows = normalizePumpLeaderboard([{ address: WALLET, username: 'beta', pnlUsd: -50 }]);
-    expect(rows[0]).toMatchObject({ walletAddress: WALLET, handle: 'beta', pnl: -50 });
+  it('accepts legacy field aliases (address / handle / pnl)', () => {
+    const rows = normalizePumpLeaderboard([{ address: WALLET, handle: 'beta', pnl: -50 }]);
+    expect(rows[0]).toMatchObject({ walletAddress: WALLET, username: 'beta', pnlUsd: -50 });
   });
 
   it('drops non-object rows and non-array input rather than throwing', () => {
@@ -106,9 +106,9 @@ describe('leaderboardTrackState', () => {
   const entry = (walletAddress: string | null): PumpLeaderboardEntry => ({
     rank: 1,
     walletAddress,
-    handle: 'h',
-    displayName: null,
-    pnl: 0,
+    username: 'h',
+    xUsername: null,
+    pnlUsd: 0,
   });
 
   it('is trackable when the wallet is not yet tracked', () => {
@@ -178,12 +178,12 @@ describe('pumpDaysLeft', () => {
 // ---------------------------------------------------------------------------
 
 describe('leaderboardLabel', () => {
-  const base: PumpLeaderboardEntry = { rank: 1, walletAddress: WALLET, handle: null, displayName: null, pnl: 0 };
+  const base: PumpLeaderboardEntry = { rank: 1, walletAddress: WALLET, username: null, xUsername: null, pnlUsd: 0 };
 
-  it('prefers @handle, then display name, then a truncated wallet', () => {
-    expect(leaderboardLabel({ ...base, handle: 'alpha' })).toBe('@alpha');
-    expect(leaderboardLabel({ ...base, displayName: 'Alpha' })).toBe('Alpha');
+  it('prefers @username, then a truncated wallet, then Unknown', () => {
+    expect(leaderboardLabel({ ...base, username: 'alpha' })).toBe('@alpha');
     expect(leaderboardLabel(base)).toBe('9WzDXw…AWWM');
+    expect(leaderboardLabel({ ...base, walletAddress: null })).toBe('Unknown trader');
   });
 });
 
@@ -200,7 +200,7 @@ describe('formatPnlUsd', () => {
 });
 
 describe('PUMP_LEADERBOARD_WINDOWS', () => {
-  it('offers exactly 7d / 30d / all in order', () => {
-    expect([...PUMP_LEADERBOARD_WINDOWS]).toEqual(['7d', '30d', 'all']);
+  it('offers exactly 1d / 1w / 1m in order (no all-time board)', () => {
+    expect([...PUMP_LEADERBOARD_WINDOWS]).toEqual(['1d', '1w', '1m']);
   });
 });

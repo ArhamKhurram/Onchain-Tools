@@ -84,16 +84,12 @@ export function walletBalanceCacheKey(address: string): string {
 export const TOP_COMMUNITIES_CACHE_KEY = 'communities:top';
 export const TRENDING_FEED_CACHE_KEY = 'feed:trending';
 
-// The leaderboard is read with a PER-USER bearer, so its cache line is scoped by
-// userId as well as window — one user's board must never be served to another.
-// The cached VALUE is the narrowed row array only; the bearer is never part of a
-// cache entry (it lives in storage, read late per fetch).
-export function leaderboardCacheKey(userId: string, timeframe: string): string {
-  return `leaderboard:${userId}:${timeframe}`;
-}
-
-export function rankedCallersCacheKey(userId: string): string {
-  return `ranked-callers:${userId}`;
+// The leaderboard is read with a PER-USER session cookie, so its cache line is
+// scoped by userId as well as period — one user's board must never be served to
+// another. The cached VALUE is the narrowed row array only; the token is never
+// part of a cache entry (it lives in storage, read late per fetch).
+export function leaderboardCacheKey(userId: string, period: string): string {
+  return `leaderboard:${userId}:${period}`;
 }
 
 // TTLs. Callouts move fast (new calls, live multipliers) so they are short-lived;

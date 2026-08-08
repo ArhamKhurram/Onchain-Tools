@@ -319,36 +319,36 @@ export function formatSol(n: number | null): string {
 }
 
 // ---------------------------------------------------------------------------
-// User-login leaderboard (KEYED WITH THE OPERATOR'S OWN pump.fun BEARER)
+// User-login leaderboard (KEYED WITH THE OPERATOR'S OWN pump.fun SESSION COOKIE)
 //
 // A THIRD trust tier, above the keyed-callouts and keyless-profile surfaces: the
-// leaderboard is fetched with the operator's own 30-day pump.fun session JWT, so
-// it is genuinely per-user and gated on a connected session. The token NEVER
-// reaches the frontend — the console POSTs it once to the connect route and from
-// then on only ever sees the status shape below, never the bearer. There is
-// deliberately no client type that carries the token: nothing here should be able
-// to hold, log, or render it.
+// leaderboard is fetched with the operator's own 30-day pump.fun session token
+// (sent server-side as a cookie), so it is genuinely per-user and gated on a
+// connected session. The token NEVER reaches the frontend — the console POSTs it
+// once to the connect route and from then on only ever sees the status shape
+// below, never the token. There is deliberately no client type that carries the
+// token: nothing here should be able to hold, log, or render it.
 // ---------------------------------------------------------------------------
 
-/** The window a leaderboard is ranked over. */
-export type PumpLeaderboardWindow = '7d' | '30d' | 'all';
+/** The window a leaderboard is ranked over — 1D / 1W / 1M (no all-time board). */
+export type PumpLeaderboardWindow = '1d' | '1w' | '1m';
 
 /** The window switch's options, in display order. */
-export const PUMP_LEADERBOARD_WINDOWS: readonly PumpLeaderboardWindow[] = ['7d', '30d', 'all'] as const;
+export const PUMP_LEADERBOARD_WINDOWS: readonly PumpLeaderboardWindow[] = ['1d', '1w', '1m'] as const;
 
 /**
- * One ranked trader row. `walletAddress` is what the Track button feeds into the
- * tracked list, and it is nullable on purpose: the upstream response shape is
- * unverified (we have no bearer to test against), so a row that arrives without a
- * usable wallet still renders — its Track button simply disables rather than the
- * whole board dropping the row.
+ * One ranked trader row, mirroring the backend's narrowed `/pnl-leaderboard` row.
+ * `walletAddress` is what the Track button feeds into the tracked list, and it is
+ * nullable on purpose: a row whose wallet fails validation still renders (with a
+ * disabled Track) rather than being dropped. `xUsername` is the linked X handle,
+ * rendered as an X link when present.
  */
 export interface PumpLeaderboardEntry {
   rank: number | null;
   walletAddress: string | null;
-  handle: string | null;
-  displayName: string | null;
-  pnl: number | null;
+  username: string | null;
+  xUsername: string | null;
+  pnlUsd: number | null;
 }
 
 /**
@@ -402,11 +402,12 @@ function pickNum(row: Record<string, unknown>, keys: string[]): number | null {
  * the backend client does. Accepts either a bare array or a `{ entries: [...] }`
  * envelope, since the wire shape is unverified.
  *
- * TODO(verify): confirm these field spellings against a live pump session. We have
- * no bearer to test with, so each field reads several likely key names; the
- * operator validates against their real connection. A wallet that fails base58 is
- * kept as null (the row still ranks) rather than smuggled into the tracked list,
- * where an invalid address would track-but-never-load.
+ * The backend already narrowed the upstream row to these exact keys, so the
+ * spellings are read directly (a couple of legacy aliases stay for resilience).
+ * The response arrives as a bare array (the route's sliced rows); an
+ * `{ entries: [...] }` envelope is still accepted for safety. A wallet that fails
+ * base58 is kept as null (the row still ranks) rather than smuggled into the
+ * tracked list, where an invalid address would track-but-never-load.
  */
 export function normalizePumpLeaderboard(parsed: unknown): PumpLeaderboardEntry[] {
   const rows: unknown[] = Array.isArray(parsed)
@@ -422,9 +423,9 @@ export function normalizePumpLeaderboard(parsed: unknown): PumpLeaderboardEntry[
     out.push({
       rank: pickNum(row, ['rank']),
       walletAddress,
-      handle: pickStr(row, ['handle', 'username']),
-      displayName: pickStr(row, ['displayName', 'name']),
-      pnl: pickNum(row, ['pnl', 'pnlUsd', 'realizedPnl', 'totalPnl']),
+      username: pickStr(row, ['username', 'handle']),
+      xUsername: pickStr(row, ['xUsername']),
+      pnlUsd: pickNum(row, ['pnlUsd', 'pnl']),
     });
   }
   return out;
@@ -475,10 +476,9 @@ export function leaderboardTrackState(
   return trackedAddresses.has(entry.walletAddress) ? 'tracked' : 'trackable';
 }
 
-/** A trader's display label: handle, then display name, then a truncated wallet. */
+/** A trader's display label: @username, then a truncated wallet. */
 export function leaderboardLabel(entry: PumpLeaderboardEntry): string {
-  if (entry.handle) return `@${entry.handle}`;
-  if (entry.displayName) return entry.displayName;
+  if (entry.username) return `@${entry.username}`;
   if (entry.walletAddress) return truncateAddress(entry.walletAddress);
   return 'Unknown trader';
 }
