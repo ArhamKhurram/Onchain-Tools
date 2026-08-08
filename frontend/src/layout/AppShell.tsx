@@ -19,6 +19,7 @@ const NAV: { to: string; label: string; end?: boolean }[] = [
   { to: routes.callers, label: 'Callers' },
   { to: routes.fomo, label: 'FOMO' },
   { to: routes.sniper, label: 'Sniper' },
+  { to: routes.pumpfun, label: 'Pump.fun' },
   { to: routes.directory, label: 'Directory' },
   { to: routes.portfolio, label: 'Portfolio' },
   { to: routes.workspace, label: 'Workspace' },
