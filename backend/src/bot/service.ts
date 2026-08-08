@@ -368,7 +368,10 @@ export async function getBotTheses(
     const cacheKey = thesesCacheKey(id, tokenAddress);
     let entries = getCached<BotThesisEntry[]>(cacheKey);
     if (!entries) {
-      const result = await client.getTokenTheses(tokenAddress, id);
+      // threshold 0 = no minimum position filter, so we surface EVERY thesis.
+      // The client default (1000) silently hid theses from smaller positions —
+      // there's no reason to limit; the point of the view is to read them all.
+      const result = await client.getTokenTheses(tokenAddress, id, 0);
       lastStatus = result.status;
       if (!result.status || result.status < 200 || result.status >= 300) {
         continue; // this chain failed — try the next candidate
