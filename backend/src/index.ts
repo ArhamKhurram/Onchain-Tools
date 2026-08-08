@@ -31,7 +31,7 @@ import { UserGatewayPool } from './gateway/userGatewayPool.js';
 import { buildContractUrl, detectEvmChainFromContent, extractEvmChainFromGmgnLinks, resolveEvmChainFromApi } from './utils/contract.js';
 import { tryParseTokenEnrichment, buildRickReplyContext } from './utils/rickEmbedParser.js';
 import { enrichToken, persistEnrichment } from './utils/tokenSnapshot.js';
-import { needsMetadataFallback } from './utils/enrichmentMerge.js';
+import { FALLBACK_LOOKUP_LIMIT, needsMetadataFallback } from './utils/enrichmentMerge.js';
 import { cacheDiscordMessage } from './utils/messageReplyCache.js';
 import type { TokenEnrichment } from './utils/rickEmbedParser.js';
 import { processDiscordMessage } from './utils/messageProcessor.js';
@@ -187,7 +187,7 @@ function scheduleDexFallback(
   setTimeout(async () => {
     try {
       const storage = getStorageProvider();
-      const recent = await storage.getContracts(userId, 20);
+      const recent = await storage.getContracts(userId, FALLBACK_LOOKUP_LIMIT);
       const hit = recent.find(
         (c) =>
           c.messageId === messageId

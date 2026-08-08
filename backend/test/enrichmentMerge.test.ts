@@ -12,10 +12,21 @@ const dexPatch = {
 };
 
 describe('needsMetadataFallback', () => {
-  it('is true only while the symbol is missing', () => {
+  it('is true while the symbol is missing', () => {
     expect(needsMetadataFallback({})).toBe(true);
     expect(needsMetadataFallback({ tokenName: 'sillypufcat' })).toBe(true);
-    expect(needsMetadataFallback({ tokenSymbol: 'puf' })).toBe(false);
+  });
+
+  // The whole reason MC@CALL was blank on most rows: `logContract` carries the
+  // symbol forward onto a repeat mention but deliberately not the FDV, so the
+  // symbol alone made the fallback skip the one field still missing.
+  it('is still true when a carried-forward symbol hides a missing MC@call', () => {
+    expect(needsMetadataFallback({ tokenSymbol: 'puf' })).toBe(true);
+    expect(needsMetadataFallback({ tokenSymbol: 'puf', fdvAtCall: 2100 })).toBe(false);
+  });
+
+  it('treats a genuine zero MC as recorded, not as missing', () => {
+    expect(needsMetadataFallback({ tokenSymbol: 'puf', fdvAtCall: 0 })).toBe(false);
   });
 });
 
@@ -64,6 +75,21 @@ describe('mergeEnrichmentPatch', () => {
     expect(merged.tokenName).toBe('sillypufcat'); // Rick left this blank
     expect(merged.tokenPair).toBe('PUF/SOL');
     expect(merged.liquidityDisplay).toBeUndefined(); // Rick's metrics stand
+  });
+
+  // `looksLikeRick` accepts an embed on its pair title alone, and logContract
+  // copies enrichmentSource forward onto repeat mentions — so a row can read as
+  // Rick-owned with no MC and no embed. Blocking FDV there locked MC@call out
+  // permanently.
+  it('lets a secondary source fill an FDV a Rick-owned row never got', () => {
+    const merged = mergeEnrichmentPatch(
+      { tokenSymbol: 'puf', enrichmentSource: 'rick' },
+      dexPatch,
+    );
+    expect(merged.fdvAtCall).toBe(2100);
+    expect(merged.fdvAtCallDisplay).toBe('2.1K');
+    expect(merged.tokenSymbol).toBeUndefined(); // Rick's symbol still stands
+    expect(merged.liquidityDisplay).toBeUndefined(); // and so do Rick's metrics
   });
 
   it('always stamps enrichedAt', () => {

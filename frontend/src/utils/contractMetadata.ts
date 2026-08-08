@@ -63,6 +63,10 @@ export function mergeContractEntries(local: ContractEntry, server: ContractEntry
     description: server.description ?? local.description,
     fdvAtCall: server.fdvAtCall ?? local.fdvAtCall,
     fdvAtCallDisplay: server.fdvAtCallDisplay ?? local.fdvAtCallDisplay,
+    // Travels with the value it describes. Absent from ContractMetadata on
+    // purpose: provenance is a fact about THIS row's MC@call, so carrying it
+    // forward onto a later mention would label a blank row as recovered.
+    fdvAtCallProvenance: server.fdvAtCallProvenance ?? local.fdvAtCallProvenance,
     liquidityUsd: server.liquidityUsd ?? local.liquidityUsd,
     liquidityDisplay: server.liquidityDisplay ?? local.liquidityDisplay,
     volumeUsd: server.volumeUsd ?? local.volumeUsd,

@@ -507,6 +507,14 @@ export interface ContractEntry {
   description?: string;
   fdvAtCall?: number;
   fdvAtCallDisplay?: string;
+  /**
+   * Undefined means the live enrichment pipeline measured `fdvAtCall` at call
+   * time. A value names the recovery tier that reconstructed it after the fact
+   * (`catalog_exact` | `sibling_measured` | `birdeye_derived`), and the display
+   * string is prefixed with `~`. Kept separate from `enrichmentSource`, which
+   * records where the row's METADATA came from and drives merge behaviour.
+   */
+  fdvAtCallProvenance?: string;
   liquidityUsd?: number;
   liquidityDisplay?: string;
   volumeUsd?: number;

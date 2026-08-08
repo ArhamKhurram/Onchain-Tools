@@ -284,6 +284,7 @@ export class ContractsRepo extends BaseRepo {
       description: row.description ?? undefined,
       fdvAtCall: row.fdv_at_call != null ? Number(row.fdv_at_call) : undefined,
       fdvAtCallDisplay: row.fdv_at_call_display ?? undefined,
+      fdvAtCallProvenance: row.fdv_at_call_provenance ?? undefined,
       liquidityUsd: row.liquidity_usd != null ? Number(row.liquidity_usd) : undefined,
       liquidityDisplay: row.liquidity_display ?? undefined,
       volumeUsd: row.volume_usd != null ? Number(row.volume_usd) : undefined,

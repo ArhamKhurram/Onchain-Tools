@@ -1,6 +1,6 @@
 import { Router } from 'express';
 import { tryParseTokenEnrichment, buildRickReplyContext } from '../../utils/rickEmbedParser.js';
-import { needsMetadataFallback } from '../../utils/enrichmentMerge.js';
+import { FALLBACK_LOOKUP_LIMIT, needsMetadataFallback } from '../../utils/enrichmentMerge.js';
 import { enrichToken, getTokenSnapshot, persistEnrichment } from '../../utils/tokenSnapshot.js';
 import type { RouterContext } from '../context.js';
 import { getUserId, safeError } from '../shared.js';
@@ -67,7 +67,7 @@ export function createContractsRoutes(ctx: RouterContext): Router {
       const evmChain: string | undefined = entry.evmChain;
       setTimeout(async () => {
         try {
-          const recent = await storage.getContracts(userId, 20);
+          const recent = await storage.getContracts(userId, FALLBACK_LOOKUP_LIMIT);
           const hit = recent.find(
             (c) =>
               c.messageId === entry.messageId

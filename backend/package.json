@@ -10,6 +10,7 @@
     "typecheck": "tsc --noEmit",
     "bot:deploy": "tsx src/bot/deployCommands.ts",
     "bot:announce": "node scripts/announce.mjs",
+    "backfill:mc": "tsx src/scripts/backfillFdvAtCall.ts",
     "test": "vitest run",
     "test:watch": "vitest"
   },

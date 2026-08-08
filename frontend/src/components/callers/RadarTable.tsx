@@ -56,6 +56,8 @@ interface RadarRow {
   timestamps: number[];
   mcAtCall?: number;
   mcAtCallDisplay?: string;
+  /** Set when the shown MC@call was reconstructed after the fact, not measured. */
+  mcAtCallProvenance?: string;
   /** Best band among the callers who posted this token. */
   bestBand?: CallerBand;
   /**
@@ -184,10 +186,16 @@ function buildRadar(
     const sorted = [...group].sort(
       (a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime(),
     );
-    const withMc = sorted.find((c) => c.fdvAtCall != null && c.fdvAtCall > 0);
+    // Earliest MEASURED reading first, and only then the earliest recovered one.
+    // Both lists are in ascending time, so without the two-pass order a
+    // reconstructed value on an earlier mention would displace a real
+    // measurement in the cell the multiplier is computed from.
+    const priced = sorted.filter((c) => c.fdvAtCall != null && c.fdvAtCall > 0);
+    const withMc = priced.find((c) => !c.fdvAtCallProvenance) ?? priced[0];
     if (withMc) {
       row.mcAtCall = withMc.fdvAtCall;
       row.mcAtCallDisplay = withMc.fdvAtCallDisplay;
+      row.mcAtCallProvenance = withMc.fdvAtCallProvenance;
     }
   }
 
@@ -818,6 +826,14 @@ export default function RadarTable({ embedded: _embedded = false }: { embedded?:
                         return (
                           <td key={col} className="px-3 py-2 text-right font-mono text-sm text-oct-muted tabular-nums">
                             {r.mcAtCallDisplay ?? '—'}
+                            {r.mcAtCallProvenance && (
+                              <span
+                                className="ml-1 text-[10px] text-oct-muted/70"
+                                title={`Reconstructed after the fact (${r.mcAtCallProvenance}), not measured at call time. The multiplier is an estimate.`}
+                              >
+                                est
+                              </span>
+                            )}
                           </td>
                         );
                       case 'mcNow':
