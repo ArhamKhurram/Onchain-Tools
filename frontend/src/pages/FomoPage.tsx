@@ -9,6 +9,7 @@ import FomoTradeFeed from '../components/fomo/FomoTradeFeed';
 import FomoLeaderboard from '../components/fomo/FomoLeaderboard';
 import FomoTrackedList from '../components/fomo/FomoTrackedList';
 import FomoHoldersLookup from '../components/fomo/FomoHoldersLookup';
+import FomoThesesLookup from '../components/fomo/FomoThesesLookup';
 import FomoTraderLookup from '../components/fomo/FomoTraderLookup';
 import { routes } from '../lib/routes';
 
@@ -16,18 +17,26 @@ import { routes } from '../lib/routes';
 // Tracking and Leaderboard tabs share a single useFomoTracking instance (owned
 // here) so tracking someone on the leaderboard reflects in the tracked list
 // immediately.
-type FomoView = 'live' | 'leaderboard' | 'tracking' | 'holders' | 'traders';
+type FomoView = 'live' | 'leaderboard' | 'tracking' | 'holders' | 'theses' | 'traders';
 
 const FOMO_TABS = [
   { id: 'live' as const, label: 'Live' },
   { id: 'leaderboard' as const, label: 'Leaderboard' },
   { id: 'tracking' as const, label: 'Tracking' },
   { id: 'holders' as const, label: 'Holders' },
+  { id: 'theses' as const, label: 'Theses' },
   { id: 'traders' as const, label: 'Traders' },
 ];
 
 function parseView(raw: string | null): FomoView {
-  if (raw === 'leaderboard' || raw === 'tracking' || raw === 'holders' || raw === 'traders') return raw;
+  if (
+    raw === 'leaderboard' ||
+    raw === 'tracking' ||
+    raw === 'holders' ||
+    raw === 'theses' ||
+    raw === 'traders'
+  )
+    return raw;
   return 'live';
 }
 
@@ -75,7 +84,7 @@ export default function FomoPage() {
         icon={Radio}
         eyebrow="[ FOMO ]"
         title="Sign in for FOMO"
-        description="Live trades, the leaderboard, your tracked traders, token holders, and trader lookup — all from fomo.family."
+        description="Live trades, the leaderboard, your tracked traders, token holders, theses, and trader lookup — all from fomo.family."
         actionLabel="SIGN IN"
         actionTo={routes.login}
         secondaryLabel="← Back to console home"
@@ -101,6 +110,8 @@ export default function FomoPage() {
           <FomoTrackedList tracking={tracking} configured={serviceStatus?.configured ?? true} />
         ) : view === 'holders' ? (
           <FomoHoldersLookup />
+        ) : view === 'theses' ? (
+          <FomoThesesLookup />
         ) : (
           <FomoTraderLookup />
         )}

@@ -145,6 +145,10 @@ export class FomoProxyClient {
     return this.call(`/hodlers/top?tokens=${holdersQuery}`);
   }
 
+  getTokenTheses(tokenAddress: string, networkId: number, threshold = 1000) {
+    return this.call(`/feed/token/thesis?tokenAddress=${tokenAddress}&networkId=${networkId}&threshold=${threshold}`);
+  }
+
   searchUsers(searchTerm: string) {
     return this.call(`/v2/users/fuzzy-search?searchTerm=${encodeURIComponent(searchTerm)}`);
   }

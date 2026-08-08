@@ -143,6 +143,7 @@ export interface FomoClientLike {
   getUserByHandle(userHandle: string): Promise<FomoCallResult>;
   searchUsers(searchTerm: string): Promise<FomoCallResult>;
   getTopHolders(tokenAddress: string, networkId: number): Promise<FomoCallResult>;
+  getTokenTheses(tokenAddress: string, networkId: number, threshold?: number): Promise<FomoCallResult>;
   getUserBalances(userId: string): Promise<FomoCallResult>;
   getUserActivity(userId: string, limit?: number): Promise<FomoCallResult>;
   getTokenAllowList(): Promise<FomoCallResult>;

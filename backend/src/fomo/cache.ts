@@ -59,5 +59,12 @@ export function hodlersCacheKey(tokens: Array<{ address: string; networkId: numb
   return `hodlers:${normalized}`;
 }
 
+export function thesesCacheKey(networkId: number, address: string): string {
+  return `theses:${networkId}:${address.toLowerCase()}`;
+}
+
 export const LEADERBOARD_TTL_MS = Number.parseInt(process.env.FOMO_LEADERBOARD_CACHE_MS ?? '', 10) || 5 * 60 * 1000;
 export const HODLERS_TTL_MS = Number.parseInt(process.env.FOMO_HODLERS_CACHE_MS ?? '', 10) || 15 * 60 * 1000;
+// Theses churn faster than holdings (people edit them) but the endpoint is one
+// worker round-trip each, so a short TTL absorbs repeat views without going stale.
+export const THESES_TTL_MS = Number.parseInt(process.env.FOMO_THESES_CACHE_MS ?? '', 10) || 3 * 60 * 1000;
