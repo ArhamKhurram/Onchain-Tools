@@ -4,7 +4,7 @@ import ConfirmModal from '../ConfirmModal';
 import ConsoleEmptyState from '../console/ConsoleEmptyState';
 import SniperRuleFormModal from './SniperRuleFormModal';
 import SniperFireModal from './SniperFireModal';
-import { describeAbortReason, type SnipeRule, type SniperWallet } from '../../types/sniper';
+import { describeValidationReason, type SnipeRule, type SniperWallet } from '../../types/sniper';
 import type { useSniperRules } from '../../hooks/useSniperRules';
 
 const TH = 'px-3 py-2 font-medium';
@@ -50,7 +50,12 @@ export default function SniperRulesTable({ rules, wallets, processDryRun, killed
     // Arm runs the full validateRule server-side and refuses with the exact
     // reason. Showing that reason verbatim (plus plain words) is the whole point
     // — "couldn't arm" would leave the operator guessing which field is wrong.
-    if (!res.ok) setNotice(res.detail ? `${res.reason} — ${res.detail}` : describeAbortReason(res.reason));
+    //
+    // These are VALIDATION reasons, not abort reasons. Sending them through
+    // describeAbortReason fell through to `default` for 20 of the 22 cases, so
+    // a rule saved without a wallet showed a bare `no_wallets` in a truncated
+    // header label, and arm looked like a button that did nothing.
+    if (!res.ok) setNotice(res.detail ? `${res.reason} — ${res.detail}` : describeValidationReason(res.reason));
     else setNotice(null);
   };
 
@@ -62,7 +67,7 @@ export default function SniperRulesTable({ rules, wallets, processDryRun, killed
       setNotice(
         res.reason === 'process_dry_run'
           ? 'OCT_SNIPER_DRY_RUN is set on the backend. It overrides every rule flag, so no rule can go live until it is cleared.'
-          : res.reason,
+          : describeValidationReason(res.reason),
       );
     } else setNotice(null);
   };
@@ -71,7 +76,13 @@ export default function SniperRulesTable({ rules, wallets, processDryRun, killed
     if (!deleting) return;
     const res = await rules.deleteRule(deleting.id);
     setDeleting(null);
-    if (!res.ok) setNotice(res.reason === 'rule_armed' ? 'Disarm the rule before deleting it.' : res.reason);
+    if (!res.ok) {
+      setNotice(
+        res.reason === 'rule_armed'
+          ? 'Disarm the rule before deleting it.'
+          : describeValidationReason(res.reason),
+      );
+    }
   };
 
   if (!rules.loading && rules.rules.length === 0) {
@@ -101,7 +112,6 @@ export default function SniperRulesTable({ rules, wallets, processDryRun, killed
       <div className="shrink-0 flex items-center gap-2 px-4 py-2.5 border-b-2 border-black bg-oct-surface">
         <span className="font-mono text-[10px] font-bold uppercase tracking-widest text-oct-muted">view: rules</span>
         <div className="flex-1" />
-        {notice && <span className="font-mono text-[11px] text-oct-flame max-w-[50%] truncate" title={notice}>{notice}</span>}
         <span className="font-mono text-[11px] text-oct-muted">{rules.rules.length} rules</span>
         <button
           type="button"
@@ -112,6 +122,24 @@ export default function SniperRulesTable({ rules, wallets, processDryRun, killed
           new rule
         </button>
       </div>
+
+      {/*
+        Full width, wrapping, and dismissible. This used to be a truncated
+        11px label wedged into the toolbar above, which is how "arm" could
+        refuse three times in a row and read as a dead button.
+      */}
+      {notice && (
+        <div className="shrink-0 flex items-start gap-2 px-4 py-2 border-b-2 border-black bg-oct-flame/10">
+          <span className="flex-1 font-mono text-[11px] leading-relaxed text-oct-flame">{notice}</span>
+          <button
+            type="button"
+            onClick={() => setNotice(null)}
+            className="shrink-0 font-mono text-[10px] uppercase text-oct-muted hover:text-oct-text"
+          >
+            dismiss
+          </button>
+        </div>
+      )}
 
       <div className="flex-1 min-h-0 overflow-auto overscroll-contain" style={{ overflowAnchor: 'none' }}>
         <table className="w-full text-left border-collapse min-w-[1000px]">
