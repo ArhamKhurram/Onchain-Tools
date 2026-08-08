@@ -14,7 +14,7 @@
 // read like a real pump.fun trader without quoting anyone real.
 
 import React from 'react';
-import { AbsoluteFill, Sequence, interpolate, useCurrentFrame } from 'remotion';
+import { AbsoluteFill, Easing, Sequence, interpolate, useCurrentFrame } from 'remotion';
 import { color, font, sec, SNAP } from '../brand';
 import { Caption } from '../components/Shot';
 import { SlabIn } from '../components/Kinetic';
@@ -50,14 +50,6 @@ const PNL: Pnl[] = [
   { token: 'WOJAK', realized: '-8.4', unrealized: '0.0', spend: '$22.0K' },
 ];
 
-type Callout = { token: string; called: string; peak: string; mult: string; when: string };
-const CALLOUTS: Callout[] = [
-  { token: 'TOAD', called: '$25.6K', peak: '$6.75M', mult: '263x', when: '3d' },
-  { token: 'GIGA', called: '$88.0K', peak: '$9.20M', mult: '104x', when: '6d' },
-  { token: 'MOOSE', called: '$410K', peak: '$22.4M', mult: '54x', when: '9d' },
-  { token: 'GONK', called: '$52.0K', peak: '$1.90M', mult: '36x', when: '12d' },
-];
-
 type FomoTrade = { trader: string; side: Side; token: string; sol: string; when: string };
 const FOMO: FomoTrade[] = [
   { trader: 'solstice', side: 'buy', token: 'GORK', sol: '22.0', when: 'now' },
@@ -87,7 +79,12 @@ const PushIn: React.FC<{ children: React.ReactNode; dur: number; push?: number }
   push = 1.05,
 }) => {
   const frame = useCurrentFrame();
-  const p = interpolate(frame, [0, dur], [0, 1], {
+  // Settle the push in the first ~1.2s with an ease-out, then HOLD. Scaling
+  // across the whole beat kept the panel in constant sub-pixel motion, which
+  // made the fine table text shimmer — that was the "shake". A one-time settle
+  // into a static hold is the calm the reference cut asks for.
+  const p = interpolate(frame, [0, 36], [0, 1], {
+    easing: Easing.out(Easing.cubic),
     extrapolateLeft: 'clamp',
     extrapolateRight: 'clamp',
   });
@@ -128,11 +125,16 @@ const Appear: React.FC<{ children: React.ReactNode; from: number; rise?: number 
 const PANEL_W = 1560;
 
 const Stage: React.FC<{ children: React.ReactNode }> = ({ children }) => (
-  <AbsoluteFill style={{ background: color.bg, alignItems: 'center', justifyContent: 'center' }}>
-    {/* Subtle vignette so the panel reads as an object in space, not full-bleed. */}
+  <AbsoluteFill style={{ alignItems: 'center', justifyContent: 'center' }}>
+    {/* Soft neutral stage, not pure black — the panel floats on a lit surface
+        (the reference cut's look). Was #000, which read as flat and too dark. */}
+    <AbsoluteFill
+      style={{ background: 'linear-gradient(155deg, #2a2d33 0%, #1b1d22 52%, #101114 100%)' }}
+    />
+    {/* Centre glow lifts the middle where the panel sits. */}
     <AbsoluteFill
       style={{
-        background: 'radial-gradient(ellipse at center, rgba(255,255,255,0.03) 0%, rgba(0,0,0,0) 55%)',
+        background: 'radial-gradient(ellipse at center, rgba(255,255,255,0.08) 0%, rgba(0,0,0,0) 60%)',
       }}
     />
     {children}
@@ -144,11 +146,13 @@ const Panel: React.FC<{ tab: string; children: React.ReactNode }> = ({ tab, chil
   <div
     style={{
       width: PANEL_W,
-      background: color.surface,
-      border: `1px solid #1c1c1c`,
+      // A touch lighter than color.surface (#0a0a0a) so the product itself
+      // reads bright against the lit stage rather than merging into it.
+      background: '#141519',
+      border: `1px solid #26272c`,
       borderRadius: 18,
       overflow: 'hidden',
-      boxShadow: '0 40px 120px rgba(0,0,0,0.7)',
+      boxShadow: '0 40px 130px rgba(0,0,0,0.75)',
     }}
   >
     {/* Chrome bar. */}
@@ -439,35 +443,91 @@ const PnlBeat: React.FC = () => (
 // multiple it hit.
 // ---------------------------------------------------------------------------
 
-const CALL_GRID = '1fr 200px 60px 200px 170px';
+// The hero payoff: slingoor's real public $TOAD call on pump.fun (@slingoorio,
+// "I will not run this coin", called near $25.6K), then a time-skip to it hitting
+// ~$18M in ~4 hours. The one real-person moment in the cut, played as
+// call -> skip -> result; no fabricated trades are attributed to them (the
+// track/trades/PnL beats use the demo trader).
+const HERO = {
+  handle: 'slingoorio',
+  token: 'TOAD',
+  name: 'The Toad Pepe',
+  thesis: 'I will not run this coin.',
+  called: '$25.6K',
+  result: '$18M',
+  elapsed: '4 hours later',
+  mult: '≈ 700×',
+};
 
-const CalloutsBeat: React.FC = () => (
-  <Panel tab="Traders">
-    <ProfileHeader />
-    <SectionLabel>Recent callouts · reported by pump.fun</SectionLabel>
-    <RowShell grid={CALL_GRID}>
-      <div style={headCell()}>Call</div>
-      <div style={headCell('right')}>Mcap @ call</div>
-      <div style={headCell('right')} />
-      <div style={headCell('right')}>Peak</div>
-      <div style={headCell('right')}>×</div>
-    </RowShell>
-    {CALLOUTS.map((c, i) => (
-      <Appear key={c.token} from={10 + i * 11}>
-        <RowShell grid={CALL_GRID} last={i === CALLOUTS.length - 1}>
-          <div style={cell('left')}>
-            <span style={{ color: color.flame }}>$</span>
-            {c.token}
+const CalloutsBeat: React.FC = () => {
+  const frame = useCurrentFrame();
+  // Two phases inside the beat: the CALL, then a time-skip to the RESULT.
+  const skip = 78; // frames — the call holds, then we jump forward
+  return (
+    <Panel tab="Callouts">
+      <SectionLabel>The call · pump.fun</SectionLabel>
+
+      {/* Phase 1 — the call. */}
+      <Appear from={6}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 18, marginBottom: 30 }}>
+          <div style={{ width: 52, height: 52, borderRadius: '50%', background: color.flame }} />
+          <div>
+            <div style={{ fontFamily: font.mono, fontSize: 30, color: color.text }}>@{HERO.handle}</div>
+            <div style={{ fontFamily: font.mono, fontSize: 22, color: color.faint, marginTop: 4 }}>
+              “{HERO.thesis}”
+            </div>
           </div>
-          <div style={cell('right', color.muted)}>{c.called}</div>
-          <div style={cell('right', color.faint)}>→</div>
-          <div style={cell('right')}>{c.peak}</div>
-          <div style={{ ...cell('right', color.solana), fontWeight: 700 }}>{c.mult}</div>
-        </RowShell>
+        </div>
       </Appear>
-    ))}
-  </Panel>
-);
+      <Appear from={16}>
+        <div style={{ display: 'flex', alignItems: 'baseline', gap: 16, marginBottom: 10 }}>
+          <span style={{ fontFamily: font.display, fontSize: 78, fontWeight: 800, color: color.text }}>
+            <span style={{ color: color.flame }}>$</span>
+            {HERO.token}
+          </span>
+          <span style={{ fontFamily: font.mono, fontSize: 28, color: color.muted }}>{HERO.name}</span>
+        </div>
+      </Appear>
+      <Appear from={26}>
+        <div style={{ fontFamily: font.mono, fontSize: 30, color: color.muted }}>
+          called at <span style={{ color: color.text }}>{HERO.called}</span>
+        </div>
+      </Appear>
+
+      {/* Phase 2 — the time-skip and the result. */}
+      {frame >= skip && (
+        <div style={{ marginTop: 34 }}>
+          <Appear from={skip}>
+            <div
+              style={{
+                fontFamily: font.mono,
+                fontSize: 22,
+                letterSpacing: '0.24em',
+                textTransform: 'uppercase',
+                color: color.flame,
+                marginBottom: 14,
+              }}
+            >
+              — {HERO.elapsed} —
+            </div>
+          </Appear>
+          <Appear from={skip + 10}>
+            <div style={{ display: 'flex', alignItems: 'baseline', gap: 24 }}>
+              <span style={{ fontFamily: font.display, fontSize: 108, fontWeight: 800, color: color.text }}>
+                {HERO.result}
+              </span>
+              <span
+                style={{ fontFamily: font.display, fontSize: 64, fontWeight: 800, color: color.solana }}
+              >
+                {HERO.mult}
+              </span>
+            </div>
+          </Appear>
+        </div>
+      )}
+    </Panel>
+  );
+};
 
 // ---------------------------------------------------------------------------
 // Beat 5 — FOMO live trades (secondary).
@@ -605,7 +665,7 @@ const BEATS = {
   track: sec(5),
   trades: sec(8),
   pnl: sec(7),
-  callouts: sec(9),
+  callouts: sec(10),
   fomo: sec(6),
   montage: sec(5),
   close: sec(5),
@@ -634,7 +694,7 @@ export const Rollout: React.FC = () => (
     <Sequence from={TRACK_AT} durationInFrames={BEATS.track}>
       <Dissolve dur={BEATS.track}>
         <Stage>
-          <PushIn dur={BEATS.track} push={1.04}>
+          <PushIn dur={BEATS.track} push={1.02}>
             <TrackBeat />
           </PushIn>
         </Stage>
@@ -646,7 +706,7 @@ export const Rollout: React.FC = () => (
     <Sequence from={TRADES_AT} durationInFrames={BEATS.trades}>
       <Dissolve dur={BEATS.trades}>
         <Stage>
-          <PushIn dur={BEATS.trades} push={1.05}>
+          <PushIn dur={BEATS.trades} push={1.025}>
             <TradesBeat />
           </PushIn>
         </Stage>
@@ -658,7 +718,7 @@ export const Rollout: React.FC = () => (
     <Sequence from={PNL_AT} durationInFrames={BEATS.pnl}>
       <Dissolve dur={BEATS.pnl}>
         <Stage>
-          <PushIn dur={BEATS.pnl} push={1.05}>
+          <PushIn dur={BEATS.pnl} push={1.025}>
             <PnlBeat />
           </PushIn>
         </Stage>
@@ -670,7 +730,7 @@ export const Rollout: React.FC = () => (
     <Sequence from={CALLOUTS_AT} durationInFrames={BEATS.callouts}>
       <Dissolve dur={BEATS.callouts}>
         <Stage>
-          <PushIn dur={BEATS.callouts} push={1.06}>
+          <PushIn dur={BEATS.callouts} push={1.03}>
             <CalloutsBeat />
           </PushIn>
         </Stage>
@@ -682,7 +742,7 @@ export const Rollout: React.FC = () => (
     <Sequence from={FOMO_AT} durationInFrames={BEATS.fomo}>
       <Dissolve dur={BEATS.fomo}>
         <Stage>
-          <PushIn dur={BEATS.fomo} push={1.05}>
+          <PushIn dur={BEATS.fomo} push={1.025}>
             <FomoBeat />
           </PushIn>
         </Stage>
@@ -694,7 +754,7 @@ export const Rollout: React.FC = () => (
     <Sequence from={MONTAGE_AT} durationInFrames={BEATS.montage}>
       <Dissolve dur={BEATS.montage}>
         <Stage>
-          <PushIn dur={BEATS.montage} push={1.04}>
+          <PushIn dur={BEATS.montage} push={1.02}>
             <MontageBeat />
           </PushIn>
         </Stage>
