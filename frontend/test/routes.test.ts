@@ -35,6 +35,13 @@ describe('routes', () => {
     expect(routes.sniper).toBe('/sniper');
   });
 
+  it('registers the pumpfun route with a leading slash', () => {
+    // The pump.fun tab's NavLink `to` is routes.pumpfun; a missing leading slash
+    // would make it resolve relative to the current page (see the leading-slash
+    // test below), landing the nav entry on e.g. /sniper/pumpfun.
+    expect(routes.pumpfun).toBe('/pumpfun');
+  });
+
   it('gives every route a leading slash', () => {
     // The bug this guards: routes.ts values carry a leading slash while the
     // <Route path> children in App.tsx deliberately do not. A value added
