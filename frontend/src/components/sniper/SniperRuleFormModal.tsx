@@ -491,6 +491,15 @@ export default function SniperRuleFormModal({
                   onChange={(e) => set('slippageBps', Number(e.target.value))}
                   className={FIELD}
                 />
+                {/*
+                  Slotshark's own dashboard labels this field "SLIPPAGE (%)" and
+                  wants 50 where we want 5000. Someone reading across the two
+                  UIs will type the other one's number, so show the percent this
+                  actually means rather than making them divide by 100.
+                */}
+                <p className="text-xs text-oct-muted mt-1">
+                  = {+(values.slippageBps / 100).toFixed(2)}% tolerance
+                </p>
               </div>
               <div>
                 <label htmlFor="sniper-rule-tip" className={LABEL}>

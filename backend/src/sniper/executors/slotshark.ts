@@ -49,11 +49,22 @@ export class SlotsharkExecutor implements Executor {
       mint: intent.mint,
       solAmount: leg.amount,
       wallet,
-      // Slotshark's `slippage` is 1-10000 in the same basis-point units our rule
-      // uses, so pass it through verbatim. The previous `bps / 100 || 20` both
-      // truncated (30bps -> 0) and then substituted a 20% default via `||`,
-      // silently making a tight-slippage rule maximally slippage-tolerant.
-      slippage: clampSlippageBps(intent.slippageBps),
+      // Slotshark's `slippage` is PERCENT, not basis points. Confirmed on the
+      // wire: their dashboard's field is labelled "SLIPPAGE (%)" and saving 50
+      // sends `"slippage": 50`. Their /sell doc range of 1-100 settles it too —
+      // as bps that would cap a sell at 1% tolerance, which is nonsense.
+      //
+      // Passing bps verbatim (what this did until 2026-08-08) sent a 5% rule as
+      // `500`, read as 500%: no slippage protection at all, on every fire. Note
+      // the failure was silent and one-directional — always toward MORE
+      // tolerance, i.e. toward being sandwiched.
+      //
+      // Convert without rounding. bps/100 can be fractional (30bps -> 0.3) and
+      // it is not verified that they accept fractions; if they floor or reject
+      // it the fire fails, which is the safe direction. Never round UP to reach
+      // their documented minimum of 1 — that would loosen a tight rule, which
+      // is the exact bug being fixed here.
+      slippage: toVenueSlippagePercent(intent.slippageBps),
       antimev: intent.exec.kind === 'sol' ? intent.exec.antimev : true,
       retries: true,
     };
@@ -127,12 +138,24 @@ export function narrowRegion(raw: string | null | undefined): SlotsharkRegion {
 }
 
 /**
- * Slotshark accepts slippage in 1-10000. Clamp rather than default: a rule that
- * somehow carries an out-of-range value must not silently become 20% tolerant.
+ * Our rules carry slippage in basis points (1-10000 = 0.01%-100%, enforced by
+ * validateRule and by the `slippage_bps` CHECK). Slotshark's field is percent.
+ * This is the one conversion between those two domains.
+ *
+ * Every clamp here is toward LESS tolerance, never more:
+ * - a non-finite value collapses to the tightest expressible slippage rather
+ *   than to a permissive default, so a corrupt rule fails closed;
+ * - the ceiling is 100 (= 100%), our bps ceiling, well inside the 1-10000 their
+ *   /buy accepts — we deliberately do not expose their wider range, because a
+ *   value above 100% is not a tolerance, it is the absence of one;
+ * - there is no floor. Rounding 0.3% up to their documented minimum of 1% would
+ *   loosen a deliberately tight rule, which is the bug this function exists to
+ *   prevent. If they reject or floor a fraction, the fire fails and no money
+ *   moves — the acceptable outcome.
  */
-export function clampSlippageBps(bps: number): number {
-  if (!Number.isFinite(bps)) return 1;
-  return Math.min(10_000, Math.max(1, Math.round(bps)));
+export function toVenueSlippagePercent(bps: number): number {
+  if (!Number.isFinite(bps) || bps <= 0) return 0.01;
+  return Math.min(100, bps / 100);
 }
 
 /** Pull a tx signature out of whatever shape Slotshark returns, if present. */
