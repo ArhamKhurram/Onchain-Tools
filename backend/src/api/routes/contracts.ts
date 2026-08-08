@@ -1,6 +1,6 @@
 import { Router } from 'express';
 import { tryParseTokenEnrichment, buildRickReplyContext } from '../../utils/rickEmbedParser.js';
-import { needsMetadataFallback } from '../../utils/enrichmentMerge.js';
+import { resolveFallbackTarget, recordFallbackFdv } from '../../utils/dexFallback.js';
 import { enrichToken, getTokenSnapshot, persistEnrichment } from '../../utils/tokenSnapshot.js';
 import type { RouterContext } from '../context.js';
 import { getUserId, safeError } from '../shared.js';
@@ -64,18 +64,17 @@ export function createContractsRoutes(ctx: RouterContext): Router {
 
       const address: string = entry.address;
       const channelId: string = entry.channelId;
+      const messageId: string = entry.messageId;
       const evmChain: string | undefined = entry.evmChain;
       setTimeout(async () => {
         try {
-          const recent = await storage.getContracts(userId, 20);
-          const hit = recent.find(
-            (c) =>
-              c.messageId === entry.messageId
-              && c.address.toLowerCase() === address.toLowerCase()
-              && needsMetadataFallback(c),
-          );
+          const hit = await resolveFallbackTarget(storage, userId, address, messageId);
           if (!hit) return;
           const enrichment = await enrichToken(address, hit.evmChain ?? evmChain);
+          // Report the outcome either way: a fetch that comes back without an
+          // MC is what stops the next mention of an unpriceable address
+          // re-asking.
+          recordFallbackFdv(address, enrichment?.fdvAtCall);
           if (!enrichment) return;
           const updated = await storage.enrichContract(userId, enrichment.address, {
             tokenName: enrichment.tokenName,
@@ -93,7 +92,7 @@ export function createContractsRoutes(ctx: RouterContext): Router {
             evmChain: enrichment.evmChain,
             enrichmentSource: enrichment.enrichmentSource,
             enrichedAt: new Date().toISOString(),
-          }, { channelId, messageId: entry.messageId });
+          }, { channelId, messageId });
           if (updated) {
             wsServer.broadcastContractEnrichment(updated, userId);
             void persistEnrichment(enrichment, enrichment.evmChain ?? hit.evmChain ?? evmChain);

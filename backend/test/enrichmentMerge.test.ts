@@ -12,10 +12,21 @@ const dexPatch = {
 };
 
 describe('needsMetadataFallback', () => {
-  it('is true only while the symbol is missing', () => {
+  it('is true while the symbol is missing', () => {
     expect(needsMetadataFallback({})).toBe(true);
     expect(needsMetadataFallback({ tokenName: 'sillypufcat' })).toBe(true);
-    expect(needsMetadataFallback({ tokenSymbol: 'puf' })).toBe(false);
+  });
+
+  // logContract carries a known symbol forward onto a repeat mention but never
+  // the FDV (MC@call is point-in-time). Gating on the symbol alone therefore
+  // skipped the fallback on every repeat mention and left MC@call null forever.
+  it('is true when a repeat mention carries a symbol but no MC@call', () => {
+    expect(needsMetadataFallback({ tokenSymbol: 'puf' })).toBe(true);
+    expect(needsMetadataFallback({ tokenName: 'sillypufcat', tokenSymbol: 'puf' })).toBe(true);
+  });
+
+  it('is false once the row has both', () => {
+    expect(needsMetadataFallback({ tokenSymbol: 'puf', fdvAtCall: 2100 })).toBe(false);
   });
 });
 
@@ -66,10 +77,29 @@ describe('mergeEnrichmentPatch', () => {
     expect(merged.liquidityDisplay).toBeUndefined(); // Rick's metrics stand
   });
 
+  // The counterpart to the test above: Rick owns the row, but recorded no FDV.
+  // Rows land there routinely — `looksLikeRick` accepts an embed on its pair
+  // title alone, and logContract copies enrichmentSource forward onto a repeat
+  // mention while leaving fdvAtCall behind — so dropping the patch's FDV here
+  // was the second way MC@call ended up permanently blank.
+  it('fills an MC@call that Rick never printed', () => {
+    const merged = mergeEnrichmentPatch(
+      { tokenSymbol: 'puf', tokenPair: 'PUF/SOL', enrichmentSource: 'rick' },
+      dexPatch,
+    );
+    expect(merged.fdvAtCall).toBe(2100);
+    expect(merged.fdvAtCallDisplay).toBe('2.1K');
+    // Rick's metadata authority is untouched.
+    expect(merged.tokenSymbol).toBeUndefined();
+    expect(merged.tokenPair).toBeUndefined();
+    expect(merged.liquidityDisplay).toBeUndefined();
+  });
+
   it('always stamps enrichedAt', () => {
     expect(mergeEnrichmentPatch({}, dexPatch).enrichedAt).toBeTruthy();
-    expect(
-      mergeEnrichmentPatch({ enrichmentSource: 'rick' }, dexPatch).enrichedAt,
-    ).toBeTruthy();
+    const overRick = mergeEnrichmentPatch({ enrichmentSource: 'rick' }, dexPatch);
+    expect(overRick.enrichedAt).toBeTruthy();
+    // A Rick row with no FDV of its own takes the fallback's.
+    expect(overRick.fdvAtCall).toBe(2100);
   });
 });
