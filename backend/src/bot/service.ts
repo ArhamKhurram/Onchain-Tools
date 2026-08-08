@@ -233,21 +233,47 @@ export function mapTheses(thesisJson: any): BotThesisEntry[] {
   const out: BotThesisEntry[] = [];
   for (const row of rows) {
     if (!row || typeof row !== 'object') continue;
-    const user = row.user ?? row.trader ?? row.profile ?? null;
-    if (!user || typeof user !== 'object') continue;
 
-    const handle = firstString(user.displayName, user.userHandle, user.username, user.name, user.handle);
+    // Identity is TOP-LEVEL on the real /feed/token/thesis item (userHandle /
+    // displayName), NOT nested under row.user — the original guess required a
+    // row.user object and so dropped every real row. Support the nested shape
+    // as a fallback, prefer the real top-level fields.
+    const user = (row.user ?? row.trader ?? row.profile ?? row) as any;
+    const handle = firstString(
+      row.userHandle,
+      row.displayName,
+      user.displayName,
+      user.userHandle,
+      user.username,
+      user.name,
+      user.handle,
+    );
     if (!handle) continue; // no identity → drop
+
+    // `comment` is an OBJECT ({ comment: "text", ... }) on the real feed, not a
+    // bare string. Read the nested text first, then the guessed-shape fallbacks.
+    const thesis =
+      (row.comment && typeof row.comment === 'object'
+        ? firstString(row.comment.comment, row.comment.text)
+        : firstString(row.comment)) ?? firstString(row.text);
+
+    // Position value and PnL live under authorTrade on the real feed.
+    const trade = (row.authorTrade ?? null) as any;
+    const valueUsd = asNumber(trade?.usdValue) ?? asNumber(row.value) ?? 0;
+    const pnlUsd =
+      asNumber(trade?.unrealizedPnlUsd) != null || asNumber(trade?.realizedPnlUsd) != null
+        ? (asNumber(trade?.unrealizedPnlUsd) ?? 0) + (asNumber(trade?.realizedPnlUsd) ?? 0)
+        : asNumber(row.pnl) ?? 0;
 
     const xHandle = pickXHandle(user);
     out.push({
       handle,
       xHandle,
       xUrl: buildXUrl(user, xHandle),
-      avatar: firstString(user.profilePictureLink, user.avatar, user.pfp, user.image),
-      valueUsd: asNumber(row.value) ?? 0,
-      pnlUsd: asNumber(row.pnl) ?? 0,
-      thesis: (firstString(row.comment, row.text) ?? '').trim(),
+      avatar: firstString(row.profilePictureLink, user.profilePictureLink, user.avatar, user.pfp, user.image),
+      valueUsd,
+      pnlUsd,
+      thesis: (thesis ?? '').trim(),
     });
   }
   return out;

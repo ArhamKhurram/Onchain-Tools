@@ -28,6 +28,63 @@ const thesesFixture = {
   ],
 };
 
+// The REAL /feed/token/thesis item, captured live from the FOMO worker against
+// $TOAD (networkId 1399811149). Identity is top-level (userHandle/displayName),
+// the thesis text is nested under comment.comment, and position/PnL live under
+// authorTrade — the shape the original guessed fixture got wrong, which dropped
+// every real row.
+const liveFixture = {
+  responseObject: {
+    items: [
+      {
+        type: 'thesis',
+        id: '1580a369',
+        displayName: 'wscm275',
+        userHandle: 'wscm275',
+        profilePictureLink: null,
+        comment: { comment: 'BEST TIME TO BUY RN', numLikes: 1 },
+        authorTrade: { usdValue: 79.25345604, unrealizedPnlUsd: 2.66031104, realizedPnlUsd: 0 },
+        ticker: 'TOAD',
+        networkId: 1399811149,
+      },
+    ],
+    hasNextPage: false,
+    count: 1,
+  },
+  statusCode: 200,
+};
+
+describe('mapTheses — real live shape', () => {
+  it('maps the live thesis item (top-level handle, nested comment, authorTrade)', () => {
+    const rows = mapTheses(liveFixture);
+    expect(rows).toHaveLength(1);
+    expect(rows[0]).toEqual({
+      handle: 'wscm275',
+      xHandle: 'wscm275',
+      xUrl: 'https://x.com/wscm275',
+      avatar: null,
+      valueUsd: 79.25345604,
+      pnlUsd: 2.66031104,
+      thesis: 'BEST TIME TO BUY RN',
+    });
+  });
+
+  it('sums realized + unrealized PnL from authorTrade', () => {
+    const rows = mapTheses({
+      responseObject: {
+        items: [
+          {
+            userHandle: 'ex',
+            comment: { comment: 'x' },
+            authorTrade: { usdValue: 100, unrealizedPnlUsd: 10, realizedPnlUsd: 5 },
+          },
+        ],
+      },
+    });
+    expect(rows[0].pnlUsd).toBe(15);
+  });
+});
+
 describe('mapTheses', () => {
   it('narrows thesis rows to display-facing fields with numeric coercion', () => {
     const rows = mapTheses(thesesFixture);
