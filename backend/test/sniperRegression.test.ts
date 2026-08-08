@@ -7,7 +7,7 @@ import { IdempotencyLedger } from '../src/sniper/idempotency';
 import { InMemorySniperStore } from '../src/sniper/store';
 import { ExecutorRegistry, processDryRun } from '../src/sniper/executors/registry';
 import { DryRunExecutor } from '../src/sniper/executors/dryRun';
-import { clampSlippageBps } from '../src/sniper/executors/slotshark';
+import { toVenueSlippagePercent } from '../src/sniper/executors/slotshark';
 import { computeLegs, validateLadderSplit } from '../src/sniper/legs';
 import type { SnipeRule, NormalizedTweet, SendOutcome } from '../src/sniper/types';
 
@@ -115,17 +115,39 @@ describe('regression: dry-run switch must not fail open', () => {
 });
 
 describe('regression: slippage units', () => {
-  it('passes basis points through rather than truncating to zero', () => {
-    // 30bps used to become Math.round(0.3) === 0, then `|| 20` -> 20% slippage.
-    expect(clampSlippageBps(30)).toBe(30);
-    expect(clampSlippageBps(500)).toBe(500);
+  // Slotshark's `slippage` is PERCENT. Confirmed on the wire from their own
+  // dashboard: the field is labelled "SLIPPAGE (%)" and saving 50 sends
+  // `"slippage": 50`. Their /sell range of 1-100 corroborates it — as basis
+  // points that would cap a sell at 1% tolerance.
+  //
+  // These tests previously asserted the OPPOSITE (that bps passed through
+  // verbatim was correct), which is why the bug survived a review: the suite
+  // agreed with it. The default rule slippage is 500bps, so every fire was
+  // being sent as 500 -> read as 500% -> no slippage protection whatsoever.
+  it('converts basis points to percent', () => {
+    expect(toVenueSlippagePercent(500)).toBe(5); // the 5% default, not 500
+    expect(toVenueSlippagePercent(2_000)).toBe(20);
+    expect(toVenueSlippagePercent(10_000)).toBe(100);
   });
 
-  it('clamps out-of-range values instead of defaulting them wide open', () => {
-    expect(clampSlippageBps(0)).toBe(1);
-    expect(clampSlippageBps(-5)).toBe(1);
-    expect(clampSlippageBps(99_999)).toBe(10_000);
-    expect(clampSlippageBps(Number.NaN)).toBe(1);
+  it('keeps sub-1% rules tight instead of rounding up to the venue minimum', () => {
+    // Their documented minimum is 1. Rounding 0.3% up to 1% would loosen a
+    // deliberately tight rule — the precise failure this regression is about.
+    // If they reject the fraction the fire fails and no money moves.
+    expect(toVenueSlippagePercent(30)).toBeCloseTo(0.3, 10);
+    expect(toVenueSlippagePercent(1)).toBeCloseTo(0.01, 10);
+  });
+
+  it('fails closed on corrupt input rather than opening up', () => {
+    expect(toVenueSlippagePercent(0)).toBe(0.01);
+    expect(toVenueSlippagePercent(-5)).toBe(0.01);
+    expect(toVenueSlippagePercent(Number.NaN)).toBe(0.01);
+  });
+
+  it('never sends a tolerance above 100%', () => {
+    // Above 100% is not a tolerance, it is the absence of one. Their /buy
+    // accepts up to 10000; we deliberately do not expose that.
+    expect(toVenueSlippagePercent(99_999)).toBe(100);
   });
 });
 
