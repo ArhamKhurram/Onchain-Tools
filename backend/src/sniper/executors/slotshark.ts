@@ -12,7 +12,13 @@
 
 import type { Chain, Executor, FireIntent, FireLeg, SendOutcome, Venue } from '../types.js';
 
-const REGION_BASE_URLS = {
+/**
+ * The two regional hosts. Exported because the dashboard API lives on these
+ * same hosts (`{us,eu}.slotshark.xyz/api/dashboard/*`, per Slotshark's official
+ * docs) and must index this one table rather than build a second one — the SSRF
+ * argument on `narrowRegion` below only holds if there is exactly one.
+ */
+export const REGION_BASE_URLS = {
   us: 'https://us.slotshark.xyz',
   eu: 'https://eu.slotshark.xyz',
 } as const;
@@ -49,10 +55,11 @@ export class SlotsharkExecutor implements Executor {
       mint: intent.mint,
       solAmount: leg.amount,
       wallet,
-      // Slotshark's `slippage` is PERCENT, not basis points. Confirmed on the
-      // wire: their dashboard's field is labelled "SLIPPAGE (%)" and saving 50
-      // sends `"slippage": 50`. Their /sell doc range of 1-100 settles it too —
-      // as bps that would cap a sell at 1% tolerance, which is nonsense.
+      // Slotshark's `slippage` is PERCENT, not basis points. This was inferred
+      // from their UI ("SLIPPAGE (%)" saving 50 as `"slippage": 50`) and from
+      // the /sell doc range of 1-100; Slotshark's official Twitter Sniper docs
+      // (2026-08-08) state it outright — `slippage | number (%)` — so the
+      // conversion below is confirmed, not deduced. Do not "simplify" it back.
       //
       // Passing bps verbatim (what this did until 2026-08-08) sent a 5% rule as
       // `500`, read as 500%: no slippage protection at all, on every fire. Note
@@ -139,8 +146,9 @@ export function narrowRegion(raw: string | null | undefined): SlotsharkRegion {
 
 /**
  * Our rules carry slippage in basis points (1-10000 = 0.01%-100%, enforced by
- * validateRule and by the `slippage_bps` CHECK). Slotshark's field is percent.
- * This is the one conversion between those two domains.
+ * validateRule and by the `slippage_bps` CHECK). Slotshark's field is percent —
+ * their official docs state `slippage | number (%)`. This is the one conversion
+ * between those two domains.
  *
  * Every clamp here is toward LESS tolerance, never more:
  * - a non-finite value collapses to the tightest expressible slippage rather

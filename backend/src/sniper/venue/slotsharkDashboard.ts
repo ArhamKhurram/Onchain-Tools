@@ -1,22 +1,30 @@
-// Slotshark's DASHBOARD API — the undocumented control plane behind their web
-// UI. Deliberately NOT in executors/: this is a sibling of the executor, not a
-// kind of one.
+// Slotshark's DASHBOARD API — `/api/dashboard/*`. Deliberately NOT in
+// executors/: this is a sibling of the executor, not a kind of one.
 //
-// Three differences from executors/slotshark.ts justify the separate module:
+// Two differences from executors/slotshark.ts justify the separate module:
 //
-//  1. DIFFERENT HOST. Execution is `{us,eu}.slotshark.xyz/buy`. The dashboard
-//     API is `slotshark.xyz/api/dashboard/*` — the main site, not a regional
-//     box. (Their regional hosts do route /api/dashboard through the same
-//     bearer middleware, but the main host is what their own UI calls and the
-//     one that answers with CORS headers, so it is what we call.)
-//  2. DIFFERENT JOB. Nothing here spends. These calls read wallets and author
-//     standing configs. `executeFire` remains the only function allowed to move
-//     money, and it does not go through this module.
-//  3. DIFFERENT STABILITY CONTRACT. `/buy` is documented. None of this is:
-//     there is no OpenAPI spec, no version prefix, no rate-limit headers, and
-//     no promise it will not change tomorrow. So every response is validated at
-//     runtime and a shape change surfaces as VendorContractError rather than as
-//     `undefined` leaking into a wallet form.
+//  1. DIFFERENT JOB. Nothing here spends. These calls read wallets and author
+//     the standing Twitter Sniper configs. `executeFire` remains the only
+//     function allowed to move money, and it does not go through this module.
+//  2. DIFFERENT FAILURE HANDLING. The executor answers in the
+//     dead/filled/unknown vocabulary a retry loop reads; a settings screen
+//     wants to know WHY, so this throws a three-way taxonomy instead.
+//
+// SAME HOST FAMILY, and that changed on 2026-08-08. Slotshark's official docs
+// place `/api/dashboard/*` on the REGIONAL hosts — `https://us.slotshark.xyz`
+// and `https://eu.slotshark.xyz`, "use the region your account is on". This
+// module previously called the bare `slotshark.xyz`, which answers but is
+// undocumented; the region now arrives from the venue credential (its `region`
+// column, narrowed by `narrowRegion`) exactly as it already does for /buy.
+//
+// The region stays a FIXED ENUM indexing a compile-time table, never operator
+// input interpolated into a URL — that is threat T4 (SSRF), and the reasoning
+// is spelled out on `narrowRegion` in executors/slotshark.ts.
+//
+// STABILITY. The endpoints are documented now, which is why the twitter config
+// surface below exists at all, but every response is still narrowed at runtime:
+// a documented API is not a versioned one, and a shape change must surface as
+// VendorContractError rather than as `undefined` leaking into a wallet form.
 //
 // SECURITY: the bearer is the SAME secret as the trading token — their
 // dashboard stores it in localStorage under `dashApiKey` and it is byte-identical
@@ -24,12 +32,37 @@
 // this module inherits the executor's rules exactly: the token arrives as an
 // argument, is used once, and is never logged, never returned, never cached.
 
-const DASHBOARD_BASE = 'https://slotshark.xyz/api/dashboard';
+import { REGION_BASE_URLS, type SlotsharkRegion } from '../executors/slotshark.js';
+import {
+  buildFullBody,
+  buildPatchBody,
+  TWITTER_CONFIGS_PATH,
+  TWITTER_MODES,
+  TwitterConfigValidationError,
+  type TwitterConfigBody,
+  type TwitterConfigInput,
+  type TwitterConfigPatch,
+  type TwitterConfigResult,
+  type TwitterMode,
+} from './slotsharkTwitterConfig.js';
+
+const DASHBOARD_PREFIX = '/api/dashboard';
 
 // Well below the executor's 20s. Nothing here is on a fire path — these calls
 // back a settings screen, and a slow one should fail and let the user retry
 // rather than hold a request open.
 const TIMEOUT_MS = 10_000;
+
+/**
+ * How much vendor error text rides out on a VendorRequestError.
+ *
+ * Generous on purpose: their untracked-handle refusal is "These handles are not
+ * available for tracking: ..." followed by the offending handles, and that list
+ * is the entire actionable content. Clipping it at a couple of hundred
+ * characters would leave an operator with an error naming no handles. Still
+ * bounded, so an HTML error page from a proxy cannot flood a log.
+ */
+const VENDOR_ERROR_TEXT_LIMIT = 1_000;
 
 /**
  * The vendor answered, but not with the shape we parse. Distinct from a network
@@ -107,6 +140,32 @@ export interface VenueWalletBalance {
 export interface SlotsharkDashboardConfig {
   /** The venue bearer. Read late by the caller, never held by this module. */
   apiToken: string;
+  /**
+   * Which regional host the account lives on. Comes from the venue
+   * credential's `region`, narrowed by `narrowRegion` — never free text.
+   */
+  region: SlotsharkRegion;
+}
+
+/**
+ * One Twitter Sniper config as this module is willing to describe it.
+ *
+ * Deliberately narrow: the fields below are the ones the official docs pin
+ * down, and a field invented here would be `undefined` on screen the first time
+ * their response differs. A caller that needs the whole document should PUT a
+ * config it built, not round-trip one it read.
+ */
+export interface VenueTwitterConfig {
+  id: string;
+  name: string;
+  /**
+   * `null` when Slotshark reports a mode this build does not know. Such a
+   * config must NOT be patched: the params serializer is chosen by mode, and
+   * guessing one would send the wrong keyword spelling at best.
+   */
+  modeType: TwitterMode | null;
+  /** `null` means unlimited — the documented meaning of an absent maxBuyCount. */
+  maxBuyCount: number | null;
 }
 
 function isRecord(v: unknown): v is Record<string, unknown> {
@@ -133,11 +192,36 @@ function parseWallet(v: unknown): VenueWallet | null {
   };
 }
 
+/**
+ * Narrow one config row. Returns null rather than throwing, on the same
+ * principle as `parseWallet`: a row we cannot identify costs the operator that
+ * row, not the screen. A row without a usable `id` is unusable — nothing can be
+ * patched or deleted without one — so that is the only hard requirement.
+ */
+function parseTwitterConfig(v: unknown): VenueTwitterConfig | null {
+  if (!isRecord(v)) return null;
+  const { id, name, modeType, maxBuyCount } = v;
+  if (typeof id !== 'string' || id.length === 0) return null;
+  const mode = TWITTER_MODES.find((m) => m === modeType) ?? null;
+  return {
+    id,
+    name: typeof name === 'string' ? name : '',
+    modeType: mode,
+    maxBuyCount: typeof maxBuyCount === 'number' && Number.isFinite(maxBuyCount) ? maxBuyCount : null,
+  };
+}
+
+/** Throw the local refusal, or hand back the body it built. */
+function unwrap(built: TwitterConfigResult<TwitterConfigBody>): TwitterConfigBody {
+  if (!built.ok) throw new TwitterConfigValidationError(built.reason, built.detail);
+  return built.value;
+}
+
 export class SlotsharkDashboard {
   constructor(private cfg: SlotsharkDashboardConfig) {}
 
   private async call(method: string, path: string, body?: unknown): Promise<unknown> {
-    const url = `${DASHBOARD_BASE}${path}`;
+    const url = `${REGION_BASE_URLS[this.cfg.region]}${DASHBOARD_PREFIX}${path}`;
     let res: Response;
     try {
       res = await fetch(url, {
@@ -163,9 +247,10 @@ export class SlotsharkDashboard {
     const text = await res.text();
     if (!res.ok) {
       // Their errors are `{"error":"...","field":"params.targetHandle"}`. Pass
-      // the text through — it is vendor-authored operator guidance and contains
-      // no credential — but cap it so a stray HTML error page cannot flood logs.
-      throw new VendorRequestError(path, res.status, text.slice(0, 300));
+      // the text through VERBATIM — it is vendor-authored operator guidance,
+      // contains no credential, and in the untracked-handles case it is the
+      // only place the offending handles are named. Capped, not summarised.
+      throw new VendorRequestError(path, res.status, text.slice(0, VENDOR_ERROR_TEXT_LIMIT));
     }
 
     if (text.length === 0) return null;
@@ -206,5 +291,83 @@ export class SlotsharkDashboard {
       balanceLamports:
         typeof raw.balanceLamports === 'number' ? raw.balanceLamports : Math.round(raw.balanceSol * 1e9),
     };
+  }
+
+  // -------------------------------------------------------------------------
+  // Twitter Sniper configs.
+  //
+  // These author the tweet -> buy loop that runs INSIDE Slotshark. Creating one
+  // does not bring it under OCT's caps or kill switch: Slotshark executes from
+  // its own balance and tells OCT nothing when it fires. Writing a config here
+  // is therefore the most consequential thing in this module, and the reason
+  // every body is built by the validating serializers rather than assembled
+  // inline.
+  // -------------------------------------------------------------------------
+
+  /** Every config on the account. Their envelope wraps: `{ "configs": [...] }`. */
+  async listTwitterConfigs(): Promise<VenueTwitterConfig[]> {
+    const raw = await this.call('GET', TWITTER_CONFIGS_PATH);
+    if (!isRecord(raw) || !Array.isArray(raw.configs)) {
+      // Not an empty list: rendering "no configs" for an account that has five
+      // would invite an operator to create duplicates of rules already running.
+      throw new VendorContractError(TWITTER_CONFIGS_PATH, 'expected { configs: [...] }');
+    }
+    return raw.configs.map(parseTwitterConfig).filter((c): c is VenueTwitterConfig => c !== null);
+  }
+
+  /**
+   * Create one. 201 `{ "config": {...} }`.
+   *
+   * `modeType` is fixed at this moment and forever: it cannot be changed later
+   * by PUT or PATCH, so a mode mistake is fixed by DELETE + create.
+   */
+  async createTwitterConfig(input: TwitterConfigInput): Promise<VenueTwitterConfig> {
+    const raw = await this.call('POST', TWITTER_CONFIGS_PATH, unwrap(buildFullBody(input)));
+    return this.expectConfig(raw, TWITTER_CONFIGS_PATH);
+  }
+
+  /**
+   * FULL replace (PUT). Every field the config should end up with must be
+   * present — this is not a merge, and an omitted `snipeParams.solAmount` on a
+   * ca_scanner is the 0-SOL silent-no-fill case, which is why `buildFullBody`
+   * refuses it rather than letting the omission through.
+   *
+   * `input.mode` must be the config's EXISTING mode. The vendor rejects a
+   * change; passing a different one here buys a 400, not a converted config.
+   */
+  async replaceTwitterConfig(id: string, input: TwitterConfigInput): Promise<VenueTwitterConfig> {
+    const path = `${TWITTER_CONFIGS_PATH}/${encodeURIComponent(id)}`;
+    return this.expectConfig(await this.call('PUT', path, unwrap(buildFullBody(input))), path);
+  }
+
+  /**
+   * PARTIAL update (PATCH). `params`, `snipeParams` and `taskTiming` merge one
+   * level deep; ARRAYS REPLACE WHOLESALE, which is why every array in
+   * `TwitterConfigPatch` is an `ArrayReplacement<T>` the caller has to name.
+   */
+  async patchTwitterConfig(id: string, patch: TwitterConfigPatch): Promise<VenueTwitterConfig> {
+    const path = `${TWITTER_CONFIGS_PATH}/${encodeURIComponent(id)}`;
+    return this.expectConfig(await this.call('PATCH', path, unwrap(buildPatchBody(patch))), path);
+  }
+
+  /**
+   * Delete one. Their response is `{ "deletedAt": ... }`.
+   *
+   * The timestamp is returned as a string or null rather than asserted: the
+   * delete either happened or the call threw, so a missing timestamp is a
+   * display detail, not grounds for telling the operator the delete failed and
+   * inviting them to run it again.
+   */
+  async deleteTwitterConfig(id: string): Promise<{ deletedAt: string | null }> {
+    const path = `${TWITTER_CONFIGS_PATH}/${encodeURIComponent(id)}`;
+    const raw = await this.call('DELETE', path);
+    const deletedAt = isRecord(raw) && typeof raw.deletedAt === 'string' ? raw.deletedAt : null;
+    return { deletedAt };
+  }
+
+  private expectConfig(raw: unknown, endpoint: string): VenueTwitterConfig {
+    const parsed = isRecord(raw) ? parseTwitterConfig(raw.config) : null;
+    if (!parsed) throw new VendorContractError(endpoint, 'expected { config: { id, ... } }');
+    return parsed;
   }
 }

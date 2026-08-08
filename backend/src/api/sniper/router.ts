@@ -29,6 +29,7 @@ import { fireRuleNow } from '../../sniper/fireOrchestrator.js';
 import { getSniperRuntime } from '../../sniper/runtime.js';
 import { utcDay } from '../../sniper/store.js';
 import { validateRule, validateRuleStructure } from '../../sniper/validateRule.js';
+import { narrowRegion } from '../../sniper/executors/slotshark.js';
 import { getVenueConnection, getVenueSecret } from '../../sniper/venueCredentials.js';
 import {
   SlotsharkDashboard,
@@ -348,10 +349,16 @@ export function createSniperRouter(): Router {
     }
     try {
       const userId = userIdOf(req);
-      const secret = await getVenueSecret(userId, venue);
+      // The dashboard API is per-region ("use the region your account is on"),
+      // so the connection row is read for its `region` alongside the secret.
+      // `narrowRegion` is what keeps that free-text column from reaching a URL.
+      const [secret, connection] = await Promise.all([
+        getVenueSecret(userId, venue),
+        getVenueConnection(userId, venue),
+      ]);
       if (!secret) return bad(res, 409, 'no_credential');
 
-      const api = new SlotsharkDashboard({ apiToken: secret });
+      const api = new SlotsharkDashboard({ apiToken: secret, region: narrowRegion(connection.region) });
       const wallets = await api.listWallets();
       const withBalances = await Promise.all(
         wallets.map(async (w) => {
