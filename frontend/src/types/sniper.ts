@@ -326,6 +326,68 @@ export function triggerTotalPreview(rule: LegShape & FeeShape): number {
  * money log that says "something went wrong" is worse than one that says a
  * word the operator can grep the docs for.
  */
+/**
+ * Reasons `validateRule` refuses to ARM a rule. Distinct from the abort reasons
+ * below: those explain why a fire that was allowed to start did not complete,
+ * these explain why it was never allowed to start. The two sets barely overlap,
+ * and running an arm failure through describeAbortReason (which this file did
+ * until 2026-08-08) fell through to `default` for 20 of the 22 cases — so
+ * arming showed a raw `no_wallets`, and the operator's next action was a guess.
+ *
+ * Each string names the field to change, because that is the only thing the
+ * reader actually needs.
+ */
+export function describeValidationReason(reason: string): string {
+  switch (reason) {
+    case 'no_wallets':
+      return 'No wallet selected — edit the rule and pick the wallet it should buy from.';
+    case 'unknown_wallet':
+      return 'Unknown wallet — this rule points at a wallet that no longer exists. Edit it and pick another.';
+    case 'no_mint':
+      return 'No mint — a phase 1 rule must bind the token address up front.';
+    case 'phase_unsupported':
+      return 'Phase 2 rules are not supported yet — resolution at trigger time has not shipped.';
+    case 'unit_mismatch':
+      return "Unit mismatch — the rule sizes in a unit this wallet's budget is not denominated in.";
+    case 'wallet_chain_mismatch':
+      return 'Chain mismatch — the selected wallet is on a different chain than the rule.';
+    case 'venue_chain_mismatch':
+      return 'Venue/chain mismatch — Slotshark executes Solana only.';
+    case 'exec_kind_mismatch':
+      return 'Exec params do not match the chain — Solana rules take tip/priority fee, EVM rules take gas.';
+    case 'matcher_too_deep':
+      return 'Trigger matcher is nested too deeply — flatten the AND/OR/NOT tree.';
+    case 'matcher_too_many_nodes':
+      return 'Trigger matcher has too many terms — split it into separate rules.';
+    case 'matcher_regex_invalid':
+      return 'A regex in the trigger matcher does not compile.';
+    case 'ladder_split_empty':
+      return 'Ladder split is empty — give it at least one rung, or use a single entry.';
+    case 'ladder_split_negative':
+      return 'Ladder split has a negative rung.';
+    case 'ladder_split_not_normalized':
+      return 'Ladder rungs must add up to 1 — adjust them so the whole size is allocated.';
+    case 'ladder_split_too_many':
+      return 'Ladder has too many rungs.';
+    case 'slippage_out_of_range':
+      return 'Slippage must be 1–10000 bps (0.01%–100%).';
+    case 'max_attempts_out_of_range':
+      return 'Max attempts must be 1–10.';
+    case 'fire_window_out_of_range':
+      return 'Fire window must be greater than zero.';
+    case 'max_tweet_age_out_of_range':
+      return 'Max tweet age must be greater than zero.';
+    case 'mcap_ceiling_out_of_range':
+      return 'Market-cap ceiling must be empty or greater than zero.';
+    case 'caps_inconsistent':
+      return 'Caps contradict each other — the per-trigger cap cannot be below the per-fire cap.';
+    case 'size_over_trigger_cap':
+      return 'Size exceeds the per-trigger cap — lower the size or raise the cap.';
+    default:
+      return reason;
+  }
+}
+
 export function describeAbortReason(reason: string): string {
   switch (reason) {
     case 'per_trigger_cap':

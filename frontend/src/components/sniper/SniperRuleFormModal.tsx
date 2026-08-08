@@ -417,6 +417,17 @@ export default function SniperRuleFormModal({
                 ))}
               </div>
             )}
+            {/*
+              Saving with no wallet is allowed on purpose — you can draft a rule
+              before the wallets exist. But arming then refuses with
+              `no_wallets`, and nothing here said so, which made the arm button
+              look broken rather than the rule look incomplete.
+            */}
+            {wallets.length > 0 && values.walletIds.length === 0 && (
+              <p className="mt-2 text-xs text-oct-yellow leading-relaxed">
+                No wallet selected. The rule will save as a draft, but it cannot be armed or fired until you pick one.
+              </p>
+            )}
           </div>
 
           {/* Caps ------------------------------------------------------------- */}
