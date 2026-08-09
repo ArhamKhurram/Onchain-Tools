@@ -13,7 +13,7 @@
 // step on the pump-tab design pass): sm/base body, clear section headings.
 
 import { useMemo, useState } from 'react';
-import { ExternalLink, Megaphone, Plus, Trash2, Check, UserPlus, Trophy, Radar } from 'lucide-react';
+import { ExternalLink, Megaphone, Plus, Trash2, Check, UserPlus, Trophy, Radar, Copy, Users } from 'lucide-react';
 import { usePumpCallers } from '../../hooks/usePumpCallers';
 import { usePumpConnection } from '../../hooks/usePumpConnection';
 import { usePumpLeaderboard } from '../../hooks/usePumpLeaderboard';
@@ -71,8 +71,19 @@ function shortAddress(a: string): string {
 }
 
 export default function PumpCallersTab() {
-  const { callers, followedAddresses, loading, needsAuth, error, busy, follow, followByAddress, followMany, unfollow } =
-    usePumpCallers();
+  const {
+    callers,
+    followedAddresses,
+    loading,
+    needsAuth,
+    error,
+    busy,
+    follow,
+    followByAddress,
+    followMany,
+    followByUsernames,
+    unfollow,
+  } = usePumpCallers();
   const { summary } = usePumpConnection();
   const connected = summary.state === 'connected';
   const board = usePumpLeaderboard(connected);
@@ -86,6 +97,8 @@ export default function PumpCallersTab() {
   const [formError, setFormError] = useState<string | null>(null);
   const [trackBusy, setTrackBusy] = useState(false);
   const [trackError, setTrackError] = useState<string | null>(null);
+  // Transient "Copied N wallets" confirmation for the export button.
+  const [copied, setCopied] = useState<number | null>(null);
 
   // A popular handle is "followed" when a tracked caller carries that username.
   const followedHandles = new Set(callers.map((c) => (c.username ?? '').toLowerCase()));
@@ -136,6 +149,22 @@ export default function PumpCallersTab() {
       setTrackError((err as Error)?.message ?? 'Failed to add wallets to Directory.');
     } finally {
       setTrackBusy(false);
+    }
+  };
+
+  // Every leaderboard row that carries a resolvable wallet — the "Follow all" set.
+  const boardWithWallets = board.entries.filter((e) => e.walletAddress);
+  const allPopularFollowed = POPULAR_CALLERS.every((h) => followedHandles.has(h.toLowerCase()));
+
+  const copyAllWallets = async () => {
+    const addresses = callers.map((c) => c.callerAddress);
+    if (addresses.length === 0) return;
+    try {
+      await navigator.clipboard.writeText(addresses.join('\n'));
+      setCopied(addresses.length);
+      window.setTimeout(() => setCopied(null), 2000);
+    } catch {
+      // Clipboard blocked (permissions / insecure context) — leave the button idle.
     }
   };
 
@@ -193,7 +222,18 @@ export default function PumpCallersTab() {
 
       {/* Popular callers — keyless quick-add */}
       <div className="px-5 py-4 border-b-2 border-black">
-        <h3 className="text-sm font-extrabold uppercase tracking-wide text-oct-text mb-3">Popular callers</h3>
+        <div className="flex items-center gap-2 mb-3">
+          <h3 className="text-sm font-extrabold uppercase tracking-wide text-oct-text">Popular callers</h3>
+          <div className="flex-1" />
+          <button
+            onClick={() => followByUsernames(POPULAR_CALLERS, 'popular')}
+            disabled={busy || allPopularFollowed}
+            className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-cockpit border-2 border-black bg-oct-surface-raised text-xs font-bold text-oct-text hover:text-oct-accent shadow-oct-hard disabled:opacity-50"
+          >
+            {allPopularFollowed ? <Check size={13} /> : <Plus size={13} />}
+            {allPopularFollowed ? 'All followed' : 'Follow all'}
+          </button>
+        </div>
         <div className="flex flex-wrap gap-2">
           {POPULAR_CALLERS.map((handle) => {
             const isFollowed = followedHandles.has(handle.toLowerCase());
@@ -222,21 +262,36 @@ export default function PumpCallersTab() {
           <h3 className="text-sm font-extrabold uppercase tracking-wide text-oct-text">From the leaderboard</h3>
           <div className="flex-1" />
           {connected && board.entries.length > 0 && (
-            <button
-              onClick={() =>
-                followMany(
-                  board.entries
-                    .slice(0, LEADERBOARD_TOP_N)
-                    .filter((e) => e.walletAddress)
-                    .map((e) => ({ address: e.walletAddress as string, username: e.username, avatar: null })),
-                  'leaderboard',
-                )
-              }
-              disabled={busy}
-              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-cockpit border-2 border-black bg-oct-surface-raised text-xs font-bold text-oct-text hover:text-oct-accent shadow-oct-hard disabled:opacity-50"
-            >
-              <Plus size={13} /> Follow top {LEADERBOARD_TOP_N}
-            </button>
+            <div className="flex items-center gap-2">
+              <button
+                onClick={() =>
+                  followMany(
+                    boardWithWallets
+                      .slice(0, LEADERBOARD_TOP_N)
+                      .map((e) => ({ address: e.walletAddress as string, username: e.username, avatar: null })),
+                    'leaderboard',
+                  )
+                }
+                disabled={busy}
+                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-cockpit border-2 border-black bg-oct-surface-raised text-xs font-bold text-oct-text hover:text-oct-accent shadow-oct-hard disabled:opacity-50"
+              >
+                <Plus size={13} /> Follow top {LEADERBOARD_TOP_N}
+              </button>
+              {boardWithWallets.length > LEADERBOARD_TOP_N && (
+                <button
+                  onClick={() =>
+                    followMany(
+                      boardWithWallets.map((e) => ({ address: e.walletAddress as string, username: e.username, avatar: null })),
+                      'leaderboard',
+                    )
+                  }
+                  disabled={busy}
+                  className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-cockpit border-2 border-black bg-oct-accent text-white text-xs font-bold shadow-oct-hard disabled:opacity-50"
+                >
+                  <Users size={13} /> Follow all {boardWithWallets.length}
+                </button>
+              )}
+            </div>
           )}
         </div>
         {!connected ? (
@@ -285,6 +340,16 @@ export default function PumpCallersTab() {
             Following {callers.length > 0 && <span className="text-oct-muted">({callers.length})</span>}
           </h3>
           <div className="flex-1" />
+          {callers.length > 0 && (
+            <button
+              onClick={copyAllWallets}
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-cockpit border-2 border-oct-border-bright text-xs font-bold text-oct-text hover:text-oct-accent hover:border-oct-accent transition-colors"
+              title="Copy every followed caller's wallet address"
+            >
+              {copied !== null ? <Check size={13} className="text-oct-green" /> : <Copy size={13} />}
+              {copied !== null ? `Copied ${copied} wallet${copied === 1 ? '' : 's'}` : 'Copy all wallets'}
+            </button>
+          )}
           {untrackedCallers.length > 0 && (
             <button
               onClick={trackAllOnChain}
