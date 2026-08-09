@@ -197,6 +197,28 @@ export interface PumpTokenPnl {
 /** A wallet's balance/holdings summary — opaque, passed through untouched. */
 export type PumpBalanceSummary = Record<string, unknown>;
 
+/**
+ * One top holder of a coin (mirror of backend PumpHolder). Stitched server-side
+ * from on-chain balance (Helius) + keyless PnL (profile-api). `name` is null
+ * until pump-identity enrichment ships; the board renders the short wallet then.
+ */
+export interface PumpHolder {
+  rank: number;
+  wallet: string;
+  name: string | null;
+  amount: number | null;
+  supplyPct: number | null;
+  valueUsd: number | null;
+  pnlUsd: number | null;
+}
+
+/** The top-holders board for one coin. `enriched` flags whether names are present. */
+export interface PumpHoldersResponse {
+  mint: string;
+  holders: PumpHolder[];
+  enriched: boolean;
+}
+
 // ---------------------------------------------------------------------------
 // Tracked-trader list (localStorage, v1 — NO backend table)
 //

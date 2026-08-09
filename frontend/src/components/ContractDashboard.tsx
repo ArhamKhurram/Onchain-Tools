@@ -424,7 +424,7 @@ function ContractRow({
             <button
               onClick={() => onShowHolders(entry)}
               className="p-1 rounded hover:bg-oct-surface text-oct-muted hover:text-oct-text transition-colors"
-              title="Top FOMO holders"
+              title="Top holders"
             >
               <Users size={13} />
             </button>
@@ -584,7 +584,7 @@ function ContractCard({
         <button
           onClick={() => onShowHolders(entry)}
           className="flex items-center gap-1 px-2 py-1 rounded-cockpit text-xs bg-oct-bg hover:bg-oct-surface-raised transition-colors text-oct-muted hover:text-oct-text border border-oct-border"
-          title="Top FOMO holders"
+          title="Top holders"
         >
           <Users size={11} />
           <span>Holders</span>

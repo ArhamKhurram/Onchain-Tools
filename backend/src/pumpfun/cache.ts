@@ -71,6 +71,10 @@ export function communityCacheKey(mint: string): string {
   return `community:${mint}`;
 }
 
+export function tokenHoldersCacheKey(mint: string): string {
+  return `token-holders:${mint}`;
+}
+
 // Activity is paged and filtered, so the cache line is keyed by the exact query
 // (wallet + cursor + dustFilter): a different page or filter is a different read.
 export function walletTransactionsCacheKey(address: string, cursor: string | undefined, dustFilter: boolean): string {
@@ -99,6 +103,10 @@ export const TOKEN_CALLOUTS_TTL_MS = Number.parseInt(process.env.PUMPFUN_TOKEN_C
 export const WALLET_CALLOUTS_TTL_MS = Number.parseInt(process.env.PUMPFUN_WALLET_CALLOUTS_CACHE_MS ?? '', 10) || 120 * 1000;
 export const WALLET_PROFILE_TTL_MS = Number.parseInt(process.env.PUMPFUN_WALLET_PROFILE_CACHE_MS ?? '', 10) || 5 * 60 * 1000;
 export const COMMUNITY_TTL_MS = Number.parseInt(process.env.PUMPFUN_COMMUNITY_CACHE_MS ?? '', 10) || 5 * 60 * 1000;
+// Holders are three upstream calls (two Helius RPC + one PnL POST); the set turns
+// over slower than callouts, so a couple of minutes keeps the fan-out bounded
+// while staying fresh enough for a "top holders" glance.
+export const TOKEN_HOLDERS_TTL_MS = Number.parseInt(process.env.PUMPFUN_TOKEN_HOLDERS_CACHE_MS ?? '', 10) || 120 * 1000;
 // Activity moves as fast as callouts (fresh swaps land constantly); a balance
 // summary turns over a little slower. PnL is a POST over a caller-supplied mint
 // list and is served uncached (see routes.ts) — a cache line per mint permutation

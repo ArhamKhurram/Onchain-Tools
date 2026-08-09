@@ -325,3 +325,42 @@ export interface PumpLeaderboardEntry {
  * asserts only that it is an object.
  */
 export type PumpBalanceSummary = Record<string, unknown>;
+
+/**
+ * One top holder of a pump.fun coin, stitched from THREE sources the browser
+ * combines client-side (there is no single holders endpoint): the base list
+ * (wallet + balance + supply-%) is read on-chain via Helius, and the PnL is the
+ * keyless `POST profile-api.pump.fun/pnl/coin/{mint}/holders`. Identity
+ * (name/handle) is a later enrichment and is null until then.
+ *
+ * `wallet` is the OWNER address (resolved from the token account), the dedup and
+ * display key. Every numeric field degrades to null so a shape drift or a wallet
+ * the PnL endpoint has no row for costs that field, not the holder.
+ */
+export interface PumpHolder {
+  /** Position by balance (1-based). */
+  rank: number;
+  /** Owner wallet address — the display/dedup key. */
+  wallet: string;
+  /** Display name from pump identity, null until identity enrichment ships. */
+  name: string | null;
+  /** Token units held, decimal-scaled. */
+  amount: number | null;
+  /** Percent of total supply held (0–100). */
+  supplyPct: number | null;
+  /** Current USD value of the position (cost basis + unrealized PnL). */
+  valueUsd: number | null;
+  /** Total realized + unrealized PnL in USD. */
+  pnlUsd: number | null;
+}
+
+/**
+ * The top-holders board for one coin. `enriched` is false until pump-identity
+ * enrichment is wired, so the console can label the board honestly (wallets, not
+ * names) rather than implying a missing name is an anonymous holder.
+ */
+export interface PumpHoldersResponse {
+  mint: string;
+  holders: PumpHolder[];
+  enriched: boolean;
+}
