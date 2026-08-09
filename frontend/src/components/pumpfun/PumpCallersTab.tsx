@@ -3,16 +3,50 @@
 // the PnL leaderboard. Following any of them means a real-time ping (toast +
 // Pushover) the moment they post a callout.
 //
+// Following also doubles as an on-ramp into the on-chain tracked-wallet Directory:
+// a followed caller's wallet can be added (per-row "Track on-chain" or "Add all to
+// Directory") to user_tracked_wallets so its on-chain activity can be watched.
+// That is a SEPARATE concern from callouts — it reuses the existing add-wallet
+// flow (useTrackedWallets), not a parallel store.
+//
 // Type scale is deliberately larger/denser than the older pump panels (a first
 // step on the pump-tab design pass): sm/base body, clear section headings.
 
-import { useState } from 'react';
-import { ExternalLink, Megaphone, Plus, Trash2, Check, UserPlus, Trophy } from 'lucide-react';
+import { useMemo, useState } from 'react';
+import { ExternalLink, Megaphone, Plus, Trash2, Check, UserPlus, Trophy, Radar, Copy, Users } from 'lucide-react';
 import { usePumpCallers } from '../../hooks/usePumpCallers';
 import { usePumpConnection } from '../../hooks/usePumpConnection';
 import { usePumpLeaderboard } from '../../hooks/usePumpLeaderboard';
+import { useAuthSession } from '../../hooks/useAuthSession';
+import { useTrackedWallets } from '../../hooks/useTrackedWallets';
+import type { TrackedWalletInsert } from '../../types/wallets';
 
 const SOLSCAN_ACCOUNT = 'https://solscan.io/account/';
+
+// A followed caller's wallet, added to the on-chain tracked-wallet Directory
+// (user_tracked_wallets, chain solana) via the existing add-wallet flow — a
+// separate concern from callout alerts. This is a passive watchlist entry; the
+// Directory does not (yet) run a per-wallet buy/sell movement poller.
+function callerWalletInsert(address: string, username: string | null): TrackedWalletInsert {
+  return {
+    address,
+    chain: 'solana',
+    name: username ? `@${username}` : '',
+    emoji: '📣',
+    profile: 'pump.fun caller',
+    alerts_on_toast: true,
+    alerts_on_feed: true,
+    alerts_on_bubble: true,
+    sound: 'default',
+  };
+}
+
+// A Supabase unique-violation (already in the Directory) is a no-op for our
+// purposes, not a failure worth surfacing.
+function isDuplicateWallet(err: unknown): boolean {
+  const e = err as { code?: string; message?: string } | null;
+  return e?.code === '23505' || /duplicate|already exists|unique/i.test(e?.message ?? '');
+}
 
 // A small, curated set of well-known callers, verified to resolve on pump's
 // keyless user endpoint. One-click follow (resolved server-side by handle) — the
@@ -37,17 +71,102 @@ function shortAddress(a: string): string {
 }
 
 export default function PumpCallersTab() {
-  const { callers, followedAddresses, loading, needsAuth, error, busy, follow, followByAddress, followMany, unfollow } =
-    usePumpCallers();
+  const {
+    callers,
+    followedAddresses,
+    loading,
+    needsAuth,
+    error,
+    busy,
+    follow,
+    followByAddress,
+    followMany,
+    followByUsernames,
+    unfollow,
+  } = usePumpCallers();
   const { summary } = usePumpConnection();
   const connected = summary.state === 'connected';
   const board = usePumpLeaderboard(connected);
 
+  // On-chain tracked-wallet Directory (user_tracked_wallets). Hosted-only, like
+  // the caller set itself — in local mode userId is undefined and the hook no-ops.
+  const { userId } = useAuthSession();
+  const { wallets: trackedWallets, createWallet } = useTrackedWallets(userId);
+
   const [input, setInput] = useState('');
   const [formError, setFormError] = useState<string | null>(null);
+  const [trackBusy, setTrackBusy] = useState(false);
+  const [trackError, setTrackError] = useState<string | null>(null);
+  // Transient "Copied N wallets" confirmation for the export button.
+  const [copied, setCopied] = useState<number | null>(null);
 
   // A popular handle is "followed" when a tracked caller carries that username.
   const followedHandles = new Set(callers.map((c) => (c.username ?? '').toLowerCase()));
+
+  // Solana addresses already in the on-chain Directory — drives the per-row
+  // "Tracked" state and lets the bulk action skip what's already there.
+  const trackedSolAddresses = useMemo(
+    () => new Set(trackedWallets.filter((w) => w.chain === 'solana').map((w) => w.address)),
+    [trackedWallets],
+  );
+
+  const untrackedCallers = callers.filter((c) => !trackedSolAddresses.has(c.callerAddress));
+
+  // Add a single caller's wallet to the Directory. Idempotent: a unique-violation
+  // (already present) is swallowed so the row simply flips to "Tracked".
+  const trackOnChain = async (address: string, username: string | null): Promise<string | null> => {
+    if (trackedSolAddresses.has(address)) return null;
+    setTrackError(null);
+    setTrackBusy(true);
+    try {
+      await createWallet(callerWalletInsert(address, username));
+      return null;
+    } catch (err) {
+      if (isDuplicateWallet(err)) return null;
+      const msg = (err as Error)?.message ?? 'Failed to add wallet to Directory.';
+      setTrackError(msg);
+      return msg;
+    } finally {
+      setTrackBusy(false);
+    }
+  };
+
+  // Bulk "Add all to Directory": loop the existing single-add (there is no bulk
+  // insert on useTrackedWallets), skipping any already tracked.
+  const trackAllOnChain = async (): Promise<void> => {
+    if (untrackedCallers.length === 0) return;
+    setTrackError(null);
+    setTrackBusy(true);
+    try {
+      for (const c of untrackedCallers) {
+        try {
+          await createWallet(callerWalletInsert(c.callerAddress, c.username));
+        } catch (err) {
+          if (!isDuplicateWallet(err)) throw err;
+        }
+      }
+    } catch (err) {
+      setTrackError((err as Error)?.message ?? 'Failed to add wallets to Directory.');
+    } finally {
+      setTrackBusy(false);
+    }
+  };
+
+  // Every leaderboard row that carries a resolvable wallet — the "Follow all" set.
+  const boardWithWallets = board.entries.filter((e) => e.walletAddress);
+  const allPopularFollowed = POPULAR_CALLERS.every((h) => followedHandles.has(h.toLowerCase()));
+
+  const copyAllWallets = async () => {
+    const addresses = callers.map((c) => c.callerAddress);
+    if (addresses.length === 0) return;
+    try {
+      await navigator.clipboard.writeText(addresses.join('\n'));
+      setCopied(addresses.length);
+      window.setTimeout(() => setCopied(null), 2000);
+    } catch {
+      // Clipboard blocked (permissions / insecure context) — leave the button idle.
+    }
+  };
 
   const onSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -103,7 +222,18 @@ export default function PumpCallersTab() {
 
       {/* Popular callers — keyless quick-add */}
       <div className="px-5 py-4 border-b-2 border-black">
-        <h3 className="text-sm font-extrabold uppercase tracking-wide text-oct-text mb-3">Popular callers</h3>
+        <div className="flex items-center gap-2 mb-3">
+          <h3 className="text-sm font-extrabold uppercase tracking-wide text-oct-text">Popular callers</h3>
+          <div className="flex-1" />
+          <button
+            onClick={() => followByUsernames(POPULAR_CALLERS, 'popular')}
+            disabled={busy || allPopularFollowed}
+            className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-cockpit border-2 border-black bg-oct-surface-raised text-xs font-bold text-oct-text hover:text-oct-accent shadow-oct-hard disabled:opacity-50"
+          >
+            {allPopularFollowed ? <Check size={13} /> : <Plus size={13} />}
+            {allPopularFollowed ? 'All followed' : 'Follow all'}
+          </button>
+        </div>
         <div className="flex flex-wrap gap-2">
           {POPULAR_CALLERS.map((handle) => {
             const isFollowed = followedHandles.has(handle.toLowerCase());
@@ -132,21 +262,36 @@ export default function PumpCallersTab() {
           <h3 className="text-sm font-extrabold uppercase tracking-wide text-oct-text">From the leaderboard</h3>
           <div className="flex-1" />
           {connected && board.entries.length > 0 && (
-            <button
-              onClick={() =>
-                followMany(
-                  board.entries
-                    .slice(0, LEADERBOARD_TOP_N)
-                    .filter((e) => e.walletAddress)
-                    .map((e) => ({ address: e.walletAddress as string, username: e.username, avatar: null })),
-                  'leaderboard',
-                )
-              }
-              disabled={busy}
-              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-cockpit border-2 border-black bg-oct-surface-raised text-xs font-bold text-oct-text hover:text-oct-accent shadow-oct-hard disabled:opacity-50"
-            >
-              <Plus size={13} /> Follow top {LEADERBOARD_TOP_N}
-            </button>
+            <div className="flex items-center gap-2">
+              <button
+                onClick={() =>
+                  followMany(
+                    boardWithWallets
+                      .slice(0, LEADERBOARD_TOP_N)
+                      .map((e) => ({ address: e.walletAddress as string, username: e.username, avatar: null })),
+                    'leaderboard',
+                  )
+                }
+                disabled={busy}
+                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-cockpit border-2 border-black bg-oct-surface-raised text-xs font-bold text-oct-text hover:text-oct-accent shadow-oct-hard disabled:opacity-50"
+              >
+                <Plus size={13} /> Follow top {LEADERBOARD_TOP_N}
+              </button>
+              {boardWithWallets.length > LEADERBOARD_TOP_N && (
+                <button
+                  onClick={() =>
+                    followMany(
+                      boardWithWallets.map((e) => ({ address: e.walletAddress as string, username: e.username, avatar: null })),
+                      'leaderboard',
+                    )
+                  }
+                  disabled={busy}
+                  className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-cockpit border-2 border-black bg-oct-accent text-white text-xs font-bold shadow-oct-hard disabled:opacity-50"
+                >
+                  <Users size={13} /> Follow all {boardWithWallets.length}
+                </button>
+              )}
+            </div>
           )}
         </div>
         {!connected ? (
@@ -190,9 +335,37 @@ export default function PumpCallersTab() {
 
       {/* The followed set */}
       <div className="px-5 py-3">
-        <h3 className="text-sm font-extrabold uppercase tracking-wide text-oct-text mb-2">
-          Following {callers.length > 0 && <span className="text-oct-muted">({callers.length})</span>}
-        </h3>
+        <div className="flex items-center gap-2 mb-2">
+          <h3 className="text-sm font-extrabold uppercase tracking-wide text-oct-text">
+            Following {callers.length > 0 && <span className="text-oct-muted">({callers.length})</span>}
+          </h3>
+          <div className="flex-1" />
+          {callers.length > 0 && (
+            <button
+              onClick={copyAllWallets}
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-cockpit border-2 border-oct-border-bright text-xs font-bold text-oct-text hover:text-oct-accent hover:border-oct-accent transition-colors"
+              title="Copy every followed caller's wallet address"
+            >
+              {copied !== null ? <Check size={13} className="text-oct-green" /> : <Copy size={13} />}
+              {copied !== null ? `Copied ${copied} wallet${copied === 1 ? '' : 's'}` : 'Copy all wallets'}
+            </button>
+          )}
+          {untrackedCallers.length > 0 && (
+            <button
+              onClick={trackAllOnChain}
+              disabled={trackBusy}
+              title="Add every followed caller's wallet to your on-chain tracked-wallet Directory"
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-cockpit border-2 border-black bg-oct-surface-raised text-xs font-bold text-oct-text hover:text-oct-accent shadow-oct-hard disabled:opacity-50"
+            >
+              <Radar size={13} /> Add all to Directory
+            </button>
+          )}
+        </div>
+        <p className="text-xs text-oct-muted mb-3">
+          Following pings you on callouts. <span className="text-oct-text font-semibold">Track on-chain</span> also adds
+          the caller&apos;s wallet to your Directory so you can watch it on-chain — a separate list from callout alerts.
+        </p>
+        {trackError && <p className="mb-2 text-sm text-oct-accent">{trackError}</p>}
         {loading ? (
           <div className="flex items-center justify-center py-10">
             <div className="w-6 h-6 border-2 border-oct-accent border-t-transparent rounded-full animate-spin" />
@@ -235,6 +408,23 @@ export default function PumpCallersTab() {
                     <ExternalLink size={11} />
                   </a>
                 </div>
+                {trackedSolAddresses.has(c.callerAddress) ? (
+                  <span
+                    className="shrink-0 inline-flex items-center gap-1 px-2.5 py-1.5 rounded-cockpit border-2 border-oct-green/50 text-oct-green bg-oct-green/10 text-xs font-bold cursor-default"
+                    title="This caller's wallet is in your on-chain tracked-wallet Directory"
+                  >
+                    <Check size={13} /> Tracked
+                  </span>
+                ) : (
+                  <button
+                    onClick={() => trackOnChain(c.callerAddress, c.username)}
+                    disabled={trackBusy}
+                    className="shrink-0 inline-flex items-center gap-1 px-2.5 py-1.5 rounded-cockpit border-2 border-oct-border-bright text-oct-text text-xs font-bold hover:text-oct-accent hover:border-oct-accent transition-colors disabled:opacity-50"
+                    title="Add this caller's wallet to your on-chain tracked-wallet Directory"
+                  >
+                    <Radar size={13} /> Track on-chain
+                  </button>
+                )}
                 <button
                   onClick={() => unfollow(c.callerAddress)}
                   className="shrink-0 p-2 rounded-cockpit border-2 border-oct-border-bright text-oct-muted hover:text-oct-accent transition-colors"

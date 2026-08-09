@@ -160,6 +160,59 @@ export function usePumpCallers() {
     [],
   );
 
+  /**
+   * Follow several callers given by @username (the "Follow all popular" on-ramp).
+   * Each handle is resolved to a wallet server-side; already-followed handles and
+   * ones that fail to resolve are skipped, then the rest go through in one bulk
+   * write. Returns an error string only when nothing could be followed.
+   */
+  const followByUsernames = useCallback(
+    async (handles: readonly string[], source = 'popular'): Promise<string | null> => {
+      const followed = new Set(callers.map((c) => (c.username ?? '').toLowerCase()));
+      const pending = handles
+        .map((h) => h.trim().replace(/^@/, ''))
+        .filter((h) => h && !followed.has(h.toLowerCase()));
+      if (pending.length === 0) return null;
+
+      setBusy(true);
+      try {
+        const resolved: Array<{ address: string; username: string | null; avatar: string | null }> = [];
+        for (const handle of pending) {
+          try {
+            const res = await pumpFetch('/pumpfun/callers/resolve', {
+              method: 'POST',
+              body: JSON.stringify({ username: handle }),
+            });
+            if (!res.ok) continue; // unknown handle → skip, don't fail the batch
+            const caller = (await res.json()) as { address?: string; username?: string | null; avatar?: string | null };
+            if (typeof caller.address === 'string' && caller.address) {
+              resolved.push({ address: caller.address, username: caller.username ?? handle, avatar: caller.avatar ?? null });
+            }
+          } catch {
+            // Network hiccup on one handle shouldn't sink the whole batch.
+          }
+        }
+        if (resolved.length === 0) return 'Could not resolve any of those callers.';
+
+        const res = await pumpFetch('/pumpfun/callers/bulk', {
+          method: 'POST',
+          body: JSON.stringify({
+            source,
+            callers: resolved.map((c) => ({ address: c.address, username: c.username, displayName: null, avatar: c.avatar })),
+          }),
+        });
+        if (!res.ok) return await readError(res, `Bulk follow failed (${res.status}).`);
+        setCallers((await res.json()) as TrackedCaller[]);
+        return null;
+      } catch (err) {
+        return (err as Error)?.message ?? 'Failed to follow callers.';
+      } finally {
+        setBusy(false);
+      }
+    },
+    [callers],
+  );
+
   const unfollow = useCallback(async (callerAddress: string): Promise<void> => {
     // Optimistic remove; restore on failure.
     const prev = callers;
@@ -184,6 +237,7 @@ export function usePumpCallers() {
     follow,
     followByAddress,
     followMany,
+    followByUsernames,
     unfollow,
     refresh,
   };

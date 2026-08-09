@@ -102,8 +102,9 @@ const MAX_LEADERBOARD_LIMIT = 200;
 const MAX_PNL_MINTS = 100;
 
 // Cap on a single bulk-follow request (the leaderboard / popular on-ramps).
-// Generous for "follow the top N" while bounding the write.
-const MAX_BULK_CALLERS = 100;
+// Sized to the leaderboard's own ceiling (MAX_LEADERBOARD_LIMIT = 200) so a
+// "Follow all" over a full board is one write, while still bounding it.
+const MAX_BULK_CALLERS = 200;
 
 // A Solana address is base58 (no 0, O, I, l), 32-44 chars. A token mint may also
 // be given as an EVM 0x-hex address on the chains coin-communities.xyz indexes.
