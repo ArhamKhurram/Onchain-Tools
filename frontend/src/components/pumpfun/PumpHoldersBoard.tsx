@@ -70,7 +70,7 @@ export default function PumpHoldersBoard({
 
   if (error) {
     return (
-      <div className="m-4 px-4 py-3 rounded-cockpit border-2 border-oct-accent bg-oct-accent-dim text-sm text-oct-accent">
+      <div className="m-4 px-4 py-3 rounded-oct border border-oct-flame/40 bg-oct-flame/10 text-sm text-oct-text">
         {error}
       </div>
     );
@@ -89,18 +89,16 @@ export default function PumpHoldersBoard({
 
   return (
     <div className="flex flex-col min-h-0 h-full">
-      <div className="shrink-0 px-4 py-3 border-b-2 border-black bg-oct-surface flex items-center gap-2">
-        <span className="font-extrabold text-oct-text text-sm uppercase tracking-wide">On-chain</span>
-        <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-cockpit uppercase font-mono bg-oct-surface-raised text-oct-muted">
-          SOL
-        </span>
+      <div className="oct-headerbar shrink-0 px-4 py-3 flex items-center gap-2">
+        <span className="oct-section-title uppercase tracking-wide">On-chain</span>
+        <span className="oct-chip uppercase">SOL</span>
         <div className="flex-1" />
         {onRefresh && (
           <button
             type="button"
             onClick={onRefresh}
             disabled={loading}
-            className="shrink-0 p-1.5 rounded-cockpit border-2 border-oct-border-bright text-oct-muted hover:text-oct-text transition-colors disabled:opacity-50"
+            className="oct-icon-btn shrink-0 p-2"
             title="Refresh holders"
           >
             <RefreshCw size={14} className={loading ? 'animate-spin' : ''} />
@@ -118,9 +116,9 @@ export default function PumpHoldersBoard({
             {holders.map((holder) => (
               <li
                 key={`${holder.rank}-${holder.wallet}`}
-                className="flex items-center gap-3 px-4 py-2.5 hover:bg-oct-surface-raised/60 transition-colors"
+                className="flex items-center gap-3 px-4 py-3 oct-row-hover"
               >
-                <span className="w-6 text-xs font-mono font-bold text-oct-muted tabular-nums shrink-0">
+                <span className="w-6 text-[13px] font-mono font-bold text-oct-muted tabular-nums shrink-0">
                   {holder.rank}
                 </span>
                 <div className="min-w-0 flex-1">
@@ -128,20 +126,20 @@ export default function PumpHoldersBoard({
                     href={`${SOLSCAN_ACCOUNT}${holder.wallet}`}
                     target="_blank"
                     rel="noreferrer"
-                    className="inline-flex items-center gap-1 font-bold text-oct-text truncate hover:text-oct-accent transition-colors"
+                    className="inline-flex items-center gap-1 text-[15px] font-bold text-oct-text truncate hover:text-oct-accent transition-colors"
                     title={holder.wallet}
                   >
                     {holder.name ?? shortAddress(holder.wallet)}
                     <ExternalLink size={10} className="shrink-0 text-oct-muted" />
                   </a>
-                  <div className="font-mono text-[11px] text-oct-muted tabular-nums">
+                  <div className="font-mono text-xs text-oct-muted tabular-nums">
                     {compactAmount(holder.amount)}
                     {holder.supplyPct != null && ` · ${holder.supplyPct.toFixed(holder.supplyPct >= 1 ? 1 : 2)}%`}
                   </div>
                 </div>
-                <div className="shrink-0 text-right font-mono text-xs tabular-nums">
+                <div className="shrink-0 text-right font-mono text-[13px] tabular-nums">
                   <div className="text-oct-text">{compactUsd(holder.valueUsd)}</div>
-                  <div className={holder.pnlUsd == null ? 'text-oct-muted' : holder.pnlUsd >= 0 ? 'text-green-400' : 'text-oct-accent'}>
+                  <div className={holder.pnlUsd == null ? 'text-oct-muted' : holder.pnlUsd >= 0 ? 'text-oct-green' : 'text-oct-flame'}>
                     {signedUsd(holder.pnlUsd)}
                   </div>
                 </div>

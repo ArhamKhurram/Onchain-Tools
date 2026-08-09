@@ -59,8 +59,8 @@ export default function PumpCalloutList({
   return (
     <div className="overflow-x-auto">
       <table className="w-full text-left border-collapse min-w-[960px]">
-        <thead className="sticky top-0 bg-oct-surface border-b-2 border-black z-10">
-          <tr className="font-mono text-[10px] font-bold uppercase tracking-wider text-oct-muted">
+        <thead className="oct-thead sticky top-0 z-10">
+          <tr className="font-mono text-[11px] font-bold uppercase tracking-wider text-oct-muted">
             <SortHeader<CalloutSortKey> label="Caller" sortKey="caller" activeKey={sortKey} dir={sortDir} onSort={onSort} />
             <th className={TH}>Token</th>
             <th className={`${TH} w-full`}>Call</th>
@@ -72,8 +72,8 @@ export default function PumpCalloutList({
         </thead>
         <tbody>
           {sorted.map((c) => (
-            <tr key={c.id} className="border-b border-oct-border/50 hover:bg-oct-surface-raised/50 transition-colors align-top">
-              <td className="px-3 py-2 font-mono text-xs text-oct-text">
+            <tr key={c.id} className="border-b border-oct-border/50 oct-row-hover align-top">
+              <td className="px-3 py-2.5 font-mono text-[13px] text-oct-text">
                 <div className="flex items-center gap-2">
                   {c.profileImageUrl ? (
                     <img
@@ -113,11 +113,11 @@ export default function PumpCalloutList({
                   under it as the engagement footer the app shows. */}
               <td className="px-3 py-2 align-top">
                 {c.content ? (
-                  <p className="text-xs text-oct-text leading-snug whitespace-pre-wrap break-words line-clamp-3 max-w-[420px]">
+                  <p className="text-[13px] text-oct-text leading-snug whitespace-pre-wrap break-words line-clamp-3 max-w-[420px]">
                     {c.content}
                   </p>
                 ) : (
-                  <span className="text-xs text-oct-muted">—</span>
+                  <span className="text-[13px] text-oct-muted">—</span>
                 )}
                 {((c.likeCount ?? 0) > 0 || (c.replyCount ?? 0) > 0) && (
                   <div className="mt-1 flex items-center gap-3 text-[10px] text-oct-muted">
@@ -134,12 +134,12 @@ export default function PumpCalloutList({
                   </div>
                 )}
               </td>
-              <td className="px-3 py-2 font-mono text-xs text-oct-text text-right">{formatMcap(c.calloutMarketCap)}</td>
-              <td className={`px-3 py-2 font-mono text-xs text-right ${multiplierClass(c.multiplier)}`}>
+              <td className="px-3 py-2.5 font-mono text-[13px] text-oct-text text-right tabular-nums">{formatMcap(c.calloutMarketCap)}</td>
+              <td className={`px-3 py-2.5 font-mono text-[13px] font-semibold text-right tabular-nums ${multiplierClass(c.multiplier)}`}>
                 {formatMultiplier(c.multiplier)}
               </td>
-              <td className="px-3 py-2 font-mono text-xs text-oct-muted text-right">{formatMultiplier(c.maxMultiplier)}</td>
-              <td className="px-3 py-2 font-mono text-[11px] text-oct-muted text-right whitespace-nowrap">
+              <td className="px-3 py-2.5 font-mono text-[13px] text-oct-muted text-right tabular-nums">{formatMultiplier(c.maxMultiplier)}</td>
+              <td className="px-3 py-2.5 font-mono text-xs text-oct-muted text-right whitespace-nowrap">
                 {c.createdAt ? new Date(c.createdAt).toLocaleDateString() : '—'}
               </td>
             </tr>

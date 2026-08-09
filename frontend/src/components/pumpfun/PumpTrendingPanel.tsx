@@ -13,15 +13,13 @@ export default function PumpTrendingPanel({ trending }: { trending: ReturnType<t
 
   return (
     <div className="h-full min-h-0 overflow-auto bg-oct-bg">
-      <div className="flex items-center gap-2 px-4 py-2.5 border-b-2 border-black bg-oct-surface">
-        <span className="font-mono text-[10px] font-bold uppercase tracking-widest text-oct-muted">
-          Trending on pump.fun
-        </span>
+      <div className="oct-headerbar flex items-center gap-2 px-4 py-3">
+        <span className="oct-eyebrow tracking-[0.18em]">Trending on pump.fun</span>
         <div className="flex-1" />
         <button
           type="button"
           onClick={() => void refresh()}
-          className="flex items-center gap-1.5 px-2 py-1 rounded-cockpit text-xs font-bold uppercase text-oct-muted hover:text-oct-text border-2 border-oct-border-bright hover:border-oct-text transition-colors"
+          className="oct-icon-btn flex items-center gap-1.5 px-2.5 py-1.5 text-xs font-bold uppercase"
         >
           <RefreshCw size={12} />
           refresh
@@ -31,9 +29,7 @@ export default function PumpTrendingPanel({ trending }: { trending: ReturnType<t
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 p-4">
         {/* Top communities. */}
         <section>
-          <h3 className="font-mono text-[10px] font-bold uppercase tracking-widest text-oct-muted mb-2">
-            Top communities
-          </h3>
+          <h3 className="oct-eyebrow mb-2.5">Top communities</h3>
           {communities.disabled || communities.error ? (
             <PumpStateNotice
               disabled={communities.disabled}
@@ -43,13 +39,13 @@ export default function PumpTrendingPanel({ trending }: { trending: ReturnType<t
               surface="communities"
             />
           ) : communities.data.length === 0 ? (
-            <p className="font-mono text-[11px] text-oct-muted py-2">{loading ? 'Loading…' : 'No communities.'}</p>
+            <p className="font-mono text-xs text-oct-muted py-2">{loading ? 'Loading…' : 'No communities.'}</p>
           ) : (
-            <div className="border-2 border-oct-border rounded-cockpit overflow-hidden">
+            <div className="oct-card oct-card-flush">
               <div className="overflow-x-auto">
                 <table className="w-full text-left border-collapse min-w-[420px]">
-                  <thead className="bg-oct-surface border-b-2 border-black">
-                    <tr className="font-mono text-[10px] font-bold uppercase tracking-wider text-oct-muted">
+                  <thead className="oct-thead">
+                    <tr className="font-mono text-[11px] font-bold uppercase tracking-wider text-oct-muted">
                       <th className={TH}>Token</th>
                       <th className={`${TH} text-right`}>Members</th>
                       <th className={`${TH} text-right`}>Posts</th>
@@ -69,7 +65,7 @@ export default function PumpTrendingPanel({ trending }: { trending: ReturnType<t
 
         {/* Public feed. */}
         <section>
-          <h3 className="font-mono text-[10px] font-bold uppercase tracking-widest text-oct-muted mb-2">Feed</h3>
+          <h3 className="oct-eyebrow mb-2.5">Feed</h3>
           {feed.disabled || feed.error ? (
             <PumpStateNotice
               disabled={feed.disabled}
@@ -79,9 +75,9 @@ export default function PumpTrendingPanel({ trending }: { trending: ReturnType<t
               surface="feed"
             />
           ) : feed.data.length === 0 ? (
-            <p className="font-mono text-[11px] text-oct-muted py-2">{loading ? 'Loading…' : 'No feed items.'}</p>
+            <p className="font-mono text-xs text-oct-muted py-2">{loading ? 'Loading…' : 'No feed items.'}</p>
           ) : (
-            <div className="border-2 border-oct-border rounded-cockpit divide-y divide-oct-border/50">
+            <div className="oct-card oct-card-flush divide-y divide-oct-border/60">
               {feed.data.map((item) => (
                 <FeedRow key={item.id} item={item} />
               ))}
@@ -95,31 +91,31 @@ export default function PumpTrendingPanel({ trending }: { trending: ReturnType<t
 
 function CommunityRow({ c }: { c: PumpCommunity }) {
   return (
-    <tr className="border-b border-oct-border/50 hover:bg-oct-surface-raised/50 transition-colors">
-      <td className="px-3 py-2 font-mono text-xs text-oct-text">
-        <span className="text-oct-text">{c.tokenSymbol ?? '—'}</span>
+    <tr className="border-b border-oct-border/50 oct-row-hover">
+      <td className="px-3 py-2.5 font-mono text-[13px] text-oct-text">
+        <span className="font-semibold text-oct-text">{c.tokenSymbol ?? '—'}</span>
         {c.tokenAddress && (
-          <span className="block text-[10px] text-oct-muted" title={c.tokenAddress}>
+          <span className="block text-[11px] text-oct-muted" title={c.tokenAddress}>
             {truncateAddress(c.tokenAddress)}
           </span>
         )}
       </td>
-      <td className="px-3 py-2 font-mono text-xs text-oct-muted text-right">{num(c.memberCount)}</td>
-      <td className="px-3 py-2 font-mono text-xs text-oct-muted text-right">{num(c.postCount)}</td>
-      <td className="px-3 py-2 font-mono text-xs text-oct-muted text-right">{num(c.totalLikes)}</td>
+      <td className="px-3 py-2.5 font-mono text-[13px] text-oct-muted text-right tabular-nums">{num(c.memberCount)}</td>
+      <td className="px-3 py-2.5 font-mono text-[13px] text-oct-muted text-right tabular-nums">{num(c.postCount)}</td>
+      <td className="px-3 py-2.5 font-mono text-[13px] text-oct-muted text-right tabular-nums">{num(c.totalLikes)}</td>
     </tr>
   );
 }
 
 function FeedRow({ item }: { item: PumpFeedItem }) {
   return (
-    <div className="px-3 py-2.5 hover:bg-oct-surface-raised/40 transition-colors">
+    <div className="px-3.5 py-3 hover:bg-oct-surface-raised/40 transition-colors">
       <div className="flex items-center gap-1.5">
-        <span className="font-mono text-[11px] text-oct-text truncate">
+        <span className="font-mono text-[13px] font-semibold text-oct-text truncate">
           {item.displayName ?? item.username ?? '—'}
         </span>
         {item.tokenSymbol && (
-          <span className="font-mono text-[10px] px-1 py-0.5 rounded-cockpit border border-oct-border text-oct-accent">
+          <span className="font-mono text-[11px] font-semibold px-1.5 py-0.5 rounded-oct-sm border border-oct-accent/40 bg-oct-accent-dim text-oct-accent">
             {item.tokenSymbol}
           </span>
         )}
@@ -129,12 +125,12 @@ function FeedRow({ item }: { item: PumpFeedItem }) {
           </a>
         )}
         <div className="flex-1" />
-        <span className="font-mono text-[10px] text-oct-muted whitespace-nowrap">
+        <span className="font-mono text-[11px] text-oct-muted whitespace-nowrap">
           {item.createdAt ? new Date(item.createdAt).toLocaleDateString() : ''}
         </span>
       </div>
-      {item.content && <p className="mt-1 font-mono text-[11px] text-oct-muted line-clamp-2 break-words">{item.content}</p>}
-      <div className="mt-1 flex items-center gap-3 font-mono text-[10px] text-oct-muted">
+      {item.content && <p className="mt-1 font-mono text-xs text-oct-muted line-clamp-2 break-words">{item.content}</p>}
+      <div className="mt-1.5 flex items-center gap-3 font-mono text-[11px] text-oct-muted">
         <span>♥ {num(item.likeCount)}</span>
         <span>↺ {num(item.replyCount)}</span>
         {item.tokenAddress && <span title={item.tokenAddress}>{truncateAddress(item.tokenAddress)}</span>}

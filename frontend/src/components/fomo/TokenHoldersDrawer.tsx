@@ -50,20 +50,20 @@ export default function TokenHoldersDrawer({ target, onClose }: TokenHoldersDraw
   if (!target) return null;
 
   return (
-    <div className="fixed inset-0 z-[100] flex justify-end bg-black/70" onClick={onClose}>
+    <div className="fixed inset-0 z-[100] flex justify-end bg-black/70 backdrop-blur-[2px]" onClick={onClose}>
       <aside
-        className="w-full max-w-3xl h-full bg-oct-bg border-l-2 border-black shadow-oct-hard-lg flex flex-col min-h-0 animate-in slide-in-from-right duration-150"
+        className="w-full max-w-3xl h-full bg-oct-bg border-l border-oct-border-bright shadow-oct-soft-lg flex flex-col min-h-0 animate-in slide-in-from-right duration-150"
         onClick={(e) => e.stopPropagation()}
         role="dialog"
         aria-label="Top holders"
       >
-        <div className="shrink-0 flex items-center gap-2 px-4 py-3 border-b-2 border-black bg-oct-surface-raised">
-          <h2 className="text-sm font-extrabold uppercase tracking-wide text-oct-text">Top Holders</h2>
+        <div className="oct-headerbar shrink-0 flex items-center gap-2 px-4 py-3">
+          <h2 className="oct-section-title uppercase tracking-wide">Top Holders</h2>
           <div className="flex-1" />
           <button
             type="button"
             onClick={onClose}
-            className="p-1.5 rounded-cockpit border-2 border-oct-border-bright text-oct-muted hover:text-oct-text transition-colors"
+            className="oct-icon-btn p-2"
             title="Close (Esc)"
           >
             <X size={14} />
@@ -72,11 +72,9 @@ export default function TokenHoldersDrawer({ target, onClose }: TokenHoldersDraw
 
         {/* Two sources side by side on desktop, stacked on mobile. Each column is
             its own scroll region so a long board never pushes the other off. */}
-        <div className="flex-1 min-h-0 flex flex-col md:flex-row md:divide-x-2 divide-black">
-          <section className="flex-1 min-h-0 flex flex-col border-b-2 md:border-b-0 border-black">
-            <div className="shrink-0 px-4 py-1.5 bg-oct-surface/60 text-[10px] font-bold uppercase tracking-wider text-oct-muted">
-              FOMO tracked
-            </div>
+        <div className="flex-1 min-h-0 flex flex-col md:flex-row md:divide-x divide-oct-border">
+          <section className="flex-1 min-h-0 flex flex-col border-b md:border-b-0 border-oct-border">
+            <div className="oct-eyebrow shrink-0 px-4 py-2 bg-oct-surface/60">FOMO tracked</div>
             <div className="flex-1 min-h-0">
               <FomoHoldersBoard
                 data={fomo.data}
@@ -89,9 +87,7 @@ export default function TokenHoldersDrawer({ target, onClose }: TokenHoldersDraw
           </section>
 
           <section className="flex-1 min-h-0 flex flex-col">
-            <div className="shrink-0 px-4 py-1.5 bg-oct-surface/60 text-[10px] font-bold uppercase tracking-wider text-oct-muted">
-              Pump.fun on-chain
-            </div>
+            <div className="oct-eyebrow shrink-0 px-4 py-2 bg-oct-surface/60">Pump.fun on-chain</div>
             <div className="flex-1 min-h-0">
               {solana ? (
                 <PumpHoldersBoard

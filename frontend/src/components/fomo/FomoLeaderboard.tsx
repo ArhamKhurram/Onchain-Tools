@@ -42,12 +42,12 @@ export default function FomoLeaderboard({
   };
 
   return (
-    <div className={`flex flex-col min-h-0 overflow-hidden h-full ${embedded ? '' : 'brutal-card'}`}>
-      <div className={`shrink-0 flex flex-wrap items-center gap-2 px-4 py-3 border-b-2 border-black bg-oct-surface ${embedded ? 'py-2' : ''}`}>
+    <div className={`flex flex-col min-h-0 overflow-hidden h-full ${embedded ? '' : 'oct-card oct-card-flush'}`}>
+      <div className={`oct-headerbar shrink-0 flex flex-wrap items-center gap-2 px-4 ${embedded ? 'py-2' : 'py-3'}`}>
         {!embedded && (
           <>
-            <Trophy size={16} className="text-oct-accent" />
-            <h2 className="text-sm font-extrabold uppercase tracking-wide text-oct-text">Top Traders</h2>
+            <Trophy size={16} className="text-oct-accent-2" />
+            <h2 className="oct-section-title uppercase tracking-wide">Top Traders</h2>
           </>
         )}
         <div className="flex gap-1">
@@ -56,10 +56,10 @@ export default function FomoLeaderboard({
               key={w}
               type="button"
               onClick={() => setWindow(w)}
-              className={`px-2 py-0.5 rounded-cockpit text-[10px] font-mono font-bold border-2 transition-all ${
+              className={`px-2.5 py-1 rounded-oct-sm text-[11px] font-mono font-bold border transition-all ${
                 window === w
-                  ? 'bg-oct-accent text-white border-black shadow-oct-hard-sm'
-                  : 'text-oct-muted border-transparent hover:border-oct-border-bright'
+                  ? 'bg-oct-accent text-white border-oct-accent/50 shadow-oct-glow-accent'
+                  : 'text-oct-muted border-transparent hover:border-oct-border-bright hover:text-oct-text'
               }`}
             >
               {w === '24h' ? '24H' : 'ALL'}
@@ -71,7 +71,7 @@ export default function FomoLeaderboard({
           type="button"
           onClick={() => refresh()}
           disabled={loading}
-          className="p-1.5 rounded-cockpit border-2 border-oct-border-bright text-oct-muted hover:text-oct-text transition-colors disabled:opacity-50"
+          className="oct-icon-btn p-2"
           title="Refresh leaderboard"
         >
           <RefreshCw size={14} className={loading ? 'animate-spin' : ''} />
@@ -80,7 +80,7 @@ export default function FomoLeaderboard({
 
       <div className="flex-1 min-h-0 overflow-auto">
         {error && (
-          <div className="m-4 px-4 py-3 rounded-cockpit border-2 border-oct-accent bg-oct-accent-dim text-sm text-oct-accent">
+          <div className="m-4 px-4 py-3 rounded-oct border border-oct-flame/40 bg-oct-flame/10 text-sm text-oct-text">
             {error}
           </div>
         )}
@@ -98,26 +98,26 @@ export default function FomoLeaderboard({
               return (
                 <li
                   key={entry.fomoUserId}
-                  className="flex items-center gap-3 px-4 py-3 hover:bg-oct-surface-raised/60 transition-colors"
+                  className="flex items-center gap-3 px-4 py-3 oct-row-hover"
                 >
-                  <span className="w-6 text-xs font-mono font-bold text-oct-muted tabular-nums">
+                  <span className="w-6 text-[13px] font-mono font-bold text-oct-muted tabular-nums">
                     {entry.rank ?? '·'}
                   </span>
                   <div className="min-w-0 flex-1">
-                    <div className="font-bold text-oct-text truncate">{entryLabel(entry)}</div>
-                    <div className="text-xs text-oct-muted truncate">
+                    <div className="text-[15px] font-bold text-oct-text truncate">{entryLabel(entry)}</div>
+                    <div className="text-[13px] text-oct-muted truncate">
                       {entry.fomoHandle && entry.displayName ? `@${entry.fomoHandle} · ` : ''}
-                      PnL {formatPnl(entry.pnl ?? null)}
+                      PnL <span className="tabular-nums">{formatPnl(entry.pnl ?? null)}</span>
                     </div>
                   </div>
                   <button
                     type="button"
                     onClick={() => handleTrack(entry)}
                     disabled={tracked || tracking}
-                    className={`shrink-0 flex items-center gap-1 px-2 py-1 rounded-cockpit text-xs font-bold uppercase border-2 transition-colors disabled:opacity-50 ${
+                    className={`shrink-0 flex items-center gap-1 px-2.5 py-1.5 rounded-oct-sm text-xs font-bold uppercase border transition-all disabled:opacity-50 ${
                       tracked
                         ? 'border-oct-border text-oct-muted'
-                        : 'border-black bg-oct-accent text-white shadow-oct-hard-sm hover:opacity-90'
+                        : 'border-oct-accent/50 bg-oct-accent text-white shadow-oct-glow-accent hover:brightness-110'
                     }`}
                   >
                     {tracking ? (

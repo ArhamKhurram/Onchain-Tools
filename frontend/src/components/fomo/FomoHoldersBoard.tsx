@@ -62,7 +62,7 @@ export default function FomoHoldersBoard({
 
   if (error) {
     return (
-      <div className="m-4 px-4 py-3 rounded-cockpit border-2 border-oct-accent bg-oct-accent-dim text-sm text-oct-accent">
+      <div className="m-4 px-4 py-3 rounded-oct border border-oct-flame/40 bg-oct-flame/10 text-sm text-oct-text">
         {error}
       </div>
     );
@@ -88,28 +88,26 @@ export default function FomoHoldersBoard({
 
   return (
     <div className="flex flex-col min-h-0 h-full">
-      <div className="shrink-0 px-4 py-3 border-b-2 border-black bg-oct-surface">
+      <div className="oct-headerbar shrink-0 px-4 py-3">
         <div className="flex items-start gap-3">
           {token.iconUrl && (
             <img
               src={token.iconUrl}
               alt={token.name ?? ticker}
-              className="w-9 h-9 rounded-cockpit border-2 border-black shrink-0 object-cover"
+              className="w-10 h-10 rounded-oct border border-oct-border shrink-0 object-cover"
               loading="lazy"
             />
           )}
           <div className="min-w-0 flex-1">
             <div className="flex items-center gap-2 min-w-0">
-              <span className="font-extrabold text-oct-text truncate">${ticker}</span>
-              <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-cockpit uppercase font-mono bg-oct-surface-raised text-oct-muted shrink-0">
-                {chainLabel}
-              </span>
+              <span className="text-[15px] font-extrabold text-oct-text truncate">${ticker}</span>
+              <span className="oct-chip uppercase shrink-0">{chainLabel}</span>
             </div>
             <a
               href={`${explorerBase}${token.address}`}
               target="_blank"
               rel="noreferrer"
-              className="inline-flex items-center gap-1 font-mono text-[11px] text-oct-muted hover:text-oct-text transition-colors"
+              className="inline-flex items-center gap-1 font-mono text-xs text-oct-muted hover:text-oct-text transition-colors"
               title={token.address}
             >
               {shortAddress(token.address)}
@@ -121,7 +119,7 @@ export default function FomoHoldersBoard({
               type="button"
               onClick={onRefresh}
               disabled={loading}
-              className="shrink-0 p-1.5 rounded-cockpit border-2 border-oct-border-bright text-oct-muted hover:text-oct-text transition-colors disabled:opacity-50"
+              className="oct-icon-btn shrink-0 p-2"
               title="Refresh holders"
             >
               <RefreshCw size={14} className={loading ? 'animate-spin' : ''} />
@@ -129,7 +127,7 @@ export default function FomoHoldersBoard({
           )}
         </div>
 
-        <div className="flex flex-wrap items-center gap-x-4 gap-y-1 mt-2 text-[11px] font-mono text-oct-muted">
+        <div className="flex flex-wrap items-center gap-x-4 gap-y-1 mt-2 text-xs font-mono text-oct-muted">
           {token.marketCap != null && <span>MCap {compactUsd(token.marketCap)}</span>}
           {token.priceUsd != null && token.priceUsd > 0 && (
             <span>${token.priceUsd.toLocaleString(undefined, { maximumFractionDigits: 6 })}</span>
@@ -158,9 +156,9 @@ export default function FomoHoldersBoard({
             {holders.map((holder) => (
               <li
                 key={`${holder.rank}-${holder.address || holder.name}`}
-                className="flex items-center gap-3 px-4 py-2.5 hover:bg-oct-surface-raised/60 transition-colors"
+                className="flex items-center gap-3 px-4 py-3 oct-row-hover"
               >
-                <span className="w-6 text-xs font-mono font-bold text-oct-muted tabular-nums shrink-0">
+                <span className="w-6 text-[13px] font-mono font-bold text-oct-muted tabular-nums shrink-0">
                   {holder.rank}
                 </span>
                 <div className="min-w-0 flex-1">
@@ -169,18 +167,18 @@ export default function FomoHoldersBoard({
                       href={`${explorerBase}${holder.address}`}
                       target="_blank"
                       rel="noreferrer"
-                      className="font-bold text-oct-text truncate hover:text-oct-accent transition-colors block"
+                      className="text-[15px] font-bold text-oct-text truncate hover:text-oct-accent transition-colors block"
                       title={holder.address}
                     >
                       {holder.name}
                     </a>
                   ) : (
-                    <span className="font-bold text-oct-text truncate block">{holder.name}</span>
+                    <span className="text-[15px] font-bold text-oct-text truncate block">{holder.name}</span>
                   )}
                 </div>
-                <div className="shrink-0 text-right font-mono text-xs tabular-nums">
+                <div className="shrink-0 text-right font-mono text-[13px] tabular-nums">
                   <div className="text-oct-text">{compactUsd(holder.valueUsd)}</div>
-                  <div className={holder.pnlUsd >= 0 ? 'text-green-400' : 'text-oct-accent'}>
+                  <div className={holder.pnlUsd >= 0 ? 'text-oct-green' : 'text-oct-flame'}>
                     {signedUsd(holder.pnlUsd)}
                   </div>
                 </div>

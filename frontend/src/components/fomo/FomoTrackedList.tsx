@@ -76,26 +76,26 @@ export default function FomoTrackedList({ tracking, configured }: FomoTrackedLis
 
   const feedbackClass =
     feedback?.tone === 'success'
-      ? 'border-oct-green text-oct-green'
+      ? 'border-oct-green/50 bg-oct-green/10 text-oct-green'
       : feedback?.tone === 'warning'
         ? 'border-oct-border-bright text-oct-text'
-        : 'border-oct-accent bg-oct-accent-dim text-oct-accent';
+        : 'border-oct-flame/40 bg-oct-flame/10 text-oct-flame';
 
   return (
     <div className="flex flex-col h-full min-h-0 bg-oct-bg">
-      <div className="shrink-0 border-b-2 border-black bg-oct-surface px-4 sm:px-6 py-3">
+      <div className="oct-headerbar shrink-0 px-4 sm:px-6 py-3.5">
         <div className="flex flex-wrap items-center gap-3 mb-3">
           <div className="flex items-center gap-2">
             <Users size={18} className="text-oct-accent" />
-            <h2 className="text-sm font-extrabold uppercase tracking-wide text-oct-text">Tracked Traders</h2>
-            <span className="text-xs font-mono text-oct-muted tabular-nums">{tracked.length}</span>
+            <h2 className="oct-section-title uppercase tracking-wide">Tracked Traders</h2>
+            <span className="oct-chip tabular-nums">{tracked.length}</span>
           </div>
           <div className="flex-1" />
           <button
             type="button"
             onClick={() => refresh()}
             disabled={loading}
-            className="p-2 rounded-cockpit border-2 border-oct-border-bright text-oct-muted hover:text-oct-text hover:border-oct-text transition-colors disabled:opacity-50"
+            className="oct-icon-btn p-2"
             title="Refresh"
           >
             <RefreshCw size={16} className={loading ? 'animate-spin' : ''} />
@@ -103,8 +103,8 @@ export default function FomoTrackedList({ tracking, configured }: FomoTrackedLis
         </div>
 
         {!configured && (
-          <div className="mb-3 flex items-start gap-2 px-3 py-2 rounded-cockpit border-2 border-oct-accent bg-oct-accent-dim text-sm text-oct-accent">
-            <AlertTriangle size={16} className="shrink-0 mt-0.5" />
+          <div className="mb-3 flex items-start gap-2 px-3 py-2.5 rounded-oct border border-oct-flame/40 bg-oct-flame/10 text-sm text-oct-text">
+            <AlertTriangle size={16} className="shrink-0 mt-0.5 text-oct-flame" />
             <span>
               FOMO service account is not configured. Set <code className="font-mono text-xs">FOMO_REFRESH_TOKEN</code> in{' '}
               <code className="font-mono text-xs">backend/.env</code> or seed{' '}
@@ -121,10 +121,10 @@ export default function FomoTrackedList({ tracking, configured }: FomoTrackedLis
               value={query}
               onChange={(e) => setQuery(e.target.value)}
               placeholder="Track a FOMO trader by username…"
-              className="w-full pl-9 pr-3 py-2 rounded-cockpit bg-oct-bg border-2 border-oct-border text-sm text-oct-text placeholder:text-oct-muted/60 focus:outline-none focus:border-oct-accent"
+              className="oct-input w-full pl-9 pr-3 py-2.5 text-sm"
             />
           </div>
-          <button type="submit" disabled={submitting || !query.trim()} className="brutal-btn px-4 py-2 text-sm">
+          <button type="submit" disabled={submitting || !query.trim()} className="oct-btn-primary px-4 py-2.5 text-sm uppercase tracking-wide">
             {submitting ? (
               <span className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
             ) : (
@@ -135,7 +135,7 @@ export default function FomoTrackedList({ tracking, configured }: FomoTrackedLis
         </form>
 
         {feedback && (
-          <div className={`mt-2 flex items-start gap-2 px-3 py-2 rounded-cockpit border-2 text-sm ${feedbackClass}`}>
+          <div className={`mt-2 flex items-start gap-2 px-3 py-2 rounded-oct border text-sm ${feedbackClass}`}>
             {feedback.tone === 'success' ? (
               <CheckCircle2 size={16} className="shrink-0 mt-0.5" />
             ) : (
@@ -148,7 +148,7 @@ export default function FomoTrackedList({ tracking, configured }: FomoTrackedLis
 
       <div className="flex-1 min-h-0 overflow-auto">
         {error && (
-          <div className="m-4 px-4 py-3 rounded-cockpit border-2 border-oct-accent bg-oct-accent-dim text-sm text-oct-accent">
+          <div className="m-4 px-4 py-3 rounded-oct border border-oct-flame/40 bg-oct-flame/10 text-sm text-oct-text">
             {error}
           </div>
         )}
@@ -158,11 +158,11 @@ export default function FomoTrackedList({ tracking, configured }: FomoTrackedLis
           </div>
         ) : tracked.length === 0 && !error ? (
           <div className="flex flex-col items-center justify-center py-16 px-6 text-center">
-            <div className="w-12 h-12 rounded-cockpit border-2 border-black bg-oct-accent shadow-oct-hard flex items-center justify-center mb-4">
+            <div className="w-14 h-14 rounded-oct-lg border border-oct-accent/40 bg-gradient-to-b from-oct-flame to-oct-accent shadow-oct-glow-accent flex items-center justify-center mb-4">
               <Users size={24} className="text-white" />
             </div>
-            <p className="text-oct-text font-bold uppercase mb-1">No traders tracked yet</p>
-            <p className="text-sm text-oct-muted max-w-xs">
+            <p className="text-oct-text font-bold uppercase tracking-wide mb-1.5">No traders tracked yet</p>
+            <p className="text-sm text-oct-muted max-w-xs leading-relaxed">
               Add a FOMO username above to start following their buys and sells. Their trades show under the Live tab.
             </p>
           </div>
@@ -171,11 +171,11 @@ export default function FomoTrackedList({ tracking, configured }: FomoTrackedLis
             {tracked.map((user) => (
               <li
                 key={user.id}
-                className="flex items-center gap-3 px-4 py-3 hover:bg-oct-surface-raised/60 transition-colors group"
+                className="flex items-center gap-3 px-4 py-3 oct-row-hover group"
               >
                 <div className="min-w-0 flex-1">
-                  <div className="font-bold text-oct-text truncate">{trackedLabel(user)}</div>
-                  <div className="text-xs text-oct-muted truncate">
+                  <div className="text-[15px] font-bold text-oct-text truncate">{trackedLabel(user)}</div>
+                  <div className="text-[13px] text-oct-muted truncate">
                     {user.fomo_handle && user.display_name ? `@${user.fomo_handle} · ` : ''}
                     Tracked {formatDate(user.created_at)}
                   </div>

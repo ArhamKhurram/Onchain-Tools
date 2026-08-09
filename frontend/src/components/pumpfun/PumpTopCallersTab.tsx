@@ -56,21 +56,21 @@ export default function PumpTopCallersTab() {
   return (
     <div className="h-full min-h-0 flex flex-col bg-oct-bg">
       {/* Controls: window + metric toggles */}
-      <div className="shrink-0 flex flex-wrap items-center gap-3 px-5 py-3 border-b-2 border-black bg-oct-surface">
+      <div className="oct-headerbar shrink-0 flex flex-wrap items-center gap-3 px-5 py-3">
         <div className="flex items-center gap-2">
-          <Trophy size={16} className="text-oct-yellow" />
-          <span className="text-sm font-extrabold uppercase tracking-wide text-oct-text">Top Callers</span>
+          <Trophy size={16} className="text-oct-accent-2" />
+          <span className="oct-section-title uppercase tracking-wide">Top Callers</span>
         </div>
         <div className="flex-1" />
 
-        <div className="inline-flex rounded-cockpit border-2 border-oct-border-bright overflow-hidden">
+        <div className="inline-flex rounded-oct-sm border border-oct-border overflow-hidden bg-oct-bg/40">
           {TOP_CALLERS_WINDOWS.map((w) => (
             <button
               key={w.id}
               type="button"
               onClick={() => setWindow(w.id)}
-              className={`px-3 py-1.5 text-sm font-bold transition-colors ${
-                window === w.id ? 'bg-oct-accent text-white' : 'text-oct-muted hover:text-oct-text'
+              className={`px-3 py-1.5 text-[13px] font-bold transition-all ${
+                window === w.id ? 'bg-oct-accent text-white shadow-oct-glow-accent' : 'text-oct-muted hover:text-oct-text'
               }`}
             >
               {w.label}
@@ -78,14 +78,14 @@ export default function PumpTopCallersTab() {
           ))}
         </div>
 
-        <div className="inline-flex rounded-cockpit border-2 border-oct-border-bright overflow-hidden">
+        <div className="inline-flex rounded-oct-sm border border-oct-border overflow-hidden bg-oct-bg/40">
           {TOP_CALLERS_METRICS.map((m) => (
             <button
               key={m.id}
               type="button"
               onClick={() => setMetric(m.id)}
-              className={`px-3 py-1.5 text-sm font-bold transition-colors ${
-                metric === m.id ? 'bg-oct-accent text-white' : 'text-oct-muted hover:text-oct-text'
+              className={`px-3 py-1.5 text-[13px] font-bold transition-all ${
+                metric === m.id ? 'bg-oct-accent text-white shadow-oct-glow-accent' : 'text-oct-muted hover:text-oct-text'
               }`}
             >
               {m.label}
@@ -96,7 +96,7 @@ export default function PumpTopCallersTab() {
         <button
           type="button"
           onClick={() => void refresh()}
-          className="shrink-0 inline-flex items-center gap-1.5 px-3 py-1.5 rounded-cockpit border-2 border-oct-border-bright text-sm font-bold text-oct-muted hover:text-oct-text transition-colors"
+          className="oct-icon-btn shrink-0 px-3 py-1.5 text-sm font-bold"
           title="Refresh"
         >
           <RefreshCw size={14} className={loading ? 'animate-spin' : undefined} />
@@ -110,7 +110,7 @@ export default function PumpTopCallersTab() {
             <div className="w-6 h-6 border-2 border-oct-accent border-t-transparent rounded-full animate-spin" />
           </div>
         ) : error ? (
-          <div className="m-5 px-4 py-3 rounded-cockpit border-2 border-oct-accent bg-oct-accent-dim text-sm text-oct-accent">
+          <div className="m-5 px-4 py-3 rounded-oct border border-oct-flame/40 bg-oct-flame/10 text-sm text-oct-text">
             {error}
           </div>
         ) : callers.length === 0 ? (
@@ -119,8 +119,8 @@ export default function PumpTopCallersTab() {
           </p>
         ) : (
           <table className="w-full text-sm">
-            <thead className="sticky top-0 bg-oct-surface/95 backdrop-blur border-b-2 border-black">
-              <tr className="text-left text-xs uppercase tracking-wide text-oct-muted">
+            <thead className="oct-thead sticky top-0 backdrop-blur z-10">
+              <tr className="text-left text-[11px] uppercase tracking-wide text-oct-muted">
                 <th className="w-10 px-4 py-2.5 font-bold text-right">#</th>
                 <th className="px-3 py-2.5 font-bold">Caller</th>
                 <th className="px-3 py-2.5 font-bold text-right tabular-nums">Calls</th>
@@ -134,8 +134,8 @@ export default function PumpTopCallersTab() {
               {callers.map((c, i) => {
                 const followed = followedAddresses.has(c.callerAddress);
                 return (
-                  <tr key={c.callerAddress} className="hover:bg-oct-surface/40">
-                    <td className="px-4 py-2.5 text-right font-mono font-bold text-oct-muted tabular-nums">{i + 1}</td>
+                  <tr key={c.callerAddress} className="oct-row-hover">
+                    <td className="px-4 py-3 text-right font-mono font-bold text-oct-muted tabular-nums">{i + 1}</td>
                     <td className="px-3 py-2.5">
                       <div className="flex items-center gap-2.5 min-w-0">
                         {c.avatar ? (
@@ -190,10 +190,10 @@ export default function PumpTopCallersTab() {
                             source: 'leaderboard',
                           })
                         }
-                        className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-cockpit border-2 text-xs font-bold transition-colors ${
+                        className={`inline-flex items-center gap-1 px-2.5 py-1.5 rounded-oct-sm border text-xs font-bold transition-colors ${
                           followed
                             ? 'border-oct-green/50 text-oct-green bg-oct-green/10 cursor-default'
-                            : 'border-oct-border-bright text-oct-text hover:border-oct-accent hover:text-oct-accent'
+                            : 'border-oct-border-bright text-oct-text hover:border-oct-accent hover:text-oct-accent hover:bg-oct-accent-dim'
                         }`}
                       >
                         {followed ? <Check size={12} /> : <Plus size={12} />}

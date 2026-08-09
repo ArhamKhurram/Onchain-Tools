@@ -51,8 +51,8 @@ export default function PumpTrackedWallets({ tracking }: PumpTrackedWalletsProps
   return (
     <div className="h-full min-h-0 flex flex-col md:flex-row bg-oct-bg">
       {/* Left: add form + tracked list. */}
-      <div className="md:w-72 shrink-0 flex flex-col border-b-2 md:border-b-0 md:border-r-2 border-black bg-oct-surface/40 min-h-0">
-        <div className="px-3 py-3 border-b-2 border-black">
+      <div className="md:w-72 shrink-0 flex flex-col border-b md:border-b-0 md:border-r border-oct-border bg-oct-surface/40 min-h-0">
+        <div className="px-3 py-3 border-b border-oct-border">
           <div className="flex items-center gap-1.5">
             <input
               value={input}
@@ -63,41 +63,41 @@ export default function PumpTrackedWallets({ tracking }: PumpTrackedWalletsProps
               onKeyDown={(e) => e.key === 'Enter' && submit()}
               placeholder="Paste a wallet address"
               spellCheck={false}
-              className={`flex-1 min-w-0 px-2 py-1.5 font-mono text-[11px] bg-oct-bg border-2 rounded-cockpit text-oct-text placeholder:text-oct-muted/60 focus:outline-none ${
-                inputValid ? 'border-oct-border focus:border-oct-accent' : 'border-oct-flame'
+              className={`oct-input flex-1 min-w-0 px-2.5 py-2 font-mono text-xs ${
+                inputValid ? '' : '!border-oct-flame'
               }`}
             />
             <button
               type="button"
               onClick={submit}
               disabled={input.trim() === '' || !isPumpWallet(input)}
-              className="flex items-center justify-center w-8 h-8 shrink-0 rounded-cockpit border-2 border-oct-accent text-oct-accent hover:bg-oct-accent hover:text-white disabled:opacity-40 disabled:hover:bg-transparent disabled:hover:text-oct-accent transition-colors"
+              className="flex items-center justify-center w-9 h-9 shrink-0 rounded-oct-sm border border-oct-accent/60 text-oct-accent hover:bg-oct-accent hover:text-white hover:shadow-oct-glow-accent disabled:opacity-40 disabled:hover:bg-transparent disabled:hover:text-oct-accent disabled:hover:shadow-none transition-all"
               title="Track this wallet"
             >
-              <Plus size={15} />
+              <Plus size={16} />
             </button>
           </div>
-          {notice && <p className="mt-1.5 font-mono text-[10px] text-oct-flame">{notice}</p>}
-          <p className="mt-1.5 font-mono text-[9px] text-oct-muted leading-relaxed">
+          {notice && <p className="mt-1.5 font-mono text-[11px] text-oct-flame">{notice}</p>}
+          <p className="mt-1.5 font-mono text-[11px] text-oct-muted/80 leading-relaxed">
             Tracking is saved in this browser only (no account sync yet).
           </p>
         </div>
 
         <div className="flex-1 min-h-0 overflow-auto">
           {wallets.length === 0 ? (
-            <p className="px-3 py-4 font-mono text-[11px] text-oct-muted">No wallets tracked yet.</p>
+            <p className="px-3 py-4 font-mono text-xs text-oct-muted">No wallets tracked yet.</p>
           ) : (
             wallets.map((w) => (
               <div
                 key={w.address}
-                className={`group flex items-center gap-2 px-3 py-2 border-b border-oct-border/50 cursor-pointer transition-colors ${
-                  selected === w.address ? 'bg-oct-accent/10 border-l-4 border-l-oct-accent' : 'hover:bg-oct-surface-raised/50'
+                className={`group flex items-center gap-2 px-3 py-2.5 border-b border-oct-border/40 cursor-pointer transition-colors ${
+                  selected === w.address ? 'bg-oct-accent-dim border-l-2 border-l-oct-accent' : 'hover:bg-oct-surface-raised/50'
                 }`}
                 onClick={() => setSelected(w.address)}
               >
                 <span
-                  className={`flex-1 min-w-0 font-mono text-[11px] truncate ${
-                    selected === w.address ? 'text-oct-accent' : 'text-oct-text'
+                  className={`flex-1 min-w-0 font-mono text-[13px] truncate ${
+                    selected === w.address ? 'text-oct-accent font-semibold' : 'text-oct-text'
                   }`}
                   title={w.address}
                 >

@@ -15,22 +15,34 @@
 :root,
 [data-theme='dark'] {
   color-scheme: dark;
-  --oct-bg: 10 10 10;
-  --oct-panel: 10 10 10;
-  --oct-surface: 20 20 20;
-  --oct-surface-raised: 30 30 30;
-  --oct-border: 46 46 46;
-  --oct-border-bright: 77 77 77;
-  --oct-text: 245 245 245;
-  --oct-muted: 154 154 154;
+  /* Layered neutral ramp — deep slate-black rather than flat #0a0a0a, so stacked
+     surfaces read as elevation, not as one black plane. The tint is intentionally
+     tiny (a few points of blue) so the flame-red brand still pops. */
+  --oct-bg: 11 12 15;
+  --oct-panel: 14 15 19;
+  --oct-surface: 19 21 26;
+  --oct-surface-raised: 28 30 37;
+  /* Top-of-stack surface for elevated cards — one step brighter than raised so a
+     card can carry a subtle top→bottom gradient. */
+  --oct-elevated: 34 37 45;
+  --oct-border: 44 47 56;
+  --oct-border-bright: 72 77 90;
+  --oct-text: 245 246 248;
+  --oct-muted: 150 156 168;
   --oct-accent: 255 42 42;
   --oct-accent-hover: 225 6 0;
-  --oct-flame: 255 23 68;
+  --oct-flame: 255 74 74;
   --oct-accent-dim: 255 42 42 / 0.14;
+  /* One tasteful secondary accent — warm gold. Pairs with flame-red for a
+     two-tone premium feel and carries positive/highlight moments (best multiples,
+     leaderboard trophies) without a third hue. */
+  --oct-accent-2: 240 178 92;
+  --oct-accent-2-hover: 250 194 116;
+  --oct-accent-2-dim: 240 178 92 / 0.14;
   --oct-live: 255 42 42;
   --oct-live-dim: 255 42 42 / 0.16;
   --oct-live-pulse: 255 42 42 / 0.55;
-  --oct-green: 34 197 94;
+  --oct-green: 45 210 122;
   --oct-yellow: 251 191 36;
   /* Telegram brand blue. Platform identity, like the SOL/EVM chain colours —
      deliberately the same value in both themes so a Telegram source always
@@ -38,6 +50,15 @@
   --oct-telegram: 42 171 238;
   --oct-shadow: 0 0 0;
   --oct-feed-bg: 11 14 26;
+  /* Premium surface effects (used by the .oct-* primitives below). */
+  --oct-hairline: 255 255 255 / 0.07; /* top inner highlight on cards */
+  --oct-glow-accent: 255 42 42 / 0.35;
+  --oct-glow-accent-soft: 255 42 42 / 0.16;
+  --oct-shadow-soft: 0 0 0 / 0.55;
+  --oct-card-from: 34 37 45; /* elevated */
+  --oct-card-to: 20 22 27; /* surface */
+  --oct-header-from: 24 26 32;
+  --oct-header-to: 17 19 24;
 }
 
 [data-theme='light'] {
@@ -46,6 +67,8 @@
   --oct-panel: 235 232 224;
   --oct-surface: 228 225 216;
   --oct-surface-raised: 250 249 246;
+  /* Brightest paper for elevated cards — sits above the cream page. */
+  --oct-elevated: 255 254 251;
   --oct-border: 207 202 191;
   --oct-border-bright: 181 176 164;
   --oct-text: 10 12 10;
@@ -54,6 +77,10 @@
   --oct-accent-hover: 47 85 128;
   --oct-flame: 196 92 74;
   --oct-accent-dim: 61 107 158 / 0.12;
+  /* Secondary accent — a deeper bronze so gold reads with enough contrast on cream. */
+  --oct-accent-2: 166 116 40;
+  --oct-accent-2-hover: 140 96 30;
+  --oct-accent-2-dim: 166 116 40 / 0.14;
   --oct-live: 61 107 158;
   --oct-live-dim: 61 107 158 / 0.14;
   --oct-live-pulse: 61 107 158 / 0.45;
@@ -62,6 +89,15 @@
   --oct-telegram: 42 171 238;
   --oct-shadow: 26 28 24;
   --oct-feed-bg: 235 232 224;
+  /* Premium surface effects. Softer shadows on paper; hairline is a faint dark line. */
+  --oct-hairline: 255 255 255 / 0.7;
+  --oct-glow-accent: 61 107 158 / 0.22;
+  --oct-glow-accent-soft: 61 107 158 / 0.12;
+  --oct-shadow-soft: 26 28 24 / 0.16;
+  --oct-card-from: 255 254 251; /* elevated */
+  --oct-card-to: 246 244 239;
+  --oct-header-from: 250 249 246;
+  --oct-header-to: 235 232 224;
 }
 
 * {
@@ -115,7 +151,7 @@ h3 {
 }
 
 ::-webkit-scrollbar-thumb:hover {
-  background: rgb(var(--oct-accent));
+  background: rgb(var(--oct-border-bright));
 }
 
 ::selection {
@@ -170,4 +206,271 @@ h3 {
   overflow: hidden;
   pointer-events: none;
   background: rgb(var(--oct-accent));
+}
+
+/* ══════════════════════════════════════════════════════════════════════════
+   SLEEK PREMIUM TERMINAL — design foundation
+   ──────────────────────────────────────────────────────────────────────────
+   A restrained evolution of the brutalist base: layered neutrals, soft
+   elevation + gradients, one warm-gold secondary accent, and a confident type
+   scale. These primitives are reusable across screens — the pump.fun and FOMO
+   tabs are the first adopters. Prefer them over one-off inline chrome.
+
+   Type scale (replaces the ad-hoc text-[9px]/[10px]/[11px] sprinkle):
+     .oct-eyebrow     11px  section kicker / column labels
+     .oct-label       12px  form + inline labels
+     .oct-section-title  14px semibold section heading
+     .oct-stat-value  22px  headline numbers
+   Body copy should sit at text-[13px]/text-sm; mono data at text-xs/text-[13px].
+   ══════════════════════════════════════════════════════════════════════════ */
+@layer components {
+  /* Elevated card: a top→bottom gradient, a 1px border, a hairline top highlight
+     and a soft ambient shadow. The premium counterpart to .brutal-card. */
+  .oct-card {
+    position: relative;
+    background-image: linear-gradient(
+      180deg,
+      rgb(var(--oct-card-from)) 0%,
+      rgb(var(--oct-card-to)) 100%
+    );
+    border: 1px solid rgb(var(--oct-border));
+    border-radius: 14px;
+    box-shadow:
+      inset 0 1px 0 0 rgb(var(--oct-hairline)),
+      0 1px 2px 0 rgb(var(--oct-shadow-soft)),
+      0 16px 36px -22px rgb(var(--oct-shadow-soft));
+  }
+
+  /* A card meant to host a full-bleed table/list — same shell, hidden overflow so
+     inner rows clip to the rounded corners. */
+  .oct-card-flush {
+    overflow: hidden;
+  }
+
+  /* Section / panel header bar. Subtle vertical gradient, hairline base rule and
+     a refined mono kicker — replaces `border-b-2 border-black bg-oct-surface`. */
+  .oct-headerbar {
+    background-image: linear-gradient(
+      180deg,
+      rgb(var(--oct-header-from)) 0%,
+      rgb(var(--oct-header-to)) 100%
+    );
+    border-bottom: 1px solid rgb(var(--oct-border));
+    box-shadow: inset 0 1px 0 0 rgb(var(--oct-hairline));
+  }
+
+  /* Refined subnav shell + tabs. The active tab gets an accent tint, a soft glow
+     and an underline stripe rather than a hard border box. */
+  .oct-subnav {
+    background-image: linear-gradient(
+      180deg,
+      rgb(var(--oct-header-from)) 0%,
+      rgb(var(--oct-header-to)) 100%
+    );
+    border-bottom: 1px solid rgb(var(--oct-border));
+  }
+  .oct-subnav-tab {
+    position: relative;
+    border-radius: 8px;
+    transition: color 0.15s ease, background-color 0.15s ease;
+  }
+  .oct-subnav-tab[data-active='true'] {
+    color: rgb(var(--oct-accent));
+    background-color: rgb(var(--oct-accent-dim));
+    box-shadow: 0 0 0 1px rgb(var(--oct-accent) / 0.35) inset;
+  }
+  .oct-subnav-tab[data-active='true']::after {
+    content: '';
+    position: absolute;
+    left: 10px;
+    right: 10px;
+    bottom: -1px;
+    height: 2px;
+    border-radius: 2px;
+    background: rgb(var(--oct-accent));
+    box-shadow: 0 0 10px 0 rgb(var(--oct-glow-accent));
+  }
+  .oct-subnav-tab[data-active='false'] {
+    color: rgb(var(--oct-muted));
+  }
+  .oct-subnav-tab[data-active='false']:hover {
+    color: rgb(var(--oct-text));
+    background-color: rgb(var(--oct-surface-raised) / 0.6);
+  }
+
+  /* Stat tile — a small metric cell used in summary rows. */
+  .oct-stat-tile {
+    background-image: linear-gradient(
+      180deg,
+      rgb(var(--oct-surface-raised)) 0%,
+      rgb(var(--oct-surface)) 100%
+    );
+    border: 1px solid rgb(var(--oct-border));
+    border-radius: 10px;
+    padding: 0.625rem 0.75rem;
+    box-shadow: inset 0 1px 0 0 rgb(var(--oct-hairline));
+  }
+
+  /* Refined table head cells (apply to <thead> or its <tr>). */
+  .oct-thead {
+    background-image: linear-gradient(
+      180deg,
+      rgb(var(--oct-header-from)) 0%,
+      rgb(var(--oct-header-to)) 100%
+    );
+    border-bottom: 1px solid rgb(var(--oct-border));
+  }
+
+  /* Pill / chip. */
+  .oct-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.25rem;
+    border-radius: 9999px;
+    border: 1px solid rgb(var(--oct-border));
+    background-color: rgb(var(--oct-surface-raised) / 0.7);
+    padding: 0.125rem 0.5rem;
+    font-family: 'JetBrains Mono', ui-monospace, monospace;
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: 0.04em;
+    color: rgb(var(--oct-muted));
+  }
+
+  /* Icon-only ghost button, premium. */
+  .oct-icon-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.375rem;
+    border-radius: 8px;
+    border: 1px solid rgb(var(--oct-border));
+    background-color: rgb(var(--oct-surface-raised) / 0.6);
+    color: rgb(var(--oct-muted));
+    transition: color 0.15s ease, border-color 0.15s ease, background-color 0.15s ease;
+  }
+  .oct-icon-btn:hover {
+    color: rgb(var(--oct-text));
+    border-color: rgb(var(--oct-border-bright));
+    background-color: rgb(var(--oct-surface-raised));
+  }
+  .oct-icon-btn:disabled {
+    opacity: 0.45;
+    cursor: not-allowed;
+  }
+
+  /* Primary premium button — gradient fill + accent glow on hover. */
+  .oct-btn-primary {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.375rem;
+    border-radius: 8px;
+    border: 1px solid rgb(var(--oct-accent) / 0.5);
+    background-image: linear-gradient(
+      180deg,
+      rgb(var(--oct-accent)) 0%,
+      rgb(var(--oct-accent-hover)) 100%
+    );
+    color: #fff;
+    font-weight: 700;
+    box-shadow: 0 6px 18px -8px rgb(var(--oct-glow-accent));
+    transition: box-shadow 0.15s ease, transform 0.1s ease, filter 0.15s ease;
+  }
+  .oct-btn-primary:hover:not(:disabled) {
+    filter: brightness(1.06);
+    box-shadow: 0 8px 22px -6px rgb(var(--oct-glow-accent));
+  }
+  .oct-btn-primary:active:not(:disabled) {
+    transform: translateY(1px);
+  }
+  .oct-btn-primary:disabled {
+    opacity: 0.45;
+    cursor: not-allowed;
+    box-shadow: none;
+  }
+
+  /* Refined input — soft inset, accent focus ring + glow. */
+  .oct-input {
+    background-color: rgb(var(--oct-bg));
+    border: 1px solid rgb(var(--oct-border));
+    border-radius: 8px;
+    color: rgb(var(--oct-text));
+    transition: border-color 0.15s ease, box-shadow 0.15s ease;
+  }
+  .oct-input::placeholder {
+    color: rgb(var(--oct-muted) / 0.6);
+  }
+  .oct-input:focus {
+    outline: none;
+    border-color: rgb(var(--oct-accent));
+    box-shadow: 0 0 0 3px rgb(var(--oct-glow-accent-soft));
+  }
+}
+
+@layer utilities {
+  /* Type-scale helpers — the documented replacements for the tiny sizes. */
+  .oct-eyebrow {
+    font-family: 'JetBrains Mono', ui-monospace, monospace;
+    font-size: 11px;
+    line-height: 1.2;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.14em;
+    color: rgb(var(--oct-muted));
+  }
+  .oct-label {
+    font-size: 12px;
+    font-weight: 600;
+    letter-spacing: 0.01em;
+  }
+  .oct-section-title {
+    font-size: 14px;
+    line-height: 1.25;
+    font-weight: 700;
+    letter-spacing: -0.005em;
+    color: rgb(var(--oct-text));
+  }
+  .oct-stat-label {
+    font-family: 'JetBrains Mono', ui-monospace, monospace;
+    font-size: 10.5px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.12em;
+    color: rgb(var(--oct-muted));
+  }
+  .oct-stat-value {
+    font-size: 22px;
+    line-height: 1.1;
+    font-weight: 700;
+    font-variant-numeric: tabular-nums;
+    color: rgb(var(--oct-text));
+  }
+
+  /* Ambient accent glow (e.g. behind a headline number or a live badge). */
+  .oct-glow-accent {
+    box-shadow: 0 0 24px -6px rgb(var(--oct-glow-accent));
+  }
+  .oct-ring-accent {
+    box-shadow: 0 0 0 1px rgb(var(--oct-accent) / 0.4);
+  }
+  /* Gradient accent text for headline moments. */
+  .text-gradient-accent {
+    background-image: linear-gradient(
+      92deg,
+      rgb(var(--oct-accent)) 0%,
+      rgb(var(--oct-accent-2)) 130%
+    );
+    -webkit-background-clip: text;
+    background-clip: text;
+    color: transparent;
+  }
+  /* Soft row hover for lists/tables — subtle accent wash + left rail. */
+  .oct-row-hover {
+    transition: background-color 0.15s ease, box-shadow 0.15s ease;
+  }
+  .oct-row-hover:hover {
+    background-color: rgb(var(--oct-surface-raised) / 0.55);
+    box-shadow: inset 2px 0 0 0 rgb(var(--oct-accent) / 0.55);
+  }
 }
