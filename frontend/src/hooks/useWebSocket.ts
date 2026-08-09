@@ -1,6 +1,6 @@
 import { useEffect, useRef } from 'react';
 import { useAppStore, IS_POPOUT } from '../stores/appStore';
-import { playHighlightSound, playContractAlertSound, playKeywordAlertSound, playFomoTradeSound, playSound } from '../utils/notificationSound';
+import { playHighlightSound, playContractAlertSound, playKeywordAlertSound, playFomoTradeSound, playPumpCalloutSound, playSound } from '../utils/notificationSound';
 import { buildContractUrl } from '../utils/contractUrl';
 import { showDesktopNotification } from '../utils/desktopNotification';
 import { fomoTradeDisplay, buildFomoTradeAlertMessage } from '../utils/fomoTradeDisplay';
@@ -280,6 +280,8 @@ export function useWebSocket() {
                 timestamp: Date.now(),
               };
               addAlert(alert);
+              const cfg = useAppStore.getState().config;
+              if (cfg?.messageSounds) playPumpCalloutSound(cfg.soundSettings?.pumpCallout);
             }
           } else if (incoming.type === 'gateway_auth_failed') {
             if (!skipDiscordWs) {

@@ -63,4 +63,4 @@ export const messageUpload = multer({
   limits: { fileSize: 25 * 1024 * 1024, files: 10 },
 });
 
-export const validSoundTypes: SoundType[] = ['highlight', 'contractAlert', 'keywordAlert', 'fomoTrade'];
+export const validSoundTypes: SoundType[] = ['highlight', 'contractAlert', 'keywordAlert', 'fomoTrade', 'pumpCallout'];

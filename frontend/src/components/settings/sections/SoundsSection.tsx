@@ -55,7 +55,7 @@ export default function SoundsSection({ form }: { form: SettingsForm }) {
                       <Toggle
                         value={toastAlertsEnabled}
                         onChange={setToastAlertsEnabled}
-                        label="Show in-app toast popups for highlighted users, contracts, keywords, and convergence"
+                        label="Show in-app toast popups for highlighted users, contracts, keywords, convergence, FOMO trades, and pump callouts"
                       />
                       {toastAlertsEnabled && (
                         <div className="mt-3">
@@ -137,6 +137,7 @@ export default function SoundsSection({ form }: { form: SettingsForm }) {
                             ['contractAlert', 'Contract Alert'],
                             ['keywordAlert', 'Keyword Match'],
                             ['fomoTrade', 'FOMO Trade'],
+                            ['pumpCallout', 'Pump Callout'],
                           ] as [SoundType, string][]).map(([type, label]) => {
                             const sc = soundSettings[type];
                             return (

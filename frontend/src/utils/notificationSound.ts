@@ -91,6 +91,12 @@ const BUILT_IN_SOUNDS: Record<SoundType, { tones: [number, number, number][]; ty
     type: 'sawtooth',
     baseVolume: 0.16,
   },
+  pumpCallout: {
+    // A brighter three-note rise — a "callout" fanfare distinct from the others.
+    tones: [[784, 0, 0.08], [1047, 0.09, 0.1], [1319, 0.19, 0.16]],
+    type: 'triangle',
+    baseVolume: 0.17,
+  },
 };
 
 export function playSound(soundType: SoundType, soundConfig?: SoundConfig) {
@@ -129,6 +135,10 @@ export function playKeywordAlertSound(soundConfig?: SoundConfig) {
 
 export function playFomoTradeSound(soundConfig?: SoundConfig) {
   playSound('fomoTrade', soundConfig);
+}
+
+export function playPumpCalloutSound(soundConfig?: SoundConfig) {
+  playSound('pumpCallout', soundConfig);
 }
 
 export function previewSound(soundType: SoundType, soundConfig: SoundConfig) {
