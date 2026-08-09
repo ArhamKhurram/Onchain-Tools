@@ -19,6 +19,7 @@ import {
   getPumpServiceClient,
   listTrackedCallers,
   addTrackedCaller,
+  addTrackedCallersBulk,
   removeTrackedCaller,
 } from './calloutStore.js';
 import {
@@ -91,6 +92,10 @@ const MAX_LEADERBOARD_LIMIT = 200;
 // per mint, so an unbounded list is an amplification lever; 100 is generous for a
 // wallet's held/traded set and bounds the upstream call.
 const MAX_PNL_MINTS = 100;
+
+// Cap on a single bulk-follow request (the leaderboard / popular on-ramps).
+// Generous for "follow the top N" while bounding the write.
+const MAX_BULK_CALLERS = 100;
 
 // A Solana address is base58 (no 0, O, I, l), 32-44 chars. A token mint may also
 // be given as an EVM 0x-hex address on the chains coin-communities.xyz indexes.
@@ -575,6 +580,43 @@ export function createPumpfunRouter(): Router {
       if (err instanceof PumpfunError) return sendPumpfunError(res, err);
       console.error('[PumpfunAPI] Failed to follow caller:', err instanceof Error ? err.message : err);
       res.status(500).json({ error: 'Failed to follow caller.' });
+    }
+  });
+
+  // POST /api/pumpfun/callers/bulk — follow many at once (leaderboard / popular
+  // on-ramps). Body { callers: [{ address, username?, displayName?, avatar? }],
+  // source? }. Every address is validated and the batch is capped before it
+  // reaches the store; junk or an oversized list is a 400, not a partial write.
+  router.post('/callers/bulk', async (req, res) => {
+    if (requireCalloutStore(res)) return;
+    const body = isRecord(req.body) ? (req.body as Record<string, unknown>) : {};
+    const raw = Array.isArray(body.callers) ? body.callers : null;
+    if (!raw) return res.status(400).json({ error: 'Body must include a "callers" array.' });
+    if (raw.length === 0) return res.status(400).json({ error: 'The "callers" array must not be empty.' });
+    if (raw.length > MAX_BULK_CALLERS) {
+      return res.status(400).json({ error: `At most ${MAX_BULK_CALLERS} callers per request.` });
+    }
+    const source = typeof body.source === 'string' ? body.source : 'leaderboard';
+    const inputs = [];
+    for (const c of raw) {
+      if (!isRecord(c)) return res.status(400).json({ error: 'Each caller must be an object.' });
+      const address = typeof c.address === 'string' ? c.address : '';
+      if (!isValidAddress(address)) {
+        return res.status(400).json({ error: 'Each caller needs a valid wallet "address".' });
+      }
+      inputs.push({
+        callerAddress: address,
+        username: typeof c.username === 'string' ? c.username : null,
+        displayName: typeof c.displayName === 'string' ? c.displayName : null,
+        avatar: typeof c.avatar === 'string' ? c.avatar : null,
+        source,
+      });
+    }
+    try {
+      res.status(201).json(await addTrackedCallersBulk(getUserId(req), inputs));
+    } catch (err) {
+      console.error('[PumpfunAPI] Failed to bulk-follow callers:', err instanceof Error ? err.message : err);
+      res.status(500).json({ error: 'Failed to follow callers.' });
     }
   });
 

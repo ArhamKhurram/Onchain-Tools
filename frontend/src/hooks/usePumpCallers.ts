@@ -5,7 +5,7 @@
 // Follow by @username: the backend resolves the handle to a wallet (== the
 // callout feed's userId) and persists it. Unfollow by that wallet address.
 
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { getAccessToken } from '../lib/supabase';
 
 const API_BASE = import.meta.env.VITE_API_URL ? `${import.meta.env.VITE_API_URL}/api` : '/api';
@@ -91,6 +91,75 @@ export function usePumpCallers() {
     }
   }, []);
 
+  /** Follow a caller by resolved wallet (leaderboard rows / popular presets). */
+  const followByAddress = useCallback(
+    async (caller: {
+      address: string;
+      username?: string | null;
+      displayName?: string | null;
+      avatar?: string | null;
+      source?: string;
+    }): Promise<string | null> => {
+      setBusy(true);
+      try {
+        const res = await pumpFetch('/pumpfun/callers', {
+          method: 'POST',
+          body: JSON.stringify({
+            address: caller.address,
+            username: caller.username ?? null,
+            displayName: caller.displayName ?? null,
+            avatar: caller.avatar ?? null,
+            source: caller.source ?? 'leaderboard',
+          }),
+        });
+        if (!res.ok) return await readError(res, `Couldn't follow caller (${res.status}).`);
+        const added = (await res.json()) as TrackedCaller;
+        setCallers((prev) =>
+          prev.some((c) => c.callerAddress === added.callerAddress) ? prev : [added, ...prev],
+        );
+        return null;
+      } catch (err) {
+        return (err as Error)?.message ?? 'Failed to follow caller.';
+      } finally {
+        setBusy(false);
+      }
+    },
+    [],
+  );
+
+  /** Follow many at once ("follow top N"); replaces the list with the server's. */
+  const followMany = useCallback(
+    async (
+      list: Array<{ address: string; username?: string | null; displayName?: string | null; avatar?: string | null }>,
+      source = 'leaderboard',
+    ): Promise<string | null> => {
+      if (list.length === 0) return null;
+      setBusy(true);
+      try {
+        const res = await pumpFetch('/pumpfun/callers/bulk', {
+          method: 'POST',
+          body: JSON.stringify({
+            source,
+            callers: list.map((c) => ({
+              address: c.address,
+              username: c.username ?? null,
+              displayName: c.displayName ?? null,
+              avatar: c.avatar ?? null,
+            })),
+          }),
+        });
+        if (!res.ok) return await readError(res, `Bulk follow failed (${res.status}).`);
+        setCallers((await res.json()) as TrackedCaller[]);
+        return null;
+      } catch (err) {
+        return (err as Error)?.message ?? 'Failed to follow callers.';
+      } finally {
+        setBusy(false);
+      }
+    },
+    [],
+  );
+
   const unfollow = useCallback(async (callerAddress: string): Promise<void> => {
     // Optimistic remove; restore on failure.
     const prev = callers;
@@ -103,5 +172,19 @@ export function usePumpCallers() {
     }
   }, [callers]);
 
-  return { callers, loading, needsAuth, error, busy, follow, unfollow, refresh };
+  const followedAddresses = useMemo(() => new Set(callers.map((c) => c.callerAddress)), [callers]);
+
+  return {
+    callers,
+    followedAddresses,
+    loading,
+    needsAuth,
+    error,
+    busy,
+    follow,
+    followByAddress,
+    followMany,
+    unfollow,
+    refresh,
+  };
 }
