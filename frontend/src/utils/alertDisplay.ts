@@ -1,5 +1,6 @@
 import {
   AlertTriangle,
+  Megaphone,
   Search,
   TrendingUp,
   User,
@@ -18,6 +19,8 @@ export function alertBorderClass(type: Alert['type']): string {
       return 'border-l-oct-accent';
     case 'keyword_match':
       return 'border-l-orange-400';
+    case 'pump_callout':
+      return 'border-l-purple-400';
     default:
       return 'border-l-oct-yellow';
   }
@@ -33,6 +36,8 @@ export function alertIcon(type: Alert['type']): LucideIcon {
       return User;
     case 'keyword_match':
       return Search;
+    case 'pump_callout':
+      return Megaphone;
     default:
       return AlertTriangle;
   }
@@ -48,6 +53,8 @@ export function alertIconClass(type: Alert['type']): string {
       return 'text-discord-blurple';
     case 'keyword_match':
       return 'text-orange-400';
+    case 'pump_callout':
+      return 'text-purple-400';
     default:
       return 'text-discord-yellow';
   }

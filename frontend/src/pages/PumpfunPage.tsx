@@ -7,6 +7,7 @@ import PumpTrackedWallets from '../components/pumpfun/PumpTrackedWallets';
 import PumpTokenPanel from '../components/pumpfun/PumpTokenPanel';
 import PumpTrendingPanel from '../components/pumpfun/PumpTrendingPanel';
 import PumpLeaderboardTab from '../components/pumpfun/PumpLeaderboardTab';
+import PumpCallersTab from '../components/pumpfun/PumpCallersTab';
 import { DEFAULT_PUMP_VIEW, PUMP_TABS, parsePumpView, type PumpView } from '../lib/pumpViews';
 
 // The pump.fun tab: read-only windows onto a THIRD PARTY's data (coin-communities
@@ -43,6 +44,8 @@ export default function PumpfunPage() {
           <PumpTokenPanel />
         ) : view === 'trending' ? (
           <PumpTrendingPanel trending={trending} />
+        ) : view === 'following' ? (
+          <PumpCallersTab />
         ) : (
           <PumpLeaderboardTab tracking={tracking} />
         )}

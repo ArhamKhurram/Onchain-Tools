@@ -4,6 +4,7 @@ import { playHighlightSound, playContractAlertSound, playKeywordAlertSound, play
 import { buildContractUrl } from '../utils/contractUrl';
 import { showDesktopNotification } from '../utils/desktopNotification';
 import { fomoTradeDisplay, buildFomoTradeAlertMessage } from '../utils/fomoTradeDisplay';
+import { formatMcap } from '../types/pumpfun';
 import { isDemoMode } from '../demo/demoStore';
 import { isHostedMode, getSupabase } from '../lib/supabase';
 import { isClientGatewayMode } from '../discord/clientGateway';
@@ -235,6 +236,50 @@ export function useWebSocket() {
               };
               addAlert(alert);
               if (cfg?.messageSounds) playFomoTradeSound(cfg.soundSettings?.fomoTrade);
+            }
+          } else if (incoming.type === 'pump_callout') {
+            // A followed pump.fun caller posted a callout. `notify` gates the
+            // toast/sound the same way it does for FOMO; the ping always lands
+            // in notification history via addAlert.
+            const d = incoming.data as {
+              calloutId: string;
+              callerAddress: string;
+              username: string | null;
+              avatar: string | null;
+              coinMint: string;
+              symbol: string | null;
+              marketCapUsd: number | null;
+              thesis: string | null;
+              notify?: boolean;
+            };
+            if (!IS_POPOUT) {
+              const who = d.username ? `@${d.username}` : 'A tracked caller';
+              const coin = d.symbol ? `$${d.symbol}` : d.coinMint ? `${d.coinMint.slice(0, 4)}…pump` : 'a coin';
+              const mc = typeof d.marketCapUsd === 'number' ? ` · MC ${formatMcap(d.marketCapUsd)}` : '';
+              const alert: Alert = {
+                id: `pump-callout-${d.calloutId}`,
+                type: 'pump_callout',
+                reason: `${who} called ${coin}`,
+                message: {
+                  id: `pump-callout-${d.calloutId}`,
+                  channelId: 'pump-callout',
+                  guildId: null,
+                  channelName: 'PUMP',
+                  guildName: null,
+                  author: { id: 'oct-pump', username: 'OCT', displayName: 'Pump Callout', avatar: d.avatar ?? null },
+                  content: `${d.thesis ? `${d.thesis} · ` : ''}${coin}${mc}`,
+                  timestamp: new Date().toISOString(),
+                  attachments: [],
+                  embeds: [],
+                  isHighlighted: false,
+                  hasContractAddress: !!d.coinMint,
+                  contractAddresses: d.coinMint ? [d.coinMint] : [],
+                  mentions: {},
+                  platformUrl: d.coinMint ? `https://pump.fun/coin/${d.coinMint}` : undefined,
+                },
+                timestamp: Date.now(),
+              };
+              addAlert(alert);
             }
           } else if (incoming.type === 'gateway_auth_failed') {
             if (!skipDiscordWs) {

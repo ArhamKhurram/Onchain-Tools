@@ -13,6 +13,14 @@ import {
   isPumpfunConfigured,
   PumpfunError,
 } from './client.js';
+import { getTokenHolders, isHoldersConfigured } from './holdersClient.js';
+import { getPumpCalloutFeedClient } from './calloutFeedClient.js';
+import {
+  getPumpServiceClient,
+  listTrackedCallers,
+  addTrackedCaller,
+  removeTrackedCaller,
+} from './calloutStore.js';
 import {
   getPumpfunLeaderboardClient,
   looksLikeJwt,
@@ -28,6 +36,7 @@ import {
   walletCalloutsCacheKey,
   walletProfileCacheKey,
   communityCacheKey,
+  tokenHoldersCacheKey,
   walletTransactionsCacheKey,
   walletBalanceCacheKey,
   leaderboardCacheKey,
@@ -37,6 +46,7 @@ import {
   WALLET_CALLOUTS_TTL_MS,
   WALLET_PROFILE_TTL_MS,
   COMMUNITY_TTL_MS,
+  TOKEN_HOLDERS_TTL_MS,
   TOP_COMMUNITIES_TTL_MS,
   TRENDING_FEED_TTL_MS,
   WALLET_TRANSACTIONS_TTL_MS,
@@ -91,6 +101,10 @@ const EVM_RE = /^0x[a-fA-F0-9]{40}$/;
 /** A token mint: base58 OR an EVM 0x-address. */
 export function isValidMint(value: string): boolean {
   return BASE58_RE.test(value) || EVM_RE.test(value);
+}
+
+function isRecord(v: unknown): v is Record<string, unknown> {
+  return typeof v === 'object' && v !== null && !Array.isArray(v);
 }
 
 /** A wallet address: base58 only. */
@@ -226,6 +240,21 @@ export function createPumpfunRouter(): Router {
       return res.status(400).json({ error: 'Invalid token mint.' });
     }
     await serveCached(res, communityCacheKey(mint), COMMUNITY_TTL_MS, () => client.getCommunity(mint));
+  });
+
+  // GET /api/pumpfun/token/:mint/holders — the top holders board for one coin.
+  // Solana-only and KEYLESS: the base list is on-chain (Helius) and PnL is the
+  // open profile-api endpoint, so this gates on HELIUS_API_KEY, NOT the pump key.
+  // A non-base58 (e.g. EVM) mint is rejected — pump coins are Solana mints.
+  router.get('/token/:mint/holders', async (req, res) => {
+    if (!isHoldersConfigured()) {
+      return res.status(503).json({ error: 'Top holders need HELIUS_API_KEY; on-chain lookup is disabled.' });
+    }
+    const { mint } = req.params;
+    if (!isValidAddress(mint)) {
+      return res.status(400).json({ error: 'Top holders are Solana-only; expected a base58 mint.' });
+    }
+    await serveCached(res, tokenHoldersCacheKey(mint), TOKEN_HOLDERS_TTL_MS, () => getTokenHolders(mint));
   });
 
   // GET /api/pumpfun/wallet/:address/callouts — a caller's callout history.
@@ -449,6 +478,119 @@ export function createPumpfunRouter(): Router {
       res.json(rows.slice(0, limit));
     } catch (err) {
       sendPumpfunError(res, err);
+    }
+  });
+
+  // -------------------------------------------------------------------------
+  // Callout tracking (follow pump callers → get pinged on their calls).
+  //
+  // KEYLESS: resolution + the global feed live on frontend-api-v3, and the
+  // tracked set lives in Supabase (hosted). The follow CRUD is therefore
+  // hosted-only — in local mode the console keeps its localStorage list and the
+  // poller is idle — so these routes 503 cleanly when Supabase is absent rather
+  // than pretend to persist. A caller is keyed by WALLET ADDRESS (== the feed's
+  // callout.userId), resolved from an @username on the way in.
+  // -------------------------------------------------------------------------
+
+  // 503 when the callout tables aren't reachable (local mode / no Supabase).
+  const requireCalloutStore = (res: Response): boolean => {
+    if (getPumpServiceClient()) return false;
+    res.status(503).json({ error: 'Callout tracking requires a signed-in account.' });
+    return true;
+  };
+
+  // A pump @username: printable, bounded. The upstream is the source of truth on
+  // existence (404 → unknown), so this only rejects obviously-invalid input.
+  const isValidUsername = (v: unknown): v is string =>
+    typeof v === 'string' && v.trim().length > 0 && v.trim().length <= 64;
+
+  // POST /api/pumpfun/callers/resolve { username } — @username → { address, … }.
+  // Keyless; does NOT require the store (it's a pure lookup used by the follow UI
+  // before persisting). 404 when the handle is unknown.
+  router.post('/callers/resolve', async (req, res) => {
+    const username = isRecord(req.body) ? (req.body as Record<string, unknown>).username : undefined;
+    if (!isValidUsername(username)) {
+      return res.status(400).json({ error: 'Body must include a non-empty "username".' });
+    }
+    try {
+      const caller = await getPumpCalloutFeedClient().resolveUsername(username.trim());
+      if (!caller) return res.status(404).json({ error: `No pump.fun user found for "${username.trim()}".` });
+      res.json(caller);
+    } catch (err) {
+      sendPumpfunError(res, err);
+    }
+  });
+
+  // GET /api/pumpfun/callers — the user's followed callers.
+  router.get('/callers', async (req, res) => {
+    if (requireCalloutStore(res)) return;
+    try {
+      res.json(await listTrackedCallers(getUserId(req)));
+    } catch (err) {
+      console.error('[PumpfunAPI] Failed to list tracked callers:', err instanceof Error ? err.message : err);
+      res.status(500).json({ error: 'Failed to load tracked callers.' });
+    }
+  });
+
+  // POST /api/pumpfun/callers — follow a caller. Body accepts either a resolved
+  // { address, username?, displayName?, avatar? } or a bare { username } which is
+  // resolved server-side. notifyPushover defaults true.
+  router.post('/callers', async (req, res) => {
+    if (requireCalloutStore(res)) return;
+    const body = isRecord(req.body) ? (req.body as Record<string, unknown>) : {};
+    try {
+      let address = typeof body.address === 'string' ? body.address : null;
+      let username = typeof body.username === 'string' ? body.username : null;
+      let displayName = typeof body.displayName === 'string' ? body.displayName : null;
+      let avatar = typeof body.avatar === 'string' ? body.avatar : null;
+
+      // Resolve from a bare @username when no address was supplied.
+      if (!address) {
+        if (!isValidUsername(username)) {
+          return res.status(400).json({ error: 'Provide a caller "address" or a "username" to resolve.' });
+        }
+        const caller = await getPumpCalloutFeedClient().resolveUsername(username.trim());
+        if (!caller) return res.status(404).json({ error: `No pump.fun user found for "${username.trim()}".` });
+        address = caller.address;
+        username = caller.username;
+        avatar = caller.avatar;
+      }
+
+      if (!isValidAddress(address)) {
+        return res.status(400).json({ error: 'Resolved caller address is not a valid wallet.' });
+      }
+
+      const notifyPushover = typeof body.notifyPushover === 'boolean' ? body.notifyPushover : true;
+      const source = typeof body.source === 'string' ? body.source : 'follow';
+      const added = await addTrackedCaller(getUserId(req), {
+        callerAddress: address,
+        username,
+        displayName,
+        avatar,
+        source,
+        notifyPushover,
+      });
+      res.status(201).json(added);
+    } catch (err) {
+      if (err instanceof PumpfunError) return sendPumpfunError(res, err);
+      console.error('[PumpfunAPI] Failed to follow caller:', err instanceof Error ? err.message : err);
+      res.status(500).json({ error: 'Failed to follow caller.' });
+    }
+  });
+
+  // DELETE /api/pumpfun/callers/:address — unfollow a caller.
+  router.delete('/callers/:address', async (req, res) => {
+    if (requireCalloutStore(res)) return;
+    const { address } = req.params;
+    if (!isValidAddress(address)) {
+      return res.status(400).json({ error: 'Invalid wallet address.' });
+    }
+    try {
+      await removeTrackedCaller(getUserId(req), address);
+      res.json({ removed: true });
+    } catch (err) {
+      console.error('[PumpfunAPI] Failed to unfollow caller:', err instanceof Error ? err.message : err);
+      res.status(500).json({ error: 'Failed to unfollow caller.' });
     }
   });
 

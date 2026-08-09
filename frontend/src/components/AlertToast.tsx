@@ -25,6 +25,7 @@ const POSITION_STYLES: Record<ToastPosition, string> = {
 export default function AlertToast() {
   const alerts = useAppStore((s) => s.alerts);
   const dismissAlert = useAppStore((s) => s.dismissAlert);
+  const dismissAllAlerts = useAppStore((s) => s.dismissAllAlerts);
   const config = useAppStore((s) => s.config);
   const enabled = config?.toastAlertsEnabled ?? true;
   const position = config?.toastPosition ?? 'top-right';
@@ -46,6 +47,14 @@ export default function AlertToast() {
     <div
       className={`fixed z-[100] flex flex-col gap-2 w-96 max-w-[calc(100vw-2rem)] pointer-events-none ${POSITION_STYLES[position]}`}
     >
+      {visible.length > 1 && (
+        <button
+          onClick={dismissAllAlerts}
+          className="pointer-events-auto flex items-center gap-1.5 px-2.5 py-1 rounded-cockpit border-2 border-black bg-oct-surface-raised text-xs font-bold text-discord-text-muted hover:text-white shadow-oct-hard transition-colors"
+        >
+          <X size={13} /> Clear all ({visible.length})
+        </button>
+      )}
       {visible.map((alert) => {
         const Icon = alertIcon(alert.type);
         const handleOpen = alert.message.platformUrl
