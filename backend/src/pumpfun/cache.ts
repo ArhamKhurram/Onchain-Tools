@@ -96,6 +96,14 @@ export function leaderboardCacheKey(userId: string, period: string): string {
   return `leaderboard:${userId}:${period}`;
 }
 
+// The Top Callers board is GLOBAL keyless-derived data (no per-user scope), so its
+// cache line is keyed only by the shape of the board: window + metric + minCalls.
+// The board is fetched at the max limit and sliced per request (like the
+// leaderboard), so a limit change reuses the cached rows.
+export function topCallersCacheKey(window: string, metric: string, minCalls: number): string {
+  return `top-callers:${window}:${metric}:${minCalls}`;
+}
+
 // TTLs. Callouts move fast (new calls, live multipliers) so they are short-lived;
 // the top board and trending slice turn over slowly and can sit longer. All
 // overridable by env for tuning without a redeploy.
@@ -118,3 +126,6 @@ export const TRENDING_FEED_TTL_MS = Number.parseInt(process.env.PUMPFUN_TRENDING
 // The leaderboard turns over quickly (live PnL, new calls); ~60s matches FOMO's
 // leaderboard cadence and keeps the per-user upstream call rate bounded.
 export const LEADERBOARD_TTL_MS = Number.parseInt(process.env.PUMPFUN_LEADERBOARD_CACHE_MS ?? '', 10) || 60 * 1000;
+// The Top Callers board turns over slowly (an aggregate over many callouts), so a
+// short cache keeps the Supabase read rate bounded without staleness mattering.
+export const TOP_CALLERS_TTL_MS = Number.parseInt(process.env.PUMPFUN_TOP_CALLERS_CACHE_MS ?? '', 10) || 30 * 1000;

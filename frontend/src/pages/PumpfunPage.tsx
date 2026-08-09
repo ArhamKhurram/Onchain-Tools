@@ -7,6 +7,7 @@ import PumpTrackedWallets from '../components/pumpfun/PumpTrackedWallets';
 import PumpTokenPanel from '../components/pumpfun/PumpTokenPanel';
 import PumpTrendingPanel from '../components/pumpfun/PumpTrendingPanel';
 import PumpLeaderboardTab from '../components/pumpfun/PumpLeaderboardTab';
+import PumpTopCallersTab from '../components/pumpfun/PumpTopCallersTab';
 import PumpCallersTab from '../components/pumpfun/PumpCallersTab';
 import { DEFAULT_PUMP_VIEW, PUMP_TABS, parsePumpView, type PumpView } from '../lib/pumpViews';
 
@@ -44,6 +45,8 @@ export default function PumpfunPage() {
           <PumpTokenPanel />
         ) : view === 'trending' ? (
           <PumpTrendingPanel trending={trending} />
+        ) : view === 'top-callers' ? (
+          <PumpTopCallersTab />
         ) : view === 'following' ? (
           <PumpCallersTab />
         ) : (

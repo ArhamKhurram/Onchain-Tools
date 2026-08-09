@@ -22,6 +22,13 @@ import {
   loadTrackersByAddress,
   type CallerTrackerRow,
 } from './calloutStore.js';
+import {
+  recordCallerStats,
+  recordCalloutObservations,
+  pruneCalloutObservations,
+  type CallerStatDelta,
+  type CalloutObservation,
+} from './callerBoardStore.js';
 
 const DEFAULT_INTERVAL_MS = Number.parseInt(process.env.PUMP_CALLOUT_POLL_INTERVAL_MS ?? '', 10) || 12_000;
 const IDLE_INTERVAL_MS = Number.parseInt(process.env.PUMP_CALLOUT_IDLE_INTERVAL_MS ?? '', 10) || 60_000;
@@ -30,6 +37,17 @@ const PAGE_LIMIT = 30;
 // callouts; if the cursor is older than that we advance to newest and LOG the
 // gap rather than page forever (no silent truncation).
 const MAX_PAGES = 5;
+
+// Top Callers board retention: observations older than this are pruned so the
+// windowed board's source table stays bounded (matches the widest board window).
+const OBSERVATION_RETENTION_MS =
+  Number.parseInt(process.env.PUMP_OBSERVATION_RETENTION_MS ?? '', 10) || 30 * 24 * 60 * 60 * 1000;
+// Prune at most this often (an indexed delete is cheap, but there is no need to
+// run it every 12s). Tracked in-process; the first poll after the interval prunes.
+const PRUNE_INTERVAL_MS = Number.parseInt(process.env.PUMP_OBSERVATION_PRUNE_INTERVAL_MS ?? '', 10) || 60 * 60 * 1000;
+// Cap how many NEW caller handles one poll resolves, so a cold-start burst (up to
+// MAX_PAGES×PAGE_LIMIT fresh callouts) can't fan a single oversized identity POST.
+const MAX_ENRICH_PER_POLL = Number.parseInt(process.env.PUMP_BOARD_ENRICH_PER_POLL ?? '', 10) || 60;
 
 function compactUsd(value: number | null): string {
   if (value == null) return '—';
@@ -47,6 +65,10 @@ class PumpCalloutPoller {
   private polling = false;
   private pollIntervalMs = DEFAULT_INTERVAL_MS;
   private lastPollError: string | null = null;
+  // Callers whose handle/avatar we've already tried to resolve this process. New
+  // callers are enriched once; re-seen callers cost no identity call.
+  private enrichedAddresses = new Set<string>();
+  private lastPruneAt = 0;
 
   constructor(wsServer: WsServer) {
     this.wsServer = wsServer;
@@ -87,11 +109,10 @@ class PumpCalloutPoller {
     if (this.polling) return;
     this.polling = true;
     try {
-      const trackers = await loadTrackersByAddress();
-      // Nothing followed → don't touch the upstream at all. The cursor reseeds on
-      // the first poll after someone follows, so no cold backlog is fired then.
-      if (trackers.size === 0) return;
-
+      // Unlike the follow-only version, we poll EVERY cycle regardless of who is
+      // followed: the Top Callers board is built from the global feed itself, so a
+      // callout must be recorded even when nobody follows its caller. The idle
+      // interval (no authenticated clients) keeps that background load modest.
       const state = await getCalloutPollState();
       const client = getPumpCalloutFeedClient();
 
@@ -119,16 +140,30 @@ class PumpCalloutPoller {
         }
       }
 
-      // First run (unseeded): record newest, fire nothing.
+      // Record every fresh callout into the board (independent of followers).
+      // Recording is not "firing", so it runs on the first (unseeded) poll too —
+      // that bootstraps the board from the initial backlog.
+      if (fresh.length > 0) {
+        await this.recordBoard(fresh).catch((err) =>
+          console.warn('[PumpCalloutPoller] board record failed:', (err as Error)?.message),
+        );
+      }
+      await this.maybePrune();
+
+      // First run (unseeded): seed the cursor, fire nothing (never ping a backlog).
       if (!state?.seeded) {
         await setCalloutPollState(newestId, true);
         return;
       }
 
+      // Fan-out to followers — the original behaviour, now gated on there being
+      // any tracker rather than short-circuiting the whole poll.
       if (fresh.length > 0) {
-        // Only the followed callers matter — filter before any enrichment.
-        const matched = fresh.filter((c) => trackers.has(c.callerAddress));
-        if (matched.length > 0) await this.dispatch(matched, trackers);
+        const trackers = await loadTrackersByAddress();
+        if (trackers.size > 0) {
+          const matched = fresh.filter((c) => trackers.has(c.callerAddress));
+          if (matched.length > 0) await this.dispatch(matched, trackers);
+        }
       }
 
       if (newestId && newestId !== cursor) await setCalloutPollState(newestId, true);
@@ -139,6 +174,72 @@ class PumpCalloutPoller {
     } finally {
       this.polling = false;
     }
+  }
+
+  /**
+   * Record a batch of fresh callouts into the Top Callers board: a per-callout
+   * observation row (windowed board) plus a per-caller increment into the running
+   * aggregate. Caller deltas are pre-folded so each caller appears once (the
+   * increment RPC's ON CONFLICT can't touch a row twice in one statement). New
+   * callers are enriched with a handle/avatar via one batched keyless call, capped
+   * per poll; already-seen callers cost nothing.
+   */
+  private async recordBoard(fresh: RecentCallout[]): Promise<void> {
+    const observations: CalloutObservation[] = fresh.map((c) => ({
+      calloutId: c.calloutId,
+      callerAddress: c.callerAddress,
+      multiple: c.multiple,
+      createdAt: c.createdAt != null ? new Date(c.createdAt).toISOString() : new Date().toISOString(),
+    }));
+
+    // Resolve identities only for callers we haven't tried this process, capped.
+    const newAddresses = [...new Set(fresh.map((c) => c.callerAddress))]
+      .filter((a) => !this.enrichedAddresses.has(a))
+      .slice(0, MAX_ENRICH_PER_POLL);
+    let users = new Map<string, { username: string | null; avatar: string | null }>();
+    if (newAddresses.length > 0) {
+      users = await getPumpCalloutFeedClient()
+        .resolveUsers(newAddresses)
+        .catch(() => new Map());
+      for (const a of newAddresses) this.enrichedAddresses.add(a);
+    }
+
+    // Pre-fold per caller: count, sum(multiple ?? 0), max(non-null multiple),
+    // newest createdAt. One delta per unique caller.
+    const byCaller = new Map<string, CallerStatDelta>();
+    for (const c of fresh) {
+      const iso = c.createdAt != null ? new Date(c.createdAt).toISOString() : new Date().toISOString();
+      const existing = byCaller.get(c.callerAddress);
+      const enriched = users.get(c.callerAddress);
+      if (existing) {
+        existing.addCount += 1;
+        existing.addSum += c.multiple ?? 0;
+        if (c.multiple != null) existing.maxMultiple = Math.max(existing.maxMultiple ?? 0, c.multiple);
+        if (existing.lastCalloutAt == null || iso > existing.lastCalloutAt) existing.lastCalloutAt = iso;
+      } else {
+        byCaller.set(c.callerAddress, {
+          callerAddress: c.callerAddress,
+          addCount: 1,
+          addSum: c.multiple ?? 0,
+          maxMultiple: c.multiple ?? null,
+          lastCalloutAt: iso,
+          username: enriched?.username ?? null,
+          avatar: enriched?.avatar ?? null,
+        });
+      }
+    }
+
+    await recordCalloutObservations(observations);
+    await recordCallerStats([...byCaller.values()]);
+  }
+
+  /** Prune aged observations at most once per PRUNE_INTERVAL_MS. */
+  private async maybePrune(): Promise<void> {
+    if (Date.now() - this.lastPruneAt < PRUNE_INTERVAL_MS) return;
+    this.lastPruneAt = Date.now();
+    await pruneCalloutObservations(OBSERVATION_RETENTION_MS).catch((err) =>
+      console.warn('[PumpCalloutPoller] observation prune failed:', (err as Error)?.message),
+    );
   }
 
   /** Enrich matched callouts (handle + ticker) and fan out to followers. */

@@ -23,6 +23,12 @@ import {
   removeTrackedCaller,
 } from './calloutStore.js';
 import {
+  topCallersAllTime,
+  topCallersWindowed,
+  type BoardMetric,
+  type BoardCaller,
+} from './callerBoardStore.js';
+import {
   getPumpfunLeaderboardClient,
   looksLikeJwt,
   decodeJwtExpiry,
@@ -41,6 +47,7 @@ import {
   walletTransactionsCacheKey,
   walletBalanceCacheKey,
   leaderboardCacheKey,
+  topCallersCacheKey,
   TOP_COMMUNITIES_CACHE_KEY,
   TRENDING_FEED_CACHE_KEY,
   TOKEN_CALLOUTS_TTL_MS,
@@ -53,6 +60,7 @@ import {
   WALLET_TRANSACTIONS_TTL_MS,
   WALLET_BALANCE_TTL_MS,
   LEADERBOARD_TTL_MS,
+  TOP_CALLERS_TTL_MS,
 } from './cache.js';
 
 // This router is mounted under /api/pumpfun, so authMiddleware has already run
@@ -145,6 +153,58 @@ export function parseMintsBody(body: unknown): { mints: string[] } | { error: st
     }
   }
   return { mints: mints as string[] };
+}
+
+// -------------------------------------------------------------------------
+// Top Callers board query parsing (?window=&metric=&limit=&minCalls=).
+//
+// A pure, exported normaliser so the defaults + bounds are unit-testable the way
+// parseMintsBody is. `all` reads the running aggregate; the time windows read the
+// bounded observations table. Every field falls back to a sensible default and is
+// clamped, so a junk query never reaches Supabase as an unbounded read.
+// -------------------------------------------------------------------------
+
+export type TopCallersWindow = 'all' | '24h' | '7d' | '30d';
+
+export interface TopCallersQuery {
+  window: TopCallersWindow;
+  metric: BoardMetric;
+  minCalls: number;
+  limit: number;
+}
+
+// window → lookback in ms; `all` has no cutoff (the running aggregate).
+const TOP_CALLERS_WINDOW_MS: Record<Exclude<TopCallersWindow, 'all'>, number> = {
+  '24h': 24 * 60 * 60 * 1000,
+  '7d': 7 * 24 * 60 * 60 * 1000,
+  '30d': 30 * 24 * 60 * 60 * 1000,
+};
+const TOP_CALLERS_METRICS: readonly BoardMetric[] = ['count', 'avg', 'max'];
+const DEFAULT_TOP_CALLERS_LIMIT = 50;
+const MAX_TOP_CALLERS_LIMIT = 200;
+const DEFAULT_TOP_CALLERS_MIN_CALLS = 3;
+const MAX_TOP_CALLERS_MIN_CALLS = 100;
+
+function clampInt(raw: unknown, fallback: number, min: number, max: number): number {
+  const n = typeof raw === 'string' ? Number.parseInt(raw, 10) : typeof raw === 'number' ? raw : NaN;
+  if (!Number.isFinite(n)) return fallback;
+  return Math.min(Math.max(Math.trunc(n), min), max);
+}
+
+export function parseTopCallersQuery(query: Record<string, unknown>): TopCallersQuery {
+  const rawWindow = typeof query.window === 'string' ? query.window.toLowerCase() : '';
+  const window: TopCallersWindow =
+    rawWindow === '24h' || rawWindow === '7d' || rawWindow === '30d' || rawWindow === 'all' ? rawWindow : 'all';
+  const rawMetric = typeof query.metric === 'string' ? query.metric.toLowerCase() : '';
+  const metric = (TOP_CALLERS_METRICS as readonly string[]).includes(rawMetric)
+    ? (rawMetric as BoardMetric)
+    : 'count';
+  return {
+    window,
+    metric,
+    limit: clampInt(query.limit, DEFAULT_TOP_CALLERS_LIMIT, 1, MAX_TOP_CALLERS_LIMIT),
+    minCalls: clampInt(query.minCalls, DEFAULT_TOP_CALLERS_MIN_CALLS, 1, MAX_TOP_CALLERS_MIN_CALLS),
+  };
 }
 
 /**
@@ -634,6 +694,42 @@ export function createPumpfunRouter(): Router {
     } catch (err) {
       console.error('[PumpfunAPI] Failed to unfollow caller:', err instanceof Error ? err.message : err);
       res.status(500).json({ error: 'Failed to unfollow caller.' });
+    }
+  });
+
+  // -------------------------------------------------------------------------
+  // Top Callers board — OCT's own keyless caller-quality leaderboard.
+  //
+  // Built from the GLOBAL callout feed the poller already records into Supabase
+  // (pump_caller_stats / pump_callout_observations), so it needs NO pump login and
+  // NO follow. It reads Supabase, so it is hosted-gated: 503 cleanly when the
+  // callout store is absent (local mode), like the follow CRUD above. The board is
+  // global (not per-user), fetched at the max limit, cached by shape, and sliced
+  // to ?limit — a limit change reuses the cached rows.
+  //
+  // GET /api/pumpfun/top-callers?window=all|24h|7d|30d&metric=count|avg|max
+  //     &limit=50&minCalls=3
+  // -------------------------------------------------------------------------
+  router.get('/top-callers', async (req, res) => {
+    if (requireCalloutStore(res)) return;
+    const q = parseTopCallersQuery(req.query as Record<string, unknown>);
+
+    const cacheKey = topCallersCacheKey(q.window, q.metric, q.minCalls);
+    const cached = getCached<BoardCaller[]>(cacheKey);
+    if (cached !== null) {
+      res.json(cached.slice(0, q.limit));
+      return;
+    }
+    try {
+      const rows =
+        q.window === 'all'
+          ? await topCallersAllTime(q.metric, q.minCalls, MAX_TOP_CALLERS_LIMIT)
+          : await topCallersWindowed(TOP_CALLERS_WINDOW_MS[q.window], q.metric, q.minCalls, MAX_TOP_CALLERS_LIMIT);
+      setCached(cacheKey, rows, TOP_CALLERS_TTL_MS);
+      res.json(rows.slice(0, q.limit));
+    } catch (err) {
+      console.error('[PumpfunAPI] Failed to load top callers:', err instanceof Error ? err.message : err);
+      res.status(500).json({ error: 'Failed to load the top-callers board.' });
     }
   });
 
