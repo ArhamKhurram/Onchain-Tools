@@ -48,11 +48,11 @@ export default function PumpLeaderboardTab({ tracking }: PumpLeaderboardTabProps
     return (
       <div className="flex items-center justify-center h-full p-6 bg-oct-bg">
         <div className="max-w-sm text-center">
-          <p className="font-mono text-[11px] leading-relaxed text-oct-muted mb-4">{statusError}</p>
+          <p className="font-mono text-xs leading-relaxed text-oct-muted mb-4">{statusError}</p>
           <button
             type="button"
             onClick={() => void refresh()}
-            className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-cockpit text-[10px] font-mono font-bold uppercase border-2 border-oct-accent text-oct-accent hover:bg-oct-accent hover:text-white transition-colors"
+            className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-oct-sm text-[11px] font-mono font-bold uppercase border border-oct-accent/60 text-oct-accent hover:bg-oct-accent hover:text-white hover:shadow-oct-glow-accent transition-all"
           >
             <RefreshCw size={11} />
             retry
@@ -74,9 +74,9 @@ export default function PumpLeaderboardTab({ tracking }: PumpLeaderboardTabProps
 
   return (
     <div className="h-full min-h-0 flex flex-col bg-oct-bg">
-      <div className="shrink-0 flex items-center gap-2 px-4 py-2 border-b-2 border-black bg-oct-surface/60">
-        <ShieldCheck size={13} className="text-oct-green shrink-0" strokeWidth={2.5} />
-        <span className="font-mono text-[10px] text-oct-muted">
+      <div className="oct-headerbar shrink-0 flex items-center gap-2 px-4 py-2.5">
+        <ShieldCheck size={14} className="text-oct-green shrink-0" strokeWidth={2.5} />
+        <span className="font-mono text-[11px] text-oct-muted">
           <span className="text-oct-green font-bold">Connected</span>
           {summary.daysLeft != null && (
             <>
@@ -89,7 +89,7 @@ export default function PumpLeaderboardTab({ tracking }: PumpLeaderboardTabProps
         <button
           type="button"
           onClick={() => void disconnect()}
-          className="inline-flex items-center gap-1 px-2 py-0.5 rounded-cockpit text-[9px] font-mono font-bold uppercase border-2 border-oct-border text-oct-muted hover:text-oct-flame hover:border-oct-flame/60 transition-colors"
+          className="inline-flex items-center gap-1 px-2.5 py-1 rounded-oct-sm text-[10px] font-mono font-bold uppercase border border-oct-border text-oct-muted hover:text-oct-flame hover:border-oct-flame/60 transition-colors"
           title="Disconnect pump.fun"
         >
           <Unplug size={11} />

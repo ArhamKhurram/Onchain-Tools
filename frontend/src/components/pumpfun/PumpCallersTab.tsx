@@ -192,7 +192,7 @@ export default function PumpCallersTab() {
   return (
     <div className="h-full min-h-0 overflow-auto">
       {/* Manual follow by @username */}
-      <div className="px-5 py-4 border-b-2 border-black bg-oct-surface">
+      <div className="oct-headerbar px-5 py-4">
         <form onSubmit={onSubmit} className="flex items-center gap-2">
           <div className="relative flex-1">
             <UserPlus size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-oct-muted" />
@@ -203,32 +203,32 @@ export default function PumpCallersTab() {
                 if (formError) setFormError(null);
               }}
               placeholder="Follow a caller by @username (e.g. ansem)"
-              className="w-full pl-9 pr-3 py-2.5 rounded-cockpit border-2 border-oct-border-bright bg-oct-bg text-sm text-oct-text placeholder:text-oct-muted focus:outline-none focus:border-oct-accent"
+              className="oct-input w-full pl-9 pr-3 py-2.5 text-sm"
             />
           </div>
           <button
             type="submit"
             disabled={busy || input.trim() === ''}
-            className="shrink-0 inline-flex items-center gap-1.5 px-4 py-2.5 rounded-cockpit border-2 border-black bg-oct-accent text-white text-sm font-bold shadow-oct-hard disabled:opacity-50 transition-opacity"
+            className="oct-btn-primary shrink-0 px-4 py-2.5 text-sm disabled:opacity-50"
           >
             <Plus size={16} /> Follow
           </button>
         </form>
-        {formError && <p className="mt-2 text-sm text-oct-accent">{formError}</p>}
+        {formError && <p className="mt-2 text-sm text-oct-flame">{formError}</p>}
         <p className="mt-2 text-xs text-oct-muted">
           When a caller you follow posts a callout, you get a toast + Pushover ping in real time.
         </p>
       </div>
 
       {/* Popular callers — keyless quick-add */}
-      <div className="px-5 py-4 border-b-2 border-black">
+      <div className="px-5 py-4 border-b border-oct-border">
         <div className="flex items-center gap-2 mb-3">
-          <h3 className="text-sm font-extrabold uppercase tracking-wide text-oct-text">Popular callers</h3>
+          <h3 className="oct-section-title uppercase tracking-wide">Popular callers</h3>
           <div className="flex-1" />
           <button
             onClick={() => followByUsernames(POPULAR_CALLERS, 'popular')}
             disabled={busy || allPopularFollowed}
-            className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-cockpit border-2 border-black bg-oct-surface-raised text-xs font-bold text-oct-text hover:text-oct-accent shadow-oct-hard disabled:opacity-50"
+            className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-oct-sm border border-oct-border-bright bg-oct-surface-raised text-xs font-bold text-oct-text hover:text-oct-accent hover:border-oct-accent shadow-oct-soft disabled:opacity-50 transition-colors"
           >
             {allPopularFollowed ? <Check size={13} /> : <Plus size={13} />}
             {allPopularFollowed ? 'All followed' : 'Follow all'}
@@ -242,10 +242,10 @@ export default function PumpCallersTab() {
                 key={handle}
                 disabled={busy || isFollowed}
                 onClick={() => follow(handle)}
-                className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full border-2 text-sm font-semibold transition-colors ${
+                className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full border text-sm font-semibold transition-colors ${
                   isFollowed
                     ? 'border-oct-green/50 text-oct-green bg-oct-green/10 cursor-default'
-                    : 'border-oct-border-bright text-oct-text hover:border-oct-accent hover:text-oct-accent'
+                    : 'border-oct-border-bright text-oct-text hover:border-oct-accent hover:text-oct-accent hover:bg-oct-accent-dim'
                 }`}
               >
                 {isFollowed ? <Check size={13} /> : <Plus size={13} />}@{handle}
@@ -256,10 +256,10 @@ export default function PumpCallersTab() {
       </div>
 
       {/* Leaderboard on-ramp — follow the top PnL callers */}
-      <div className="px-5 py-4 border-b-2 border-black">
+      <div className="px-5 py-4 border-b border-oct-border">
         <div className="flex items-center gap-2 mb-3">
-          <Trophy size={15} className="text-oct-yellow" />
-          <h3 className="text-sm font-extrabold uppercase tracking-wide text-oct-text">From the leaderboard</h3>
+          <Trophy size={15} className="text-oct-accent-2" />
+          <h3 className="oct-section-title uppercase tracking-wide">From the leaderboard</h3>
           <div className="flex-1" />
           {connected && board.entries.length > 0 && (
             <div className="flex items-center gap-2">
@@ -273,7 +273,7 @@ export default function PumpCallersTab() {
                   )
                 }
                 disabled={busy}
-                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-cockpit border-2 border-black bg-oct-surface-raised text-xs font-bold text-oct-text hover:text-oct-accent shadow-oct-hard disabled:opacity-50"
+                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-oct-sm border border-oct-border-bright bg-oct-surface-raised text-xs font-bold text-oct-text hover:text-oct-accent hover:border-oct-accent shadow-oct-soft disabled:opacity-50 transition-colors"
               >
                 <Plus size={13} /> Follow top {LEADERBOARD_TOP_N}
               </button>
@@ -286,7 +286,7 @@ export default function PumpCallersTab() {
                     )
                   }
                   disabled={busy}
-                  className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-cockpit border-2 border-black bg-oct-accent text-white text-xs font-bold shadow-oct-hard disabled:opacity-50"
+                  className="oct-btn-primary inline-flex items-center gap-1.5 px-3 py-1.5 text-xs disabled:opacity-50"
                 >
                   <Users size={13} /> Follow all {boardWithWallets.length}
                 </button>
@@ -317,10 +317,10 @@ export default function PumpCallersTab() {
                       e.walletAddress &&
                       followByAddress({ address: e.walletAddress, username: e.username, avatar: null, source: 'leaderboard' })
                     }
-                    className={`shrink-0 inline-flex items-center gap-1 px-2.5 py-1 rounded-cockpit border-2 text-xs font-bold transition-colors ${
+                    className={`shrink-0 inline-flex items-center gap-1 px-2.5 py-1.5 rounded-oct-sm border text-xs font-bold transition-colors ${
                       followed
                         ? 'border-oct-green/50 text-oct-green bg-oct-green/10 cursor-default'
-                        : 'border-oct-border-bright text-oct-text hover:border-oct-accent hover:text-oct-accent'
+                        : 'border-oct-border-bright text-oct-text hover:border-oct-accent hover:text-oct-accent hover:bg-oct-accent-dim'
                     }`}
                   >
                     {followed ? <Check size={12} /> : <Plus size={12} />}
@@ -336,14 +336,14 @@ export default function PumpCallersTab() {
       {/* The followed set */}
       <div className="px-5 py-3">
         <div className="flex items-center gap-2 mb-2">
-          <h3 className="text-sm font-extrabold uppercase tracking-wide text-oct-text">
-            Following {callers.length > 0 && <span className="text-oct-muted">({callers.length})</span>}
+          <h3 className="oct-section-title uppercase tracking-wide">
+            Following {callers.length > 0 && <span className="text-oct-muted font-mono">({callers.length})</span>}
           </h3>
           <div className="flex-1" />
           {callers.length > 0 && (
             <button
               onClick={copyAllWallets}
-              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-cockpit border-2 border-oct-border-bright text-xs font-bold text-oct-text hover:text-oct-accent hover:border-oct-accent transition-colors"
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-oct-sm border border-oct-border-bright text-xs font-bold text-oct-text hover:text-oct-accent hover:border-oct-accent transition-colors"
               title="Copy every followed caller's wallet address"
             >
               {copied !== null ? <Check size={13} className="text-oct-green" /> : <Copy size={13} />}
@@ -355,7 +355,7 @@ export default function PumpCallersTab() {
               onClick={trackAllOnChain}
               disabled={trackBusy}
               title="Add every followed caller's wallet to your on-chain tracked-wallet Directory"
-              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-cockpit border-2 border-black bg-oct-surface-raised text-xs font-bold text-oct-text hover:text-oct-accent shadow-oct-hard disabled:opacity-50"
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-oct-sm border border-oct-border-bright bg-oct-surface-raised text-xs font-bold text-oct-text hover:text-oct-accent hover:border-oct-accent shadow-oct-soft disabled:opacity-50 transition-colors"
             >
               <Radar size={13} /> Add all to Directory
             </button>
@@ -365,13 +365,13 @@ export default function PumpCallersTab() {
           Following pings you on callouts. <span className="text-oct-text font-semibold">Track on-chain</span> also adds
           the caller&apos;s wallet to your Directory so you can watch it on-chain — a separate list from callout alerts.
         </p>
-        {trackError && <p className="mb-2 text-sm text-oct-accent">{trackError}</p>}
+        {trackError && <p className="mb-2 text-sm text-oct-flame">{trackError}</p>}
         {loading ? (
           <div className="flex items-center justify-center py-10">
             <div className="w-6 h-6 border-2 border-oct-accent border-t-transparent rounded-full animate-spin" />
           </div>
         ) : error ? (
-          <div className="px-4 py-3 rounded-cockpit border-2 border-oct-accent bg-oct-accent-dim text-sm text-oct-accent">
+          <div className="px-4 py-3 rounded-oct border border-oct-flame/40 bg-oct-flame/10 text-sm text-oct-text">
             {error}
           </div>
         ) : callers.length === 0 ? (
@@ -410,7 +410,7 @@ export default function PumpCallersTab() {
                 </div>
                 {trackedSolAddresses.has(c.callerAddress) ? (
                   <span
-                    className="shrink-0 inline-flex items-center gap-1 px-2.5 py-1.5 rounded-cockpit border-2 border-oct-green/50 text-oct-green bg-oct-green/10 text-xs font-bold cursor-default"
+                    className="shrink-0 inline-flex items-center gap-1 px-2.5 py-1.5 rounded-oct-sm border border-oct-green/50 text-oct-green bg-oct-green/10 text-xs font-bold cursor-default"
                     title="This caller's wallet is in your on-chain tracked-wallet Directory"
                   >
                     <Check size={13} /> Tracked
@@ -419,7 +419,7 @@ export default function PumpCallersTab() {
                   <button
                     onClick={() => trackOnChain(c.callerAddress, c.username)}
                     disabled={trackBusy}
-                    className="shrink-0 inline-flex items-center gap-1 px-2.5 py-1.5 rounded-cockpit border-2 border-oct-border-bright text-oct-text text-xs font-bold hover:text-oct-accent hover:border-oct-accent transition-colors disabled:opacity-50"
+                    className="shrink-0 inline-flex items-center gap-1 px-2.5 py-1.5 rounded-oct-sm border border-oct-border-bright text-oct-text text-xs font-bold hover:text-oct-accent hover:border-oct-accent hover:bg-oct-accent-dim transition-colors disabled:opacity-50"
                     title="Add this caller's wallet to your on-chain tracked-wallet Directory"
                   >
                     <Radar size={13} /> Track on-chain
@@ -427,7 +427,7 @@ export default function PumpCallersTab() {
                 )}
                 <button
                   onClick={() => unfollow(c.callerAddress)}
-                  className="shrink-0 p-2 rounded-cockpit border-2 border-oct-border-bright text-oct-muted hover:text-oct-accent transition-colors"
+                  className="oct-icon-btn shrink-0 p-2 hover:text-oct-flame"
                   title="Unfollow"
                 >
                   <Trash2 size={15} />

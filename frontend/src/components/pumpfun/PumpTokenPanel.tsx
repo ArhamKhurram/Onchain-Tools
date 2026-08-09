@@ -21,17 +21,17 @@ export default function PumpTokenPanel() {
 
   return (
     <div className="h-full min-h-0 flex flex-col bg-oct-bg">
-      <div className="shrink-0 flex items-center gap-1.5 px-4 py-3 border-b-2 border-black bg-oct-surface">
+      <div className="oct-headerbar shrink-0 flex items-center gap-2 px-4 py-3">
         <div className="relative flex-1 max-w-md">
-          <Search size={13} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-oct-muted" />
+          <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-oct-muted" />
           <input
             value={input}
             onChange={(e) => setInput(e.target.value)}
             onKeyDown={(e) => e.key === 'Enter' && submit()}
             placeholder="Paste a token mint"
             spellCheck={false}
-            className={`w-full pl-8 pr-2 py-1.5 font-mono text-[11px] bg-oct-bg border-2 rounded-cockpit text-oct-text placeholder:text-oct-muted/60 focus:outline-none ${
-              input.trim() === '' || isPumpMint(input) ? 'border-oct-border focus:border-oct-accent' : 'border-oct-flame'
+            className={`oct-input w-full pl-9 pr-2 py-2 font-mono text-xs ${
+              input.trim() === '' || isPumpMint(input) ? '' : '!border-oct-flame'
             }`}
           />
         </div>
@@ -39,7 +39,7 @@ export default function PumpTokenPanel() {
           type="button"
           onClick={submit}
           disabled={input.trim() === '' || !isPumpMint(input)}
-          className="brutal-btn px-3 py-1.5 text-xs disabled:opacity-40"
+          className="oct-btn-primary px-4 py-2 text-xs uppercase tracking-wide disabled:opacity-40"
         >
           Look up
         </button>
@@ -68,14 +68,12 @@ export default function PumpTokenPanel() {
             ) : community.data ? (
               <CommunitySummary community={community.data} mint={mint} />
             ) : (
-              <p className="font-mono text-[11px] text-oct-muted">{loading ? 'Loading…' : 'No community summary.'}</p>
+              <p className="font-mono text-xs text-oct-muted">{loading ? 'Loading…' : 'No community summary.'}</p>
             )}
 
             {/* Callouts. */}
             <section>
-              <h3 className="font-mono text-[10px] font-bold uppercase tracking-widest text-oct-muted mb-2">
-                Callouts
-              </h3>
+              <h3 className="oct-eyebrow mb-2.5">Callouts</h3>
               {callouts.disabled || callouts.error ? (
                 <PumpStateNotice
                   disabled={callouts.disabled}
@@ -85,11 +83,11 @@ export default function PumpTokenPanel() {
                   surface="callouts"
                 />
               ) : callouts.data.length === 0 ? (
-                <p className="font-mono text-[11px] text-oct-muted py-2">
+                <p className="font-mono text-xs text-oct-muted py-2">
                   {loading ? 'Loading…' : 'No callouts for this token.'}
                 </p>
               ) : (
-                <div className="border-2 border-oct-border rounded-cockpit overflow-hidden">
+                <div className="oct-card oct-card-flush">
                   {/* Every row here is the one looked-up token, so pass its symbol so
                       each callout shows the ticker, not just the mint. */}
                   <PumpCalloutList callouts={callouts.data} tokenSymbol={community.data?.tokenSymbol} />
@@ -110,18 +108,18 @@ function CommunitySummary({ community, mint }: { community: PumpCommunity; mint:
     { label: 'Total likes', value: fmt(community.totalLikes) },
   ];
   return (
-    <div className="border-2 border-oct-border rounded-cockpit bg-oct-surface/40 p-4">
-      <div className="flex items-center gap-2 mb-3">
-        <span className="font-display text-lg text-oct-text">{community.tokenSymbol ?? truncateAddress(mint)}</span>
-        <span className="font-mono text-[10px] text-oct-muted truncate" title={community.tokenAddress ?? mint}>
+    <div className="oct-card p-4">
+      <div className="flex items-center gap-2 mb-3.5">
+        <span className="font-display text-xl text-oct-text">{community.tokenSymbol ?? truncateAddress(mint)}</span>
+        <span className="font-mono text-[11px] text-oct-muted truncate" title={community.tokenAddress ?? mint}>
           {truncateAddress(community.tokenAddress ?? mint)}
         </span>
       </div>
       <div className="grid grid-cols-3 gap-3">
         {stats.map((s) => (
-          <div key={s.label} className="border-2 border-oct-border rounded-cockpit px-3 py-2 bg-oct-bg">
-            <div className="font-mono text-[9px] uppercase tracking-widest text-oct-muted">{s.label}</div>
-            <div className="font-mono text-sm text-oct-text mt-0.5">{s.value}</div>
+          <div key={s.label} className="oct-stat-tile">
+            <div className="oct-stat-label">{s.label}</div>
+            <div className="font-mono text-lg font-semibold text-oct-text mt-1 tabular-nums">{s.value}</div>
           </div>
         ))}
       </div>

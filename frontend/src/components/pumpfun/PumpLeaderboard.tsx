@@ -60,20 +60,20 @@ export default function PumpLeaderboard({ board, trackedAddresses, onTrack }: Pu
   );
 
   return (
-    <div className="flex flex-col min-h-0 overflow-hidden h-full brutal-card">
-      <div className="shrink-0 flex flex-wrap items-center gap-2 px-4 py-3 border-b-2 border-black bg-oct-surface">
-        <Trophy size={16} className="text-oct-accent" />
-        <h2 className="text-sm font-extrabold uppercase tracking-wide text-oct-text">Leaderboard</h2>
+    <div className="flex flex-col min-h-0 overflow-hidden h-full oct-card oct-card-flush">
+      <div className="oct-headerbar shrink-0 flex flex-wrap items-center gap-2 px-4 py-3">
+        <Trophy size={16} className="text-oct-accent-2" />
+        <h2 className="oct-section-title uppercase tracking-wide">Leaderboard</h2>
         <div className="flex gap-1">
           {PUMP_LEADERBOARD_WINDOWS.map((w) => (
             <button
               key={w}
               type="button"
               onClick={() => setWindow(w)}
-              className={`px-2 py-0.5 rounded-cockpit text-[10px] font-mono font-bold border-2 transition-all ${
+              className={`px-2.5 py-1 rounded-oct-sm text-[11px] font-mono font-bold border transition-all ${
                 window === w
-                  ? 'bg-oct-accent text-white border-black shadow-oct-hard-sm'
-                  : 'text-oct-muted border-transparent hover:border-oct-border-bright'
+                  ? 'bg-oct-accent text-white border-oct-accent/50 shadow-oct-glow-accent'
+                  : 'text-oct-muted border-transparent hover:border-oct-border-bright hover:text-oct-text'
               }`}
             >
               {WINDOW_LABEL[w]}
@@ -81,12 +81,12 @@ export default function PumpLeaderboard({ board, trackedAddresses, onTrack }: Pu
           ))}
         </div>
         <div className="flex-1" />
-        <span className="font-mono text-[9px] tracking-[0.12em] text-oct-muted uppercase">via pump.fun</span>
+        <span className="font-mono text-[10px] tracking-[0.12em] text-oct-muted uppercase">via pump.fun</span>
         <button
           type="button"
           onClick={() => void refresh()}
           disabled={loading}
-          className="p-1.5 rounded-cockpit border-2 border-oct-border-bright text-oct-muted hover:text-oct-text transition-colors disabled:opacity-50"
+          className="oct-icon-btn p-2"
           title="Refresh leaderboard"
         >
           <RefreshCw size={14} className={loading ? 'animate-spin' : ''} />
@@ -94,7 +94,7 @@ export default function PumpLeaderboard({ board, trackedAddresses, onTrack }: Pu
       </div>
 
       {entries.length > 0 && (
-        <div className="shrink-0 flex items-center gap-3 px-4 py-1.5 border-b-2 border-black bg-oct-surface/60 font-mono text-[10px] font-bold uppercase tracking-wider">
+        <div className="shrink-0 flex items-center gap-3 px-4 py-2 border-b border-oct-border bg-oct-surface/40 font-mono text-[11px] font-bold uppercase tracking-wider">
           <span className="text-oct-muted">sort</span>
           <SortButton<LbSortKey> label="Rank" sortKey="rank" activeKey={sortKey} dir={sortDir} onSort={onSort} />
           <SortButton<LbSortKey> label="Handle" sortKey="handle" activeKey={sortKey} dir={sortDir} onSort={onSort} />
@@ -104,13 +104,13 @@ export default function PumpLeaderboard({ board, trackedAddresses, onTrack }: Pu
 
       <div className="flex-1 min-h-0 overflow-auto">
         {error && (
-          <div className="m-4 px-4 py-3 rounded-cockpit border-2 border-oct-flame/50 bg-oct-flame/10 text-sm text-oct-text">
+          <div className="m-4 px-4 py-3 rounded-oct border border-oct-flame/40 bg-oct-flame/10 text-sm text-oct-text">
             <p className="break-words">{error}</p>
             {retryable && (
               <button
                 type="button"
                 onClick={() => void refresh()}
-                className="mt-2 inline-flex items-center gap-1.5 px-2 py-1 rounded-cockpit text-[10px] font-mono font-bold uppercase border-2 border-oct-flame text-oct-flame hover:bg-oct-flame hover:text-white transition-colors"
+                className="mt-2 inline-flex items-center gap-1.5 px-2.5 py-1 rounded-oct-sm text-[11px] font-mono font-bold uppercase border border-oct-flame/60 text-oct-flame hover:bg-oct-flame hover:text-white transition-colors"
               >
                 <RefreshCw size={11} />
                 retry
@@ -133,14 +133,14 @@ export default function PumpLeaderboard({ board, trackedAddresses, onTrack }: Pu
               return (
                 <li
                   key={entry.walletAddress ?? `${entry.username ?? 'row'}-${i}`}
-                  className="flex items-center gap-3 px-4 py-3 hover:bg-oct-surface-raised/60 transition-colors"
+                  className="flex items-center gap-3 px-4 py-3 oct-row-hover"
                 >
-                  <span className="w-6 text-xs font-mono font-bold text-oct-muted tabular-nums">
+                  <span className="w-6 text-[13px] font-mono font-bold text-oct-muted tabular-nums">
                     {entry.rank ?? i + 1}
                   </span>
                   <div className="min-w-0 flex-1">
                     <div className="flex items-center gap-1.5 min-w-0">
-                      <span className="font-bold text-oct-text truncate">{leaderboardLabel(entry)}</span>
+                      <span className="text-[15px] font-bold text-oct-text truncate">{leaderboardLabel(entry)}</span>
                       {entry.xUsername && (
                         <a
                           href={`https://x.com/${entry.xUsername}`}
@@ -155,12 +155,12 @@ export default function PumpLeaderboard({ board, trackedAddresses, onTrack }: Pu
                         </a>
                       )}
                     </div>
-                    <div className="text-xs text-oct-muted truncate">
+                    <div className="text-[13px] text-oct-muted truncate">
                       PnL{' '}
                       <span
-                        className={
+                        className={`font-semibold tabular-nums ${
                           pnl == null ? 'text-oct-muted' : pnl >= 0 ? 'text-oct-green' : 'text-oct-flame'
-                        }
+                        }`}
                       >
                         {formatPnlUsd(pnl)}
                       </span>
@@ -171,10 +171,10 @@ export default function PumpLeaderboard({ board, trackedAddresses, onTrack }: Pu
                     onClick={() => entry.walletAddress && onTrack(entry.walletAddress)}
                     disabled={disabled}
                     title={state === 'no-wallet' ? 'No wallet on this row to track' : undefined}
-                    className={`shrink-0 flex items-center gap-1 px-2 py-1 rounded-cockpit text-xs font-bold uppercase border-2 transition-colors disabled:opacity-50 ${
+                    className={`shrink-0 flex items-center gap-1 px-2.5 py-1.5 rounded-oct-sm text-xs font-bold uppercase border transition-all disabled:opacity-50 ${
                       disabled
                         ? 'border-oct-border text-oct-muted'
-                        : 'border-black bg-oct-accent text-white shadow-oct-hard-sm hover:opacity-90'
+                        : 'border-oct-accent/50 bg-oct-accent text-white shadow-oct-glow-accent hover:brightness-110'
                     }`}
                   >
                     {state === 'trackable' && <Plus size={12} />}

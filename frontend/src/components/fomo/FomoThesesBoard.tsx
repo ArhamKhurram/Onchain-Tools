@@ -29,7 +29,7 @@ export default function FomoThesesBoard({ data, loading, error, onRefresh, addre
 
   if (error) {
     return (
-      <div className="m-4 px-4 py-3 rounded-cockpit border-2 border-oct-accent bg-oct-accent-dim text-sm text-oct-accent">
+      <div className="m-4 px-4 py-3 rounded-oct border border-oct-flame/40 bg-oct-flame/10 text-sm text-oct-text">
         {error}
       </div>
     );
@@ -49,16 +49,14 @@ export default function FomoThesesBoard({ data, loading, error, onRefresh, addre
 
   return (
     <div className="flex flex-col min-h-0 h-full">
-      <div className="shrink-0 px-4 py-3 border-b-2 border-black bg-oct-surface">
+      <div className="oct-headerbar shrink-0 px-4 py-3">
         <div className="flex items-center gap-2">
           <div className="min-w-0 flex-1">
             <div className="flex items-center gap-2 min-w-0">
-              <span className="font-extrabold text-oct-text truncate">Theses</span>
-              <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-cockpit uppercase font-mono bg-oct-surface-raised text-oct-muted shrink-0">
-                {chainLabel}
-              </span>
+              <span className="oct-section-title truncate">Theses</span>
+              <span className="oct-chip uppercase shrink-0">{chainLabel}</span>
             </div>
-            <span className="font-mono text-[11px] text-oct-muted" title={address}>
+            <span className="font-mono text-xs text-oct-muted" title={address}>
               {shortAddress(address)}
             </span>
           </div>
@@ -67,14 +65,14 @@ export default function FomoThesesBoard({ data, loading, error, onRefresh, addre
               type="button"
               onClick={onRefresh}
               disabled={loading}
-              className="shrink-0 p-1.5 rounded-cockpit border-2 border-oct-border-bright text-oct-muted hover:text-oct-text transition-colors disabled:opacity-50"
+              className="oct-icon-btn shrink-0 p-2"
               title="Refresh theses"
             >
               <RefreshCw size={14} className={loading ? 'animate-spin' : ''} />
             </button>
           )}
         </div>
-        <div className="mt-2 text-[11px] font-mono text-oct-muted">via fomo.family</div>
+        <div className="mt-2 text-xs font-mono text-oct-muted">via fomo.family</div>
       </div>
 
       <div className="flex-1 min-h-0 overflow-auto">
@@ -86,17 +84,17 @@ export default function FomoThesesBoard({ data, loading, error, onRefresh, addre
         ) : (
           <ul className="divide-y divide-oct-border">
             {theses.map((entry, idx) => (
-              <li key={`${entry.xHandle ?? entry.handle}-${idx}`} className="px-4 py-3 hover:bg-oct-surface-raised/60 transition-colors">
+              <li key={`${entry.xHandle ?? entry.handle}-${idx}`} className="px-4 py-3.5 oct-row-hover">
                 <div className="flex items-start gap-3">
                   {entry.avatar ? (
                     <img
                       src={entry.avatar}
                       alt={entry.handle}
-                      className="w-8 h-8 rounded-cockpit border-2 border-black shrink-0 object-cover"
+                      className="w-9 h-9 rounded-oct border border-oct-border shrink-0 object-cover"
                       loading="lazy"
                     />
                   ) : (
-                    <div className="w-8 h-8 rounded-cockpit border-2 border-black shrink-0 bg-oct-surface-raised flex items-center justify-center text-[11px] font-bold text-oct-muted uppercase">
+                    <div className="w-9 h-9 rounded-oct border border-oct-border shrink-0 bg-oct-surface-raised flex items-center justify-center text-[11px] font-bold text-oct-muted uppercase">
                       {entry.handle.slice(0, 2)}
                     </div>
                   )}
@@ -107,25 +105,25 @@ export default function FomoThesesBoard({ data, loading, error, onRefresh, addre
                           href={entry.xUrl}
                           target="_blank"
                           rel="noreferrer"
-                          className="font-bold text-oct-text truncate hover:text-oct-accent transition-colors"
+                          className="text-[15px] font-bold text-oct-text truncate hover:text-oct-accent transition-colors"
                           title={entry.xHandle ? `@${entry.xHandle}` : entry.handle}
                         >
                           {entry.handle}
                         </a>
                       ) : (
-                        <span className="font-bold text-oct-text truncate">{entry.handle}</span>
+                        <span className="text-[15px] font-bold text-oct-text truncate">{entry.handle}</span>
                       )}
                     </div>
-                    <div className="mt-0.5 flex items-center gap-3 font-mono text-[11px] tabular-nums">
+                    <div className="mt-0.5 flex items-center gap-3 font-mono text-xs tabular-nums">
                       <span className="text-oct-muted">{compactUsd(entry.valueUsd)}</span>
-                      <span className={entry.pnlUsd >= 0 ? 'text-green-400' : 'text-oct-accent'}>
+                      <span className={entry.pnlUsd >= 0 ? 'text-oct-green' : 'text-oct-flame'}>
                         {signedUsd(entry.pnlUsd)}
                       </span>
                     </div>
                   </div>
                 </div>
                 {entry.thesis ? (
-                  <p className="mt-2 text-sm text-oct-text whitespace-pre-wrap break-words">{entry.thesis}</p>
+                  <p className="mt-2 text-sm text-oct-text whitespace-pre-wrap break-words leading-relaxed">{entry.thesis}</p>
                 ) : (
                   <p className="mt-2 text-sm italic text-oct-muted">No thesis written.</p>
                 )}
