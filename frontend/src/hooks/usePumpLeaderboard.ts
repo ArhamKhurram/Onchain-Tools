@@ -18,6 +18,11 @@ import {
 // wire contract is stated in one place rather than buried in the URL template below.
 const LEADERBOARD_WINDOW_PARAM = 'window';
 
+// Ask for the backend's full board (it caps at MAX_LEADERBOARD_LIMIT = 200). The
+// tab only *renders* the top slice, but "Follow all" needs the whole set to be
+// meaningful, so the fetch pulls the ceiling rather than the default 50.
+const LEADERBOARD_FETCH_LIMIT = 200;
+
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
 }
@@ -71,7 +76,10 @@ export function usePumpLeaderboard(enabled: boolean): PumpLeaderboardHook {
     setAuthExpired(false);
     setRetryable(false);
     try {
-      const params = new URLSearchParams({ [LEADERBOARD_WINDOW_PARAM]: window });
+      const params = new URLSearchParams({
+        [LEADERBOARD_WINDOW_PARAM]: window,
+        limit: String(LEADERBOARD_FETCH_LIMIT),
+      });
       const res = await apiFetch(`${API_BASE}/pumpfun/leaderboard?${params.toString()}`);
       if (res.status === 401 || res.status === 403) {
         setAuthExpired(true);
