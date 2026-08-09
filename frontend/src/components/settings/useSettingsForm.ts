@@ -67,6 +67,7 @@ export function useSettingsForm() {
     contractAlert: { ...defaultSoundConfig },
     keywordAlert: { ...defaultSoundConfig },
     fomoTrade: { ...defaultSoundConfig },
+    pumpCallout: { ...defaultSoundConfig },
   });
   const [channelSounds, setChannelSounds] = useState<Record<string, SoundConfig>>({});
   const [uploadingSoundType, setUploadingSoundType] = useState<SoundType | null>(null);
@@ -172,6 +173,7 @@ export function useSettingsForm() {
           contractAlert: { ...defaultSoundConfig, ...config.soundSettings.contractAlert },
           keywordAlert: { ...defaultSoundConfig, ...config.soundSettings.keywordAlert },
           fomoTrade: { ...defaultSoundConfig, ...config.soundSettings.fomoTrade },
+          pumpCallout: { ...defaultSoundConfig, ...config.soundSettings.pumpCallout },
         });
       }
       setChannelSounds(config.channelSounds ?? {});
@@ -261,7 +263,8 @@ export function useSettingsForm() {
         contractAlert: { ...defaultSoundConfig, ...config.soundSettings.contractAlert },
         keywordAlert: { ...defaultSoundConfig, ...config.soundSettings.keywordAlert },
         fomoTrade: { ...defaultSoundConfig, ...config.soundSettings.fomoTrade },
-      } : { highlight: defaultSoundConfig, contractAlert: defaultSoundConfig, keywordAlert: defaultSoundConfig, fomoTrade: defaultSoundConfig }) ||
+        pumpCallout: { ...defaultSoundConfig, ...config.soundSettings.pumpCallout },
+      } : { highlight: defaultSoundConfig, contractAlert: defaultSoundConfig, keywordAlert: defaultSoundConfig, fomoTrade: defaultSoundConfig, pumpCallout: defaultSoundConfig }) ||
       JSON.stringify(channelSounds) !== JSON.stringify(config.channelSounds ?? {}) ||
       pushoverEnabled !== (config.pushover?.enabled ?? false) ||
       pushoverAppToken !== (config.pushover?.appToken ?? '') ||

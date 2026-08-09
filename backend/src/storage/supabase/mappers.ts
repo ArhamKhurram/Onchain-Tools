@@ -23,6 +23,7 @@ export const DEFAULT_SETTINGS: Omit<AppConfig, 'discordTokens' | 'rooms'> = {
     contractAlert: { enabled: true, volume: 80, useCustom: false },
     keywordAlert: { enabled: true, volume: 80, useCustom: false },
     fomoTrade: { enabled: true, volume: 80, useCustom: false },
+    pumpCallout: { enabled: true, volume: 80, useCustom: false },
   },
   channelSounds: {},
   pushover: {

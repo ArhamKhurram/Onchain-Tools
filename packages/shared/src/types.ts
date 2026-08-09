@@ -241,7 +241,7 @@ export interface ContractLinkTemplates {
   evmPlatform: EvmPlatform;
 }
 
-export type SoundType = 'highlight' | 'contractAlert' | 'keywordAlert' | 'fomoTrade';
+export type SoundType = 'highlight' | 'contractAlert' | 'keywordAlert' | 'fomoTrade' | 'pumpCallout';
 
 export interface SoundConfig {
   enabled: boolean;
