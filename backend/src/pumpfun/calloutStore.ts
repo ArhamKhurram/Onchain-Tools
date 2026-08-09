@@ -191,6 +191,37 @@ export async function addTrackedCaller(userId: string, input: AddTrackedCallerIn
   return toTrackedCaller(data as RawTrackedRow);
 }
 
+/**
+ * Follow several callers at once (the leaderboard / "popular callers" on-ramps).
+ * A single upsert so N follows cost one round-trip; conflicts on
+ * (user_id, caller_address) are ignored (re-following is a no-op). Returns the
+ * user's full follow list after the insert so the client can reconcile state.
+ */
+export async function addTrackedCallersBulk(
+  userId: string,
+  inputs: AddTrackedCallerInput[],
+): Promise<TrackedCaller[]> {
+  const db = getPumpServiceClient();
+  if (!db) throw new Error('Supabase not configured');
+  if (inputs.length === 0) return listTrackedCallers(userId);
+
+  const rows = inputs.map((input) => ({
+    user_id: userId,
+    caller_address: input.callerAddress,
+    username: input.username,
+    display_name: input.displayName,
+    avatar: input.avatar,
+    source: input.source ?? 'leaderboard',
+    notify_pushover: input.notifyPushover ?? true,
+  }));
+  const { error } = await db
+    .from('pump_tracked_callers')
+    .upsert(rows, { onConflict: 'user_id,caller_address', ignoreDuplicates: true });
+  if (error) throw error;
+  invalidateTrackedCache();
+  return listTrackedCallers(userId);
+}
+
 export async function removeTrackedCaller(userId: string, callerAddress: string): Promise<void> {
   const db = getPumpServiceClient();
   if (!db) return;
