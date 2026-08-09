@@ -40,6 +40,7 @@ import { sendPushover } from './utils/pushover.js';
 import { broadcastFrontendAlerts } from './utils/frontendAlerts.js';
 import { startFomoPoller } from './fomo/poller.js';
 import { startPumpCalloutPoller } from './pumpfun/calloutPoller.js';
+import { startWalletMovementPoller } from './wallets/movementPoller.js';
 import { startFomoRetentionSweeper } from './fomo/retention.js';
 import { startMissedRunnerPoller } from './alerts/missedRunnerPoller.js';
 import { startTokenPeakSampler } from './alerts/tokenPeakSampler.js';
@@ -714,6 +715,10 @@ httpServer.listen(PORT, HOST, async () => {
   // Global pump.fun KOL-callout fan-out poller. Self-gates on Supabase (idle in
   // local mode), keyless upstream, so it never crashes the server.
   startPumpCalloutPoller(wsServer);
+  // On-chain buy/sell alerter for Directory (user_tracked_wallets) SOLANA wallets.
+  // Self-gates on Supabase (idle in local mode), keyless upstream (profile-api),
+  // so it never crashes the server.
+  startWalletMovementPoller(wsServer);
 
   // Records token high-water market caps, which caller quality scores read.
   // Runs in both modes — local keeps peaks in a JSON file so the desktop app
