@@ -283,6 +283,63 @@ export function useWebSocket() {
               const cfg = useAppStore.getState().config;
               if (cfg?.messageSounds) playPumpCalloutSound(cfg.soundSettings?.pumpCallout);
             }
+          } else if (incoming.type === 'wallet_movement') {
+            // A tracked Directory (user_tracked_wallets) SOLANA wallet made an
+            // on-chain buy/sell. `notify` gates the toast/sound (mirrors FOMO);
+            // the ping always lands in notification history via addAlert.
+            const d = incoming.data as {
+              txHash: string;
+              walletAddress: string;
+              side: 'buy' | 'sell' | null;
+              tokenMint: string | null;
+              tokenSymbol: string | null;
+              amount: number | null;
+              solValue: number | null;
+              name: string;
+              emoji: string;
+              alertsOnToast: boolean;
+              notify?: boolean;
+            };
+            if (!IS_POPOUT) {
+              const who = d.name
+                ? `${d.emoji ? `${d.emoji} ` : ''}${d.name}`
+                : `${d.walletAddress.slice(0, 4)}…${d.walletAddress.slice(-4)}`;
+              const verb = d.side === 'sell' ? 'sold' : d.side === 'buy' ? 'bought' : 'traded';
+              const coin = d.tokenSymbol
+                ? `$${d.tokenSymbol}`
+                : d.tokenMint
+                  ? `${d.tokenMint.slice(0, 4)}…`
+                  : 'a token';
+              const sol = typeof d.solValue === 'number' ? ` · ${d.solValue.toFixed(2)} SOL` : '';
+              const alert: Alert = {
+                id: `wallet-movement-${d.txHash}`,
+                type: 'wallet_movement',
+                reason: `${who} ${verb} ${coin}`,
+                message: {
+                  id: `wallet-movement-${d.txHash}`,
+                  channelId: 'wallet-movement',
+                  guildId: null,
+                  channelName: 'WALLET',
+                  guildName: null,
+                  author: { id: 'oct-wallet', username: 'OCT', displayName: 'Wallet Movement', avatar: null },
+                  content: `${who} ${verb} ${coin}${sol}`,
+                  timestamp: new Date().toISOString(),
+                  attachments: [],
+                  embeds: [],
+                  isHighlighted: false,
+                  hasContractAddress: !!d.tokenMint,
+                  contractAddresses: d.tokenMint ? [d.tokenMint] : [],
+                  mentions: {},
+                  platformUrl: d.tokenMint ? `https://pump.fun/coin/${d.tokenMint}` : undefined,
+                },
+                timestamp: Date.now(),
+              };
+              addAlert(alert);
+              if (d.notify) {
+                const cfg = useAppStore.getState().config;
+                if (cfg?.messageSounds) playFomoTradeSound(cfg.soundSettings?.fomoTrade);
+              }
+            }
           } else if (incoming.type === 'gateway_auth_failed') {
             if (!skipDiscordWs) {
               setGatewayAuthError(
