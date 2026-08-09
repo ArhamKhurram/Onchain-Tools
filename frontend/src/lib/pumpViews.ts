@@ -6,7 +6,7 @@
 // renders PUMP_TABS and routes on parsePumpView, so the test that asserts
 // 'leaderboard' is present guards against a tab that renders but never resolves.
 
-export type PumpView = 'traders' | 'token' | 'trending' | 'leaderboard' | 'following';
+export type PumpView = 'traders' | 'token' | 'trending' | 'leaderboard' | 'top-callers' | 'following';
 
 export interface PumpTab {
   id: PumpView;
@@ -18,6 +18,7 @@ export const PUMP_TABS: readonly PumpTab[] = [
   { id: 'token', label: 'Token' },
   { id: 'trending', label: 'Trending' },
   { id: 'leaderboard', label: 'Leaderboard' },
+  { id: 'top-callers', label: 'Top Callers' },
   { id: 'following', label: 'Following' },
 ] as const;
 
@@ -30,6 +31,14 @@ export const DEFAULT_PUMP_VIEW: PumpView = 'traders';
  * would highlight while the page fell through to the default panel.
  */
 export function parsePumpView(raw: string | null): PumpView {
-  if (raw === 'token' || raw === 'trending' || raw === 'leaderboard' || raw === 'following') return raw;
+  if (
+    raw === 'token' ||
+    raw === 'trending' ||
+    raw === 'leaderboard' ||
+    raw === 'top-callers' ||
+    raw === 'following'
+  ) {
+    return raw;
+  }
   return DEFAULT_PUMP_VIEW;
 }
