@@ -97,6 +97,17 @@ const BUILT_IN_SOUNDS: Record<SoundType, { tones: [number, number, number][]; ty
     type: 'triangle',
     baseVolume: 0.17,
   },
+  revival: {
+    // The loudest alert in the app: a two-pass klaxon sweep (low→high, twice)
+    // that cuts through anything else playing. Repeats are driven by the
+    // revival slice, not here.
+    tones: [
+      [523, 0, 0.14], [880, 0.15, 0.14], [1245, 0.3, 0.2],
+      [523, 0.55, 0.14], [880, 0.7, 0.14], [1245, 0.85, 0.28],
+    ],
+    type: 'square',
+    baseVolume: 0.22,
+  },
 };
 
 export function playSound(soundType: SoundType, soundConfig?: SoundConfig) {
@@ -139,6 +150,10 @@ export function playFomoTradeSound(soundConfig?: SoundConfig) {
 
 export function playPumpCalloutSound(soundConfig?: SoundConfig) {
   playSound('pumpCallout', soundConfig);
+}
+
+export function playRevivalSound(soundConfig?: SoundConfig) {
+  playSound('revival', soundConfig);
 }
 
 export function previewSound(soundType: SoundType, soundConfig: SoundConfig) {

@@ -43,6 +43,7 @@ import { startPumpCalloutPoller } from './pumpfun/calloutPoller.js';
 import { startWalletMovementPoller } from './wallets/movementPoller.js';
 import { startFomoRetentionSweeper } from './fomo/retention.js';
 import { startMissedRunnerPoller } from './alerts/missedRunnerPoller.js';
+import { startRevivalPoller } from './revival/poller.js';
 import { startTokenPeakSampler } from './alerts/tokenPeakSampler.js';
 import type { DiscordMessage, PushoverConfig, FrontendMessage, ContractLinkTemplates } from './discord/types.js';
 import type { ContractEnrichmentPatch } from './utils/contractLog.js';
@@ -712,6 +713,10 @@ httpServer.listen(PORT, HOST, async () => {
   // replays the last day of it.
   startFomoRetentionSweeper();
   startMissedRunnerPoller(wsServer);
+  // Revival ignition alerts (ATR-gate detector over GeckoTerminal candles).
+  // Runs in BOTH modes: local reads the JSON contract log, hosted the contracts
+  // table. Keyless upstream, in-memory cooldowns, gated by OCT_REVIVAL_ENABLED.
+  startRevivalPoller(wsServer);
   // Global pump.fun KOL-callout fan-out poller. Self-gates on Supabase (idle in
   // local mode), keyless upstream, so it never crashes the server.
   startPumpCalloutPoller(wsServer);

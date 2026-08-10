@@ -1,5 +1,6 @@
 import {
   AlertTriangle,
+  Flame,
   Megaphone,
   Search,
   TrendingUp,
@@ -21,6 +22,8 @@ export function alertBorderClass(type: Alert['type']): string {
       return 'border-l-orange-400';
     case 'pump_callout':
       return 'border-l-purple-400';
+    case 'revival':
+      return 'border-l-red-500';
     default:
       return 'border-l-oct-yellow';
   }
@@ -38,6 +41,8 @@ export function alertIcon(type: Alert['type']): LucideIcon {
       return Search;
     case 'pump_callout':
       return Megaphone;
+    case 'revival':
+      return Flame;
     default:
       return AlertTriangle;
   }
@@ -55,6 +60,8 @@ export function alertIconClass(type: Alert['type']): string {
       return 'text-orange-400';
     case 'pump_callout':
       return 'text-purple-400';
+    case 'revival':
+      return 'text-red-500';
     default:
       return 'text-discord-yellow';
   }

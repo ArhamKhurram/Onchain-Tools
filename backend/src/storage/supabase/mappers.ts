@@ -24,6 +24,8 @@ export const DEFAULT_SETTINGS: Omit<AppConfig, 'discordTokens' | 'rooms'> = {
     keywordAlert: { enabled: true, volume: 80, useCustom: false },
     fomoTrade: { enabled: true, volume: 80, useCustom: false },
     pumpCallout: { enabled: true, volume: 80, useCustom: false },
+    // Revival is the loudest alert class: full volume, repeats until dismissed.
+    revival: { enabled: true, volume: 100, useCustom: false, repeatUntilDismissed: true },
   },
   channelSounds: {},
   pushover: {

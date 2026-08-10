@@ -19,6 +19,8 @@ export const SECTIONS: { id: Section; label: string; icon: typeof Key }[] = [
 ];
 
 export const defaultSoundConfig: SoundConfig = { enabled: true, volume: 80, useCustom: false };
+// Revival is the loudest alert class: full volume + repeat-until-dismissed by default.
+export const defaultRevivalSoundConfig: SoundConfig = { enabled: true, volume: 100, useCustom: false, repeatUntilDismissed: true };
 export const defaultTriggers: PushoverTriggers = { highlightedUser: false, highlightedUserContract: true, contract: false, keyword: false, signalConvergence: false, missedRunner: false };
 export const defaultFilters: PushoverFilters = { userIds: [], channelIds: [], guildIds: [] };
 export const defaultDiscordBotDm: DiscordBotDmConfig = {

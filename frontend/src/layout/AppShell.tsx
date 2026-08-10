@@ -12,6 +12,7 @@ import { useThemeStore } from '../stores/themeStore';
 import ThemeToggle from '../components/ThemeToggle';
 import NotificationPanel from '../components/NotificationPanel';
 import BackendUnreachableBanner from '../components/BackendUnreachableBanner';
+import RevivalBanner from '../components/RevivalBanner';
 
 const NAV: { to: string; label: string; end?: boolean }[] = [
   { to: routes.home, label: 'Home', end: true },
@@ -124,6 +125,7 @@ export default function AppShell() {
       </header>
 
       <BackendUnreachableBanner />
+      <RevivalBanner />
 
       <main className="flex-1 min-h-0 overflow-hidden">
         <Outlet />

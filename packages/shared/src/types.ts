@@ -241,7 +241,7 @@ export interface ContractLinkTemplates {
   evmPlatform: EvmPlatform;
 }
 
-export type SoundType = 'highlight' | 'contractAlert' | 'keywordAlert' | 'fomoTrade' | 'pumpCallout';
+export type SoundType = 'highlight' | 'contractAlert' | 'keywordAlert' | 'fomoTrade' | 'pumpCallout' | 'revival';
 
 export interface SoundConfig {
   enabled: boolean;
@@ -249,9 +249,40 @@ export interface SoundConfig {
   useCustom: boolean;
   customSoundUrl?: string;
   presetSound?: string;
+  /**
+   * Revival only: keep re-playing the sound every few seconds until the alert
+   * banner is dismissed (capped client-side). Ignored by every other SoundType.
+   */
+  repeatUntilDismissed?: boolean;
 }
 
 export type SoundSettings = Record<SoundType, SoundConfig>;
+
+// ---------------------------------------------------------------------------
+// Revival ignition alerts (WS frame `revival_alert`)
+// ---------------------------------------------------------------------------
+
+/**
+ * Payload of the `revival_alert` WS frame — a dormant token on the user's
+ * radar just ignited (ATR-gate detector; see backend/src/revival/detector.ts).
+ * This is its own independent signal: never fused with convergence,
+ * missed-runner, or FOMO detections.
+ */
+export interface RevivalAlertData {
+  /** Solana mint address. */
+  mint: string;
+  symbol: string | null;
+  /** Last 1m close in USD, if known. */
+  price: number | null;
+  /** Market-cap estimate in USD (implied supply × last price), if known. */
+  mcapUsd: number | null;
+  /** ATR% expansion z-score vs the token's own trailing baseline. */
+  atrZ: number;
+  /** Last-5m volume vs trailing 24h per-5m average. */
+  rvol: number;
+  /** ISO timestamp of the detection. */
+  triggeredAt: string;
+}
 
 // ---------------------------------------------------------------------------
 // Workspace layout (persisted per user)
