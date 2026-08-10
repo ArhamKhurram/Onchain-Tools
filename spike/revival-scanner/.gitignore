@@ -1,4 +1,8 @@
 node_modules/
-data/
+# data/ is ignored except the labeled-token snapshots (data/labels), which are
+# the operator-labeled corpus and must be committed — minute candles expire
+# from the public APIs within days, so these captures are irreplaceable.
+data/*
+!data/labels
 *.log
 train/venv/

@@ -8,22 +8,54 @@
 // dormancy) run once per pool, and gate combinations are cheap boolean
 // re-evaluations over the same snapshots — same code path either way.
 import { IndicatorEngine } from './indicators.js';
-import { C0, DETECTOR } from './config.js';
+import { C0, DETECTOR, DORMANCY } from './config.js';
 
 /**
  * Incremental dormancy tracker.
  * "Dormant" = every trailing 60-minute window over the past DORMANT_HOURS
  * hours stayed below the trade-count and volume ceilings. Implemented as a
  * consecutive-quiet-minutes counter over rolling 1h sums (O(1) per candle).
+ *
+ * Two ceiling modes (config.DORMANCY, added 2026-08-10 after MANLET):
+ *   'absolute' — fixed ceilings (<= T trades/h, <= V SOL/h). Catches
+ *                flatliners only; the historical behavior and the labeler's
+ *                ground truth definition.
+ *   'relative' — ceilings become max(absolute, FRAC * token's own prior peak
+ *                trailing-1h value). Peak is taken over the last
+ *                REL_BASELINE_HOURS excluding the most recent
+ *                REL_EXCLUDE_RECENT_HOURS (so the current quiet spell cannot
+ *                drag its own baseline down). Strict superset of 'absolute':
+ *                admits faders (volume collapsed ~100x from own peak but
+ *                still above the absolute floor) without losing flatliners.
  */
 export class DormancyTracker {
-  constructor(c0 = C0) {
+  constructor(c0 = C0, dormancy = { MODE: 'absolute' }) {
     this.c0 = c0;
+    this.dcfg = dormancy;
     this.win = [];        // last 60 candles {trades, vol}
     this.trades = 0;
     this.vol = 0;
     this.quietMin = 0;    // consecutive minutes with quiet rolling-hour
     this.minutesSeen = 0;
+    // relative mode: per-clock-hour maxima of the rolling-1h sums
+    this.hourMax = [];    // [{vol, trades}] one per elapsed hour, oldest first
+  }
+  _ceilings() {
+    const absVol = this.c0.DORMANT_MAX_VOL_SOL_PER_H;
+    const absTrades = this.c0.DORMANT_MAX_TRADES_PER_H;
+    if (this.dcfg.MODE !== 'relative') return { vol: absVol, trades: absTrades };
+    const skip = this.dcfg.REL_EXCLUDE_RECENT_HOURS;
+    const upto = this.hourMax.length - skip;
+    let peakVol = 0, peakTrades = 0;
+    for (let i = Math.max(0, upto - this.dcfg.REL_BASELINE_HOURS); i < upto; i++) {
+      if (this.hourMax[i].vol > peakVol) peakVol = this.hourMax[i].vol;
+      if (this.hourMax[i].trades > peakTrades) peakTrades = this.hourMax[i].trades;
+    }
+    const f = this.dcfg.REL_COLLAPSE_FRAC;
+    return {
+      vol: Math.max(absVol, f * peakVol),
+      trades: Math.max(absTrades, f * peakTrades),
+    };
   }
   push(c) {
     this.win.push({ trades: c.trades, vol: c.volQuote });
@@ -33,8 +65,14 @@ export class DormancyTracker {
       this.trades -= old.trades; this.vol -= old.vol;
     }
     this.minutesSeen += 1;
-    const quiet = this.trades < this.c0.DORMANT_MAX_TRADES_PER_H
-      && this.vol < this.c0.DORMANT_MAX_VOL_SOL_PER_H;
+    if (this.dcfg.MODE === 'relative') {
+      const h = Math.floor((this.minutesSeen - 1) / 60);
+      if (!this.hourMax[h]) this.hourMax[h] = { vol: 0, trades: 0 };
+      if (this.vol > this.hourMax[h].vol) this.hourMax[h].vol = this.vol;
+      if (this.trades > this.hourMax[h].trades) this.hourMax[h].trades = this.trades;
+    }
+    const ceil = this._ceilings();
+    const quiet = this.trades < ceil.trades && this.vol < ceil.vol;
     this.quietMin = quiet ? this.quietMin + 1 : 0;
     return this.dormant;
   }
@@ -49,9 +87,9 @@ export class DormancyTracker {
  * gate combination needs. Runs the same IndicatorEngine + DormancyTracker a
  * live scanner would.
  */
-export function buildSnapshots(candles, cfg = DETECTOR, c0 = C0) {
+export function buildSnapshots(candles, cfg = DETECTOR, c0 = C0, dormancy = DORMANCY) {
   const eng = new IndicatorEngine(cfg);
-  const dorm = new DormancyTracker(c0);
+  const dorm = new DormancyTracker(c0, dormancy);
   const snaps = new Array(candles.length);
   let lastDormantIdx = -Infinity;
   for (let i = 0; i < candles.length; i++) {
@@ -66,7 +104,8 @@ export function buildSnapshots(candles, cfg = DETECTOR, c0 = C0) {
         && ind.atrPctZ > cfg.Z_TRIGGER
         && ind.atrPct > cfg.ATR_PCT_FLOOR,
       dormant: isDormant,
-      dormantRecently: i - lastDormantIdx <= cfg.DORMANCY_LOOKBACK_MIN,
+      dormantRecently: dormancy.MODE === 'none'
+        || i - lastDormantIdx <= cfg.DORMANCY_LOOKBACK_MIN,
       // raw gate inputs — thresholds are applied per-combo in runDetector so
       // combos can ablate *and* vary thresholds over the same snapshots
       atrPctZ: ind.atrPctZ,

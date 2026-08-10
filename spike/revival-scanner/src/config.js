@@ -48,6 +48,23 @@ export const C0 = {
   REVIVAL_MIN_VOL_SOL: 25,   // volume floor over window (quote units)
 };
 
+// ---- Dormancy definition switch (added 2026-08-10, MANLET case) ----
+// The absolute ceilings above (<=30 trades/h, <=5 SOL/h) only catch
+// *flatliners*. MANLET (Aug 10) idled at 7-17 SOL/h pre-ignition — a *fader*:
+// volume collapsed ~100x from its own launch peak but never under the absolute
+// ceiling, so the dormancy precondition blocked a perfect ATR catch.
+// 'relative' mode instead asks: has the trailing 1h volume collapsed to
+// <= REL_COLLAPSE_FRAC of the token's OWN prior peak hour? The absolute
+// ceilings remain as floors (max(abs, frac*peak)), so relative-dormant is a
+// strict superset of absolute-dormant: flatliners stay dormant, faders join.
+export const DORMANCY = {
+  MODE: 'absolute',            // 'absolute' | 'relative' | 'none'
+  REL_BASELINE_HOURS: 168,     // peak-hour lookback (capped by available tape)
+  REL_EXCLUDE_RECENT_HOURS: 6, // peak excludes the most recent hours so the
+                               // current quiet spell can't drag its own baseline
+  REL_COLLAPSE_FRAC: 0.02,     // quiet if trailing-1h vol <= max(abs, 2% of peak)
+};
+
 // ---- Detector defaults (all provisional) ----
 export const DETECTOR = {
   ATR_PERIOD: 14,

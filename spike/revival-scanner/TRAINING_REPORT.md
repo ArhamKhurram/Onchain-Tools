@@ -142,3 +142,87 @@ chains, supporting the chain-agnostic-analytics design.
 - `train/metrics.json` — full metrics.
 - `data/corpus/episodes.jsonl` — 12,879 labelled episodes (committed).
 - `data/corpus/` raw shards (~2 GB) are gitignored — rebuildable via replay.
+- `data/labels/` — operator-labeled snapshots + `intake-episodes.jsonl`
+  (committed; added 2026-08-11, see below).
+
+---
+
+## Update 2026-08-11 — operator-labeled intake wired in; the MANLET case
+
+### What changed
+
+1. **Labeled-token intake exists** (`src/intake.js`): the operator sends a
+   mint + label, the pipeline captures minute/hourly OHLCV for the top 3
+   pools plus DexScreener meta into `data/labels/` **at label time** (minute
+   candles expire from public APIs within days — capture-or-lose).
+   First capture: **MANLET** (`revival`, the Aug 10 fader-revival that the
+   absolute dormancy gate blocked — full case in REPORT.md).
+2. **`src/labels-to-corpus.js`** converts snapshots into episode rows in the
+   corpus schema (window=`intake`). Segmentation uses **relative@2% dormancy**
+   (faders are invisible to the absolute segmenter — that is the point).
+   Wallet/trade features are null (missing to LightGBM); short-tape
+   `label2x=0` rows are marked censored and excluded rather than treated as
+   negatives.
+3. **Trainer** (`train/train.py`) appends intake rows to the **test side
+   only** — far too few to train on, exactly right to evaluate on (newest
+   tape, operator-labeled, out-of-time by construction).
+
+### Corpus & metrics after the refit
+
+| | before | after |
+| --- | --- | --- |
+| Usable episodes | 12,838 | **12,842** (+4 MANLET intake rows, 2 positive) |
+| Test episodes | 6,919 | 6,923 |
+| PR-AUC (test) | 0.214 | **0.215** (base rate 0.052, 4.1× lift) |
+| precision @ top 5% | 25.2% | 25.4% |
+| Hand gates (378 alerts) | 16.9% P / 17.9% R | 16.9% P / 17.8% R |
+| Model @ same budget | 25.9% P / 27.5% R | **25.7% P / 27.0% R** |
+
+Headline unchanged, as 4 rows should leave it — the model still beats the
+hand gates by ~50% on both axes. Feature ordering identical (atrPct #1,
+absorption #2 by SHAP, uniqueBuyers near-last).
+
+### The result that matters — where the model ranks MANLET
+
+Scored blind (classifier trained without any MANLET data, wallet features
+missing):
+
+| Episode | Outcome | Score percentile (test) |
+| --- | --- | --- |
+| Aug 7 10:04 dormancy exit | dud (1.34×) | top 4.8% (would-be FP) |
+| Aug 9 13:50 bounce | 1.92× (near-miss) | top 12.8% |
+| **Aug 9 22:10 pre-ignition entry** | **16.1×** | top 11.6% |
+| **Aug 10 17:29 ignition** | **10.1×** | **top 3.6%** |
+
+**The ignition minute lands inside the top-5% alert budget** (where test
+precision is 25%) — the learned scorer would have surfaced MANLET even
+though the v0 hand gates hard-blocked it on dormancy. The 16× pre-ignition
+entry at top 11.6% is inside a top-20% budget but not top-5% — consistent
+with the accumulation-footprint lead-time question (open question 2).
+
+### Relative-dormancy finding (from REPORT.md, affects the veto layer)
+
+The absolute dormancy ceilings (≤30 trades/h, ≤5 SOL/h) only see
+*flatliners*; MANLET was a *fader* (idling at ~1% of its own peak hour, but
+7–120 SOL/h absolute). On the 73-pool corpus, switching the detector
+precondition to **relative dormancy (≤2% of the token's own peak trailing-1h
+volume, 168h lookback) is measurement-identical at the gated combos**
+(18.5%/21.4% precision unchanged), while dropping dormancy entirely halves
+precision. Widening the dormancy lookback 120→240 min (two-stage ignitions:
+stir → consolidate → explode) is also free on the corpus. Provisional
+recommendation: relative@2% + LB240 as the production precondition; config
+default stays absolute until a second labeled fader confirms.
+
+### Caveats
+
+- 4 intake rows from one token, one archetype; OHLCV-derived features
+  (wickless candles, Hampel-clamped closes, null wallet features) are a
+  degraded view vs the swap-derived corpus — see `src/labels-common.js`
+  header for the mechanics.
+- The Aug 10 17:29 row's forward window is truncated at capture time
+  (observedMin=168; peak 10.1× already banked, so `label2x=1` is safe).
+  Re-running `node src/intake.js <mint> --label …` refreshes the tape and
+  `node src/labels-to-corpus.js` re-emits with the longer window.
+- Intake rows are test-only; nothing about the fitted model changed except
+  the evaluation set. The next retrain that *learns* from intake data needs
+  tens of labeled tokens, not four rows.

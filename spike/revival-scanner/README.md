@@ -46,4 +46,18 @@ node src/selftest.js   # synthetic-tape sanity checks
 node src/grpc-hello.js --module map_events --blocks 3 --auth key   # C1
 ```
 
-All thresholds live in `src/config.js` and are provisional.
+## Operator-labeled intake (added 2026-08-11)
+
+Minute candles expire from public APIs within days — labeled tokens must be
+captured at label time (rationale + file layout: `data/labels/README.md`):
+
+```sh
+node src/intake.js <mint> --label <revival|non-revival|fader> [--note "..."]
+node src/labels-replay.js <mint|prefix> [--at ISO_TS]  # detector replay per dormancy mode
+node src/labels-to-corpus.js                           # -> data/labels/intake-episodes.jsonl
+node src/measure-dormancy.js   # absolute vs relative vs no dormancy (REPORT.md)
+```
+
+All thresholds live in `src/config.js` and are provisional. The dormancy
+definition is switchable there (`DORMANCY.MODE`: absolute | relative | none —
+see the relative-dormancy section of REPORT.md).

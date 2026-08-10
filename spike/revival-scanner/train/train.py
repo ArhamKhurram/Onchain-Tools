@@ -45,6 +45,19 @@ def load() -> pd.DataFrame:
         for line in f:
             if line.strip():
                 rows.append(json.loads(line))
+    # Operator-labeled intake snapshots (data/labels, window='intake') — see
+    # src/labels-to-corpus.js. Few rows, newest tape, OHLCV-derived features
+    # (wallet/trade fields null -> LightGBM missing). They join the TEST side
+    # only: far too few to train on, exactly right to evaluate on.
+    intake = HERE.parent / "data" / "labels" / "intake-episodes.jsonl"
+    if intake.exists():
+        with open(intake, encoding="utf-8") as f:
+            for line in f:
+                if line.strip():
+                    r = json.loads(line)
+                    if r.get("censored"):
+                        continue  # short tape + no 2x = unknown, not negative
+                    rows.append(r)
     df = pd.DataFrame(rows)
     df["chainId"] = (df["chain"] == "bsc").astype(int)
     df = df[df["warm"] == 1].copy()
@@ -62,7 +75,11 @@ def load() -> pd.DataFrame:
 
 def split(df: pd.DataFrame):
     cutoff = df.loc[df["window"] == "sol-w2", "ts"].min()
-    test_mask = (df["window"] == "sol-w2") | ((df["chain"] == "bsc") & (df["ts"] >= cutoff))
+    test_mask = (
+        (df["window"] == "sol-w2")
+        | ((df["chain"] == "bsc") & (df["ts"] >= cutoff))
+        | (df["window"] == "intake")
+    )
     train = df[~test_mask].copy()
     test = df[test_mask].copy()
     return train, test, int(cutoff)
@@ -121,6 +138,25 @@ def main():
         metrics["precision_at"][f"top{int(frac*100)}pct"] = {
             "k": k, "precision": p, "lift": p / base_rate_test if base_rate_test else None}
         print(f"  precision@top{int(frac*100)}% (k={k}): {p:.4f}  lift={p / base_rate_test:.2f}x")
+
+    # ---- operator-labeled intake rows: where does the model rank them? ----
+    intake_mask = (test["window"] == "intake").values
+    if intake_mask.any():
+        print("\nINTAKE ROWS (operator-labeled, scored by the classifier):")
+        metrics["intake_rows"] = []
+        for pos, (_, row) in zip(np.where(intake_mask)[0], test[intake_mask].iterrows()):
+            score = float(p_te[pos])
+            pctile = float(np.mean(p_te <= score) * 100)
+            rec = {
+                "symbol": row.get("symbol"), "ts": int(row["ts"]),
+                "operatorLabel": row.get("operatorLabel"),
+                "label2x": int(row["label2x"]), "peak_24h": float(row["peak_24h"]),
+                "score": score, "test_percentile": pctile,
+            }
+            metrics["intake_rows"].append(rec)
+            print(f"  {row.get('symbol')} @ {pd.Timestamp(row['ts'], unit='s')}Z "
+                  f"label2x={int(row['label2x'])} peak24h={row['peak_24h']:.2f}x "
+                  f"score={score:.4f} -> top {100 - pctile:.1f}% of test")
 
     # ---- hand-gate baseline on the same test episodes ----
     g = test

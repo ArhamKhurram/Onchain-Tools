@@ -1,0 +1,74 @@
+{
+  "mint": "HxQhDGYqyjorgogMJx7YbBHADEDxuHhLnMMmr6VYpyn",
+  "symbol": "MANLET",
+  "label": "revival",
+  "note": "Aug 10 17:38 UTC ignition at ~$543K, 6.8x in ~7h. ATR trigger passed (z=3, RVOL 10x); absolute dormancy gate (5 SOL/h) would have blocked — fader archetype.",
+  "firstCapturedAt": "2026-08-10T20:19:56.412Z",
+  "capturedAt": "2026-08-10T20:19:56.412Z",
+  "network": "solana",
+  "pools": [
+    {
+      "pool": "68C62WPYiiNZxprbuaMj2ULXpiTDKcs5xsX7kBGnyajR",
+      "name": "MANLET / SOL",
+      "dex": "meteora",
+      "volumeUsd24h": 2276408.78423396,
+      "reserveUsd": 334118.8003,
+      "createdAt": "2026-08-07T00:11:35Z",
+      "minuteCandles": 2898,
+      "hourCandles": 86
+    },
+    {
+      "pool": "3s1cAfbqveo2J3eS7KxtitNvebxWnrpkZDyotgDT24MQ",
+      "name": "MANLET / SOL",
+      "dex": "meteora",
+      "volumeUsd24h": 1242629.88791723,
+      "reserveUsd": 202029.5554,
+      "createdAt": "2026-08-05T22:41:15Z",
+      "minuteCandles": 4569,
+      "hourCandles": 119
+    },
+    {
+      "pool": "BNEeD53WYjj8qfHEZtbUXyc1eL1cQv5HLb5H6yKgN7eo",
+      "name": "MANLET / ANSEM",
+      "dex": "raydium-clmm",
+      "volumeUsd24h": 1066024.35178474,
+      "reserveUsd": 389877.2865,
+      "createdAt": "2026-08-05T22:29:07Z",
+      "minuteCandles": 3142,
+      "hourCandles": 118
+    }
+  ],
+  "dexscreener": {
+    "pair": "68C62WPYiiNZxprbuaMj2ULXpiTDKcs5xsX7kBGnyajR",
+    "priceUsd": 0.006227,
+    "priceNative": 0.00008163,
+    "solUsd": 76.28322920494915,
+    "liquidityUsd": 335826.78,
+    "fdv": 6227679,
+    "marketCap": 6227679,
+    "txns": {
+      "m5": {
+        "buys": 813,
+        "sells": 1405
+      },
+      "h1": {
+        "buys": 4195,
+        "sells": 4899
+      },
+      "h6": {
+        "buys": 4630,
+        "sells": 5389
+      },
+      "h24": {
+        "buys": 5345,
+        "sells": 5965
+      }
+    },
+    "volume": {
+      "h24": 2091402.03,
+      "h6": 2026930.05,
+      "h1": 1941905.19,
+      "m5": 606431.91
+    }
+  }
+}

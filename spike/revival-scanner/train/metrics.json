@@ -1,54 +1,92 @@
 {
  "n_train": 5919,
- "n_test": 6919,
+ "n_test": 6923,
  "base_rate_train": 0.039364757560398714,
- "base_rate_test": 0.051597051597051594,
+ "base_rate_test": 0.051856131734797056,
  "test_cutoff_ts": 1785498420,
- "pr_auc_test": 0.21380524540501747,
- "pr_auc_lift": 4.143749279992481,
+ "pr_auc_test": 0.21476437623179645,
+ "pr_auc_lift": 4.141542553350214,
  "best_iteration": 55,
  "precision_at": {
   "top5pct": {
-   "k": 345,
-   "precision": 0.25217391304347825,
-   "lift": 4.887370600414079
+   "k": 346,
+   "precision": 0.2543352601156069,
+   "lift": 4.90463232807896
   },
   "top10pct": {
-   "k": 691,
-   "precision": 0.2199710564399421,
-   "lift": 4.263248570050306
+   "k": 692,
+   "precision": 0.22109826589595374,
+   "lift": 4.2636860579322775
   },
   "top20pct": {
-   "k": 1383,
-   "precision": 0.1749819233550253,
-   "lift": 3.3913163240712048
+   "k": 1384,
+   "precision": 0.17630057803468208,
+   "lift": 3.3998019546910974
   }
  },
+ "intake_rows": [
+  {
+   "symbol": "MANLET",
+   "ts": 1786097040,
+   "operatorLabel": "revival",
+   "label2x": 0,
+   "peak_24h": 1.33981,
+   "score": 0.22388241849186788,
+   "test_percentile": 95.2332803697819
+  },
+  {
+   "symbol": "MANLET",
+   "ts": 1786283400,
+   "operatorLabel": "revival",
+   "label2x": 0,
+   "peak_24h": 1.91973,
+   "score": 0.10690569245548988,
+   "test_percentile": 87.1587462082912
+  },
+  {
+   "symbol": "MANLET",
+   "ts": 1786313400,
+   "operatorLabel": "revival",
+   "label2x": 1,
+   "peak_24h": 16.1114,
+   "score": 0.11813991177702307,
+   "test_percentile": 88.41542683807599
+  },
+  {
+   "symbol": "MANLET",
+   "ts": 1786382940,
+   "operatorLabel": "revival",
+   "label2x": 1,
+   "peak_24h": 10.114,
+   "score": 0.2574234813426286,
+   "test_percentile": 96.44662718474649
+  }
+ ],
  "hand_gates_test": {
   "alerts": 378,
   "precision": 0.1693121693121693,
-  "recall_of_2x": 0.1792717086834734,
-  "lift": 3.2814310909549005
+  "recall_of_2x": 0.17827298050139276,
+  "lift": 3.2650366243681
  },
  "model_at_gate_budget": {
-  "precision": 0.25925925925925924,
-  "recall_of_2x": 0.27450980392156865
+  "precision": 0.2566137566137566,
+  "recall_of_2x": 0.27019498607242337
  },
  "magnitude": {
   "p10": {
-   "coverage_below": 0.16042780748663102,
+   "coverage_below": 0.16033511483460927,
    "best_iter": 53
   },
   "p50": {
-   "coverage_below": 0.47391241508888565,
+   "coverage_below": 0.47363859598439984,
    "best_iter": 125
   },
   "p90": {
-   "coverage_below": 0.887556005203064,
+   "coverage_below": 0.8873320814675718,
    "best_iter": 58
   },
-  "p50_median_abs_err_mult": 0.03701015690429843,
-  "p10_p90_interval_coverage": 0.7561786385315797
+  "p50_median_abs_err_mult": 0.03705302582918568,
+  "p10_p90_interval_coverage": 0.7560306225624729
  },
  "feature_importance_gain": {
   "atrPct": 0.372284415716302,
@@ -69,21 +107,21 @@
   "chainId": 0.007243726977450615
  },
  "shap_mean_abs": {
-  "atrPct": 0.6745103804738305,
-  "absorption": 0.26753124517774574,
-  "atrPctZ": 0.19797619736975597,
-  "dispFromBaseline": 0.19770082369417655,
-  "tokenAgeMin": 0.104990198094645,
-  "priorEpisodes": 0.08563545927358458,
-  "rvol": 0.07997836137049773,
-  "buySellRatio10m": 0.07850782491900543,
-  "prior2xEpisodes": 0.06570350539387837,
-  "vol10m": 0.05946585591599275,
-  "dormancyHours": 0.05012181162571421,
-  "chainId": 0.04264046142541304,
-  "tradesInMinute": 0.03254244172503226,
-  "dayOfWeek": 0.03223724682634654,
-  "hourUtc": 0.030568631863832928,
-  "uniqueBuyers10m": 0.030458210180547368
+  "atrPct": 0.6734085593224052,
+  "absorption": 0.2668889148273148,
+  "dispFromBaseline": 0.19948640009618562,
+  "atrPctZ": 0.1983331748638288,
+  "tokenAgeMin": 0.10563586209368131,
+  "priorEpisodes": 0.08547990968462373,
+  "buySellRatio10m": 0.0796937506399988,
+  "rvol": 0.07912385910075165,
+  "prior2xEpisodes": 0.06631994913579133,
+  "vol10m": 0.05960696680241021,
+  "dormancyHours": 0.05028741845518462,
+  "chainId": 0.04230675609404952,
+  "dayOfWeek": 0.03269769771493695,
+  "tradesInMinute": 0.03233721497962104,
+  "uniqueBuyers10m": 0.03039828957753048,
+  "hourUtc": 0.030358912396964866
  }
 }

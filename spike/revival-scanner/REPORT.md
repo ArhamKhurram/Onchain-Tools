@@ -167,3 +167,81 @@ signal.
 4. No 10–20x appeared in 14 days × 130 pools — tail events need far more
    tape; expect the magnitude distribution to be power-law and plan sample
    sizes accordingly.
+
+---
+
+## Relative dormancy (added 2026-08-11 — the MANLET case)
+
+**The case.** MANLET (`HxQhDGYq…`) launched Aug 5, faded ~77% by Aug 9, then
+revived Aug 10 ~17:38 UTC and ran ~6.8x ($543K → $3.9M mcap). The ATR trigger
+was live at ignition — but the dormancy precondition **blocked the alert**:
+pre-ignition the pool idled at ~$0.5K–9K/hour (7–120 SOL/h), never under the
+absolute 5 SOL/h ceiling. MANLET was a **fader, not a flatliner** — volume had
+collapsed to **0.05–1% of its own peak hour (~$978K)** while staying far above
+any absolute floor. The absolute ceilings define dormancy for flatliners only.
+
+**The change under test.** `config.js` now carries a `DORMANCY` switch:
+
+- `absolute` — the original ceilings (≤30 trades/h, ≤5 SOL/h). Unchanged
+  default; still the labeler's ground-truth definition.
+- `relative` — quiet if trailing-1h volume ≤ **max(absolute ceiling,
+  X × the token's own peak trailing-1h volume)** over the last 168h
+  (excluding the most recent 6h). Strict superset of absolute: flatliners
+  stay dormant, faders join.
+- `none` — precondition dropped (control condition).
+
+**Corpus re-measurement** (`src/measure-dormancy.js`; same 73-pool / 355
+token-day snapshot, ground-truth labels *fixed* to the original C0 labeler so
+only the detector's precondition varies — the original-gates rows reproduce
+the table above exactly):
+
+| Mode | Combo | Alerts | TP | FP | Precision | Recall |
+| --- | --- | --- | --- | --- | --- | --- |
+| (a) absolute | trigger+RVOL+buyers | 27 | 5 | 22 | 18.5% | 4/5 |
+| (a) absolute | ALL gates | 14 | 3 | 11 | 21.4% | 3/5 |
+| (b) relative@2% | trigger+RVOL+buyers | **27** | 5 | 22 | **18.5%** | 4/5 |
+| (b) relative@2% | ALL gates | **14** | 3 | 11 | **21.4%** | 3/5 |
+| (b) relative@2% + lookback 240m | trigger+RVOL+buyers | 27 | 5 | 22 | 18.5% | 4/5 |
+| (b) relative@2% + lookback 240m | ALL gates | 14 | 3 | 11 | 21.4% | 3/5 |
+| (c) none | trigger+RVOL+buyers | 61 | 5 | 56 | **8.2%** | 4/5 |
+| (c) none | ALL gates | 32 | 3 | 29 | **9.4%** | 3/5 |
+
+Sweep (X ∈ {1,2,5,10,25}%, full table in `data/dormancy-experiment.json`):
+X ≤ 2% is free (identical at the gated combos, +0–8 FPs at trigger-only);
+precision decays gently from X=5% (18.5%→17.2%) to X=25% (→11.6%). Dropping
+dormancy entirely **halves precision** at every combo for zero recall gain —
+the precondition genuinely carries weight; it just needs to be relative.
+
+**Does (b) admit MANLET?** (`src/labels-replay.js MANLET --at
+2026-08-10T17:38Z`, replaying the captured GeckoTerminal minute tape through
+the identical candles→indicators→detector chain):
+
+- **Precondition: yes.** `dormantRecently` = true through the entire
+  17:29–17:51 ignition window at X as tight as **1%**; absolute mode says
+  false the whole tape (0 alerts ever — the fader is invisible to it).
+- **Trigger, honestly:** on the OHLCV-reconstructed candles the 17:38 stir
+  peaks at **z=2.93, RVOL 7–24x** — a hair under the 3.0 trigger. (The
+  swap-level replay of the live case printed z≥3 / RVOL 10x at 17:38;
+  close-to-close TR on last-trade closes slightly underestimates ATR. At the
+  threshold this matters.) The **explosive leg triggers cleanly at 19:45
+  (z=3.0→4.5, RVOL 221x)** but sits 139 min after relative-dormancy ended —
+  outside the 120-min lookback, admitted by a 240-min one. Two-stage
+  ignitions (stir → ~2h consolidation → explosion) argue for the wider
+  lookback, and the corpus says LB240 costs nothing at the gated combos.
+- Relative mode also fires on Aug 9's bounce attempts (real +50–80% moves
+  that then died — the repeat-pumper texture the outcome section already
+  flagged).
+
+**Recommendation (provisional, pending more labeled faders):** adopt
+`relative` dormancy at **X=2%** with **DORMANCY_LOOKBACK_MIN=240**. On the
+corpus it is measurement-identical to the absolute gates; on the one labeled
+fader it converts a hard block into an admitted alert. Config default stays
+`absolute` until a second fader case confirms.
+
+**Data-quality note for OHLCV replays** (`src/labels-common.js`): public
+minute candles carry two poisons the spike's swap-built candles were designed
+against — dust-trade wicks (±50% high/low on thin minutes) and last-trade
+closes (MANLET had a single 200x-down print that put a 97% std into the ATR
+baseline and deadened the z-score for 24h). The loader therefore builds
+wickless candles and Hampel-clamps isolated spike-and-revert closes. Both are
+documented in the file header; neither affects the swap-derived corpus.
