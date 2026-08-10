@@ -15,7 +15,10 @@
  *
  * Self-gates cleanly: local mode reads the JSON contract log (no Supabase
  * required); hosted mode reads the contracts table via the service client.
- * Nothing new is persisted — cooldowns are in-memory (v1).
+ * Cooldowns are in-memory (v1); fired alerts are persisted via the storage
+ * provider (revival-alerts.json locally, revival_alerts in hosted mode) and
+ * their outcomes tracked for 24h by RevivalOutcomeTracker — open windows are
+ * resumed from storage on boot.
  *
  * Revival is its own signal end-to-end. It is never fused with convergence,
  * missed-runner, or FOMO detections.
@@ -31,6 +34,13 @@ import { buildContractUrl } from '../utils/contract.js';
 import { formatCompact } from '../wallets/balanceChecker.js';
 import { evaluateRevival } from './detector.js';
 import { fetchRevivalCandles, isBackedOff } from './candles.js';
+import {
+  buildAlertEntry,
+  partitionOpenAlerts,
+  OUTCOME_WINDOW_MS,
+  RevivalOutcomeTracker,
+} from './outcomeTracker.js';
+import type { RevivalAlertEntry } from '@oct/shared';
 
 const LOCAL_USER_ID = 'local';
 const DEFAULT_POLL_MS = 150_000; // 2.5 min
@@ -109,6 +119,8 @@ class RevivalPoller {
   private cooldowns = new Map<string, number>();
   /** Rotation pointer so universes above the per-cycle cap are fully covered. */
   private rotationOffset = 0;
+  /** 24h peak tracking for fired alerts (slow cadence, write-on-improvement). */
+  private outcomes = new RevivalOutcomeTracker();
 
   constructor(wsServer: WsServer) {
     this.wsServer = wsServer;
@@ -132,6 +144,10 @@ class RevivalPoller {
 
     const interval = resolvePollMs();
     console.log(`[RevivalPoller] Started (interval ${interval}ms, cap ${MAX_TOKENS_PER_CYCLE} tokens/cycle).`);
+    this.outcomes.start();
+    void this.resumeOpenOutcomes().catch((err) =>
+      console.error('[RevivalPoller] outcome resume error:', (err as Error)?.message),
+    );
     void this.poll().catch((err) => console.error('[RevivalPoller] initial poll error:', (err as Error)?.message));
     this.timer = setInterval(() => {
       void this.poll().catch((err) => console.error('[RevivalPoller] poll error:', (err as Error)?.message));
@@ -141,6 +157,65 @@ class RevivalPoller {
   stop(): void {
     if (this.timer) clearInterval(this.timer);
     this.timer = null;
+    this.outcomes.stop();
+  }
+
+  /**
+   * Boot resilience: reload alerts whose 24h outcome window is still open and
+   * hand them back to the tracker (this is why peak state lives in the row,
+   * not memory). Windows that expired during downtime get their close stamped
+   * so the log never shows a permanent "tracking…".
+   */
+  private async resumeOpenOutcomes(): Promise<void> {
+    const rows: (RevivalAlertEntry & { userId: string })[] = [];
+
+    if (!isHostedMode()) {
+      const entries = await getStorageProvider().listRevivalAlerts(LOCAL_USER_ID, 200);
+      for (const e of entries) rows.push({ ...e, userId: LOCAL_USER_ID });
+    } else {
+      if (!this.db) return;
+      const { data, error } = await this.db
+        .from('revival_alerts')
+        .select('*')
+        .is('outcome_window_closed_at', null)
+        .limit(500);
+      if (error) {
+        console.warn('[RevivalPoller] Open-outcome load failed:', error.message);
+        return;
+      }
+      for (const r of (data ?? []) as any[]) {
+        rows.push({
+          id: r.id,
+          mint: r.mint,
+          symbol: r.symbol ?? null,
+          network: r.network ?? 'solana',
+          priceUsd: r.price_usd != null ? Number(r.price_usd) : null,
+          mcapUsd: r.mcap_usd != null ? Number(r.mcap_usd) : null,
+          atrZ: Number(r.atr_z ?? 0),
+          rvol: Number(r.rvol ?? 0),
+          triggeredAt: r.triggered_at,
+          peakPriceUsd: r.peak_price_usd != null ? Number(r.peak_price_usd) : null,
+          peakMcapUsd: r.peak_mcap_usd != null ? Number(r.peak_mcap_usd) : null,
+          peakMultiple: r.peak_multiple != null ? Number(r.peak_multiple) : null,
+          peakAt: r.peak_at ?? null,
+          outcomeWindowClosedAt: r.outcome_window_closed_at ?? null,
+          userId: r.user_id as string,
+        });
+      }
+    }
+
+    const { open, expired } = partitionOpenAlerts(rows, Date.now());
+    for (const e of expired) {
+      const closedAt = new Date(new Date(e.triggeredAt).getTime() + OUTCOME_WINDOW_MS).toISOString();
+      try {
+        await getStorageProvider().updateRevivalAlertOutcome(e.userId, e.id, {
+          outcomeWindowClosedAt: closedAt,
+        });
+      } catch (err) {
+        console.warn('[RevivalPoller] Failed to close expired outcome:', (err as Error)?.message);
+      }
+    }
+    this.outcomes.resumeEntries(open.map((e) => ({ entry: e, userId: e.userId })));
   }
 
   private async loadUniverse(): Promise<RevivalUniverse> {
@@ -251,6 +326,23 @@ class RevivalPoller {
     );
 
     for (const userId of subscribers) {
+      // Persist before broadcast so a client refetching the revival log on
+      // frame arrival always finds the row. A storage failure never blocks
+      // the live alert — the broadcast/pushover fan-out still runs.
+      try {
+        const entry = buildAlertEntry(data);
+        await getStorageProvider().logRevivalAlert(userId, entry);
+        this.outcomes.track({
+          alertId: entry.id,
+          userId,
+          mint: entry.mint,
+          alertPriceUsd: entry.priceUsd,
+          peakPriceUsd: entry.peakPriceUsd,
+          triggeredAtMs: now,
+        });
+      } catch (err) {
+        console.error('[RevivalPoller] Failed to persist alert:', (err as Error)?.message);
+      }
       this.wsServer.broadcastRevivalAlert(data, userId);
       void this.notifyPushover(userId, data, sym);
     }

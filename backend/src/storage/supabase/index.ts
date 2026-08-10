@@ -1,6 +1,7 @@
 import type { PumpSession, StorageProvider } from '../interface.js';
 import type { AppConfig, Room } from '../../discord/types.js';
 import type { ContractEntry, ContractEnrichmentPatch, EnrichContractOptions } from '../../utils/contractLog.js';
+import type { RevivalAlertEntry, RevivalOutcomePatch } from '@oct/shared';
 import { createServiceClient, SupabaseContext } from './client.js';
 import { ConfigRepo } from './configRepo.js';
 import { TokensRepo } from './tokensRepo.js';
@@ -9,6 +10,7 @@ import { RoomsRepo } from './roomsRepo.js';
 import { ContractsRepo } from './contractsRepo.js';
 import { TelegramRepo } from './telegramRepo.js';
 import { UserCacheRepo } from './userCacheRepo.js';
+import { RevivalAlertsRepo } from './revivalAlertsRepo.js';
 
 export class SupabaseStorageProvider implements StorageProvider {
   private config: ConfigRepo;
@@ -18,6 +20,7 @@ export class SupabaseStorageProvider implements StorageProvider {
   private contracts: ContractsRepo;
   private telegram: TelegramRepo;
   private userCache: UserCacheRepo;
+  private revivalAlerts: RevivalAlertsRepo;
 
   constructor() {
     const ctx = new SupabaseContext(createServiceClient());
@@ -29,6 +32,7 @@ export class SupabaseStorageProvider implements StorageProvider {
     this.contracts = new ContractsRepo(ctx);
     this.telegram = new TelegramRepo(ctx);
     this.userCache = new UserCacheRepo(ctx);
+    this.revivalAlerts = new RevivalAlertsRepo(ctx);
 
     // Wire cross-repo dependencies (rooms ↔ config ↔ highlights/keywords seam).
     this.config.rooms = this.rooms;
@@ -144,5 +148,19 @@ export class SupabaseStorageProvider implements StorageProvider {
 
   cacheUserName(userId: string, discordUserId: string, displayName: string): Promise<void> {
     return this.userCache.cacheUserName(userId, discordUserId, displayName);
+  }
+
+  // ---- Revival alerts ----
+
+  logRevivalAlert(userId: string, alert: RevivalAlertEntry): Promise<RevivalAlertEntry> {
+    return this.revivalAlerts.logRevivalAlert(userId, alert);
+  }
+
+  listRevivalAlerts(userId: string, limit?: number): Promise<RevivalAlertEntry[]> {
+    return this.revivalAlerts.listRevivalAlerts(userId, limit);
+  }
+
+  updateRevivalAlertOutcome(userId: string, alertId: string, outcome: RevivalOutcomePatch): Promise<void> {
+    return this.revivalAlerts.updateRevivalAlertOutcome(userId, alertId, outcome);
   }
 }

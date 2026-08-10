@@ -58,6 +58,7 @@ export type {
   TelegramChatInfo,
   ContractEntry,
   RevivalAlertData,
+  RevivalAlertEntry,
 } from '@oct/shared';
 
 // Shared runtime value.

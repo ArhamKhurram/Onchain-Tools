@@ -116,6 +116,8 @@ export type {
   SoundConfig,
   SoundSettings,
   RevivalAlertData,
+  RevivalAlertEntry,
+  RevivalOutcomePatch,
   CallerTier,
   CallerTierEntry,
   AppConfig,

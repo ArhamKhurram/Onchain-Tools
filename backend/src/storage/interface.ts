@@ -1,5 +1,6 @@
 import type { AppConfig, Room } from '../discord/types.js';
 import type { ContractEntry, ContractEnrichmentPatch, EnrichContractOptions } from '../utils/contractLog.js';
+import type { RevivalAlertEntry, RevivalOutcomePatch } from '@oct/shared';
 
 /**
  * A stored pump.fun session bearer plus the moment it was stored.
@@ -52,4 +53,13 @@ export interface StorageProvider {
   hasAddress(userId: string, address: string): Promise<boolean>;
 
   cacheUserName(userId: string, discordUserId: string, displayName: string): Promise<void>;
+
+  // ---- Revival alerts (fired-alert log + 24h outcome tracking) ----
+
+  /** Persist a fired revival alert (id supplied by the caller). */
+  logRevivalAlert(userId: string, alert: RevivalAlertEntry): Promise<RevivalAlertEntry>;
+  /** Newest-first list of stored revival alerts. */
+  listRevivalAlerts(userId: string, limit?: number): Promise<RevivalAlertEntry[]>;
+  /** Merge an outcome patch (peak fields / window close) into one alert row. */
+  updateRevivalAlertOutcome(userId: string, alertId: string, outcome: RevivalOutcomePatch): Promise<void>;
 }
