@@ -33,13 +33,29 @@ import {
   type WalletTrackerRow,
 } from './movementStore.js';
 
-const DEFAULT_INTERVAL_MS = Number.parseInt(process.env.WALLET_MOVEMENT_POLL_INTERVAL_MS ?? '', 10) || 20_000;
+const DEFAULT_INTERVAL_MS = Number.parseInt(process.env.WALLET_MOVEMENT_POLL_INTERVAL_MS ?? '', 10) || 30_000;
 const IDLE_INTERVAL_MS = Number.parseInt(process.env.WALLET_MOVEMENT_IDLE_INTERVAL_MS ?? '', 10) || 90_000;
 // Bound the upstream load per poll: a big Directory can hold hundreds of wallets,
 // so each cycle polls at most this many, rotating through the full set across
 // cycles (every wallet is covered within ceil(total / cap) polls). Keeps the poll
-// from hammering profile-api regardless of how many wallets are tracked.
-const MAX_WALLETS_PER_POLL = Number.parseInt(process.env.WALLET_MOVEMENT_MAX_PER_POLL ?? '', 10) || 40;
+// from hammering profile-api regardless of how many wallets are tracked. Kept
+// deliberately modest — profile-api is a flaky, unmetered public origin, so a
+// smaller slice polled more gently beats a big one that trips 502s.
+const MAX_WALLETS_PER_POLL = Number.parseInt(process.env.WALLET_MOVEMENT_MAX_PER_POLL ?? '', 10) || 25;
+// Space out the per-wallet requests within a cycle instead of firing the whole
+// slice back-to-back, so the origin sees a trickle rather than a burst. 0 disables.
+const REQUEST_SPACING_MS = Number.parseInt(process.env.WALLET_MOVEMENT_REQUEST_SPACING_MS ?? '', 10) || 150;
+// profile-api.pump.fun times out and 502s often enough that the default 10s
+// single-shot budget is too tight for a background poller. Give the transactions
+// call a longer budget and a couple of retries on TRANSIENT failures only. Both
+// are env-tunable; setting retries to 0 restores single-attempt behavior.
+const TX_TIMEOUT_MS = Number.parseInt(process.env.WALLET_MOVEMENT_TX_TIMEOUT_MS ?? '', 10) || 20_000;
+const TX_RETRIES = Number.parseInt(process.env.WALLET_MOVEMENT_TX_RETRIES ?? '', 10);
+const TX_RETRIES_RESOLVED = Number.isFinite(TX_RETRIES) && TX_RETRIES >= 0 ? TX_RETRIES : 2;
+
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
 
 type NormalizedSide = 'buy' | 'sell' | null;
 
@@ -126,14 +142,24 @@ class WalletMovementPoller {
       const cursors = await loadMovementCursors(this.db, slice);
 
       let hadError = false;
+      let first = true;
       for (const wallet of slice) {
         const followers = trackers.get(wallet);
         if (!followers || followers.length === 0) continue;
+        // Trickle the requests out rather than firing the whole slice at once, so
+        // a big Directory does not burst the origin. Skip the delay before the
+        // first request.
+        if (!first && REQUEST_SPACING_MS > 0) await sleep(REQUEST_SPACING_MS);
+        first = false;
         try {
           await this.pollWallet(wallet, followers, cursors.get(wallet));
         } catch (err) {
           hadError = true;
           this.lastPollError = (err as Error)?.message ?? String(err);
+          // A transient upstream failure here has already exhausted its retries in
+          // the client, so it is expected-and-handled noise, not a hard error:
+          // warn (never error) so it stops looking like a fault, and the wallet is
+          // simply picked up next cycle.
           console.warn(`[WalletMovementPoller] poll failed for ${wallet.slice(0, 8)}…:`, this.lastPollError);
         }
       }
@@ -163,7 +189,10 @@ class WalletMovementPoller {
   ): Promise<void> {
     // First page of recent activity is enough at a sane interval; we only care
     // about SWAP rows (buys/sells), so transfers/fee-claims are dropped here.
-    const page = await getPumpfunClient().getWalletTransactions(wallet);
+    const page = await getPumpfunClient().getWalletTransactions(wallet, {
+      timeoutMs: TX_TIMEOUT_MS,
+      retries: TX_RETRIES_RESOLVED,
+    });
     const swaps = page.items.filter((t): t is PumpSwapTransaction => t.type === 'SWAP');
 
     const newestTxHash = swaps[0]?.txHash ?? null;
