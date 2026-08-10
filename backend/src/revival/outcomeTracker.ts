@@ -258,7 +258,9 @@ export class RevivalOutcomeTracker {
       }
 
       for (const alerts of byToken.values()) {
-        if (isBackedOff()) return; // rate-limited — resume next sweep
+        // Only the hard safety valve (sustained rate limiting) stops a sweep;
+        // an isolated 429 is absorbed by the client's re-queue + slowdown.
+        if (isBackedOff()) return; // resume next sweep
         // No spacing here: candles.ts paces every revival request globally.
         // This module used to sleep on its own budget while the poller slept
         // on its — two "safe" rates that summed to an unsafe one.
