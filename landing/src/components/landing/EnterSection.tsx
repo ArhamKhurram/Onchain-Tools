@@ -1,5 +1,7 @@
+import { RefObject } from 'react';
 import { motion } from 'framer-motion';
 import { APP_CONSOLE_PATH } from '../../constants';
+import { useSectionScroll } from '../../hooks/useSectionScroll';
 
 const mockLines = [
   { user: 'alpha_sniper', msg: 'New CA just dropped on pump.fun', tag: null },
@@ -7,14 +9,17 @@ const mockLines = [
   { user: 'degen_carl', msg: '0x1a2b…f3d4 — up 340% in 2h', tag: 'EVM' },
 ];
 
-export function EnterSection() {
+export function EnterSection({ scrollRef }: { scrollRef: RefObject<HTMLElement | null> }) {
+  const { sectionRef, headingY, bodyY } = useSectionScroll(scrollRef);
+
   return (
     <section
       id="enter"
+      ref={sectionRef}
       className="relative snap-start snap-always min-h-[100dvh] flex flex-col justify-center bg-black text-white px-6 sm:px-10 pr-12 sm:pr-14 py-24"
     >
       <div className="max-w-6xl mx-auto w-full grid grid-cols-1 lg:grid-cols-2 gap-12 lg:gap-16 items-center">
-        <div>
+        <motion.div style={{ y: headingY }}>
           <motion.p
             initial={{ opacity: 0 }}
             whileInView={{ opacity: 1 }}
@@ -54,9 +59,10 @@ export function EnterSection() {
           >
             [ TAKE ME TO CONSOLE → ]
           </motion.a>
-        </div>
+        </motion.div>
 
         <motion.div
+          style={{ y: bodyY }}
           initial={{ opacity: 0, x: 20 }}
           whileInView={{ opacity: 1, x: 0 }}
           viewport={{ once: true }}

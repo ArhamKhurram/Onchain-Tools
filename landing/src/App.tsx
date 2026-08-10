@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import { GateScreen } from './components/landing/GateScreen';
 import { LandingNav } from './components/landing/LandingNav';
 import { HeroSection } from './components/landing/HeroSection';
@@ -14,6 +14,7 @@ const SECTION_IDS = ['hero', 'stack', 'enter', 'security', 'updates'];
 
 export default function App() {
   const [entered, setEntered] = useState(false);
+  const scrollRef = useRef<HTMLElement>(null);
   const { activeIndex, scrollToSection } = useScrollSections(SECTION_IDS);
 
   const scrollToTop = () => {
@@ -48,13 +49,14 @@ export default function App() {
 
       <main
         id="landing-scroll"
+        ref={scrollRef}
         className={`h-[100dvh] overflow-y-auto snap-y snap-proximity scroll-smooth ${entered ? '' : 'overflow-hidden'}`}
       >
-        <HeroSection />
-        <StackSection />
-        <EnterSection />
-        <SecurityStrip />
-        <UpdatesSection />
+        <HeroSection scrollRef={scrollRef} />
+        <StackSection scrollRef={scrollRef} />
+        <EnterSection scrollRef={scrollRef} />
+        <SecurityStrip scrollRef={scrollRef} />
+        <UpdatesSection scrollRef={scrollRef} />
       </main>
     </>
   );
