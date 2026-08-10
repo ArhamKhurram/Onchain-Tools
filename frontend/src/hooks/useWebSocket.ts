@@ -10,7 +10,7 @@ import { isHostedMode, getSupabase } from '../lib/supabase';
 import { isClientGatewayMode } from '../discord/clientGateway';
 import { hasLocalDiscordTokens } from '../discord/tokenStore';
 import { buildStreamMessage, STREAM_POOL } from '../demo/demoData';
-import type { WsIncoming, Alert, FrontendMessage, ContractEntry } from '../types';
+import type { WsIncoming, Alert, FrontendMessage, ContractEntry, RevivalAlertData } from '../types';
 import type { FomoTradeEvent } from '../types/fomo';
 
 let idCounter = 0;
@@ -53,6 +53,7 @@ export function useWebSocket() {
   const setGatewayAuthError = useAppStore((s) => s.setGatewayAuthError);
   const fetchMaskedTokens = useAppStore((s) => s.fetchMaskedTokens);
   const addFomoTrade = useAppStore((s) => s.addFomoTrade);
+  const addRevival = useAppStore((s) => s.addRevival);
 
   useDemoStream();
 
@@ -283,6 +284,47 @@ export function useWebSocket() {
               const cfg = useAppStore.getState().config;
               if (cfg?.messageSounds) playPumpCalloutSound(cfg.soundSettings?.pumpCallout);
             }
+          } else if (incoming.type === 'revival_alert') {
+            // A dormant token on the user's radar just ignited — the loudest
+            // alert class in the app. The banner (with its repeating sound
+            // loop) persists until explicitly dismissed; the ping also lands
+            // in notification history via addAlert. Revival is its own signal:
+            // never fused with convergence / missed-runner / FOMO.
+            const d = incoming.data as RevivalAlertData;
+            if (!IS_POPOUT) {
+              addRevival(d);
+
+              const cfg = useAppStore.getState().config;
+              const sym = d.symbol ? `$${d.symbol}` : `${d.mint.slice(0, 6)}…`;
+              const mc = typeof d.mcapUsd === 'number' ? formatMcap(d.mcapUsd) : '—';
+              const url = cfg
+                ? buildContractUrl(d.mint, cfg.contractLinkTemplates)
+                : undefined;
+              const alert: Alert = {
+                id: `revival-${d.mint}-${d.triggeredAt}`,
+                type: 'revival',
+                reason: `REVIVAL: ${sym} igniting`,
+                message: {
+                  id: `revival-${d.mint}-${d.triggeredAt}`,
+                  channelId: 'revival',
+                  guildId: null,
+                  channelName: 'REVIVAL',
+                  guildName: null,
+                  author: { id: 'oct-revival', username: 'OCT', displayName: 'Revival', avatar: null },
+                  content: `${sym} igniting — mcap ${mc}, RVOL ${d.rvol.toFixed(1)}x, ATR z ${d.atrZ.toFixed(1)}`,
+                  timestamp: d.triggeredAt,
+                  attachments: [],
+                  embeds: [],
+                  isHighlighted: false,
+                  hasContractAddress: true,
+                  contractAddresses: [d.mint],
+                  mentions: {},
+                  platformUrl: url,
+                },
+                timestamp: Date.now(),
+              };
+              addAlert(alert);
+            }
           } else if (incoming.type === 'wallet_movement') {
             // A tracked Directory (user_tracked_wallets) SOLANA wallet made an
             // on-chain buy/sell. `notify` gates the toast/sound (mirrors FOMO);
@@ -375,5 +417,5 @@ export function useWebSocket() {
       clearTimeout(reconnectTimer);
       wsRef.current?.close();
     };
-  }, [addMessage, updateMessage, markMessageDeleted, addAlert, setConnected, updateReaction, addContract, enrichContract, updateContractChain, fetchGuilds, fetchDMChannels, fetchHistory, fetchTelegramChats, checkAuth, setGatewayAuthError, fetchMaskedTokens, addFomoTrade]);
+  }, [addMessage, updateMessage, markMessageDeleted, addAlert, setConnected, updateReaction, addContract, enrichContract, updateContractChain, fetchGuilds, fetchDMChannels, fetchHistory, fetchTelegramChats, checkAuth, setGatewayAuthError, fetchMaskedTokens, addFomoTrade, addRevival]);
 }

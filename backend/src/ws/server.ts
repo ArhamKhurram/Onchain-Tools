@@ -233,6 +233,20 @@ export class WsServer {
     }
   }
 
+  /**
+   * Revival ignition alert (the app's loudest alert class). Delivered to the
+   * subscribed user's sockets in hosted mode; all clients in local mode.
+   * Payload shape: RevivalAlertData (@oct/shared).
+   */
+  broadcastRevivalAlert(data: any, userId?: string): void {
+    const payload = JSON.stringify({ type: 'revival_alert', data });
+    for (const [ws, state] of this.clients) {
+      if (ws.readyState !== WebSocket.OPEN) continue;
+      if (isHostedMode() && userId && state.userId !== userId) continue;
+      ws.send(payload);
+    }
+  }
+
   broadcastContractEnrichment(data: any, userId?: string): void {
     const payload = JSON.stringify({ type: 'contract_enrichment', data });
     for (const [ws, state] of this.clients) {

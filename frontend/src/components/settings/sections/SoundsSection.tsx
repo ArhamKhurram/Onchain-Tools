@@ -138,6 +138,7 @@ export default function SoundsSection({ form }: { form: SettingsForm }) {
                             ['keywordAlert', 'Keyword Match'],
                             ['fomoTrade', 'FOMO Trade'],
                             ['pumpCallout', 'Pump Callout'],
+                            ['revival', 'Revival'],
                           ] as [SoundType, string][]).map(([type, label]) => {
                             const sc = soundSettings[type];
                             return (
@@ -190,6 +191,29 @@ export default function SoundsSection({ form }: { form: SettingsForm }) {
                                       />
                                       <span className="font-mono text-[11px] text-oct-muted w-8 text-right">{sc.volume}%</span>
                                     </div>
+
+                                    {type === 'revival' && (
+                                      <div className="flex items-center justify-between gap-3">
+                                        <span className="text-xs text-oct-muted">
+                                          Repeat every ~5s until the revival banner is dismissed
+                                        </span>
+                                        <div
+                                          className={`w-9 h-[18px] rounded-full transition-colors duration-100 relative cursor-pointer shrink-0 ${
+                                            sc.repeatUntilDismissed !== false ? 'bg-oct-green' : 'bg-oct-border-bright'
+                                          }`}
+                                          onClick={() => setSoundSettings((prev) => ({
+                                            ...prev,
+                                            revival: { ...prev.revival, repeatUntilDismissed: !(prev.revival.repeatUntilDismissed !== false) },
+                                          }))}
+                                        >
+                                          <div
+                                            className={`absolute top-[2px] w-[14px] h-[14px] bg-oct-text rounded-full transition-transform duration-100 ${
+                                              sc.repeatUntilDismissed !== false ? 'translate-x-[18px]' : 'translate-x-[2px]'
+                                            }`}
+                                          />
+                                        </div>
+                                      </div>
+                                    )}
 
                                     <div className="space-y-2">
                                       <div className="flex flex-wrap items-center gap-1.5 sm:gap-2">
