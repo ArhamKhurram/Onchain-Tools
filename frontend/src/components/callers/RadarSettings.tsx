@@ -54,9 +54,9 @@ export default function RadarSettings({
       <button
         type="button"
         onClick={() => setOpen((v) => !v)}
-        className={`flex items-center gap-1.5 px-2 py-1 rounded-cockpit text-xs font-mono font-bold border-2 transition-all duration-100 ${
+        className={`flex items-center gap-1.5 px-2.5 py-1 rounded-oct-sm text-[11px] font-mono font-bold uppercase border transition-all ${
           open
-            ? 'bg-oct-accent text-white border-black shadow-oct-hard-sm'
+            ? 'bg-oct-accent text-white border-oct-accent/50 shadow-oct-glow-accent'
             : 'text-oct-muted border-transparent hover:text-oct-text hover:border-oct-border-bright'
         }`}
         title="Radar columns & window"
@@ -66,9 +66,9 @@ export default function RadarSettings({
       </button>
 
       {open && (
-        <div className="absolute left-0 top-full mt-1 z-50 w-64 rounded-cockpit border-2 border-black bg-oct-surface shadow-oct-hard p-3">
+        <div className="oct-card absolute left-0 top-full mt-2 z-50 w-64 shadow-oct-soft-lg p-3.5">
           <div className="flex items-center justify-between mb-3">
-            <span className="font-mono text-[10px] font-bold uppercase tracking-widest text-oct-text">
+            <span className="oct-eyebrow">
               Radar display
             </span>
             <button
@@ -81,17 +81,17 @@ export default function RadarSettings({
             </button>
           </div>
 
-          <p className="font-mono text-[10px] uppercase tracking-wide text-oct-muted mb-2">Mention window</p>
+          <p className="oct-eyebrow mb-2">Mention window</p>
           <div className="flex gap-1 mb-4">
             {(['15m', '1h', '4h'] as const).map((w) => (
               <button
                 key={w}
                 type="button"
                 onClick={() => onMentionWindowChange(w)}
-                className={`flex-1 px-2 py-1 rounded-cockpit text-xs font-mono font-bold border-2 transition-colors ${
+                className={`flex-1 px-2 py-1 rounded-oct-sm text-[11px] font-mono font-bold border transition-all ${
                   mentionWindow === w
-                    ? 'bg-oct-accent text-white border-black'
-                    : 'text-oct-muted border-oct-border-bright hover:text-oct-text'
+                    ? 'bg-oct-accent text-white border-oct-accent/50 shadow-oct-glow-accent'
+                    : 'text-oct-muted border-oct-border-bright hover:text-oct-text hover:border-oct-text'
                 }`}
               >
                 {w}
@@ -99,11 +99,11 @@ export default function RadarSettings({
             ))}
           </div>
 
-          <p className="font-mono text-[10px] uppercase tracking-wide text-oct-muted mb-2">Columns</p>
+          <p className="oct-eyebrow mb-2">Columns</p>
           <ul className="space-y-1.5 max-h-48 overflow-y-auto">
             {RADAR_COLUMN_ORDER.map((id) => (
               <li key={id}>
-                <label className="flex items-center gap-2 cursor-pointer font-mono text-xs text-oct-text">
+                <label className="flex items-center gap-2 cursor-pointer font-mono text-[13px] text-oct-text">
                   <input
                     type="checkbox"
                     checked={visibleColumns.has(id)}
