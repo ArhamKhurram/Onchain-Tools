@@ -210,8 +210,13 @@ export const ChartUp: React.FC<{
   const y = (v: number) => H - v * (H * 0.88) - H * 0.06;
 
   // Market cap follows the same curve, so the number and the chart agree.
+  // Normalised against the FINAL candle's close (not against 1.0) so the
+  // ticker lands exactly on mcTo once the chart finishes — the last close is
+  // 0.97, not 1.0, so dividing by raw lastClose undershot the target (e.g.
+  // landed on $20.0M instead of $21.0M for a 25.6K -> 21M run).
   const lastClose = CANDLES[Math.min(shown, n) - 1].c;
-  const mc = mcFrom + (mcTo - mcFrom) * Math.pow(lastClose, 1.6);
+  const finalClose = CANDLES[n - 1].c;
+  const mc = mcFrom + (mcTo - mcFrom) * Math.pow(Math.min(1, lastClose / finalClose), 1.6);
   const mcLabel =
     mc >= 1_000_000 ? `${(mc / 1_000_000).toFixed(1)}M` : `${Math.round(mc / 1000)}K`;
 
