@@ -47,11 +47,11 @@ export default function GeneralSection({ form }: { form: SettingsForm }) {
   return (
               <>
                 <div>
-                  <h3 className="font-display text-3xl sm:text-4xl tracking-tight text-oct-text mb-4">General</h3>
+                  <h3 className="font-display text-2xl sm:text-3xl tracking-tight text-oct-text mb-4">General</h3>
 
                   <div className="space-y-5">
-                    <div className="brutal-card p-3 sm:p-4">
-                      <h4 className="font-mono text-xs font-bold uppercase tracking-[0.15em] text-oct-text mb-2">[ Message Display ]</h4>
+                    <div className="oct-card p-4 sm:p-5">
+                      <h4 className="oct-eyebrow mb-2">[ Message Display ]</h4>
                       <p className="text-xs sm:text-sm text-oct-muted mb-3">
                         Choose how messages are displayed in chat.
                       </p>
@@ -63,10 +63,10 @@ export default function GeneralSection({ form }: { form: SettingsForm }) {
                           <button
                             key={mode}
                             onClick={() => setMessageDisplay(mode)}
-                            className={`px-3 py-1.5 rounded-cockpit border-2 font-mono text-xs font-bold uppercase tracking-wide transition-colors duration-100 ${
+                            className={`px-3 py-1.5 rounded-oct-sm border font-mono text-xs font-bold uppercase tracking-wide transition-colors duration-100 ${
                               messageDisplay === mode
-                                ? 'border-oct-accent bg-oct-accent text-white'
-                                : 'border-oct-border bg-oct-bg text-oct-muted hover:text-oct-text'
+                                ? 'border-oct-accent/50 bg-oct-accent text-white shadow-oct-glow-accent'
+                                : 'border-oct-border bg-oct-surface-raised/40 text-oct-muted hover:text-oct-text'
                             }`}
                           >
                             {label}
@@ -88,8 +88,8 @@ export default function GeneralSection({ form }: { form: SettingsForm }) {
                       )}
                     </div>
 
-                    <div className="brutal-card p-3 sm:p-4">
-                      <h4 className="font-mono text-xs font-bold uppercase tracking-[0.15em] text-oct-text mb-2">[ Feed Layout ]</h4>
+                    <div className="oct-card p-4 sm:p-5">
+                      <h4 className="oct-eyebrow mb-2">[ Feed Layout ]</h4>
                       <p className="text-xs sm:text-sm text-oct-muted mb-3">
                         Choose the chrome around the feed — how rooms are picked and where status lives.
                       </p>
@@ -102,10 +102,10 @@ export default function GeneralSection({ form }: { form: SettingsForm }) {
                           <button
                             key={preset}
                             onClick={() => setFeedChromePreset(preset)}
-                            className={`px-3 py-1.5 rounded-cockpit border-2 font-mono text-xs font-bold uppercase tracking-wide transition-colors duration-100 ${
+                            className={`px-3 py-1.5 rounded-oct-sm border font-mono text-xs font-bold uppercase tracking-wide transition-colors duration-100 ${
                               feedChromePreset === preset
-                                ? 'border-oct-accent bg-oct-accent text-white'
-                                : 'border-oct-border bg-oct-bg text-oct-muted hover:text-oct-text hover:border-oct-border-bright'
+                                ? 'border-oct-accent/50 bg-oct-accent text-white shadow-oct-glow-accent'
+                                : 'border-oct-border bg-oct-surface-raised/40 text-oct-muted hover:text-oct-text hover:border-oct-border-bright'
                             }`}
                           >
                             {label}
@@ -119,8 +119,8 @@ export default function GeneralSection({ form }: { form: SettingsForm }) {
                       </p>
                     </div>
 
-                    <div className="brutal-card p-3 sm:p-4">
-                      <h4 className="font-mono text-xs font-bold uppercase tracking-[0.15em] text-oct-text mb-2">[ Split Screen Layout ]</h4>
+                    <div className="oct-card p-4 sm:p-5">
+                      <h4 className="oct-eyebrow mb-2">[ Split Screen Layout ]</h4>
                       <p className="text-xs sm:text-sm text-oct-muted mb-3">
                         Use the <strong className="text-oct-text">+</strong> button in a chat header to add up to 4 panes, and the layout button next to Help in the sidebar to resize and drag them. Choose how panes are arranged:
                       </p>
@@ -132,10 +132,10 @@ export default function GeneralSection({ form }: { form: SettingsForm }) {
                           <button
                             key={mode}
                             onClick={() => setSplitLayout(mode)}
-                            className={`px-3 py-1.5 rounded-cockpit border-2 font-mono text-xs font-bold uppercase tracking-wide transition-colors duration-100 ${
+                            className={`px-3 py-1.5 rounded-oct-sm border font-mono text-xs font-bold uppercase tracking-wide transition-colors duration-100 ${
                               splitLayout === mode
-                                ? 'border-oct-accent bg-oct-accent text-white'
-                                : 'border-oct-border bg-oct-bg text-oct-muted hover:text-oct-text'
+                                ? 'border-oct-accent/50 bg-oct-accent text-white shadow-oct-glow-accent'
+                                : 'border-oct-border bg-oct-surface-raised/40 text-oct-muted hover:text-oct-text'
                             }`}
                           >
                             {label}
@@ -144,8 +144,8 @@ export default function GeneralSection({ form }: { form: SettingsForm }) {
                       </div>
                     </div>
 
-                    <div className="brutal-card p-3 sm:p-4">
-                      <h4 className="font-mono text-xs font-bold uppercase tracking-[0.15em] text-oct-text mb-2">[ Role Colors ]</h4>
+                    <div className="oct-card p-4 sm:p-5">
+                      <h4 className="oct-eyebrow mb-2">[ Role Colors ]</h4>
                       <Toggle
                         value={roleColors}
                         onChange={setRoleColors}
@@ -153,8 +153,8 @@ export default function GeneralSection({ form }: { form: SettingsForm }) {
                       />
                     </div>
 
-                    <div className="brutal-card p-3 sm:p-4">
-                      <h4 className="font-mono text-xs font-bold uppercase tracking-[0.15em] text-oct-text mb-2">[ Mobile Zoom Scale ]</h4>
+                    <div className="oct-card p-4 sm:p-5">
+                      <h4 className="oct-eyebrow mb-2">[ Mobile Zoom Scale ]</h4>
                       <p className="text-xs sm:text-sm text-oct-muted mb-3">
                         Adjust the zoom level on mobile devices to make everything larger or smaller.
                       </p>
@@ -166,24 +166,24 @@ export default function GeneralSection({ form }: { form: SettingsForm }) {
                           step={0.05}
                           value={mobileZoomScale}
                           onChange={(e) => setMobileZoomScale(parseFloat(e.target.value))}
-                          className="flex-1 h-1.5 bg-oct-bg rounded-cockpit appearance-none cursor-pointer accent-oct-accent [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:w-3.5 [&::-webkit-slider-thumb]:h-3.5 [&::-webkit-slider-thumb]:rounded-cockpit [&::-webkit-slider-thumb]:bg-oct-accent"
+                          className="flex-1 h-1.5 bg-oct-bg rounded-full appearance-none cursor-pointer accent-oct-accent [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:w-3.5 [&::-webkit-slider-thumb]:h-3.5 [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:bg-oct-accent"
                         />
                         <span className="text-xs font-mono text-oct-text w-10 text-right">{Math.round(mobileZoomScale * 100)}%</span>
                       </div>
                       <div className="flex justify-between mt-1.5">
-                        <span className="text-[10px] font-mono text-oct-muted">50%</span>
+                        <span className="text-[11px] font-mono text-oct-muted">50%</span>
                         <button
                           onClick={() => setMobileZoomScale(1)}
-                          className="text-[10px] font-mono uppercase tracking-wide text-oct-accent hover:text-oct-accent-hover transition-colors duration-100"
+                          className="text-[11px] font-mono uppercase tracking-wide text-oct-accent hover:text-oct-accent-hover transition-colors duration-100"
                         >
                           Reset
                         </button>
-                        <span className="text-[10px] font-mono text-oct-muted">150%</span>
+                        <span className="text-[11px] font-mono text-oct-muted">150%</span>
                       </div>
                     </div>
 
-                    <div className="brutal-card p-3 sm:p-4">
-                      <h4 className="font-mono text-xs font-bold uppercase tracking-[0.15em] text-oct-text mb-2">[ Contract Detection ]</h4>
+                    <div className="oct-card p-4 sm:p-5">
+                      <h4 className="oct-eyebrow mb-2">[ Contract Detection ]</h4>
                       <Toggle
                         value={contractDetection}
                         onChange={setContractDetection}
@@ -191,8 +191,8 @@ export default function GeneralSection({ form }: { form: SettingsForm }) {
                       />
                     </div>
 
-                    <div className="brutal-card p-3 sm:p-4">
-                      <h4 className="font-mono text-xs font-bold uppercase tracking-[0.15em] text-oct-text mb-2">[ Open in Discord App ]</h4>
+                    <div className="oct-card p-4 sm:p-5">
+                      <h4 className="oct-eyebrow mb-2">[ Open in Discord App ]</h4>
                       <Toggle
                         value={openInDiscordApp}
                         onChange={setOpenInDiscordApp}
@@ -200,8 +200,8 @@ export default function GeneralSection({ form }: { form: SettingsForm }) {
                       />
                     </div>
 
-                    <div className="brutal-card p-3 sm:p-4">
-                      <h4 className="font-mono text-xs font-bold uppercase tracking-[0.15em] text-oct-text mb-2">[ Open in Telegram App ]</h4>
+                    <div className="oct-card p-4 sm:p-5">
+                      <h4 className="oct-eyebrow mb-2">[ Open in Telegram App ]</h4>
                       <Toggle
                         value={openInTelegramApp}
                         onChange={setOpenInTelegramApp}
@@ -209,8 +209,8 @@ export default function GeneralSection({ form }: { form: SettingsForm }) {
                       />
                     </div>
 
-                    <div className="brutal-card p-3 sm:p-4">
-                      <h4 className="font-mono text-xs font-bold uppercase tracking-[0.15em] text-oct-text mb-2">[ Badge Click Action ]</h4>
+                    <div className="oct-card p-4 sm:p-5">
+                      <h4 className="oct-eyebrow mb-2">[ Badge Click Action ]</h4>
                       <p className="text-xs sm:text-sm text-oct-muted mb-3">
                         What happens when you click a keyword match or contract badge on a message.
                       </p>
@@ -223,10 +223,10 @@ export default function GeneralSection({ form }: { form: SettingsForm }) {
                           <button
                             key={action}
                             onClick={() => setBadgeClickAction(action)}
-                            className={`px-3 py-1.5 rounded-cockpit border-2 font-mono text-xs font-bold uppercase tracking-wide transition-colors duration-100 ${
+                            className={`px-3 py-1.5 rounded-oct-sm border font-mono text-xs font-bold uppercase tracking-wide transition-colors duration-100 ${
                               badgeClickAction === action
-                                ? 'border-oct-accent bg-oct-accent text-white'
-                                : 'border-oct-border bg-oct-bg text-oct-muted hover:text-oct-text'
+                                ? 'border-oct-accent/50 bg-oct-accent text-white shadow-oct-glow-accent'
+                                : 'border-oct-border bg-oct-surface-raised/40 text-oct-muted hover:text-oct-text'
                             }`}
                           >
                             {label}
@@ -240,14 +240,14 @@ export default function GeneralSection({ form }: { form: SettingsForm }) {
                       </p>
                     </div>
 
-                    <div className="brutal-card p-3 sm:p-4">
-                      <h4 className="font-mono text-xs font-bold uppercase tracking-[0.15em] text-oct-text mb-2">[ Chat / Send Messages ]</h4>
+                    <div className="oct-card p-4 sm:p-5">
+                      <h4 className="oct-eyebrow mb-2">[ Chat / Send Messages ]</h4>
                       <Toggle
                         value={chattingEnabled}
                         onChange={setChattingEnabled}
                         label="Enable sending messages through OCT"
                       />
-                      <div className="mt-3 p-2.5 sm:p-3 rounded-cockpit border-2 border-oct-flame bg-oct-flame/15">
+                      <div className="mt-3 p-2.5 sm:p-3 rounded-oct border border-oct-flame/60 bg-oct-flame/10">
                         <p className="text-[11px] sm:text-xs font-mono font-bold uppercase tracking-wide text-oct-flame mb-1">Warning: Detection Risk</p>
                         <p className="text-[10px] sm:text-[11px] text-oct-muted leading-relaxed">
                           Sending messages through this app increases the chance of your Discord account being detected and flagged.

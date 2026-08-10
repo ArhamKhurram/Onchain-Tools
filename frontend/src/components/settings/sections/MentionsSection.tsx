@@ -47,12 +47,12 @@ export default function MentionsSection({ form }: { form: SettingsForm }) {
   return (
               <>
                 <div>
-                  <h3 className="font-display text-xl sm:text-2xl tracking-tight text-oct-text mb-1">Mentions</h3>
+                  <h3 className="font-display text-2xl sm:text-3xl tracking-tight text-oct-text mb-1">Mentions</h3>
                   <p className="text-sm text-oct-muted mb-4">
                     Collect messages where you were mentioned into the <strong className="text-oct-text">Mentions</strong> room. Only channels already added to your rooms are scanned.
                   </p>
 
-                  <div className="brutal-card p-3 sm:p-4 space-y-3">
+                  <div className="oct-card p-4 sm:p-5 space-y-3">
                     <Toggle
                       value={mentionsUserEnabled}
                       onChange={setMentionsUserEnabled}
