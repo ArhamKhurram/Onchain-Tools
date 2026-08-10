@@ -44,8 +44,8 @@ export default function WorkspaceColumnLayout({
 
   if (colCount === 0 || countAllPanels(columns) === 0) {
     return (
-      <div className="flex-1 flex flex-col items-center justify-center min-h-0 border-2 border-dashed border-oct-border-bright m-4 rounded-cockpit">
-        <p className="text-oct-text font-bold uppercase mb-1">No panels yet</p>
+      <div className="flex-1 flex flex-col items-center justify-center min-h-0 border border-dashed border-oct-border-bright m-4 rounded-oct-lg">
+        <p className="text-oct-text font-bold uppercase mb-1.5">No panels yet</p>
         <p className="text-sm text-oct-muted font-mono">
           {editMode ? 'Add panels from the toolbar' : 'Customize layout to add widgets'}
         </p>
@@ -148,7 +148,7 @@ function ColumnStack({
   if (panelCount === 0) {
     return (
       <div
-        className={`h-full min-h-0 flex items-center justify-center border-2 border-dashed m-1 transition-colors ${
+        className={`h-full min-h-0 flex items-center justify-center border border-dashed rounded-oct m-1 transition-colors ${
           dragOver ? 'border-oct-accent bg-oct-accent/5' : 'border-oct-border-bright'
         } ${editMode ? '' : 'opacity-50'}`}
         onDragOver={handleDragOver}

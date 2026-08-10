@@ -32,13 +32,13 @@ export default function WorkspaceToolbar({
   const canAddColumn = layout.columns.length < WORKSPACE_MAX_COLUMNS;
 
   return (
-    <div className="shrink-0 flex flex-wrap items-center gap-2 px-3 sm:px-4 py-2.5 border-b-2 border-black bg-oct-surface">
+    <div className="oct-headerbar shrink-0 flex flex-wrap items-center gap-2 px-3 sm:px-4 py-2.5">
       <LayoutGrid size={16} className="text-oct-accent shrink-0" />
-      <span className="font-mono text-[10px] font-bold uppercase tracking-widest text-oct-muted hidden sm:inline">
+      <span className="oct-eyebrow hidden sm:inline">
         Workspace
       </span>
       {!editMode && panelCount > 0 && (
-        <span className="font-mono text-[10px] text-oct-muted tabular-nums">
+        <span className="font-mono text-[11px] text-oct-muted tabular-nums">
           {layout.columns.length} col · {panelCount} panels
         </span>
       )}
@@ -50,7 +50,7 @@ export default function WorkspaceToolbar({
             type="button"
             onClick={onAddColumn}
             disabled={!canAddColumn}
-            className="inline-flex items-center gap-1 px-2.5 py-1.5 font-mono text-[10px] font-bold uppercase border-2 border-oct-border-bright text-oct-muted hover:text-oct-text disabled:opacity-40"
+            className="oct-icon-btn inline-flex items-center gap-1 px-2.5 py-1.5 font-mono text-[11px] font-bold uppercase disabled:opacity-40"
             title="Add column"
           >
             <Columns3 size={14} />
@@ -59,7 +59,7 @@ export default function WorkspaceToolbar({
           <button
             type="button"
             onClick={onReset}
-            className="p-1.5 rounded-cockpit border-2 border-oct-border-bright text-oct-muted hover:text-oct-text"
+            className="oct-icon-btn p-1.5"
             title="Reset to default layout"
           >
             <RotateCcw size={14} />
@@ -67,7 +67,7 @@ export default function WorkspaceToolbar({
           <button
             type="button"
             onClick={onCancel}
-            className="inline-flex items-center gap-1 px-2.5 py-1.5 font-mono text-[10px] font-bold uppercase border-2 border-oct-border-bright text-oct-muted hover:text-oct-text"
+            className="oct-icon-btn inline-flex items-center gap-1 px-2.5 py-1.5 font-mono text-[11px] font-bold uppercase"
           >
             <X size={14} />
             Cancel
@@ -76,7 +76,7 @@ export default function WorkspaceToolbar({
             type="button"
             onClick={onSave}
             disabled={saving}
-            className="inline-flex items-center gap-1 px-2.5 py-1.5 font-mono text-[10px] font-bold uppercase border-2 border-black bg-oct-green text-black shadow-oct-hard-sm disabled:opacity-50"
+            className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-oct-sm font-mono text-[11px] font-bold uppercase border border-oct-green/50 bg-oct-green text-black shadow-[0_6px_18px_-8px_rgb(var(--oct-green)/0.5)] hover:brightness-105 disabled:opacity-50 transition-all"
           >
             <Check size={14} strokeWidth={2.5} />
             Save
@@ -86,7 +86,7 @@ export default function WorkspaceToolbar({
         <button
           type="button"
           onClick={onStartEdit}
-          className="inline-flex items-center gap-1.5 px-3 py-1.5 font-mono text-[10px] sm:text-xs font-bold uppercase tracking-wide border-2 border-black bg-oct-surface-raised text-oct-text hover:border-oct-accent transition-colors"
+          className="oct-icon-btn inline-flex items-center gap-1.5 px-3 py-1.5 font-mono text-[11px] sm:text-xs font-bold uppercase tracking-wide hover:!border-oct-accent"
         >
           <Pencil size={14} />
           Customize

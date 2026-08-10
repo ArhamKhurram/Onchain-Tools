@@ -16,8 +16,8 @@ const DEFAULTS: SniperWalletDraft = {
 };
 
 const FIELD =
-  'w-full px-3 py-2 rounded-cockpit bg-oct-bg border-2 border-oct-border text-sm font-mono text-oct-text placeholder:text-oct-muted/60 focus:outline-none focus:border-oct-accent disabled:opacity-60 disabled:cursor-not-allowed';
-const LABEL = 'block text-xs font-medium text-oct-muted mb-1.5 uppercase tracking-wide';
+  'oct-input w-full px-3 py-2 text-sm font-mono disabled:opacity-60 disabled:cursor-not-allowed';
+const LABEL = 'block oct-label text-oct-muted mb-1.5 uppercase tracking-wide';
 
 interface SniperWalletFormModalProps {
   open: boolean;
@@ -125,18 +125,18 @@ export default function SniperWalletFormModal({ open, mode, wallet, onClose, onS
       onClick={() => !submitting && onClose()}
     >
       <div
-        className="w-full max-w-lg rounded-cockpit border-2 border-black bg-oct-surface shadow-oct-hard-lg overflow-hidden"
+        className="w-full max-w-lg oct-card oct-card-flush shadow-oct-soft-lg overflow-hidden"
         onClick={(e) => e.stopPropagation()}
       >
-        <div className="flex items-center justify-between px-5 py-4 border-b-2 border-black">
-          <h3 className="text-base font-extrabold uppercase text-oct-text">
+        <div className="oct-headerbar flex items-center justify-between px-5 py-4">
+          <h3 className="oct-section-title text-base uppercase">
             {mode === 'add' ? 'Add sniper wallet' : 'Edit sniper wallet'}
           </h3>
           <button
             type="button"
             onClick={onClose}
             disabled={submitting}
-            className="p-1.5 rounded-md text-oct-muted hover:text-oct-text hover:bg-oct-surface-raised transition-colors disabled:opacity-50"
+            className="oct-icon-btn p-1.5 disabled:opacity-50"
           >
             <X size={18} />
           </button>
@@ -184,7 +184,7 @@ export default function SniperWalletFormModal({ open, mode, wallet, onClose, onS
             </div>
 
             {picking && (
-              <div className="mb-2 border-2 border-oct-border rounded-cockpit bg-oct-bg divide-y-2 divide-oct-border">
+              <div className="mb-2 border border-oct-border rounded-oct bg-oct-bg divide-y divide-oct-border overflow-hidden">
                 {venueWallets.loading && <p className="px-3 py-2 text-xs text-oct-muted">Loading…</p>}
                 {venueWallets.error && <p className="px-3 py-2 text-xs text-oct-flame">{venueWallets.error}</p>}
                 {!venueWallets.loading && !venueWallets.error && venueWallets.wallets.length === 0 && (
@@ -340,16 +340,16 @@ export default function SniperWalletFormModal({ open, mode, wallet, onClose, onS
           </p>
 
           {fieldError && (
-            <p className="text-sm text-oct-accent bg-oct-accent-dim border-2 border-oct-accent rounded-cockpit px-3 py-2 font-mono">
+            <p className="text-sm text-oct-flame bg-oct-flame/10 border border-oct-flame/50 rounded-oct px-3 py-2 font-mono">
               {fieldError}
             </p>
           )}
 
           <div className="flex justify-end gap-2 pt-1">
-            <button type="button" onClick={onClose} disabled={submitting} className="brutal-btn-ghost px-4 py-2 text-sm">
+            <button type="button" onClick={onClose} disabled={submitting} className="oct-icon-btn px-4 py-2 text-sm">
               Cancel
             </button>
-            <button type="submit" disabled={submitting} className="brutal-btn px-4 py-2 text-sm">
+            <button type="submit" disabled={submitting} className="oct-btn-primary px-4 py-2 text-sm">
               {submitting ? 'Saving…' : mode === 'add' ? 'Add wallet' : 'Save changes'}
             </button>
           </div>

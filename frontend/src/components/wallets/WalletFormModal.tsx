@@ -100,18 +100,18 @@ export default function WalletFormModal({ open, mode, wallet, onClose, onSubmit 
   return (
     <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/75 p-4" onClick={() => !submitting && onClose()}>
       <div
-        className="w-full max-w-lg rounded-cockpit border-2 border-black bg-oct-surface shadow-oct-hard-lg overflow-hidden"
+        className="w-full max-w-lg oct-card oct-card-flush shadow-oct-soft-lg overflow-hidden"
         onClick={(e) => e.stopPropagation()}
       >
-        <div className="flex items-center justify-between px-5 py-4 border-b-2 border-black">
-          <h3 className="text-base font-extrabold uppercase text-oct-text">
+        <div className="oct-headerbar flex items-center justify-between px-5 py-4">
+          <h3 className="oct-section-title text-base uppercase">
             {mode === 'add' ? 'Add wallet' : 'Edit wallet'}
           </h3>
           <button
             type="button"
             onClick={onClose}
             disabled={submitting}
-            className="p-1.5 rounded-md text-oct-muted hover:text-oct-text hover:bg-oct-surface-raised transition-colors disabled:opacity-50"
+            className="oct-icon-btn p-1.5 disabled:opacity-50"
           >
             <X size={18} />
           </button>
@@ -119,16 +119,16 @@ export default function WalletFormModal({ open, mode, wallet, onClose, onSubmit 
 
         <form onSubmit={handleSubmit} className="px-5 py-4 space-y-4 max-h-[70vh] overflow-y-auto">
           <div>
-            <label className="block text-xs font-medium text-oct-muted mb-1.5 uppercase tracking-wide">Chain</label>
+            <label className="block oct-label text-oct-muted mb-1.5 uppercase tracking-wide">Chain</label>
             <div className="flex gap-2">
               {CHAIN_OPTIONS.map(({ value, label }) => (
                 <button
                   key={value}
                   type="button"
                   onClick={() => set('chain', value)}
-                  className={`flex-1 px-3 py-2 rounded-cockpit text-xs font-bold uppercase border-2 transition-colors ${
+                  className={`flex-1 px-3 py-2 rounded-oct-sm text-xs font-bold uppercase border transition-all ${
                     values.chain === value
-                      ? 'border-black bg-oct-accent text-white'
+                      ? 'border-oct-accent/50 bg-oct-accent text-white shadow-oct-glow-accent'
                       : 'border-oct-border text-oct-muted hover:border-oct-border-bright hover:text-oct-text'
                   }`}
                 >
@@ -139,7 +139,7 @@ export default function WalletFormModal({ open, mode, wallet, onClose, onSubmit 
           </div>
 
           <div>
-            <label htmlFor="wallet-address" className="block text-xs font-medium text-oct-muted mb-1.5 uppercase tracking-wide">
+            <label htmlFor="wallet-address" className="block oct-label text-oct-muted mb-1.5 uppercase tracking-wide">
               Address
             </label>
             <input
@@ -150,13 +150,13 @@ export default function WalletFormModal({ open, mode, wallet, onClose, onSubmit 
               onChange={(e) => set('address', e.target.value)}
               placeholder={values.chain === 'solana' ? 'Base58 address…' : '0x…'}
               disabled={mode === 'edit'}
-              className="w-full px-3 py-2 rounded-cockpit bg-oct-bg border-2 border-oct-border text-sm font-mono text-oct-text placeholder:text-oct-muted/60 focus:outline-none focus:border-oct-accent disabled:opacity-60 disabled:cursor-not-allowed"
+              className="oct-input w-full px-3 py-2 text-sm font-mono disabled:opacity-60 disabled:cursor-not-allowed"
             />
           </div>
 
           <div className="grid grid-cols-[4rem_1fr] gap-3">
             <div>
-              <label htmlFor="wallet-emoji" className="block text-xs font-medium text-oct-muted mb-1.5 uppercase tracking-wide">
+              <label htmlFor="wallet-emoji" className="block oct-label text-oct-muted mb-1.5 uppercase tracking-wide">
                 Emoji
               </label>
               <input
@@ -166,11 +166,11 @@ export default function WalletFormModal({ open, mode, wallet, onClose, onSubmit 
                 value={values.emoji}
                 onChange={(e) => set('emoji', e.target.value)}
                 placeholder="🐋"
-                className="w-full px-3 py-2 rounded-cockpit bg-oct-bg border-2 border-oct-border text-sm text-center text-oct-text placeholder:text-oct-muted/60 focus:outline-none focus:border-oct-accent"
+                className="oct-input w-full px-3 py-2 text-sm text-center"
               />
             </div>
             <div>
-              <label htmlFor="wallet-name" className="block text-xs font-medium text-oct-muted mb-1.5 uppercase tracking-wide">
+              <label htmlFor="wallet-name" className="block oct-label text-oct-muted mb-1.5 uppercase tracking-wide">
                 Label <span className="normal-case text-oct-muted/70">(optional)</span>
               </label>
               <input
@@ -179,13 +179,13 @@ export default function WalletFormModal({ open, mode, wallet, onClose, onSubmit 
                 value={values.name}
                 onChange={(e) => set('name', e.target.value)}
                 placeholder="Whale wallet"
-                className="w-full px-3 py-2 rounded-cockpit bg-oct-bg border-2 border-oct-border text-sm text-oct-text placeholder:text-oct-muted/60 focus:outline-none focus:border-oct-accent"
+                className="oct-input w-full px-3 py-2 text-sm"
               />
             </div>
           </div>
 
           <div>
-            <label htmlFor="wallet-profile" className="block text-xs font-medium text-oct-muted mb-1.5 uppercase tracking-wide">
+            <label htmlFor="wallet-profile" className="block oct-label text-oct-muted mb-1.5 uppercase tracking-wide">
               Profile
             </label>
             <input
@@ -194,12 +194,12 @@ export default function WalletFormModal({ open, mode, wallet, onClose, onSubmit 
               value={values.profile}
               onChange={(e) => set('profile', e.target.value)}
               placeholder="unclassified"
-              className="w-full px-3 py-2 rounded-cockpit bg-oct-bg border-2 border-oct-border text-sm text-oct-text placeholder:text-oct-muted/60 focus:outline-none focus:border-oct-accent"
+              className="oct-input w-full px-3 py-2 text-sm"
             />
           </div>
 
           <div>
-            <span className="block text-xs font-medium text-oct-muted mb-2 uppercase tracking-wide">Alerts</span>
+            <span className="block oct-label text-oct-muted mb-2 uppercase tracking-wide">Alerts</span>
             <div className="flex flex-wrap gap-3">
               {(
                 [
@@ -222,14 +222,14 @@ export default function WalletFormModal({ open, mode, wallet, onClose, onSubmit 
           </div>
 
           <div>
-            <label htmlFor="wallet-sound" className="block text-xs font-medium text-oct-muted mb-1.5 uppercase tracking-wide">
+            <label htmlFor="wallet-sound" className="block oct-label text-oct-muted mb-1.5 uppercase tracking-wide">
               Sound
             </label>
             <select
               id="wallet-sound"
               value={values.sound}
               onChange={(e) => set('sound', e.target.value)}
-              className="w-full px-3 py-2 rounded-cockpit bg-oct-bg border-2 border-oct-border text-sm text-oct-text focus:outline-none focus:border-oct-accent"
+              className="oct-input w-full px-3 py-2 text-sm"
             >
               <option value="default">Default</option>
               {PRESET_SOUNDS.map((s) => (
@@ -241,7 +241,7 @@ export default function WalletFormModal({ open, mode, wallet, onClose, onSubmit 
           </div>
 
           {fieldError && (
-            <p className="text-sm text-oct-accent bg-oct-accent-dim border-2 border-oct-accent rounded-cockpit px-3 py-2">
+            <p className="text-sm text-oct-flame bg-oct-flame/10 border border-oct-flame/50 rounded-oct px-3 py-2">
               {fieldError}
             </p>
           )}
@@ -251,14 +251,14 @@ export default function WalletFormModal({ open, mode, wallet, onClose, onSubmit 
               type="button"
               onClick={onClose}
               disabled={submitting}
-              className="brutal-btn-ghost px-4 py-2 text-sm"
+              className="oct-icon-btn px-4 py-2 text-sm"
             >
               Cancel
             </button>
             <button
               type="submit"
               disabled={submitting}
-              className="brutal-btn px-4 py-2 text-sm"
+              className="oct-btn-primary px-4 py-2 text-sm"
             >
               {submitting ? 'Saving…' : mode === 'add' ? 'Add wallet' : 'Save changes'}
             </button>

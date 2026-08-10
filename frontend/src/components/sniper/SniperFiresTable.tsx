@@ -45,7 +45,7 @@ export default function SniperFiresTable({ fires }: SniperFiresTableProps) {
   return (
     <div className="h-full flex flex-col min-h-0 bg-oct-bg overflow-hidden">
       {fires.unresolvedUnknown > 0 && (
-        <div className="shrink-0 flex items-start gap-2.5 px-4 py-2.5 border-b-2 border-black bg-oct-accent/10 border-l-4 border-l-oct-accent">
+        <div className="shrink-0 flex items-start gap-2.5 px-4 py-2.5 border-b border-oct-border bg-oct-accent/10 border-l-4 border-l-oct-accent">
           <AlertTriangle size={14} className="text-oct-accent shrink-0 mt-0.5" strokeWidth={2.5} />
           <p className="font-mono text-[11px] leading-relaxed text-oct-text">
             {fires.unresolvedUnknown} leg{fires.unresolvedUnknown === 1 ? '' : 's'} holding a reservation — check
@@ -56,15 +56,15 @@ export default function SniperFiresTable({ fires }: SniperFiresTableProps) {
         </div>
       )}
 
-      <div className="shrink-0 flex items-center gap-2 px-4 py-2.5 border-b-2 border-black bg-oct-surface">
-        <span className="font-mono text-[10px] font-bold uppercase tracking-widest text-oct-muted">view: fires</span>
+      <div className="oct-headerbar shrink-0 flex items-center gap-2 px-4 py-2.5">
+        <span className="oct-eyebrow">view: fires</span>
         <div className="flex-1" />
         {notice && <span className="font-mono text-[11px] text-oct-flame">{notice}</span>}
-        <span className="font-mono text-[11px] text-oct-muted">{fires.fires.length} rows</span>
+        <span className="font-mono text-[11px] text-oct-muted tabular-nums">{fires.fires.length} rows</span>
         <button
           type="button"
           onClick={() => void fires.refresh()}
-          className="flex items-center gap-1.5 px-2 py-1 rounded-cockpit text-xs font-bold uppercase text-oct-muted hover:text-oct-text border-2 border-oct-border-bright hover:border-oct-text transition-colors"
+          className="oct-icon-btn flex items-center gap-1.5 px-2.5 py-1.5 text-xs font-bold uppercase"
         >
           <RefreshCw size={12} />
           refresh
@@ -73,7 +73,7 @@ export default function SniperFiresTable({ fires }: SniperFiresTableProps) {
 
       <div className="flex-1 min-h-0 overflow-auto overscroll-contain" style={{ overflowAnchor: 'none' }}>
         <table className="w-full text-left border-collapse min-w-[1000px]">
-          <thead className="sticky top-0 bg-oct-surface border-b-2 border-black z-10">
+          <thead className="oct-thead sticky top-0 z-10">
             <tr className="font-mono text-[10px] font-bold uppercase tracking-wider text-oct-muted">
               <th className={TH}>When</th>
               <th className={TH}>Mode</th>
@@ -88,13 +88,13 @@ export default function SniperFiresTable({ fires }: SniperFiresTableProps) {
           </thead>
           <tbody>
             {fires.fires.map((f) => (
-              <tr key={f.id} className="border-b border-oct-border/50 hover:bg-oct-surface-raised/50 transition-colors">
-                <td className="px-3 py-2 font-mono text-xs text-oct-muted">{new Date(f.at).toLocaleString()}</td>
+              <tr key={f.id} className="border-b border-oct-border/50 oct-row-hover">
+                <td className="px-3 py-2 font-mono text-xs text-oct-muted tabular-nums">{new Date(f.at).toLocaleString()}</td>
                 <td className="px-3 py-2">
                   {/* The one column that must never be ambiguous: a `filled`
                       dry-run row moved no money at all. */}
                   <span
-                    className={`text-[9px] font-mono uppercase tracking-wider px-1.5 py-0.5 rounded-cockpit border-2 ${
+                    className={`text-[10px] font-mono uppercase tracking-wider px-2 py-0.5 rounded-oct-sm border ${
                       f.dryRun
                         ? 'border-oct-green/60 bg-oct-green/15 text-oct-green'
                         : 'border-oct-accent bg-oct-accent text-white'
@@ -107,9 +107,9 @@ export default function SniperFiresTable({ fires }: SniperFiresTableProps) {
                 <td className="px-3 py-2 font-mono text-xs text-oct-text" title={f.mint}>
                   {f.mint ? `${f.mint.slice(0, 6)}…${f.mint.slice(-4)}` : '—'}
                 </td>
-                <td className="px-3 py-2 font-mono text-xs text-oct-text text-right">{f.amount}</td>
-                <td className="px-3 py-2 font-mono text-xs text-oct-muted text-right">#{f.legNo}</td>
-                <td className="px-3 py-2 font-mono text-xs text-oct-muted text-right">{f.attempts}</td>
+                <td className="px-3 py-2 font-mono text-xs text-oct-text text-right tabular-nums">{f.amount}</td>
+                <td className="px-3 py-2 font-mono text-xs text-oct-muted text-right tabular-nums">#{f.legNo}</td>
+                <td className="px-3 py-2 font-mono text-xs text-oct-muted text-right tabular-nums">{f.attempts}</td>
                 <td className="px-3 py-2 font-mono text-xs">
                   <span
                     className={
@@ -134,7 +134,7 @@ export default function SniperFiresTable({ fires }: SniperFiresTableProps) {
                     <button
                       type="button"
                       onClick={() => setResolving(f)}
-                      className="px-2 py-0.5 rounded-cockpit text-[10px] font-mono font-bold uppercase border-2 border-oct-accent text-oct-accent hover:bg-oct-accent hover:text-white transition-colors"
+                      className="px-2 py-0.5 rounded-oct-sm text-[10px] font-mono font-bold uppercase border border-oct-accent text-oct-accent hover:bg-oct-accent hover:text-white transition-colors"
                     >
                       resolve
                     </button>
@@ -149,11 +149,11 @@ export default function SniperFiresTable({ fires }: SniperFiresTableProps) {
       {resolving && (
         <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/75 p-4" onClick={() => !busy && setResolving(null)}>
           <div
-            className="w-full max-w-md rounded-cockpit border-2 border-black bg-oct-surface shadow-oct-hard-lg overflow-hidden"
+            className="w-full max-w-md oct-card oct-card-flush shadow-oct-soft-lg overflow-hidden"
             onClick={(e) => e.stopPropagation()}
           >
-            <div className="px-5 py-4 border-b-2 border-black">
-              <h3 className="text-base font-extrabold uppercase text-oct-text">Resolve this leg</h3>
+            <div className="oct-headerbar px-5 py-4">
+              <h3 className="oct-section-title text-base uppercase">Resolve this leg</h3>
             </div>
             <div className="px-5 py-4 space-y-3 font-mono text-xs text-oct-muted">
               <p>
@@ -170,14 +170,14 @@ export default function SniperFiresTable({ fires }: SniperFiresTableProps) {
                 <strong>Not filled</strong> — release the reservation back to today&rsquo;s budget.
               </p>
             </div>
-            <div className="flex items-center justify-end gap-2 px-5 py-4 border-t-2 border-black bg-oct-bg">
-              <button type="button" disabled={busy} onClick={() => setResolving(null)} className="brutal-btn-ghost px-3 py-2 text-sm">
+            <div className="flex items-center justify-end gap-2 px-5 py-4 border-t border-oct-border bg-oct-bg">
+              <button type="button" disabled={busy} onClick={() => setResolving(null)} className="oct-icon-btn px-3 py-2 text-sm">
                 Cancel
               </button>
-              <button type="button" disabled={busy} onClick={() => void resolve('not_filled')} className="brutal-btn-ghost px-3 py-2 text-sm">
+              <button type="button" disabled={busy} onClick={() => void resolve('not_filled')} className="oct-icon-btn px-3 py-2 text-sm">
                 Not filled
               </button>
-              <button type="button" disabled={busy} onClick={() => void resolve('filled')} className="brutal-btn px-3 py-2 text-sm">
+              <button type="button" disabled={busy} onClick={() => void resolve('filled')} className="oct-btn-primary px-3 py-2 text-sm">
                 Filled
               </button>
             </div>

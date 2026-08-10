@@ -40,19 +40,19 @@ export default function WorkspacePanelChrome({
 
   return (
     <div
-      className={`flex flex-col h-full min-h-0 bg-oct-bg border-2 border-black overflow-hidden ${
+      className={`flex flex-col h-full min-h-0 bg-oct-bg rounded-oct border border-oct-border overflow-hidden ${
         editMode ? 'ring-2 ring-oct-accent/40' : ''
       }`}
     >
       <div
         draggable={editMode}
         onDragStart={handleDragStart}
-        className={`shrink-0 flex items-center gap-2 px-2 py-1.5 border-b-2 border-black bg-oct-surface ${
+        className={`oct-headerbar shrink-0 flex items-center gap-2 px-2.5 py-1.5 ${
           editMode ? 'cursor-grab active:cursor-grabbing' : ''
         }`}
       >
         <div className="min-w-0 flex-1 select-none">
-          <p className="text-xs font-extrabold uppercase tracking-wide text-oct-text truncate">
+          <p className="oct-label uppercase tracking-wide text-oct-text truncate">
             {widgetLabel(panel.type)}
           </p>
           {subtitle && (
@@ -63,7 +63,7 @@ export default function WorkspacePanelChrome({
           <button
             type="button"
             onClick={onConfigure}
-            className="p-1 rounded-cockpit text-oct-muted hover:text-oct-text shrink-0"
+            className="p-1 rounded-oct-sm text-oct-muted hover:text-oct-text shrink-0 transition-colors"
             title="Choose room"
           >
             <Settings2 size={14} />
@@ -73,7 +73,7 @@ export default function WorkspacePanelChrome({
           <button
             type="button"
             onClick={onRemove}
-            className="p-1 rounded-cockpit text-oct-muted hover:text-oct-accent shrink-0"
+            className="p-1 rounded-oct-sm text-oct-muted hover:text-oct-accent shrink-0 transition-colors"
             title="Remove panel"
           >
             <X size={14} />

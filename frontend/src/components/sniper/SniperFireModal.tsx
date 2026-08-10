@@ -85,23 +85,23 @@ export default function SniperFireModal({
   return (
     <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/75 p-4" onClick={() => !firing && onClose()}>
       <div
-        className="w-full max-w-xl rounded-cockpit border-2 border-black bg-oct-surface shadow-oct-hard-lg overflow-hidden"
+        className="w-full max-w-xl oct-card oct-card-flush shadow-oct-soft-lg overflow-hidden"
         onClick={(e) => e.stopPropagation()}
       >
-        <div className="flex items-center justify-between px-5 py-4 border-b-2 border-black">
-          <h3 className="text-base font-extrabold uppercase text-oct-text">Fire &ldquo;{rule.name}&rdquo;</h3>
+        <div className="oct-headerbar flex items-center justify-between px-5 py-4">
+          <h3 className="oct-section-title text-base uppercase">Fire &ldquo;{rule.name}&rdquo;</h3>
           <button
             type="button"
             onClick={onClose}
             disabled={firing}
-            className="p-1.5 rounded-md text-oct-muted hover:text-oct-text hover:bg-oct-surface-raised transition-colors disabled:opacity-50"
+            className="oct-icon-btn p-1.5 disabled:opacity-50"
           >
             <X size={18} />
           </button>
         </div>
 
         <div
-          className={`px-5 py-2.5 text-center font-mono text-xs font-bold uppercase tracking-[0.2em] border-b-2 border-black ${
+          className={`px-5 py-2.5 text-center font-mono text-xs font-bold uppercase tracking-[0.2em] border-b border-oct-border ${
             isDry ? 'bg-oct-green/15 text-oct-green' : 'bg-oct-accent text-white'
           }`}
         >
@@ -122,7 +122,7 @@ export default function SniperFireModal({
 
               <table className="w-full text-left border-collapse">
                 <thead>
-                  <tr className="font-mono text-[10px] font-bold uppercase tracking-wider text-oct-muted border-b-2 border-oct-border">
+                  <tr className="font-mono text-[10px] font-bold uppercase tracking-wider text-oct-muted border-b border-oct-border">
                     <th className="py-1.5">Wallet</th>
                     <th className="py-1.5">Leg</th>
                     <th className="py-1.5 text-right">Amount</th>
@@ -133,9 +133,9 @@ export default function SniperFireModal({
                   {legs.map((leg) => (
                     <tr key={`${leg.walletId}:${leg.legNo}`} className="border-b border-oct-border/50 font-mono text-xs">
                       <td className="py-1.5 text-oct-text">{walletLabel(leg.walletId)}</td>
-                      <td className="py-1.5 text-oct-muted">#{leg.legNo}</td>
-                      <td className="py-1.5 text-right text-oct-text">{leg.amount}</td>
-                      <td className="py-1.5 text-right text-oct-muted">
+                      <td className="py-1.5 text-oct-muted tabular-nums">#{leg.legNo}</td>
+                      <td className="py-1.5 text-right text-oct-text tabular-nums">{leg.amount}</td>
+                      <td className="py-1.5 text-right text-oct-muted tabular-nums">
                         {estimateFeesPreview(rule, leg.amount).toLocaleString(undefined, { maximumFractionDigits: 6 })}
                       </td>
                     </tr>
@@ -159,7 +159,7 @@ export default function SniperFireModal({
               </p>
 
               <div>
-                <label htmlFor="sniper-fire-confirm" className="block text-xs font-medium text-oct-muted mb-1.5 uppercase tracking-wide">
+                <label htmlFor="sniper-fire-confirm" className="block oct-label text-oct-muted mb-1.5 uppercase tracking-wide">
                   Type FIRE to enable the button
                 </label>
                 <input
@@ -168,12 +168,12 @@ export default function SniperFireModal({
                   value={typed}
                   onChange={(e) => setTyped(e.target.value)}
                   autoComplete="off"
-                  className="w-full px-3 py-2 rounded-cockpit bg-oct-bg border-2 border-oct-border text-sm font-mono uppercase tracking-[0.3em] text-oct-text focus:outline-none focus:border-oct-accent"
+                  className="oct-input w-full px-3 py-2 text-sm font-mono uppercase tracking-[0.3em]"
                 />
               </div>
 
               {error && (
-                <p className="text-sm text-oct-accent bg-oct-accent-dim border-2 border-oct-accent rounded-cockpit px-3 py-2 font-mono">
+                <p className="text-sm text-oct-flame bg-oct-flame/10 border border-oct-flame/50 rounded-oct px-3 py-2 font-mono">
                   {error}
                 </p>
               )}
@@ -186,7 +186,7 @@ export default function SniperFireModal({
               </p>
 
               {result.outcome === 'suppressed' && (
-                <p className="text-xs text-oct-text bg-oct-yellow/10 border-2 border-oct-yellow/60 rounded-cockpit px-3 py-2 leading-relaxed">
+                <p className="text-xs text-oct-text bg-oct-yellow/10 border border-oct-yellow/60 rounded-oct px-3 py-2 leading-relaxed">
                   Suppressed — this exact trigger already fired. Press again; each press carries a fresh id.
                 </p>
               )}
@@ -194,7 +194,7 @@ export default function SniperFireModal({
               {result.legs.map((leg) => (
                 <div
                   key={`${leg.walletId}:${leg.legNo}`}
-                  className="font-mono text-xs border-2 border-oct-border rounded-cockpit px-3 py-2 space-y-0.5"
+                  className="font-mono text-xs border border-oct-border rounded-oct px-3 py-2 space-y-0.5"
                 >
                   <div className="text-oct-text">
                     {walletLabel(leg.walletId)} · leg #{leg.legNo} · {leg.amount} {rule.sizeUnit}
@@ -220,8 +220,8 @@ export default function SniperFireModal({
           )}
         </div>
 
-        <div className="flex items-center justify-end gap-2 px-5 py-4 border-t-2 border-black bg-oct-bg">
-          <button type="button" onClick={onClose} disabled={firing} className="brutal-btn-ghost px-4 py-2 text-sm">
+        <div className="flex items-center justify-end gap-2 px-5 py-4 border-t border-oct-border bg-oct-bg">
+          <button type="button" onClick={onClose} disabled={firing} className="oct-icon-btn px-4 py-2 text-sm">
             {result ? 'Close' : 'Cancel'}
           </button>
           {!result && (
@@ -229,7 +229,7 @@ export default function SniperFireModal({
               type="button"
               onClick={() => void handleFire()}
               disabled={firing || typed.trim().toUpperCase() !== 'FIRE'}
-              className="brutal-btn px-4 py-2 text-sm disabled:opacity-40 disabled:cursor-not-allowed"
+              className="oct-btn-primary px-4 py-2 text-sm disabled:opacity-40 disabled:cursor-not-allowed"
             >
               {firing ? 'Firing…' : isDry ? 'Fire (dry run)' : 'Fire live'}
             </button>

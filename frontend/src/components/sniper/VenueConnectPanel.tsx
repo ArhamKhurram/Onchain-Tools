@@ -6,9 +6,8 @@ import { truncateAddress } from '../../types/wallets';
 import type { SniperStatus } from '../../types/sniper';
 import type { useSniperVenues } from '../../hooks/useSniperVenues';
 
-const FIELD =
-  'w-full px-3 py-2 rounded-cockpit bg-oct-bg border-2 border-oct-border text-sm font-mono text-oct-text placeholder:text-oct-muted/60 focus:outline-none focus:border-oct-accent disabled:opacity-60';
-const LABEL = 'block text-xs font-medium text-oct-muted mb-1.5 uppercase tracking-wide';
+const FIELD = 'oct-input w-full px-3 py-2 text-sm font-mono disabled:opacity-60';
+const LABEL = 'block oct-label text-oct-muted mb-1.5 uppercase tracking-wide';
 
 interface VenueConnectPanelProps {
   venues: ReturnType<typeof useSniperVenues>;
@@ -18,8 +17,8 @@ interface VenueConnectPanelProps {
 /** Where trigger configuration actually lives, stated once and linked out. */
 function TriggerConfigNote() {
   return (
-    <div className="brutal-card p-4 space-y-2">
-      <p className="font-mono text-[10px] font-bold uppercase tracking-widest text-oct-muted">Trigger configuration</p>
+    <div className="oct-card p-4 space-y-2">
+      <p className="oct-eyebrow">Trigger configuration</p>
       <p className="text-xs text-oct-muted leading-relaxed">
         Twitter triggers are created, capped and disabled inside Slotshark, not here. OCT is not told when one fires, so
         nothing on this page can list, bound or stop them. There is no OCT-side trigger API to build against — this
@@ -40,8 +39,8 @@ function TriggerConfigNote() {
 /** Local mode: the credential is two env vars and the backend must not edit its own .env. */
 function LocalVenueNote({ status }: { status: SniperStatus | null }) {
   return (
-    <div className="brutal-card p-4 space-y-3">
-      <p className="font-mono text-[10px] font-bold uppercase tracking-widest text-oct-muted">Local mode</p>
+    <div className="oct-card p-4 space-y-3">
+      <p className="oct-eyebrow">Local mode</p>
       <p className="text-xs text-oct-muted leading-relaxed">
         The venue token is read from <span className="font-mono text-oct-text">SLOTSHARK_API_TOKEN</span> in{' '}
         <span className="font-mono text-oct-text">backend/.env</span>, and the region from{' '}
@@ -117,8 +116,8 @@ export default function VenueConnectPanel({ venues, status }: VenueConnectPanelP
 
   return (
     <div className="h-full overflow-auto p-4 sm:p-6 space-y-4 bg-oct-bg">
-      <div className="brutal-card p-4 space-y-3">
-        <p className="font-mono text-[10px] font-bold uppercase tracking-widest text-oct-muted">Slotshark</p>
+      <div className="oct-card p-4 space-y-3">
+        <p className="oct-eyebrow">Slotshark</p>
 
         {venues.error && <p className="font-mono text-xs text-oct-flame">{venues.error}</p>}
 
@@ -155,8 +154,8 @@ export default function VenueConnectPanel({ venues, status }: VenueConnectPanelP
         </p>
       </div>
 
-      <form onSubmit={handleConnect} className="brutal-card p-4 space-y-3">
-        <p className="font-mono text-[10px] font-bold uppercase tracking-widest text-oct-muted">
+      <form onSubmit={handleConnect} className="oct-card p-4 space-y-3">
+        <p className="oct-eyebrow">
           {existing ? 'Rotate token' : 'Connect'}
         </p>
 
@@ -233,7 +232,7 @@ export default function VenueConnectPanel({ venues, status }: VenueConnectPanelP
         </div>
 
         {formError && (
-          <p className="text-sm text-oct-accent bg-oct-accent-dim border-2 border-oct-accent rounded-cockpit px-3 py-2 font-mono">
+          <p className="text-sm text-oct-flame bg-oct-flame/10 border border-oct-flame/50 rounded-oct px-3 py-2 font-mono">
             {formError}
           </p>
         )}
@@ -244,12 +243,12 @@ export default function VenueConnectPanel({ venues, status }: VenueConnectPanelP
               type="button"
               onClick={() => setDisconnecting(true)}
               disabled={submitting}
-              className="brutal-btn-ghost px-4 py-2 text-sm"
+              className="oct-icon-btn px-4 py-2 text-sm"
             >
               Disconnect
             </button>
           )}
-          <button type="submit" disabled={submitting} className="brutal-btn px-4 py-2 text-sm">
+          <button type="submit" disabled={submitting} className="oct-btn-primary px-4 py-2 text-sm">
             {submitting ? 'Saving…' : existing ? 'Rotate' : 'Connect'}
           </button>
         </div>

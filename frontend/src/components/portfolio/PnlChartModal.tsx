@@ -40,17 +40,17 @@ export default function PnlChartModal({ open, onClose, data, loading, error }: P
   return (
     <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/80 p-4" onClick={onClose}>
       <div
-        className="bg-oct-surface border-2 border-oct-accent/40 shadow-oct-hard-lg w-full max-w-3xl overflow-hidden"
+        className="oct-card oct-card-flush shadow-oct-soft-lg w-full max-w-3xl overflow-hidden"
         onClick={(e) => e.stopPropagation()}
       >
-        <div className="px-5 py-4 border-b-2 border-oct-accent/30 bg-oct-accent/[0.06] flex items-center justify-between gap-3">
+        <div className="oct-headerbar px-5 py-4 flex items-center justify-between gap-3">
           <div>
-            <h3 className="font-display text-2xl text-white tracking-tight">PnL Chart</h3>
-            <p className="font-mono text-[10px] text-white/50 mt-1">
+            <h3 className="font-display text-2xl text-oct-text tracking-tight">PnL Chart</h3>
+            <p className="font-mono text-[11px] text-oct-muted mt-1">
               {data?.note ?? 'Trade-based cumulative daily PnL'}
             </p>
           </div>
-          <button type="button" onClick={onClose} className="p-1 text-oct-muted hover:text-white">
+          <button type="button" onClick={onClose} className="oct-icon-btn p-1.5">
             <X size={18} />
           </button>
         </div>
@@ -62,14 +62,14 @@ export default function PnlChartModal({ open, onClose, data, loading, error }: P
             </div>
           )}
           {!loading && error && (
-            <div className="h-full flex items-center justify-center font-mono text-xs text-red-400">{formatPortfolioError(error)}</div>
+            <div className="h-full flex items-center justify-center font-mono text-xs text-oct-flame">{formatPortfolioError(error)}</div>
           )}
           {!loading && !error && chartData.length === 0 && (
-            <div className="h-full flex flex-col items-center justify-center gap-2 font-mono text-xs text-white/50 text-center px-6">
+            <div className="h-full flex flex-col items-center justify-center gap-2 font-mono text-xs text-oct-muted text-center px-6">
               <p>No classified buy/sell activity in this period.</p>
-              <p className="text-white/35">Chart uses trades from the activity feed below — wait for activity to load, or pick one wallet if rate limited.</p>
+              <p className="text-oct-muted/70">Chart uses trades from the activity feed below — wait for activity to load, or pick one wallet if rate limited.</p>
               {data?.skippedUnknownType ? (
-                <p className="text-oct-accent/80">
+                <p className="text-oct-accent">
                   {data.skippedUnknownType} trades could not be classified as buy/sell on this chain.
                 </p>
               ) : null}

@@ -365,10 +365,8 @@ export function formatPortfolioError(message: string | null | undefined): string
   return message;
 }
 
-/** Shared panel chrome for portfolio sections. */
-export const PORTFOLIO_PANEL =
-  'border-2 border-oct-accent/35 bg-gradient-to-b from-oct-accent/[0.07] to-oct-surface shadow-[inset_0_1px_0_rgba(255,59,59,0.12)]';
+/** Shared panel chrome for portfolio sections — premium terminal card + header. */
+export const PORTFOLIO_PANEL = 'oct-card oct-card-flush';
 export const PORTFOLIO_PANEL_HEADER =
-  'px-4 py-3 border-b-2 border-oct-accent/30 bg-oct-accent/[0.06] flex items-center justify-between';
-export const PORTFOLIO_PANEL_TITLE =
-  'font-mono text-xs uppercase tracking-[0.16em] text-white font-semibold';
+  'oct-headerbar px-4 py-3 flex items-center justify-between';
+export const PORTFOLIO_PANEL_TITLE = 'oct-section-title uppercase tracking-wide';

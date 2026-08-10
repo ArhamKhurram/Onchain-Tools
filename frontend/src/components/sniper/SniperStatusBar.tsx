@@ -5,7 +5,7 @@ import ConfirmModal from '../ConfirmModal';
 import { routes } from '../../lib/routes';
 import type { SniperStatus } from '../../types/sniper';
 
-const BADGE = 'text-[9px] font-mono uppercase tracking-wider px-1.5 py-0.5 rounded-cockpit border-2';
+const BADGE = 'text-[10px] font-mono uppercase tracking-wider px-2 py-0.5 rounded-oct-sm border';
 
 interface SniperStatusBarProps {
   status: SniperStatus | null;
@@ -36,11 +36,11 @@ export default function SniperStatusBar({ status, error, onSetKill, onRefresh }:
   return (
     <>
       <div
-        className={`shrink-0 flex items-center flex-wrap gap-2 px-4 sm:px-6 py-2 border-b-2 bg-oct-surface ${
-          killed ? 'border-oct-accent' : 'border-black'
+        className={`oct-headerbar shrink-0 flex items-center flex-wrap gap-2 px-4 sm:px-6 py-2 ${
+          killed ? 'border-b-oct-accent shadow-[inset_0_-2px_0_0_rgb(var(--oct-accent))]' : ''
         }`}
       >
-        <span className="font-mono text-[10px] tracking-[0.2em] text-oct-accent">[ SNIPER ]</span>
+        <span className="oct-eyebrow tracking-[0.2em] text-oct-accent">[ SNIPER ]</span>
 
         {status && (
           <>
@@ -86,7 +86,7 @@ export default function SniperStatusBar({ status, error, onSetKill, onRefresh }:
         <button
           type="button"
           onClick={onRefresh}
-          className="flex items-center gap-1.5 px-2 py-1 rounded-cockpit text-xs font-bold uppercase text-oct-muted hover:text-oct-text border-2 border-oct-border-bright hover:border-oct-text transition-colors"
+          className="oct-icon-btn flex items-center gap-1.5 px-2.5 py-1.5 text-xs font-bold uppercase"
         >
           <RefreshCw size={12} />
           refresh
@@ -96,8 +96,10 @@ export default function SniperStatusBar({ status, error, onSetKill, onRefresh }:
           type="button"
           disabled={busy || !status}
           onClick={() => setConfirming(killed ? 'resume' : 'kill')}
-          className={`flex items-center gap-1.5 px-3 py-1 text-xs font-mono font-bold uppercase tracking-wider border-2 border-black rounded-cockpit shadow-oct-hard-sm transition-colors disabled:opacity-50 ${
-            killed ? 'bg-oct-accent text-white' : 'bg-oct-surface-raised text-oct-text hover:bg-oct-accent hover:text-white'
+          className={`flex items-center gap-1.5 px-3 py-1.5 text-xs font-mono font-bold uppercase tracking-wider rounded-oct-sm border transition-all disabled:opacity-50 ${
+            killed
+              ? 'bg-oct-accent text-white border-oct-accent/50 shadow-oct-glow-accent'
+              : 'bg-oct-surface-raised text-oct-text border-oct-border-bright hover:bg-oct-accent hover:text-white hover:border-oct-accent/50'
           }`}
         >
           {killed ? <ShieldAlert size={12} /> : <ShieldCheck size={12} />}

@@ -100,19 +100,19 @@ export default function WalletTracker({ userId }: WalletTrackerProps) {
   return (
     <div className="flex flex-col h-full min-h-0 bg-oct-bg">
       {/* Toolbar */}
-      <div className="shrink-0 border-b-2 border-black bg-oct-surface px-4 sm:px-6 py-3">
+      <div className="oct-headerbar shrink-0 px-4 sm:px-6 py-3">
         <div className="flex flex-wrap items-center gap-3 mb-3">
           <div className="flex items-center gap-2">
             <Wallet size={18} className="text-oct-accent" />
-            <h1 className="text-lg font-extrabold uppercase text-oct-text">Tracked Wallets</h1>
-            <span className="text-xs font-mono text-oct-muted tabular-nums">{filtered.length}</span>
+            <h1 className="oct-section-title text-base uppercase tracking-wide">Tracked Wallets</h1>
+            <span className="oct-chip tabular-nums">{filtered.length}</span>
           </div>
           <div className="flex-1" />
           <button
             type="button"
             onClick={() => refresh()}
             disabled={loading}
-            className="p-2 rounded-cockpit border-2 border-oct-border-bright text-oct-muted hover:text-oct-text hover:border-oct-text transition-colors disabled:opacity-50"
+            className="oct-icon-btn p-2"
             title="Refresh"
           >
             <RefreshCw size={16} className={loading ? 'animate-spin' : ''} />
@@ -120,7 +120,7 @@ export default function WalletTracker({ userId }: WalletTrackerProps) {
           <button
             type="button"
             onClick={openAdd}
-            className="brutal-btn px-3 py-1.5 text-sm"
+            className="oct-btn-primary px-3 py-1.5 text-sm"
           >
             <Plus size={16} />
             Add wallet
@@ -135,18 +135,18 @@ export default function WalletTracker({ userId }: WalletTrackerProps) {
               value={search}
               onChange={(e) => setSearch(e.target.value)}
               placeholder="Search address, label, profile…"
-              className="w-full pl-9 pr-3 py-2 rounded-cockpit bg-oct-bg border-2 border-oct-border text-sm text-oct-text placeholder:text-oct-muted/60 focus:outline-none focus:border-oct-accent"
+              className="oct-input w-full pl-9 pr-3 py-2 text-sm"
             />
           </div>
-          <div className="flex gap-1 p-0.5 rounded-cockpit bg-oct-bg border-2 border-oct-border">
+          <div className="flex gap-1 p-0.5 rounded-oct bg-oct-bg border border-oct-border">
             {WALLET_CHAINS.map(({ value, label }) => (
               <button
                 key={value}
                 type="button"
                 onClick={() => setChainFilter(value)}
-                className={`px-2.5 py-1.5 rounded-cockpit text-xs font-bold uppercase transition-colors whitespace-nowrap ${
+                className={`px-2.5 py-1.5 rounded-oct-sm text-xs font-bold uppercase transition-all whitespace-nowrap ${
                   chainFilter === value
-                    ? 'bg-oct-accent text-white'
+                    ? 'bg-oct-accent text-white shadow-oct-glow-accent'
                     : 'text-oct-muted hover:text-oct-text'
                 }`}
               >
@@ -160,7 +160,7 @@ export default function WalletTracker({ userId }: WalletTrackerProps) {
       {/* Body */}
       <div className="flex-1 min-h-0 overflow-auto px-4 sm:px-6 py-4">
         {(error || actionError) && (
-          <div className="mb-4 px-4 py-3 rounded-cockpit border-2 border-oct-accent bg-oct-accent-dim text-sm text-oct-accent">
+          <div className="mb-4 px-4 py-3 rounded-oct border border-oct-flame/50 bg-oct-flame/10 text-sm text-oct-flame">
             {error ?? actionError}
           </div>
         )}
@@ -171,13 +171,13 @@ export default function WalletTracker({ userId }: WalletTrackerProps) {
           </div>
         ) : filtered.length === 0 ? (
           <div className="flex flex-col items-center justify-center py-24 text-center">
-            <div className="w-12 h-12 rounded-cockpit border-2 border-black bg-oct-accent shadow-oct-hard flex items-center justify-center mb-4">
+            <div className="w-14 h-14 rounded-oct-lg border border-oct-accent/40 bg-gradient-to-b from-oct-flame to-oct-accent shadow-oct-glow-accent flex items-center justify-center mb-4">
               <Wallet size={24} className="text-white" />
             </div>
-            <p className="text-oct-text font-bold uppercase mb-1">
+            <p className="text-oct-text font-bold uppercase mb-1.5">
               {wallets.length === 0 ? 'No wallets tracked yet' : 'No matches'}
             </p>
-            <p className="text-sm text-oct-muted mb-5 max-w-sm">
+            <p className="text-sm text-oct-muted mb-5 max-w-sm leading-relaxed">
               {wallets.length === 0
                 ? 'Add whale or KOL addresses to monitor their on-chain activity.'
                 : 'Try a different search or chain filter.'}
@@ -186,7 +186,7 @@ export default function WalletTracker({ userId }: WalletTrackerProps) {
               <button
                 type="button"
                 onClick={openAdd}
-                className="brutal-btn px-4 py-2 text-sm"
+                className="oct-btn-primary px-4 py-2 text-sm"
               >
                 <Plus size={16} />
                 Add your first tracked wallet
@@ -194,18 +194,18 @@ export default function WalletTracker({ userId }: WalletTrackerProps) {
             )}
           </div>
         ) : (
-          <div className="rounded-cockpit border-2 border-black shadow-oct-hard overflow-hidden">
+          <div className="oct-card oct-card-flush overflow-hidden">
             <table className="w-full text-sm">
-              <thead>
-                <tr className="bg-oct-surface border-b-2 border-black text-left">
-                  <th className="px-3 py-2.5 text-xs font-medium text-oct-muted uppercase tracking-wide">Wallet</th>
-                  <th className="px-3 py-2.5 text-xs font-medium text-oct-muted uppercase tracking-wide hidden md:table-cell">Address</th>
-                  <th className="px-3 py-2.5 text-xs font-medium text-oct-muted uppercase tracking-wide w-20">Chain</th>
-                  <th className="px-3 py-2.5 text-xs font-medium text-oct-muted uppercase tracking-wide hidden lg:table-cell w-28">Alerts</th>
-                  <th className="px-3 py-2.5 text-xs font-medium text-oct-muted uppercase tracking-wide w-24 text-right">Actions</th>
+              <thead className="oct-thead">
+                <tr className="text-left">
+                  <th className="px-3 py-2.5 oct-eyebrow font-medium">Wallet</th>
+                  <th className="px-3 py-2.5 oct-eyebrow font-medium hidden md:table-cell">Address</th>
+                  <th className="px-3 py-2.5 oct-eyebrow font-medium w-20">Chain</th>
+                  <th className="px-3 py-2.5 oct-eyebrow font-medium hidden lg:table-cell w-28">Alerts</th>
+                  <th className="px-3 py-2.5 oct-eyebrow font-medium w-24 text-right">Actions</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-oct-border">
+              <tbody className="divide-y divide-oct-border/60">
                 {filtered.map((wallet) => (
                   <WalletRow
                     key={wallet.id}
@@ -263,7 +263,7 @@ function WalletRow({
   const displayName = wallet.name || truncateAddress(wallet.address);
 
   return (
-    <tr className="bg-oct-surface/50 hover:bg-oct-surface-raised/80 transition-colors group">
+    <tr className="oct-row-hover group">
       <td className="px-3 py-2.5">
         <div className="flex items-center gap-2 min-w-0">
           <span className="text-base shrink-0 w-6 text-center">{wallet.emoji || '·'}</span>
@@ -287,7 +287,7 @@ function WalletRow({
       </td>
       <td className="px-3 py-2.5">
         <span
-          className="inline-flex px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wide"
+          className="inline-flex px-2 py-0.5 rounded-oct-sm text-[10px] font-bold uppercase tracking-wide"
           style={{ color: chain.color, backgroundColor: `${chain.color}18` }}
         >
           {chain.short}
@@ -305,7 +305,7 @@ function WalletRow({
           <button
             type="button"
             onClick={onEdit}
-            className="p-1.5 rounded-md text-oct-muted hover:text-oct-text hover:bg-oct-bg transition-colors"
+            className="p-1.5 rounded-oct-sm text-oct-muted hover:text-oct-text hover:bg-oct-surface-raised transition-colors"
             title="Edit"
           >
             <Pencil size={14} />
@@ -313,7 +313,7 @@ function WalletRow({
           <button
             type="button"
             onClick={onDelete}
-            className="p-1.5 rounded-md text-oct-muted hover:text-oct-accent hover:bg-oct-accent-dim transition-colors"
+            className="p-1.5 rounded-oct-sm text-oct-muted hover:text-oct-accent hover:bg-oct-accent-dim transition-colors"
             title="Delete"
           >
             <Trash2 size={14} />
