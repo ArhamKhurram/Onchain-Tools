@@ -234,9 +234,19 @@ export function useClientGateway() {
       await loadHistoryFromClient(manager, useAppStore.getState().rooms);
     };
 
+    // Rick enrichment only matters for contracts the feed can show, so gate it
+    // to watched rooms/DMs. Ungated, every embed in every joined server became
+    // a backend POST — busy servers alone exhausted the hosted /api rate limit.
+    const isWatchedChannel = (channelId: string): boolean =>
+      useAppStore
+        .getState()
+        .rooms.some((r) =>
+          r.channels.some((c) => c.channelId === channelId && (c.source ?? 'discord') === 'discord'),
+        ) || gw.getDMChannels().some((dm) => dm.id === channelId);
+
     const onMessage = (rawMsg: DiscordMessage & { _channelName?: string; _guildName?: string | null }) => {
       handleLiveMessage(gw, rawMsg);
-      void tryRickEnrich(rawMsg);
+      if (isWatchedChannel(rawMsg.channel_id)) void tryRickEnrich(rawMsg);
     };
 
     const onMessageUpdate = (msg: Partial<DiscordMessage> & { id: string; channel_id: string }) => {
@@ -248,7 +258,7 @@ export function useClientGateway() {
         attachments: msg.attachments as FrontendMessage['attachments'],
         editedTimestamp: msg.edited_timestamp ?? null,
       });
-      void tryRickEnrich(msg);
+      if (isWatchedChannel(msg.channel_id)) void tryRickEnrich(msg);
     };
 
     const onMessageDelete = (data: { id: string; channel_id: string }) => {
