@@ -86,10 +86,15 @@ export default function AuthPage({ onAuth }: { onAuth: () => void }) {
   };
 
   return (
-    <div className="flex items-center justify-center min-h-full w-full bg-oct-bg py-10">
-      <div className="w-full max-w-md px-5 sm:px-8">
-        <div className="flex flex-col items-center mb-8">
-          <p className="font-mono text-xs tracking-[0.2em] text-oct-muted mb-4">[ OCT ]</p>
+    <div className="relative flex items-center justify-center min-h-full w-full bg-oct-bg py-10 px-4 overflow-hidden">
+      {/* Ambient brand glow behind the card. */}
+      <div
+        aria-hidden
+        className="pointer-events-none absolute -top-32 left-1/2 -translate-x-1/2 h-80 w-80 rounded-full bg-oct-accent/20 blur-[130px]"
+      />
+      <div className="relative w-full max-w-md">
+        <div className="flex flex-col items-center mb-7">
+          <p className="oct-eyebrow mb-4">OCT</p>
           <OctLogo size="lg" showSubtitle className="mb-2" />
           <h1 className="font-display text-2xl sm:text-3xl text-oct-text tracking-tight mb-2 mt-3">
             {view === 'login' ? 'Welcome back' : view === 'signup' ? 'Create account' : 'Reset password'}
@@ -103,110 +108,112 @@ export default function AuthPage({ onAuth }: { onAuth: () => void }) {
           </p>
         </div>
 
-        {view !== 'forgot' && (
-          <>
-            <button
-              onClick={handleDiscordOAuth}
-              disabled={loading}
-              className="w-full py-2.5 bg-[#5865F2] hover:bg-[#4752c4] disabled:opacity-50 disabled:cursor-not-allowed rounded-cockpit border-2 border-black shadow-oct-hard-sm press-hard hover:shadow-oct-hard text-sm font-bold uppercase tracking-wide text-white flex items-center justify-center gap-2 mb-4"
-            >
-              <svg width="20" height="20" viewBox="0 0 71 55" fill="white">
-                <path d="M60.1 4.9A58.5 58.5 0 0045.4.2a.2.2 0 00-.2.1 40.7 40.7 0 00-1.8 3.7 54 54 0 00-16.2 0A26.4 26.4 0 0025.4.3a.2.2 0 00-.2-.1 58.4 58.4 0 00-14.7 4.6.2.2 0 00-.1 0A59.7 59.7 0 00.2 43.6a.2.2 0 000 .2 58.8 58.8 0 0017.7 9 .2.2 0 00.3-.1 42 42 0 003.6-5.9.2.2 0 00-.1-.3 38.8 38.8 0 01-5.5-2.6.2.2 0 010-.4l1.1-.9a.2.2 0 01.2 0 42 42 0 0035.6 0 .2.2 0 01.2 0l1.1.9a.2.2 0 010 .3 36.4 36.4 0 01-5.5 2.7.2.2 0 00-.1.3 47.2 47.2 0 003.6 5.9.2.2 0 00.3 0A58.6 58.6 0 0070.6 43.8a.2.2 0 000-.2A59.2 59.2 0 0060.2 5a.2.2 0 00-.1 0zM23.7 35.8c-3.4 0-6.2-3.1-6.2-7s2.7-7 6.2-7 6.3 3.2 6.2 7-2.8 7-6.2 7zm22.9 0c-3.4 0-6.2-3.1-6.2-7s2.7-7 6.2-7 6.3 3.2 6.2 7-2.7 7-6.2 7z" />
-              </svg>
-              Continue with Discord
-            </button>
-
-            <div className="relative my-6">
-              <div className="absolute inset-0 flex items-center">
-                <div className="w-full border-t border-discord-border" />
-              </div>
-              <div className="relative flex justify-center text-xs">
-                <span className="bg-discord-dark px-3 text-discord-text-muted uppercase tracking-wider">or</span>
-              </div>
-            </div>
-          </>
-        )}
-
-        <form onSubmit={handleEmailAuth} className="space-y-4">
-          <div>
-            <label htmlFor="email" className="block text-xs font-semibold uppercase tracking-wide text-discord-text-muted mb-2">
-              Email
-            </label>
-            <div className="relative">
-              <Mail size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-discord-channel-icon" />
-              <input
-                id="email"
-                type="email"
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-                placeholder="you@example.com"
-                autoComplete="email"
-                autoFocus
-                disabled={loading}
-                className="w-full pl-9 pr-3 py-2.5 bg-oct-bg border-2 border-oct-border rounded-cockpit text-sm text-discord-text placeholder:text-discord-channel-icon focus:outline-none focus:border-oct-accent disabled:opacity-50 transition-colors"
-              />
-            </div>
-          </div>
-
+        <div className="oct-card p-6 sm:p-7">
           {view !== 'forgot' && (
+            <>
+              <button
+                onClick={handleDiscordOAuth}
+                disabled={loading}
+                className="w-full py-2.5 rounded-oct border border-[#5865F2]/50 bg-[#5865F2] hover:bg-[#4752c4] disabled:opacity-50 disabled:cursor-not-allowed shadow-oct-soft hover:shadow-oct-soft-lg transition-all text-sm font-bold uppercase tracking-wide text-white flex items-center justify-center gap-2 mb-4"
+              >
+                <svg width="20" height="20" viewBox="0 0 71 55" fill="white">
+                  <path d="M60.1 4.9A58.5 58.5 0 0045.4.2a.2.2 0 00-.2.1 40.7 40.7 0 00-1.8 3.7 54 54 0 00-16.2 0A26.4 26.4 0 0025.4.3a.2.2 0 00-.2-.1 58.4 58.4 0 00-14.7 4.6.2.2 0 00-.1 0A59.7 59.7 0 00.2 43.6a.2.2 0 000 .2 58.8 58.8 0 0017.7 9 .2.2 0 00.3-.1 42 42 0 003.6-5.9.2.2 0 00-.1-.3 38.8 38.8 0 01-5.5-2.6.2.2 0 010-.4l1.1-.9a.2.2 0 01.2 0 42 42 0 0035.6 0 .2.2 0 01.2 0l1.1.9a.2.2 0 010 .3 36.4 36.4 0 01-5.5 2.7.2.2 0 00-.1.3 47.2 47.2 0 003.6 5.9.2.2 0 00.3 0A58.6 58.6 0 0070.6 43.8a.2.2 0 000-.2A59.2 59.2 0 0060.2 5a.2.2 0 00-.1 0zM23.7 35.8c-3.4 0-6.2-3.1-6.2-7s2.7-7 6.2-7 6.3 3.2 6.2 7-2.8 7-6.2 7zm22.9 0c-3.4 0-6.2-3.1-6.2-7s2.7-7 6.2-7 6.3 3.2 6.2 7-2.7 7-6.2 7z" />
+                </svg>
+                Continue with Discord
+              </button>
+
+              <div className="relative my-6">
+                <div className="absolute inset-0 flex items-center">
+                  <div className="w-full border-t border-oct-border" />
+                </div>
+                <div className="relative flex justify-center text-xs">
+                  <span className="bg-oct-elevated px-3 text-oct-muted uppercase tracking-wider font-mono">or</span>
+                </div>
+              </div>
+            </>
+          )}
+
+          <form onSubmit={handleEmailAuth} className="space-y-4">
             <div>
-              <label htmlFor="password" className="block text-xs font-semibold uppercase tracking-wide text-discord-text-muted mb-2">
-                Password
+              <label htmlFor="email" className="oct-label block text-oct-muted mb-2 uppercase tracking-wide">
+                Email
               </label>
               <div className="relative">
-                <Lock size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-discord-channel-icon" />
+                <Mail size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-oct-muted" />
                 <input
-                  id="password"
-                  type="password"
-                  value={password}
-                  onChange={(e) => setPassword(e.target.value)}
-                  placeholder={view === 'signup' ? 'Create a password (min 6 chars)' : 'Enter your password'}
-                  autoComplete={view === 'signup' ? 'new-password' : 'current-password'}
+                  id="email"
+                  type="email"
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
+                  placeholder="you@example.com"
+                  autoComplete="email"
+                  autoFocus
                   disabled={loading}
-                  className="w-full pl-9 pr-3 py-2.5 bg-oct-bg border-2 border-oct-border rounded-cockpit text-sm text-discord-text placeholder:text-discord-channel-icon focus:outline-none focus:border-oct-accent disabled:opacity-50 transition-colors"
+                  className="w-full pl-9 pr-3 py-2.5 oct-input text-sm disabled:opacity-50"
                 />
               </div>
             </div>
-          )}
 
-          {error && (
-            <div className="flex items-start gap-2 px-3 py-2.5 bg-oct-accent-dim border-2 border-oct-accent rounded-cockpit text-sm text-oct-accent">
-              <AlertCircle size={16} className="shrink-0 mt-0.5" />
-              <span>{error}</span>
-            </div>
-          )}
-
-          {message && (
-            <div className="flex items-start gap-2 px-3 py-2.5 bg-oct-green/10 border-2 border-oct-green rounded-cockpit text-sm text-oct-green">
-              <span>{message}</span>
-            </div>
-          )}
-
-          <button
-            type="submit"
-            disabled={loading || !email.trim() || (view !== 'forgot' && !password.trim())}
-            className="brutal-btn w-full py-2.5 text-sm"
-          >
-            {loading ? (
-              <>
-                <Loader2 size={16} className="animate-spin" />
-                {view === 'forgot' ? 'Sending...' : view === 'signup' ? 'Creating account...' : 'Signing in...'}
-              </>
-            ) : (
-              view === 'forgot' ? '[ SEND RESET LINK ]' : view === 'signup' ? '[ CREATE ACCOUNT ]' : '[ SIGN IN ]'
+            {view !== 'forgot' && (
+              <div>
+                <label htmlFor="password" className="oct-label block text-oct-muted mb-2 uppercase tracking-wide">
+                  Password
+                </label>
+                <div className="relative">
+                  <Lock size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-oct-muted" />
+                  <input
+                    id="password"
+                    type="password"
+                    value={password}
+                    onChange={(e) => setPassword(e.target.value)}
+                    placeholder={view === 'signup' ? 'Create a password (min 6 chars)' : 'Enter your password'}
+                    autoComplete={view === 'signup' ? 'new-password' : 'current-password'}
+                    disabled={loading}
+                    className="w-full pl-9 pr-3 py-2.5 oct-input text-sm disabled:opacity-50"
+                  />
+                </div>
+              </div>
             )}
-          </button>
-        </form>
 
-        <div className="mt-6 text-center text-sm text-discord-text-muted space-y-2">
+            {error && (
+              <div className="flex items-start gap-2 px-3 py-2.5 bg-oct-accent-dim border border-oct-accent/50 rounded-oct text-sm text-oct-accent">
+                <AlertCircle size={16} className="shrink-0 mt-0.5" />
+                <span>{error}</span>
+              </div>
+            )}
+
+            {message && (
+              <div className="flex items-start gap-2 px-3 py-2.5 bg-oct-green/10 border border-oct-green/50 rounded-oct text-sm text-oct-green">
+                <span>{message}</span>
+              </div>
+            )}
+
+            <button
+              type="submit"
+              disabled={loading || !email.trim() || (view !== 'forgot' && !password.trim())}
+              className="oct-btn-primary w-full py-2.5 text-sm"
+            >
+              {loading ? (
+                <>
+                  <Loader2 size={16} className="animate-spin" />
+                  {view === 'forgot' ? 'Sending...' : view === 'signup' ? 'Creating account...' : 'Signing in...'}
+                </>
+              ) : (
+                view === 'forgot' ? 'Send reset link' : view === 'signup' ? 'Create account' : 'Sign in'
+              )}
+            </button>
+          </form>
+        </div>
+
+        <div className="mt-6 text-center text-sm text-oct-muted space-y-2">
           {view === 'login' && (
             <>
-              <button onClick={() => { setView('forgot'); setError(null); setMessage(null); }} className="hover:text-discord-text transition-colors">
+              <button onClick={() => { setView('forgot'); setError(null); setMessage(null); }} className="hover:text-oct-text transition-colors">
                 Forgot password?
               </button>
               <p>
                 Don&apos;t have an account?{' '}
-                <button onClick={() => { setView('signup'); setError(null); setMessage(null); }} className="text-discord-blurple hover:underline">
+                <button onClick={() => { setView('signup'); setError(null); setMessage(null); }} className="text-oct-accent hover:underline">
                   Sign up
                 </button>
               </p>
@@ -215,7 +222,7 @@ export default function AuthPage({ onAuth }: { onAuth: () => void }) {
           {view === 'signup' && (
             <p>
               Already have an account?{' '}
-              <button onClick={() => { setView('login'); setError(null); setMessage(null); }} className="text-discord-blurple hover:underline">
+              <button onClick={() => { setView('login'); setError(null); setMessage(null); }} className="text-oct-accent hover:underline">
                 Sign in
               </button>
             </p>
@@ -223,7 +230,7 @@ export default function AuthPage({ onAuth }: { onAuth: () => void }) {
           {view === 'forgot' && (
             <button
               onClick={() => { setView('login'); setError(null); setMessage(null); }}
-              className="inline-flex items-center gap-1 hover:text-discord-text transition-colors"
+              className="inline-flex items-center gap-1 hover:text-oct-text transition-colors"
             >
               <ArrowLeft size={14} />
               Back to sign in

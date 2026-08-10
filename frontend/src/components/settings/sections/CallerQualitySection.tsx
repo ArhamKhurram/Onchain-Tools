@@ -62,7 +62,7 @@ export default function CallerQualitySection({ form }: { form: SettingsForm }) {
   return (
     <>
       <div>
-        <h3 className="font-display text-xl sm:text-2xl tracking-tight text-oct-text mb-1">Caller Quality</h3>
+        <h3 className="font-display text-2xl sm:text-3xl tracking-tight text-oct-text mb-1">Caller Quality</h3>
         <p className="text-sm text-oct-muted">
           Rank contract calls by who sent them. Mute the slop, float the callers worth
           watching. Muted callers are collapsed rather than deleted — a caller you've
@@ -101,7 +101,7 @@ export default function CallerQualitySection({ form }: { form: SettingsForm }) {
         </p>
 
         {callerTiers.length === 0 ? (
-          <p className="text-sm text-oct-muted text-center py-4 border-2 border-dashed border-oct-border rounded-cockpit">
+          <p className="text-sm text-oct-muted text-center py-4 border border-dashed border-oct-border rounded-oct">
             No manual tiers yet.
           </p>
         ) : (
@@ -112,7 +112,7 @@ export default function CallerQualitySection({ form }: { form: SettingsForm }) {
               return (
                 <div
                   key={`${entry.key}:${entry.roomId ?? 'global'}`}
-                  className="flex items-center justify-between gap-2 px-3 py-2 rounded-cockpit border-2 border-oct-border bg-oct-surface-raised"
+                  className="flex items-center justify-between gap-2 px-3 py-2 rounded-oct border border-oct-border bg-oct-surface-raised"
                 >
                   <div className="flex items-center gap-2 min-w-0">
                     {entry.tier === 'muted' ? (
@@ -172,7 +172,7 @@ export default function CallerQualitySection({ form }: { form: SettingsForm }) {
           {DEFAULT_EXCLUDED_CALLERS.map((name) => (
             <div
               key={`default:${name}`}
-              className="flex items-center gap-2 px-3 py-2 rounded-cockpit border-2 border-dashed border-oct-border bg-oct-surface-raised"
+              className="flex items-center gap-2 px-3 py-2 rounded-oct border border-dashed border-oct-border bg-oct-surface-raised"
             >
               <Bot size={13} className="text-oct-muted shrink-0" />
               <span className="text-sm text-oct-text truncate">{name}</span>
@@ -184,7 +184,7 @@ export default function CallerQualitySection({ form }: { form: SettingsForm }) {
           {callerScoreExclusions.map((entry) => (
             <div
               key={entry}
-              className="flex items-center gap-2 px-3 py-2 rounded-cockpit border-2 border-oct-border bg-oct-surface-raised"
+              className="flex items-center gap-2 px-3 py-2 rounded-oct border border-oct-border bg-oct-surface-raised"
             >
               <Bot size={13} className="text-oct-muted shrink-0" />
               <span className="text-sm text-oct-text truncate">{entry}</span>
@@ -212,11 +212,11 @@ export default function CallerQualitySection({ form }: { form: SettingsForm }) {
               }
             }}
             placeholder="Name or caller key"
-            className="flex-1 min-w-0 px-3 py-2 rounded-cockpit border-2 border-oct-border bg-oct-surface text-sm text-oct-text placeholder:text-oct-muted"
+            className="flex-1 min-w-0 px-3 py-2 rounded-oct border border-oct-border bg-oct-surface text-sm text-oct-text placeholder:text-oct-muted"
           />
           <button
             onClick={addExclusion}
-            className="px-3 py-2 rounded-cockpit border-2 border-oct-border bg-oct-surface-raised text-sm text-oct-text hover:border-oct-muted shrink-0"
+            className="px-3 py-2 rounded-oct border border-oct-border bg-oct-surface-raised text-sm text-oct-text hover:border-oct-muted shrink-0"
           >
             Exclude
           </button>
@@ -261,7 +261,7 @@ export default function CallerQualitySection({ form }: { form: SettingsForm }) {
         {!loaded ? (
           <p className="text-sm text-oct-muted text-center py-4">Loading scores…</p>
         ) : ratedScores.length === 0 ? (
-          <p className="text-sm text-oct-muted text-center py-4 border-2 border-dashed border-oct-border rounded-cockpit">
+          <p className="text-sm text-oct-muted text-center py-4 border border-dashed border-oct-border rounded-oct">
             Nobody has enough scored calls yet. Peaks are sampled every few minutes, so this
             fills in over the first day or so of running.
           </p>
@@ -287,7 +287,7 @@ export default function CallerQualitySection({ form }: { form: SettingsForm }) {
             {ratedScores.map((score) => (
               <div
                 key={score.key}
-                className="flex items-center justify-between gap-2 px-3 py-2 rounded-cockpit border-2 border-oct-border bg-oct-surface-raised"
+                className="flex items-center justify-between gap-2 px-3 py-2 rounded-oct border border-oct-border bg-oct-surface-raised"
                 title={BAND_TITLE[score.band]}
               >
                 <div className="min-w-0">

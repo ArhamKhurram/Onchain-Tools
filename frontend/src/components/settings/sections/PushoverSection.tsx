@@ -47,7 +47,7 @@ export default function PushoverSection({ form }: { form: SettingsForm }) {
   return (
               <>
                 <div>
-                  <h3 className="font-display text-base sm:text-lg tracking-tight text-oct-text mb-4">Pushover</h3>
+                  <h3 className="font-display text-2xl sm:text-3xl tracking-tight text-oct-text mb-4">Pushover</h3>
                   <div className="space-y-4">
                     <p className="text-sm text-oct-muted">
                       Send push notifications to your phone via{' '}
@@ -57,16 +57,16 @@ export default function PushoverSection({ form }: { form: SettingsForm }) {
                       . Configure which events trigger notifications and filter by user, guild, or channel.
                     </p>
 
-                    <details className="group brutal-card">
-                      <summary className="flex items-center gap-2 px-3 sm:px-4 py-3 cursor-pointer select-none font-mono text-xs font-bold uppercase tracking-[0.15em] text-oct-text hover:text-oct-accent transition-colors duration-100">
+                    <details className="group oct-card">
+                      <summary className="flex items-center gap-2 px-3 sm:px-4 py-3 cursor-pointer select-none oct-eyebrow hover:text-oct-accent transition-colors duration-100">
                         <Plus size={14} className="shrink-0 group-open:hidden" />
                         <Minus size={14} className="shrink-0 hidden group-open:block" />
                         <span>Setup Guide</span>
                       </summary>
-                      <div className="px-3 sm:px-4 pt-3 pb-3 sm:pb-4 space-y-3 border-t-2 border-oct-border">
+                      <div className="px-3 sm:px-4 pt-3 pb-3 sm:pb-4 space-y-3 border-t border-oct-border">
                         <div className="space-y-2">
                           <div className="flex items-start gap-2.5">
-                            <span className="shrink-0 w-5 h-5 rounded-cockpit bg-oct-accent text-white font-mono text-xs font-bold flex items-center justify-center mt-0.5">1</span>
+                            <span className="shrink-0 w-5 h-5 rounded-oct-sm bg-oct-accent text-white font-mono text-xs font-bold flex items-center justify-center mt-0.5">1</span>
                             <p className="text-sm text-oct-text">
                               Create a Pushover account at{' '}
                               <a href="https://pushover.net" target="_blank" rel="noopener noreferrer" className="text-oct-accent hover:underline">pushover.net</a>
@@ -75,7 +75,7 @@ export default function PushoverSection({ form }: { form: SettingsForm }) {
                             </p>
                           </div>
                           <div className="flex items-start gap-2.5">
-                            <span className="shrink-0 w-5 h-5 rounded-cockpit bg-oct-accent text-white font-mono text-xs font-bold flex items-center justify-center mt-0.5">2</span>
+                            <span className="shrink-0 w-5 h-5 rounded-oct-sm bg-oct-accent text-white font-mono text-xs font-bold flex items-center justify-center mt-0.5">2</span>
                             <p className="text-sm text-oct-text">
                               Copy your <span className="font-semibold text-oct-text">User Key</span> from the{' '}
                               <a href="https://pushover.net" target="_blank" rel="noopener noreferrer" className="text-oct-accent hover:underline">Pushover dashboard</a>
@@ -83,7 +83,7 @@ export default function PushoverSection({ form }: { form: SettingsForm }) {
                             </p>
                           </div>
                           <div className="flex items-start gap-2.5">
-                            <span className="shrink-0 w-5 h-5 rounded-cockpit bg-oct-accent text-white font-mono text-xs font-bold flex items-center justify-center mt-0.5">3</span>
+                            <span className="shrink-0 w-5 h-5 rounded-oct-sm bg-oct-accent text-white font-mono text-xs font-bold flex items-center justify-center mt-0.5">3</span>
                             <div className="text-sm text-oct-text">
                               <p>
                                 Create a new application at{' '}
@@ -97,7 +97,7 @@ export default function PushoverSection({ form }: { form: SettingsForm }) {
                             </div>
                           </div>
                           <div className="flex items-start gap-2.5">
-                            <span className="shrink-0 w-5 h-5 rounded-cockpit bg-oct-accent text-white font-mono text-xs font-bold flex items-center justify-center mt-0.5">4</span>
+                            <span className="shrink-0 w-5 h-5 rounded-oct-sm bg-oct-accent text-white font-mono text-xs font-bold flex items-center justify-center mt-0.5">4</span>
                             <p className="text-sm text-oct-text">
                               Copy the <span className="font-semibold text-oct-text">API Token/Key</span> from your newly created application page and paste it below.
                             </p>
@@ -117,30 +117,30 @@ export default function PushoverSection({ form }: { form: SettingsForm }) {
 
                     {pushoverEnabled && (
                       <div className="space-y-4">
-                        <div className="brutal-card p-3 sm:p-4 space-y-3">
-                          <h4 className="font-mono text-xs font-bold uppercase tracking-[0.15em] text-oct-text">Credentials</h4>
-                          <div className="rounded-cockpit border-2 border-oct-border bg-oct-surface-raised px-3 py-2">
+                        <div className="oct-card p-3 sm:p-4 space-y-3">
+                          <h4 className="oct-eyebrow">Credentials</h4>
+                          <div className="rounded-oct border border-oct-border bg-oct-surface-raised px-3 py-2">
                             <label className="block text-xs font-medium text-oct-muted mb-1.5 uppercase tracking-wide">Application API Token</label>
                             <input
                               type="password"
                               value={pushoverAppToken}
                               onChange={(e) => setPushoverAppToken(e.target.value)}
                               placeholder="azGDORePK8gMaC0QOYAMyEEuzJnyUi"
-                              className="w-full px-3 py-2 rounded-cockpit bg-oct-bg border-2 border-oct-border text-sm text-oct-text placeholder:text-oct-muted/60 focus:outline-none focus:border-oct-accent font-mono"
+                              className="w-full px-3 py-2 oct-input text-sm font-mono"
                               autoComplete="off"
                               data-1p-ignore
                               data-lpignore="true"
                               data-form-type="other"
                             />
                           </div>
-                          <div className="rounded-cockpit border-2 border-oct-border bg-oct-surface-raised px-3 py-2">
+                          <div className="rounded-oct border border-oct-border bg-oct-surface-raised px-3 py-2">
                             <label className="block text-xs font-medium text-oct-muted mb-1.5 uppercase tracking-wide">User Key</label>
                             <input
                               type="password"
                               value={pushoverUserKey}
                               onChange={(e) => setPushoverUserKey(e.target.value)}
                               placeholder="uQiRzpo4DXghDmr9QzzfQu27cmVRsG"
-                              className="w-full px-3 py-2 rounded-cockpit bg-oct-bg border-2 border-oct-border text-sm text-oct-text placeholder:text-oct-muted/60 focus:outline-none focus:border-oct-accent font-mono"
+                              className="w-full px-3 py-2 oct-input text-sm font-mono"
                               autoComplete="off"
                               data-1p-ignore
                               data-lpignore="true"
@@ -149,8 +149,8 @@ export default function PushoverSection({ form }: { form: SettingsForm }) {
                           </div>
                         </div>
 
-                        <div className="brutal-card p-3 sm:p-4 space-y-3">
-                          <h4 className="font-mono text-xs font-bold uppercase tracking-[0.15em] text-oct-text">Triggers</h4>
+                        <div className="oct-card p-3 sm:p-4 space-y-3">
+                          <h4 className="oct-eyebrow">Triggers</h4>
                           <p className="text-xs text-oct-muted">Choose which events send a push notification.</p>
                           <Toggle
                             value={pushoverTriggers.highlightedUserContract}
@@ -179,12 +179,12 @@ export default function PushoverSection({ form }: { form: SettingsForm }) {
                           />
                         </div>
 
-                        <div className="brutal-card p-3 sm:p-4 space-y-3">
-                          <h4 className="font-mono text-xs font-bold uppercase tracking-[0.15em] text-oct-text">Filters</h4>
+                        <div className="oct-card p-3 sm:p-4 space-y-3">
+                          <h4 className="oct-eyebrow">Filters</h4>
                           <p className="text-xs text-oct-muted">Narrow down which messages trigger notifications. Empty = no filter (all match).</p>
 
                           {/* User filter */}
-                          <div className="rounded-cockpit border-2 border-oct-border bg-oct-surface-raised px-2 sm:px-3 py-2 space-y-2">
+                          <div className="rounded-oct border border-oct-border bg-oct-surface-raised px-2 sm:px-3 py-2 space-y-2">
                             <label className="block text-xs font-medium text-oct-muted mb-1.5 uppercase tracking-wide">Only from these highlighted users</label>
                             {(() => {
                               const allHighlighted = Array.from(new Set([
@@ -203,7 +203,7 @@ export default function PushoverSection({ form }: { form: SettingsForm }) {
                                           ...f,
                                           userIds: active ? f.userIds.filter((id) => id !== uid) : [...f.userIds, uid],
                                         }))}
-                                        className={`px-2 py-1 rounded-cockpit border-2 font-mono text-xs transition-colors duration-100 ${active ? 'bg-oct-accent border-oct-accent text-white' : 'bg-oct-bg border-oct-border text-oct-muted hover:text-oct-text hover:border-oct-border-bright'}`}
+                                        className={`px-2 py-1 rounded-oct-sm border font-mono text-xs transition-colors duration-100 ${active ? 'bg-oct-accent border-oct-accent/50 text-white shadow-oct-glow-accent' : 'bg-oct-surface-raised/40 border-oct-border text-oct-muted hover:text-oct-text hover:border-oct-border-bright'}`}
                                       >
                                         {userNameMap.get(uid) || uid}
                                       </button>
@@ -212,7 +212,7 @@ export default function PushoverSection({ form }: { form: SettingsForm }) {
                                   {pushoverFilters.userIds.length > 0 && (
                                     <button
                                       onClick={() => setPushoverFilters((f) => ({ ...f, userIds: [] }))}
-                                      className="px-2 py-1 rounded-cockpit font-mono text-xs uppercase tracking-wide text-oct-flame hover:text-oct-flame/70 transition-colors duration-100"
+                                      className="px-2 py-1 rounded-oct-sm font-mono text-xs uppercase tracking-wide text-oct-flame hover:text-oct-flame/70 transition-colors duration-100"
                                     >
                                       Clear
                                     </button>
@@ -223,7 +223,7 @@ export default function PushoverSection({ form }: { form: SettingsForm }) {
                           </div>
 
                           {/* Guild filter */}
-                          <div className="rounded-cockpit border-2 border-oct-border bg-oct-surface-raised px-2 sm:px-3 py-2 space-y-2">
+                          <div className="rounded-oct border border-oct-border bg-oct-surface-raised px-2 sm:px-3 py-2 space-y-2">
                             <label className="block text-xs font-medium text-oct-muted mb-1.5 uppercase tracking-wide">Only from these guilds</label>
                             {(() => {
                               const filtered = guilds.filter((g) => enabledGuilds.includes(g.id));
@@ -239,7 +239,7 @@ export default function PushoverSection({ form }: { form: SettingsForm }) {
                                         ...f,
                                         guildIds: active ? f.guildIds.filter((id) => id !== g.id) : [...f.guildIds, g.id],
                                       }))}
-                                      className={`px-2 py-1 rounded-cockpit border-2 font-mono text-xs transition-colors duration-100 ${active ? 'bg-oct-accent border-oct-accent text-white' : 'bg-oct-bg border-oct-border text-oct-muted hover:text-oct-text hover:border-oct-border-bright'}`}
+                                      className={`px-2 py-1 rounded-oct-sm border font-mono text-xs transition-colors duration-100 ${active ? 'bg-oct-accent border-oct-accent/50 text-white shadow-oct-glow-accent' : 'bg-oct-surface-raised/40 border-oct-border text-oct-muted hover:text-oct-text hover:border-oct-border-bright'}`}
                                     >
                                       {g.name}
                                     </button>
@@ -248,7 +248,7 @@ export default function PushoverSection({ form }: { form: SettingsForm }) {
                                 {pushoverFilters.guildIds.length > 0 && (
                                   <button
                                     onClick={() => setPushoverFilters((f) => ({ ...f, guildIds: [] }))}
-                                    className="px-2 py-1 rounded-cockpit font-mono text-xs uppercase tracking-wide text-oct-flame hover:text-oct-flame/70 transition-colors duration-100"
+                                    className="px-2 py-1 rounded-oct-sm font-mono text-xs uppercase tracking-wide text-oct-flame hover:text-oct-flame/70 transition-colors duration-100"
                                   >
                                     Clear
                                   </button>
@@ -259,7 +259,7 @@ export default function PushoverSection({ form }: { form: SettingsForm }) {
                           </div>
 
                           {/* Channel filter */}
-                          <div className="rounded-cockpit border-2 border-oct-border bg-oct-surface-raised px-2 sm:px-3 py-2 space-y-2">
+                          <div className="rounded-oct border border-oct-border bg-oct-surface-raised px-2 sm:px-3 py-2 space-y-2">
                             <label className="block text-xs font-medium text-oct-muted mb-1.5 uppercase tracking-wide">Only from these channels</label>
                             {(() => {
                               const rooms = config?.rooms ?? [];
@@ -295,7 +295,7 @@ export default function PushoverSection({ form }: { form: SettingsForm }) {
                                                 ...f,
                                                 channelIds: active ? f.channelIds.filter((id) => id !== ch.id) : [...f.channelIds, ch.id],
                                               }))}
-                                              className={`px-2 py-1 rounded-cockpit border-2 font-mono text-xs transition-colors duration-100 ${active ? 'bg-oct-accent border-oct-accent text-white' : 'bg-oct-bg border-oct-border text-oct-muted hover:text-oct-text hover:border-oct-border-bright'}`}
+                                              className={`px-2 py-1 rounded-oct-sm border font-mono text-xs transition-colors duration-100 ${active ? 'bg-oct-accent border-oct-accent/50 text-white shadow-oct-glow-accent' : 'bg-oct-surface-raised/40 border-oct-border text-oct-muted hover:text-oct-text hover:border-oct-border-bright'}`}
                                             >
                                               #{ch.name}
                                             </button>
@@ -307,7 +307,7 @@ export default function PushoverSection({ form }: { form: SettingsForm }) {
                                   {pushoverFilters.channelIds.length > 0 && (
                                     <button
                                       onClick={() => setPushoverFilters((f) => ({ ...f, channelIds: [] }))}
-                                      className="px-2 py-1 rounded-cockpit font-mono text-xs uppercase tracking-wide text-oct-flame hover:text-oct-flame/70 transition-colors duration-100"
+                                      className="px-2 py-1 rounded-oct-sm font-mono text-xs uppercase tracking-wide text-oct-flame hover:text-oct-flame/70 transition-colors duration-100"
                                     >
                                       Clear
                                     </button>
@@ -318,14 +318,14 @@ export default function PushoverSection({ form }: { form: SettingsForm }) {
                           </div>
                         </div>
 
-                        <div className="brutal-card p-3 sm:p-4 space-y-3">
-                          <h4 className="font-mono text-xs font-bold uppercase tracking-[0.15em] text-oct-text">Notification Settings</h4>
-                          <div className="rounded-cockpit border-2 border-oct-border bg-oct-surface-raised px-3 py-2">
+                        <div className="oct-card p-3 sm:p-4 space-y-3">
+                          <h4 className="oct-eyebrow">Notification Settings</h4>
+                          <div className="rounded-oct border border-oct-border bg-oct-surface-raised px-3 py-2">
                             <label className="block text-xs font-medium text-oct-muted mb-1.5 uppercase tracking-wide">Priority</label>
                             <select
                               value={pushoverPriority}
                               onChange={(e) => setPushoverPriority(Number(e.target.value) as PushoverPriority)}
-                              className="w-full px-3 py-2 rounded-cockpit bg-oct-bg border-2 border-oct-border text-sm text-oct-text focus:outline-none focus:border-oct-accent"
+                              className="w-full px-3 py-2 oct-input text-sm"
                             >
                               <option value={-2}>Lowest (no alert)</option>
                               <option value={-1}>Low (no sound)</option>
@@ -334,12 +334,12 @@ export default function PushoverSection({ form }: { form: SettingsForm }) {
                               <option value={2}>Emergency (repeats until acknowledged)</option>
                             </select>
                           </div>
-                          <div className="rounded-cockpit border-2 border-oct-border bg-oct-surface-raised px-3 py-2">
+                          <div className="rounded-oct border border-oct-border bg-oct-surface-raised px-3 py-2">
                             <label className="block text-xs font-medium text-oct-muted mb-1.5 uppercase tracking-wide">Sound</label>
                             <select
                               value={pushoverSound}
                               onChange={(e) => setPushoverSound(e.target.value as PushoverSound)}
-                              className="w-full px-3 py-2 rounded-cockpit bg-oct-bg border-2 border-oct-border text-sm text-oct-text focus:outline-none focus:border-oct-accent capitalize"
+                              className="w-full px-3 py-2 oct-input text-sm capitalize"
                             >
                               {PUSHOVER_SOUNDS.map((s) => (
                                 <option key={s} value={s}>{s === 'none' ? 'None (silent)' : s}</option>
@@ -350,8 +350,8 @@ export default function PushoverSection({ form }: { form: SettingsForm }) {
                       </div>
                     )}
 
-                    <div className="brutal-card p-3 sm:p-4 space-y-3 border-oct-accent">
-                      <h4 className="font-mono text-xs font-bold uppercase tracking-[0.15em] text-oct-text">Missed runner alerts</h4>
+                    <div className="oct-card p-3 sm:p-4 space-y-3 border-oct-accent">
+                      <h4 className="oct-eyebrow">Missed runner alerts</h4>
                       <p className="text-xs text-oct-muted">
                         Notify when a scanned token hits your multiplier vs MC@call and none of your My Wallets hold it.
                       </p>
@@ -370,10 +370,10 @@ export default function PushoverSection({ form }: { form: SettingsForm }) {
                                   key={value}
                                   type="button"
                                   onClick={() => setMissedRunnerNotifyVia(value)}
-                                  className={`px-2 py-2 rounded-cockpit text-left border-2 transition-colors duration-100 ${
+                                  className={`px-2 py-2 rounded-oct text-left border transition-all duration-150 ${
                                     missedRunnerNotifyVia === value
-                                      ? 'bg-oct-accent-dim border-oct-accent text-oct-text'
-                                      : 'bg-oct-bg border-oct-border text-oct-muted hover:text-oct-text hover:border-oct-border-bright'
+                                      ? 'bg-oct-accent-dim border-oct-accent/60 text-oct-text shadow-oct-glow-accent'
+                                      : 'bg-oct-surface-raised/40 border-oct-border text-oct-muted hover:text-oct-text hover:border-oct-border-bright'
                                   }`}
                                 >
                                   <span className="block font-mono text-xs font-bold uppercase tracking-wide">{label}</span>
@@ -392,7 +392,7 @@ export default function PushoverSection({ form }: { form: SettingsForm }) {
                               </p>
                             )}
                           </div>
-                          <div className="rounded-cockpit border-2 border-oct-border bg-oct-surface-raised px-2 sm:px-3 py-2">
+                          <div className="rounded-oct border border-oct-border bg-oct-surface-raised px-2 sm:px-3 py-2">
                             <label className="block text-xs font-medium text-oct-muted mb-1.5 uppercase tracking-wide">
                               Multiplier threshold: {missedRunnerMultiplier.toFixed(2)}× vs MC@call
                             </label>
@@ -407,7 +407,7 @@ export default function PushoverSection({ form }: { form: SettingsForm }) {
                             />
                           </div>
                           <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                            <div className="rounded-cockpit border-2 border-oct-border bg-oct-surface-raised px-2 sm:px-3 py-2">
+                            <div className="rounded-oct border border-oct-border bg-oct-surface-raised px-2 sm:px-3 py-2">
                               <label className="block text-xs font-medium text-oct-muted mb-1.5 uppercase tracking-wide">Lookback (hours)</label>
                               <input
                                 type="number"
@@ -415,10 +415,10 @@ export default function PushoverSection({ form }: { form: SettingsForm }) {
                                 max={168}
                                 value={missedRunnerLookbackHours}
                                 onChange={(e) => setMissedRunnerLookbackHours(Math.max(1, Number(e.target.value) || 24))}
-                                className="w-full px-3 py-2 rounded-cockpit bg-oct-bg border-2 border-oct-border text-sm text-oct-text placeholder:text-oct-muted/60 focus:outline-none focus:border-oct-accent"
+                                className="w-full px-3 py-2 oct-input text-sm"
                               />
                             </div>
-                            <div className="rounded-cockpit border-2 border-oct-border bg-oct-surface-raised px-2 sm:px-3 py-2">
+                            <div className="rounded-oct border border-oct-border bg-oct-surface-raised px-2 sm:px-3 py-2">
                               <label className="block text-xs font-medium text-oct-muted mb-1.5 uppercase tracking-wide">Cooldown per token (hours)</label>
                               <input
                                 type="number"
@@ -426,11 +426,11 @@ export default function PushoverSection({ form }: { form: SettingsForm }) {
                                 max={168}
                                 value={missedRunnerCooldownHours}
                                 onChange={(e) => setMissedRunnerCooldownHours(Math.max(1, Number(e.target.value) || 24))}
-                                className="w-full px-3 py-2 rounded-cockpit bg-oct-bg border-2 border-oct-border text-sm text-oct-text placeholder:text-oct-muted/60 focus:outline-none focus:border-oct-accent"
+                                className="w-full px-3 py-2 oct-input text-sm"
                               />
                             </div>
                           </div>
-                          <div className="rounded-cockpit border-2 border-oct-border bg-oct-surface-raised px-2 sm:px-3 py-2">
+                          <div className="rounded-oct border border-oct-border bg-oct-surface-raised px-2 sm:px-3 py-2">
                             <label className="block text-xs font-medium text-oct-muted mb-1.5 uppercase tracking-wide">Min MC@call (optional, USD)</label>
                             <input
                               type="number"
@@ -438,13 +438,13 @@ export default function PushoverSection({ form }: { form: SettingsForm }) {
                               placeholder="e.g. 50000 — skip lower MC scans"
                               value={missedRunnerMinMcAtCall}
                               onChange={(e) => setMissedRunnerMinMcAtCall(e.target.value)}
-                              className="w-full px-3 py-2 rounded-cockpit bg-oct-bg border-2 border-oct-border text-sm text-oct-text placeholder:text-oct-muted/60 focus:outline-none focus:border-oct-accent"
+                              className="w-full px-3 py-2 oct-input text-sm"
                             />
                           </div>
                           <p className="text-[11px] text-oct-muted">
                             Balance checks use Wallets → My Wallets. Keep the site open for toast delivery.
                           </p>
-                          <div className="pt-3 border-t-2 border-oct-border space-y-2">
+                          <div className="pt-3 border-t border-oct-border space-y-2">
                             <label className="block text-xs font-medium text-oct-muted uppercase tracking-wide">Test on a token</label>
                             <p className="text-[10px] text-oct-muted">
                               Paste a contract from your feed to preview the alert. Does not write cooldown rows.
@@ -457,7 +457,7 @@ export default function PushoverSection({ form }: { form: SettingsForm }) {
                                 setMissedRunnerTestResult(null);
                               }}
                               placeholder="0x647dd517c8820fc9874e1a3f58e6e0b9a43395c0"
-                              className="w-full px-3 py-2 rounded-cockpit bg-oct-bg border-2 border-oct-border text-sm text-oct-text placeholder:text-oct-muted/60 focus:outline-none focus:border-oct-accent font-mono"
+                              className="w-full px-3 py-2 oct-input text-sm font-mono"
                             />
                             <Toggle
                               value={missedRunnerTestForce}
@@ -471,13 +471,13 @@ export default function PushoverSection({ form }: { form: SettingsForm }) {
                               type="button"
                               onClick={() => void handleMissedRunnerTest()}
                               disabled={missedRunnerTestLoading || !missedRunnerTestAddress.trim()}
-                              className="brutal-btn px-3 py-1.5 text-xs"
+                              className="oct-btn-primary px-3 py-1.5 text-xs"
                             >
                               {missedRunnerTestLoading ? 'Running…' : 'Run test alert'}
                             </button>
                             {missedRunnerTestResult && (
                               <div
-                                className={`text-[11px] rounded-cockpit px-2 py-2 border-2 ${
+                                className={`text-[11px] rounded-oct px-2 py-2 border ${
                                   missedRunnerTestResult.sent
                                     ? 'bg-oct-green/15 text-oct-green border-oct-green'
                                     : missedRunnerTestResult.ok

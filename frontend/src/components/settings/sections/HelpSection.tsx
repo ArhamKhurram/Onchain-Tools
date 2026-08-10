@@ -11,7 +11,7 @@ import { isClientGatewayMode } from '../../../discord/clientGateway';
 import { Toggle } from '../fields';
 import type { SettingsForm } from '../useSettingsForm';
 
-const panelClass = 'rounded-cockpit border-2 border-oct-border bg-oct-surface-raised p-3';
+const panelClass = 'rounded-oct border border-oct-border bg-oct-surface-raised p-3';
 const stepKickerClass = 'font-mono text-xs font-bold uppercase tracking-[0.15em] text-oct-accent mt-0.5 shrink-0';
 const inlineKickerClass = 'font-mono text-[10px] font-bold uppercase tracking-[0.15em] text-oct-accent';
 const subHeadingClass = 'font-mono text-xs font-bold uppercase tracking-[0.15em] text-oct-text mb-1';
@@ -133,7 +133,7 @@ export default function HelpSection({ form }: { form: SettingsForm }) {
             <p className="text-xs"><span className={inlineKickerClass}>Focus Mode:</span> <span className="text-oct-muted">When focus mode is active, the chat input automatically targets the focused channel.</span></p>
             <p className="text-xs"><span className={inlineKickerClass}>Attachments:</span> <span className="text-oct-muted">Attach images and files via the <strong className="text-oct-text">+</strong> button or paste from clipboard (up to 10 files).</span></p>
           </div>
-          <div className="rounded-cockpit border-2 border-oct-flame bg-oct-flame/15 p-3">
+          <div className="rounded-oct border border-oct-flame/60 bg-oct-flame/10 p-3">
             <p className="font-mono text-[10px] font-bold uppercase tracking-[0.15em] text-oct-flame mb-1">Detection Risk</p>
             <p className="text-xs text-oct-muted">Sending messages through a third-party client increases the risk of Discord detecting and flagging your account. Read-only monitoring is passive and much safer.</p>
           </div>
@@ -147,8 +147,8 @@ export default function HelpSection({ form }: { form: SettingsForm }) {
         <div className="space-y-3 text-sm text-oct-text">
           <p className="text-oct-muted">OCT automatically detects Solana and EVM contract addresses in messages.</p>
           <div className={`${panelClass} space-y-1.5`}>
-            <p className="text-xs"><span className="inline-flex items-center rounded-cockpit border-2 border-oct-green bg-oct-green/15 px-1.5 py-0.5 font-mono text-[10px] font-bold uppercase tracking-wide text-oct-green mr-1">SOL</span> <span className="text-oct-muted">Solana addresses appear as green pills.</span></p>
-            <p className="text-xs"><span className="inline-flex items-center rounded-cockpit border-2 border-oct-yellow bg-oct-yellow/15 px-1.5 py-0.5 font-mono text-[10px] font-bold uppercase tracking-wide text-oct-yellow mr-1">EVM</span> <span className="text-oct-muted">EVM addresses (0x...) appear as yellow pills.</span></p>
+            <p className="text-xs"><span className="inline-flex items-center rounded-oct-sm border border-oct-green/60 bg-oct-green/15 px-1.5 py-0.5 font-mono text-[10px] font-bold uppercase tracking-wide text-oct-green mr-1">SOL</span> <span className="text-oct-muted">Solana addresses appear as green pills.</span></p>
+            <p className="text-xs"><span className="inline-flex items-center rounded-oct-sm border border-oct-yellow/60 bg-oct-yellow/15 px-1.5 py-0.5 font-mono text-[10px] font-bold uppercase tracking-wide text-oct-yellow mr-1">EVM</span> <span className="text-oct-muted">EVM addresses (0x...) appear as yellow pills.</span></p>
             <p className="text-xs text-oct-muted">Click a contract to <strong className="text-oct-text">copy</strong> and/or <strong className="text-oct-text">open</strong> it in your configured trading platform (configurable in Settings &gt; Contracts).</p>
           </div>
           <div className={panelClass}>
@@ -284,8 +284,8 @@ export default function HelpSection({ form }: { form: SettingsForm }) {
                   </p>
 
                   <div className="flex flex-col lg:flex-row gap-4">
-                    <nav className="shrink-0 lg:w-56 rounded-cockpit border-2 border-oct-border bg-oct-surface overflow-hidden">
-                      <p className="px-3 py-2 border-b-2 border-oct-border font-mono text-xs uppercase tracking-[0.2em] text-oct-muted">[ MANUAL ]</p>
+                    <nav className="shrink-0 lg:w-56 rounded-oct border border-oct-border bg-oct-surface overflow-hidden">
+                      <p className="px-3 py-2 border-b border-oct-border font-mono text-xs uppercase tracking-[0.2em] text-oct-muted">[ MANUAL ]</p>
                       <div className="flex lg:flex-col overflow-x-auto">
                         {sections.map((s) => (
                           <button
@@ -304,7 +304,7 @@ export default function HelpSection({ form }: { form: SettingsForm }) {
                       </div>
                     </nav>
 
-                    <div className="flex-1 min-w-0 brutal-card p-4 sm:p-5">
+                    <div className="flex-1 min-w-0 oct-card p-4 sm:p-5">
                       {sections.map((s) => (
                         activeSection === s.id ? (
                           <div key={s.id}>
@@ -316,7 +316,7 @@ export default function HelpSection({ form }: { form: SettingsForm }) {
                     </div>
                   </div>
 
-                  <div className="mt-8 pt-6 border-t-2 border-oct-border">
+                  <div className="mt-8 pt-6 border-t border-oct-border">
                     <h4 className="font-mono text-xs uppercase tracking-[0.2em] text-oct-muted mb-2">[ BACKUP &amp; RESTORE ]</h4>
                     <p className="text-xs text-oct-muted mb-4">
                       Export your settings and rooms to a file, or import from a previous backup.{' '}
@@ -328,7 +328,7 @@ export default function HelpSection({ form }: { form: SettingsForm }) {
                       <button
                         onClick={handleExport}
                         disabled={exporting}
-                        className="brutal-btn inline-flex items-center gap-2 px-4 py-2 text-sm"
+                        className="oct-btn-primary inline-flex items-center gap-2 px-4 py-2 text-sm"
                       >
                         <Download size={15} />
                         {exporting ? 'Exporting...' : 'Export Settings'}
@@ -336,7 +336,7 @@ export default function HelpSection({ form }: { form: SettingsForm }) {
                       <button
                         onClick={() => importFileRef.current?.click()}
                         disabled={importing}
-                        className="brutal-btn-ghost px-4 py-2 text-sm"
+                        className="oct-icon-btn px-4 py-2 text-sm"
                       >
                         <Upload size={15} />
                         {importing ? 'Importing...' : 'Import Settings'}
