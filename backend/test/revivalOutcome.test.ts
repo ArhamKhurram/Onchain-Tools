@@ -1,12 +1,38 @@
-import { describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+
+// Storage is stubbed so the tracker's sweep can be exercised without touching
+// the JSON store or Supabase. Declared with vi.hoisted because vi.mock factories
+// are hoisted above the imports.
+const stub = vi.hoisted(() => ({
+  writes: [] as { userId: string; alertId: string; patch: Record<string, unknown> }[],
+}));
+vi.mock('../src/storage/index.js', () => ({
+  isHostedMode: () => false,
+  getStorageProvider: () => ({
+    updateRevivalAlertOutcome: async (
+      userId: string,
+      alertId: string,
+      patch: Record<string, unknown>,
+    ) => {
+      stub.writes.push({ userId, alertId, patch });
+    },
+  }),
+}));
+
 import {
   OUTCOME_WINDOW_MS,
+  RevivalOutcomeTracker,
   buildAlertEntry,
   evaluateOutcome,
   maxHighInWindow,
   partitionOpenAlerts,
 } from '../src/revival/outcomeTracker.js';
+import {
+  _clearPoolCacheForTest,
+  _setRequestSpacingForTest,
+} from '../src/revival/candles.js';
 import type { Candle } from '../src/revival/detector.js';
+import type { RevivalAlertEntry } from '@oct/shared';
 
 const MINUTE = 60_000;
 const HOUR = 3_600_000;
@@ -153,6 +179,7 @@ describe('partitionOpenAlerts (resume-on-boot filtering)', () => {
 describe('buildAlertEntry', () => {
   const fired = {
     mint: 'So11111111111111111111111111111111111111112',
+    network: 'solana',
     symbol: 'WSOL',
     price: 0.5,
     mcapUsd: 500_000,
@@ -179,5 +206,116 @@ describe('buildAlertEntry', () => {
     expect(e.peakMcapUsd).toBeNull();
     expect(e.peakMultiple).toBeNull();
     expect(e.peakAt).toBeNull();
+  });
+
+  it('records the chain the detection actually ran on', () => {
+    expect(buildAlertEntry({ ...fired, network: 'robinhood' }).network).toBe('robinhood');
+    expect(buildAlertEntry({ ...fired, network: 'bsc' }).network).toBe('bsc');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// The tracker must re-fetch on the alert's OWN chain. Getting this wrong is
+// silent: a Robinhood token looked up on Solana just never resolves, so the
+// row sits at 1.0× forever and a real 3.4× reads as a dud alert.
+// ---------------------------------------------------------------------------
+
+const UP_ADDRESS = '0x57c0e45cb534413d1c20a4240955d6bb250bb4f1';
+
+function alertRow(over: Partial<RevivalAlertEntry>): RevivalAlertEntry {
+  return {
+    id: 'alert-1',
+    mint: UP_ADDRESS,
+    symbol: 'UP',
+    network: 'robinhood',
+    priceUsd: 1,
+    mcapUsd: 1_450_000,
+    atrZ: 3.4,
+    rvol: 16.3,
+    triggeredAt: new Date(Date.now() - 30 * MINUTE).toISOString(),
+    peakPriceUsd: 1,
+    peakMcapUsd: 1_450_000,
+    peakMultiple: 1,
+    peakAt: null,
+    outcomeWindowClosedAt: null,
+    ...over,
+  };
+}
+
+describe('RevivalOutcomeTracker network routing (mocked HTTP)', () => {
+  let urls: string[];
+
+  beforeEach(() => {
+    stub.writes.length = 0;
+    urls = [];
+    _clearPoolCacheForTest();
+    _setRequestSpacingForTest(0);
+    vi.stubGlobal('fetch', async (url: string) => {
+      urls.push(url);
+      const network = url.split('/networks/')[1]?.split('/')[0] ?? '?';
+      const body = url.includes('/pools?page=1')
+        ? {
+            data: [
+              {
+                attributes: {
+                  address: `pool-${network}`,
+                  name: 'UP / WETH',
+                  volume_usd: { h24: '9999' },
+                  base_token_price_usd: '1',
+                  fdv_usd: '1450000',
+                },
+              },
+            ],
+          }
+        : {
+            data: {
+              attributes: {
+                ohlcv_list: [
+                  [Math.floor((Date.now() - 10 * MINUTE) / 1000), 1, 3.4, 0.9, 3.2, 100],
+                ],
+              },
+            },
+          };
+      return { ok: true, status: 200, json: async () => body };
+    });
+  });
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+    _clearPoolCacheForTest();
+  });
+
+  it('fetches candles on the alert’s network, never on Solana by default', async () => {
+    const tracker = new RevivalOutcomeTracker();
+    tracker.resumeEntries([{ entry: alertRow({}), userId: 'u1' }]);
+    await tracker.sweepNow();
+
+    expect(urls.length).toBeGreaterThan(0);
+    expect(urls.every((u) => u.includes('/networks/robinhood/'))).toBe(true);
+    expect(urls.some((u) => u.includes('/networks/solana/'))).toBe(false);
+    // And the peak it observed on that chain was written back.
+    expect(stub.writes[0]?.patch.peakPriceUsd).toBe(3.4);
+  });
+
+  it('keeps two chains apart when the same address is tracked on both', async () => {
+    const tracker = new RevivalOutcomeTracker();
+    tracker.resumeEntries([
+      { entry: alertRow({ id: 'hood', network: 'robinhood' }), userId: 'u1' },
+      { entry: alertRow({ id: 'bnb', network: 'bsc' }), userId: 'u1' },
+    ]);
+    await tracker.sweepNow();
+
+    expect(urls.some((u) => u.includes('/networks/robinhood/pools/pool-robinhood/'))).toBe(true);
+    expect(urls.some((u) => u.includes('/networks/bsc/pools/pool-bsc/'))).toBe(true);
+    expect(stub.writes.map((w) => w.alertId).sort()).toEqual(['bnb', 'hood']);
+  });
+
+  it('treats a pre-multichain row with an unknown network as Solana', async () => {
+    const tracker = new RevivalOutcomeTracker();
+    tracker.resumeEntries([
+      { entry: alertRow({ mint: 'SoLegacyMint', network: 'not-a-network' }), userId: 'u1' },
+    ]);
+    await tracker.sweepNow();
+    expect(urls.every((u) => u.includes('/networks/solana/'))).toBe(true);
   });
 });

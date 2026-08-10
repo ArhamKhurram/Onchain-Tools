@@ -16,8 +16,15 @@ export {
   FOMO_NETWORK_CHAIN_SLUGS,
   chainSlugFromNetworkId,
   chainKindFromNetworkId,
+  REVIVAL_NETWORKS,
+  REVIVAL_NETWORK_CHAIN_SLUGS,
+  REVIVAL_NETWORK_LABELS,
+  isRevivalNetwork,
+  revivalNetworkForChain,
+  revivalNetworkLabel,
+  buildRevivalContractUrl,
 } from './contract.js';
-export type { ContractDetectionResult } from './contract.js';
+export type { ContractDetectionResult, RevivalNetwork } from './contract.js';
 export { processDiscordMessage } from './message.js';
 export type { MessageProcessorContext, MessageGateway } from './message.js';
 

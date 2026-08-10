@@ -6,7 +6,12 @@ import {
   isRecentlyDormant,
   type Candle,
 } from '../src/revival/detector.js';
-import { buildUniverse } from '../src/revival/poller.js';
+import {
+  buildUniverse,
+  selectCycleSlice,
+  type UserContractRow,
+} from '../src/revival/poller.js';
+import type { RevivalNetwork } from '@oct/shared';
 
 const MINUTE = 60_000;
 const HOUR = 3_600_000;
@@ -172,28 +177,135 @@ describe('computeAtrPctSeries', () => {
 
 describe('buildUniverse', () => {
   const t = (i: number) => new Date(NOW - i * MINUTE).toISOString();
-
-  it('caps tokens per user, keeping the most recent first', () => {
-    const rows = Array.from({ length: 40 }, (_, i) => ({
-      userId: 'u1',
-      address: `Mint${i}`,
-      timestamp: t(i),
-    }));
-    const u = buildUniverse(rows, 30);
-    expect(u.size).toBe(30);
-    expect([...u.keys()][0]).toBe('Mint0');
-    expect(u.has('Mint30')).toBe(false);
+  const sol = (userId: string, address: string, i: number): UserContractRow => ({
+    userId,
+    address,
+    network: 'solana',
+    timestamp: t(i),
   });
 
-  it('dedupes mints across users and repeat mentions', () => {
+  it('caps tokens per user, keeping the most recent first', () => {
+    const rows = Array.from({ length: 40 }, (_, i) => sol('u1', `Mint${i}`, i));
+    const u = buildUniverse(rows, 30);
+    expect(u.size).toBe(30);
+    expect([...u.keys()][0]).toBe('solana:Mint0');
+    expect(u.has('solana:Mint30')).toBe(false);
+  });
+
+  it('dedupes tokens across users and repeat mentions', () => {
     const u = buildUniverse([
-      { userId: 'u1', address: 'MintA', timestamp: t(0) },
-      { userId: 'u2', address: 'MintA', timestamp: t(1) },
-      { userId: 'u1', address: 'MintA', timestamp: t(2) },
-      { userId: 'u2', address: 'MintB', timestamp: t(3) },
+      sol('u1', 'MintA', 0),
+      sol('u2', 'MintA', 1),
+      sol('u1', 'MintA', 2),
+      sol('u2', 'MintB', 3),
     ]);
     expect(u.size).toBe(2);
-    expect([...u.get('MintA')!]).toEqual(['u1', 'u2']);
-    expect([...u.get('MintB')!]).toEqual(['u2']);
+    expect([...u.get('solana:MintA')!.subscribers]).toEqual(['u1', 'u2']);
+    expect([...u.get('solana:MintB')!.subscribers]).toEqual(['u2']);
+  });
+
+  it('keys by network — the same address on two chains is two tokens', () => {
+    const addr = '0x57c0e45cb534413d1c20a4240955d6bb250bb4f1';
+    const u = buildUniverse([
+      { userId: 'u1', address: addr, network: 'robinhood', timestamp: t(0) },
+      { userId: 'u1', address: addr, network: 'bsc', timestamp: t(1) },
+    ]);
+    expect(u.size).toBe(2);
+    expect(u.get('robinhood:' + addr)?.network).toBe('robinhood');
+    expect(u.get('bsc:' + addr)?.network).toBe('bsc');
+  });
+
+  it('does not let a busy chain starve a quiet one at the per-user cap', () => {
+    // The real shape of an OCT feed: a flood of Solana, a trickle of EVM.
+    // Straight recency ordering would fill all 30 slots with Solana and the UP
+    // (Robinhood) revival could never enter the universe.
+    const rows: UserContractRow[] = [];
+    for (let i = 0; i < 200; i++) rows.push(sol('u1', `SolMint${i}`, i));
+    rows.push({ userId: 'u1', address: 'HoodA', network: 'robinhood', timestamp: t(500) });
+    rows.push({ userId: 'u1', address: 'HoodB', network: 'robinhood', timestamp: t(501) });
+    rows.push({ userId: 'u1', address: 'BnbA', network: 'bsc', timestamp: t(502) });
+    rows.sort((a, b) => Date.parse(b.timestamp) - Date.parse(a.timestamp));
+
+    const u = buildUniverse(rows, 30);
+    expect(u.size).toBe(30);
+    const networks = [...u.values()].map((e) => e.network);
+    expect(networks.filter((n) => n === 'robinhood')).toHaveLength(2);
+    expect(networks.filter((n) => n === 'bsc')).toHaveLength(1);
+    // The busy chain still absorbs every slot the quiet ones leave unused.
+    expect(networks.filter((n) => n === 'solana')).toHaveLength(27);
+  });
+
+  it('splits the cap evenly when every chain is busy', () => {
+    const rows: UserContractRow[] = [];
+    for (let i = 0; i < 50; i++) {
+      rows.push(sol('u1', `SolMint${i}`, i));
+      rows.push({ userId: 'u1', address: `Bnb${i}`, network: 'bsc', timestamp: t(i) });
+      rows.push({ userId: 'u1', address: `Hood${i}`, network: 'robinhood', timestamp: t(i) });
+    }
+    const u = buildUniverse(rows, 30);
+    const counts = new Map<string, number>();
+    for (const e of u.values()) counts.set(e.network, (counts.get(e.network) ?? 0) + 1);
+    expect(counts.get('solana')).toBe(10);
+    expect(counts.get('bsc')).toBe(10);
+    expect(counts.get('robinhood')).toBe(10);
+  });
+
+  it('applies the cap per user, not globally', () => {
+    const u = buildUniverse([sol('u1', 'MintA', 0), sol('u2', 'MintB', 1)], 1);
+    expect(u.size).toBe(2);
+  });
+});
+
+describe('selectCycleSlice', () => {
+  const rot = (network: RevivalNetwork, n: number, offset = 0, prefix = network) => ({
+    network,
+    keys: Array.from({ length: n }, (_, i) => `${prefix}:${i}`),
+    offset,
+  });
+
+  it('interleaves chains so a big universe cannot consume the whole cycle', () => {
+    const { selected } = selectCycleSlice([rot('solana', 500), rot('robinhood', 3)], 10);
+    expect(selected).toHaveLength(10);
+    expect(selected.filter((k) => k.startsWith('robinhood'))).toHaveLength(3);
+    // The quiet chain is served in the first rounds, not stranded at the end.
+    expect(selected.slice(0, 6).filter((k) => k.startsWith('robinhood'))).toHaveLength(3);
+  });
+
+  it('gives the leftover budget to whichever chain still has tokens', () => {
+    const { selected } = selectCycleSlice([rot('solana', 100), rot('bsc', 2)], 10);
+    expect(selected.filter((k) => k.startsWith('bsc'))).toHaveLength(2);
+    expect(selected.filter((k) => k.startsWith('solana'))).toHaveLength(8);
+  });
+
+  it('advances each chain’s own pointer so every chain is swept fully', () => {
+    const solanaKeys = rot('solana', 10);
+    const bscKeys = rot('bsc', 4);
+
+    const first = selectCycleSlice([solanaKeys, bscKeys], 6);
+    const second = selectCycleSlice(
+      [
+        { ...solanaKeys, offset: first.offsets.get('solana')! },
+        { ...bscKeys, offset: first.offsets.get('bsc')! },
+      ],
+      6,
+    );
+    const seen = [...first.selected, ...second.selected];
+    // Each chain walks its OWN list: no Solana token repeats while 4 unseen
+    // ones remain, and the short BSC list is covered end to end (then wraps,
+    // which is the point — a 4-token chain gets rechecked more often).
+    const seenSol = seen.filter((k) => k.startsWith('solana'));
+    expect(new Set(seenSol).size).toBe(seenSol.length);
+    expect(new Set(seen.filter((k) => k.startsWith('bsc'))).size).toBe(4);
+  });
+
+  it('wraps a chain’s pointer back to the start', () => {
+    const { selected, offsets } = selectCycleSlice([rot('bsc', 3, 2)], 3);
+    expect(selected).toEqual(['bsc:2', 'bsc:0', 'bsc:1']);
+    expect(offsets.get('bsc')).toBe(2);
+  });
+
+  it('handles an empty universe and empty chains', () => {
+    expect(selectCycleSlice([], 10).selected).toEqual([]);
+    expect(selectCycleSlice([rot('bsc', 0)], 10).selected).toEqual([]);
   });
 });

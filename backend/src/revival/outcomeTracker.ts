@@ -2,10 +2,14 @@
  * Revival alert outcome tracker.
  *
  * After a revival alert fires, this module keeps fetching the token's candles
- * for 24h from triggeredAt — even after the mint rotates out of the regular
+ * for 24h from triggeredAt — even after the token rotates out of the regular
  * detection universe — on a slower cadence (~10 min), and records the highest
  * price seen into the alert row (peak_* columns). Writes are throttled: a row
  * is only touched when the peak improves or when the 24h window closes.
+ *
+ * Candles are re-fetched on the alert's OWN network (a Robinhood token looked
+ * up on Solana simply doesn't resolve), through the shared paced client in
+ * candles.ts — this module deliberately does no rate-limiting of its own.
  *
  * All outcome state lives in the persisted row, not in memory: on boot the
  * poller reloads alerts whose outcome window is still open and resumes them,
@@ -18,7 +22,8 @@
  */
 
 import { randomUUID } from 'crypto';
-import type { RevivalAlertEntry, RevivalOutcomePatch } from '@oct/shared';
+import type { RevivalAlertEntry, RevivalNetwork, RevivalOutcomePatch } from '@oct/shared';
+import { isRevivalNetwork } from '@oct/shared';
 import { getStorageProvider } from '../storage/index.js';
 import { fetchOhlcv, isBackedOff, resolveTopPool } from './candles.js';
 import type { Candle } from './detector.js';
@@ -26,7 +31,6 @@ import type { Candle } from './detector.js';
 const MINUTE_MS = 60_000;
 export const OUTCOME_WINDOW_MS = 24 * 3_600_000;
 const DEFAULT_SWEEP_MS = 10 * MINUTE_MS;
-const REQUEST_SPACING_MS = 700;
 /** GeckoTerminal's per-request candle cap; 1000 1m candles ≈ 16.6h. */
 const MAX_MINUTE_CANDLES = 1000;
 
@@ -35,6 +39,12 @@ export interface TrackedOutcome {
   alertId: string;
   userId: string;
   mint: string;
+  /**
+   * Chain the alert fired on. Candles for the 24h peak MUST be re-fetched on
+   * this network — the same 0x address can exist on several chains, and a
+   * Robinhood token looked up on Solana simply doesn't resolve.
+   */
+  network: RevivalNetwork;
   /** Price at the moment the alert fired (null when unknown at fire time). */
   alertPriceUsd: number | null;
   /** Current best peak, mirroring the persisted row. */
@@ -134,6 +144,8 @@ export function partitionOpenAlerts<
 /** Build a fresh alert row for persistence. Peak starts at the alert price (1.0×). */
 export function buildAlertEntry(data: {
   mint: string;
+  /** GeckoTerminal network id the detection ran on. */
+  network: string;
   symbol: string | null;
   price: number | null;
   mcapUsd: number | null;
@@ -146,7 +158,7 @@ export function buildAlertEntry(data: {
     id: randomUUID(),
     mint: data.mint,
     symbol: data.symbol,
-    network: 'solana',
+    network: data.network,
     priceUsd: data.price,
     mcapUsd: data.mcapUsd,
     atrZ: data.atrZ,
@@ -158,10 +170,6 @@ export function buildAlertEntry(data: {
     peakAt: hasPrice ? data.triggeredAt : null,
     outcomeWindowClosedAt: null,
   };
-}
-
-function sleep(ms: number): Promise<void> {
-  return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
 /**
@@ -204,43 +212,58 @@ export class RevivalOutcomeTracker {
 
   /** Re-adopt persisted alerts whose 24h window is still open (boot resume). */
   resumeEntries(entries: { entry: RevivalAlertEntry; userId: string }[]): void {
+    let resumed = 0;
     for (const { entry, userId } of entries) {
+      // Rows written before multi-chain (or by a chain since switched off)
+      // fall back to Solana, which is what they were.
+      const network: RevivalNetwork = isRevivalNetwork(entry.network) ? entry.network : 'solana';
       this.track({
         alertId: entry.id,
         userId,
         mint: entry.mint,
+        network,
         alertPriceUsd: entry.priceUsd,
         peakPriceUsd: entry.peakPriceUsd,
         triggeredAtMs: new Date(entry.triggeredAt).getTime(),
       });
+      resumed += 1;
     }
-    if (entries.length > 0) {
-      console.log(`[RevivalOutcome] Resumed ${entries.length} open outcome window(s).`);
+    if (resumed > 0) {
+      console.log(`[RevivalOutcome] Resumed ${resumed} open outcome window(s).`);
     }
+  }
+
+  /** Test seam / manual trigger for one sweep pass. */
+  async sweepNow(): Promise<void> {
+    await this.sweep();
   }
 
   private async sweep(): Promise<void> {
     if (this.sweeping || this.tracked.size === 0) return;
     this.sweeping = true;
     try {
-      // One candle fetch per mint, shared by every alert row on that mint.
-      const byMint = new Map<string, TrackedOutcome[]>();
+      // One candle fetch per (network, token), shared by every alert row on it.
+      // The network is part of the key: the same 0x address on two chains is
+      // two different tokens with two different pools.
+      const byToken = new Map<string, TrackedOutcome[]>();
       for (const t of this.tracked.values()) {
-        const list = byMint.get(t.mint) ?? [];
+        const key = `${t.network}:${t.mint}`;
+        const list = byToken.get(key) ?? [];
         list.push(t);
-        byMint.set(t.mint, list);
+        byToken.set(key, list);
       }
 
-      let first = true;
-      for (const [mint, alerts] of byMint) {
+      for (const alerts of byToken.values()) {
         if (isBackedOff()) return; // rate-limited — resume next sweep
-        if (!first && REQUEST_SPACING_MS > 0) await sleep(REQUEST_SPACING_MS);
-        first = false;
+        // No spacing here: candles.ts paces every revival request globally.
+        // This module used to sleep on its own budget while the poller slept
+        // on its — two "safe" rates that summed to an unsafe one.
+        const { mint, network } = alerts[0];
         try {
-          await this.sweepMint(mint, alerts);
+          await this.sweepToken(network, mint, alerts);
         } catch (err) {
           console.warn(
-            `[RevivalOutcome] sweep failed for ${mint.slice(0, 8)}…:`,
+            `[RevivalOutcome] sweep failed for ${mint.slice(0, 8)}… on ${network}:`,
             (err as Error)?.message,
           );
         }
@@ -250,9 +273,13 @@ export class RevivalOutcomeTracker {
     }
   }
 
-  private async sweepMint(mint: string, alerts: TrackedOutcome[]): Promise<void> {
+  private async sweepToken(
+    network: RevivalNetwork,
+    mint: string,
+    alerts: TrackedOutcome[],
+  ): Promise<void> {
     const now = Date.now();
-    const pool = await resolveTopPool(mint);
+    const pool = await resolveTopPool(network, mint);
     // Without a pool we can't observe a price this sweep, but window closes
     // must still land — pass a null observation through the same decision path.
     let minute: Candle[] = [];
@@ -261,6 +288,7 @@ export class RevivalOutcomeTracker {
       const oldestMs = Math.min(...alerts.map((a) => a.triggeredAtMs));
       const minutesNeeded = Math.ceil((now - oldestMs) / MINUTE_MS) + 5;
       minute = await fetchOhlcv(
+        network,
         pool.poolAddress,
         'minute',
         Math.min(Math.max(minutesNeeded, 30), MAX_MINUTE_CANDLES),
@@ -268,7 +296,7 @@ export class RevivalOutcomeTracker {
       // Minute candles cover ~16.6h; when an alert's window reaches further
       // back (long downtime), hourly candles fill the gap for peak detection.
       if (minutesNeeded > MAX_MINUTE_CANDLES) {
-        hour = await fetchOhlcv(pool.poolAddress, 'hour', 30);
+        hour = await fetchOhlcv(network, pool.poolAddress, 'hour', 30);
       }
     }
     const candles = hour.length > 0 ? [...hour, ...minute] : minute;

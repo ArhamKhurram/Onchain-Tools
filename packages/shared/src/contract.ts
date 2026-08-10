@@ -174,3 +174,84 @@ export function chainKindFromNetworkId(networkId: number | null | undefined): 's
   if (!slug) return null;
   return slug === 'sol' ? 'sol' : 'evm';
 }
+
+// --- Revival networks (GeckoTerminal network id ↔ OCT chain slug) ----------
+// THE one place the revival subsystem's chain map lives. The revival detector
+// reads candles from GeckoTerminal, which identifies chains by its own network
+// id ('solana', 'bsc', 'robinhood'); OCT's contract log uses its own slugs
+// ('sol', 'bsc', 'robinhood'). Shared so the backend can build the poller's
+// universe and the frontend can build a chart link for a stored alert row.
+//
+// Adding a chain is a one-line change here PLUS verifying GeckoTerminal
+// actually indexes it keylessly:
+//   GET https://api.geckoterminal.com/api/v2/networks/{id}/tokens/{addr}/pools
+
+export const REVIVAL_NETWORKS = ['solana', 'bsc', 'robinhood'] as const;
+
+/** A GeckoTerminal network id the revival detector can run on. */
+export type RevivalNetwork = (typeof REVIVAL_NETWORKS)[number];
+
+/** OCT chain slug for each supported GeckoTerminal network id. */
+export const REVIVAL_NETWORK_CHAIN_SLUGS: Record<RevivalNetwork, string> = {
+  solana: 'sol',
+  bsc: 'bsc',
+  robinhood: 'robinhood',
+};
+
+/** Short display label per network (matches EVM_CHAIN_LABELS in the backend). */
+export const REVIVAL_NETWORK_LABELS: Record<RevivalNetwork, string> = {
+  solana: 'SOL',
+  bsc: 'BNB',
+  robinhood: 'HOOD',
+};
+
+/** OCT chain slug (or GT id) → GeckoTerminal network id. */
+const CHAIN_SLUG_TO_REVIVAL_NETWORK: Record<string, RevivalNetwork> = {
+  sol: 'solana',
+  solana: 'solana',
+  bsc: 'bsc',
+  bnb: 'bsc',
+  robinhood: 'robinhood',
+  hood: 'robinhood',
+};
+
+export function isRevivalNetwork(value: string | null | undefined): value is RevivalNetwork {
+  return value != null && (REVIVAL_NETWORKS as readonly string[]).includes(value);
+}
+
+/**
+ * GeckoTerminal network id for a logged contract, or null when the chain is
+ * unknown or unsupported (an EVM address whose chain hasn't resolved yet, or a
+ * chain the revival detector doesn't watch). Unsupported is a no-op, never an
+ * error — the poller simply skips those contracts.
+ */
+export function revivalNetworkForChain(
+  chain: 'sol' | 'evm' | string | null | undefined,
+  evmChain?: string | null,
+): RevivalNetwork | null {
+  if (chain === 'sol') return 'solana';
+  const key = (chain === 'evm' ? evmChain : (evmChain ?? chain))?.toLowerCase();
+  if (!key) return null;
+  return CHAIN_SLUG_TO_REVIVAL_NETWORK[key] ?? null;
+}
+
+/** Display label for a stored alert's network value (unknown ids pass through). */
+export function revivalNetworkLabel(network: string): string {
+  return isRevivalNetwork(network) ? REVIVAL_NETWORK_LABELS[network] : network.toUpperCase();
+}
+
+/**
+ * Trade/chart link for a revival alert. Wraps buildContractUrl with the right
+ * EVM chain slug so a BNB or Robinhood revival opens on ITS chain instead of
+ * the template's default (which is Base). Solana passes through untouched —
+ * buildContractUrl already routes base58 addresses to the Solana template.
+ */
+export function buildRevivalContractUrl(
+  mint: string,
+  network: string | null | undefined,
+  config: ContractLinkTemplates,
+): string {
+  const gt = isRevivalNetwork(network) ? network : null;
+  const evmChain = gt && gt !== 'solana' ? REVIVAL_NETWORK_CHAIN_SLUGS[gt] : undefined;
+  return buildContractUrl(mint, config, evmChain);
+}
