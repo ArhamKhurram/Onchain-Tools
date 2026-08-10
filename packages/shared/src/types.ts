@@ -263,7 +263,10 @@ export type WorkspacePanelType =
   | 'radar'
   | 'fomo-feed'
   | 'fomo-leaderboard'
-  | 'token-lookup';
+  | 'token-lookup'
+  | 'pump-following'
+  | 'pump-top-callers'
+  | 'pump-leaderboard';
 
 export interface WorkspacePanelConfig {
   roomId?: string;
