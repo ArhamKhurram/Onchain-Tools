@@ -1,7 +1,7 @@
 import { useEffect, useRef } from 'react';
 import { useAppStore, IS_POPOUT } from '../stores/appStore';
 import { playHighlightSound, playContractAlertSound, playKeywordAlertSound, playFomoTradeSound, playPumpCalloutSound, playSound } from '../utils/notificationSound';
-import { buildContractUrl } from '../utils/contractUrl';
+import { buildContractUrl, buildRevivalContractUrl, revivalNetworkLabel } from '../utils/contractUrl';
 import { showDesktopNotification } from '../utils/desktopNotification';
 import { fomoTradeDisplay, buildFomoTradeAlertMessage } from '../utils/fomoTradeDisplay';
 import { formatMcap } from '../types/pumpfun';
@@ -297,13 +297,16 @@ export function useWebSocket() {
               const cfg = useAppStore.getState().config;
               const sym = d.symbol ? `$${d.symbol}` : `${d.mint.slice(0, 6)}…`;
               const mc = typeof d.mcapUsd === 'number' ? formatMcap(d.mcapUsd) : '—';
+              const chain = revivalNetworkLabel(d.network);
+              // The alert's own chain decides the link — a Robinhood revival
+              // opened on the EVM template's default chain is a dead page.
               const url = cfg
-                ? buildContractUrl(d.mint, cfg.contractLinkTemplates)
+                ? buildRevivalContractUrl(d.mint, d.network, cfg.contractLinkTemplates)
                 : undefined;
               const alert: Alert = {
                 id: `revival-${d.mint}-${d.triggeredAt}`,
                 type: 'revival',
-                reason: `REVIVAL: ${sym} igniting`,
+                reason: `REVIVAL: ${sym} igniting on ${chain}`,
                 message: {
                   id: `revival-${d.mint}-${d.triggeredAt}`,
                   channelId: 'revival',
@@ -311,7 +314,7 @@ export function useWebSocket() {
                   channelName: 'REVIVAL',
                   guildName: null,
                   author: { id: 'oct-revival', username: 'OCT', displayName: 'Revival', avatar: null },
-                  content: `${sym} igniting — mcap ${mc}, RVOL ${d.rvol.toFixed(1)}x, ATR z ${d.atrZ.toFixed(1)}`,
+                  content: `${sym} igniting on ${chain} — mcap ${mc}, RVOL ${d.rvol.toFixed(1)}x, ATR z ${d.atrZ.toFixed(1)}`,
                   timestamp: d.triggeredAt,
                   attachments: [],
                   embeds: [],

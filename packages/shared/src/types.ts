@@ -269,8 +269,14 @@ export type SoundSettings = Record<SoundType, SoundConfig>;
  * missed-runner, or FOMO detections.
  */
 export interface RevivalAlertData {
-  /** Solana mint address. */
+  /** Token address — a Solana mint, or an EVM contract on `network`. */
   mint: string;
+  /**
+   * GeckoTerminal network id the detection ran on ('solana' | 'bsc' |
+   * 'robinhood'). Needed to open the token on the right chain and to re-fetch
+   * its candles for outcome tracking. See REVIVAL_NETWORKS in contract.ts.
+   */
+  network: string;
   symbol: string | null;
   /** Last 1m close in USD, if known. */
   price: number | null;
@@ -292,10 +298,10 @@ export interface RevivalAlertData {
  */
 export interface RevivalAlertEntry {
   id: string;
-  /** Solana mint address. */
+  /** Token address — a Solana mint, or an EVM contract on `network`. */
   mint: string;
   symbol: string | null;
-  /** Network the detection ran on. Solana-only today. */
+  /** GeckoTerminal network id the detection ran on ('solana' | 'bsc' | 'robinhood'). */
   network: string;
   /** Price at the moment the alert fired (last 1m close, USD). */
   priceUsd: number | null;

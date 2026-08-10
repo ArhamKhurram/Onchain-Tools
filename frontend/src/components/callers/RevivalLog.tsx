@@ -3,7 +3,11 @@ import { Flame, RefreshCw } from 'lucide-react';
 import ConsoleEmptyState from '../console/ConsoleEmptyState';
 import { useAppStore } from '../../stores/appStore';
 import { API_BASE, apiFetch } from '../../stores/appStore.helpers';
-import { buildContractUrl, DEFAULT_LINK_TEMPLATES } from '../../utils/contractUrl';
+import {
+  buildRevivalContractUrl,
+  revivalNetworkLabel,
+  DEFAULT_LINK_TEMPLATES,
+} from '../../utils/contractUrl';
 import { formatMcap } from '../../types/pumpfun';
 import type { RevivalAlertEntry } from '../../types';
 
@@ -124,7 +128,10 @@ export default function RevivalLog() {
           <tbody>
             {alerts.map((a) => {
               const sym = a.symbol ? `$${a.symbol}` : `${a.mint.slice(0, 6)}…`;
-              const url = buildContractUrl(a.mint, templates);
+              const chain = revivalNetworkLabel(a.network);
+              // Chain-aware link — the row's own network decides the explorer
+              // /chart, not the address shape.
+              const url = buildRevivalContractUrl(a.mint, a.network, templates);
               const tracking = a.outcomeWindowClosedAt == null;
               return (
                 <tr key={a.id} className="border-b border-oct-border/50 oct-row-hover">
@@ -136,14 +143,17 @@ export default function RevivalLog() {
                       type="button"
                       onClick={() => window.open(url, '_blank', 'noopener,noreferrer')}
                       className="font-mono text-xs font-bold text-oct-text hover:text-oct-accent hover:underline transition-colors"
-                      title={`Open ${sym} (${a.mint})`}
+                      title={`Open ${sym} on ${chain} (${a.mint})`}
                     >
                       {sym}
                     </button>
                   </td>
                   <td className="px-3 py-2">
-                    <span className="text-[10px] font-mono uppercase tracking-wider px-2 py-0.5 rounded-oct-sm border border-oct-border bg-oct-surface-raised/60 text-oct-muted">
-                      {a.network}
+                    <span
+                      className="text-[10px] font-mono uppercase tracking-wider px-2 py-0.5 rounded-oct-sm border border-oct-border bg-oct-surface-raised/60 text-oct-muted"
+                      title={a.network}
+                    >
+                      {chain}
                     </span>
                   </td>
                   <td className="px-3 py-2 font-mono text-xs text-oct-text text-right tabular-nums">

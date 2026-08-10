@@ -1,6 +1,10 @@
 import { Flame, X } from 'lucide-react';
 import { useAppStore } from '../stores/appStore';
-import { buildContractUrl, DEFAULT_LINK_TEMPLATES } from '../utils/contractUrl';
+import {
+  buildRevivalContractUrl,
+  revivalNetworkLabel,
+  DEFAULT_LINK_TEMPLATES,
+} from '../utils/contractUrl';
 import { formatMcap } from '../types/pumpfun';
 
 /**
@@ -21,7 +25,14 @@ export default function RevivalBanner() {
       {activeRevivals.map((r) => {
         const sym = r.symbol ? `$${r.symbol}` : `${r.mint.slice(0, 6)}…`;
         const mc = typeof r.mcapUsd === 'number' ? formatMcap(r.mcapUsd) : '—';
-        const url = buildContractUrl(r.mint, config?.contractLinkTemplates ?? DEFAULT_LINK_TEMPLATES);
+        const chain = revivalNetworkLabel(r.network);
+        // Chain-aware: a BNB / Robinhood revival must open on ITS chain, not
+        // on the EVM template's default one.
+        const url = buildRevivalContractUrl(
+          r.mint,
+          r.network,
+          config?.contractLinkTemplates ?? DEFAULT_LINK_TEMPLATES,
+        );
         return (
           <div
             key={r.id}
@@ -29,11 +40,14 @@ export default function RevivalBanner() {
             className="flex items-center gap-3 w-full px-4 sm:px-6 py-2.5 bg-red-600 border-b-2 border-red-800 text-white"
           >
             <Flame size={18} className="shrink-0 text-yellow-300 animate-pulse" aria-hidden />
+            <span className="shrink-0 font-mono text-[10px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded-oct-sm bg-red-800/70 border border-red-400/40">
+              {chain}
+            </span>
             <button
               type="button"
               onClick={() => window.open(url, '_blank', 'noopener,noreferrer')}
               className="flex-1 min-w-0 text-left font-mono text-xs sm:text-sm font-bold uppercase tracking-wide truncate hover:underline"
-              title={`Open ${sym} (${r.mint})`}
+              title={`Open ${sym} on ${chain} (${r.mint})`}
             >
               REVIVAL: {sym} igniting — mcap {mc}, RVOL {r.rvol.toFixed(1)}x
               <span className="hidden sm:inline font-normal normal-case tracking-normal opacity-80">

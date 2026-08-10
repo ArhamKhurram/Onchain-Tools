@@ -2,12 +2,16 @@
  * Revival ignition poller.
  *
  * Every OCT_REVIVAL_POLL_MS (default 2.5 min):
- * 1. Build the per-user token universe: Solana contracts detected in the
- *    user's feed within the last 48h, most recent first, capped at 30/user.
- * 2. Dedupe tokens across users (each mint is fetched/evaluated once per
- *    cycle, like the FOMO poller dedupes tracked traders).
- * 3. Fetch minute + hour candles from GeckoTerminal (staggered, rate-limit
- *    aware, hard-capped per cycle) and run the ATR-gate detector.
+ * 1. Build the per-user token universe: contracts detected in the user's feed
+ *    within the last 48h on any WATCHED chain (OCT_REVIVAL_NETWORKS; Solana +
+ *    BNB + Robinhood by default), capped at 30/user.
+ * 2. Dedupe tokens across users (each token is fetched/evaluated once per
+ *    cycle, like the FOMO poller dedupes tracked traders). Both the per-user
+ *    and the per-cycle caps are filled ROUND-ROBIN across chains so the
+ *    Solana-dominated feed can't starve BNB/Robinhood out of the universe.
+ * 3. Fetch minute + hour candles from GeckoTerminal and run the ATR-gate
+ *    detector. Request pacing is NOT done here — candles.ts owns one global
+ *    queue shared with the outcome tracker (see the request-budget note below).
  * 4. On ignition (subject to a 60-min per-token cooldown): fan out a
  *    `revival_alert` WS frame to every subscribed user and send Pushover at
  *    EMERGENCY priority (2, retry 30s, expire 30min) — revival is the loudest
@@ -26,14 +30,20 @@
 
 import type { SupabaseClient } from '@supabase/supabase-js';
 import type { WsServer } from '../ws/server.js';
-import type { RevivalAlertData } from '@oct/shared';
+import type { RevivalAlertData, RevivalNetwork } from '@oct/shared';
+import {
+  REVIVAL_NETWORK_CHAIN_SLUGS,
+  buildRevivalContractUrl,
+  revivalNetworkForChain,
+  revivalNetworkLabel,
+} from '@oct/shared';
 import { getStorageProvider, isHostedMode } from '../storage/index.js';
 import { getFomoServiceClient } from '../fomo/store.js';
 import { sendPushover } from '../utils/pushover.js';
-import { buildContractUrl } from '../utils/contract.js';
 import { formatCompact } from '../wallets/balanceChecker.js';
 import { evaluateRevival } from './detector.js';
 import { fetchRevivalCandles, isBackedOff } from './candles.js';
+import { resolveRevivalNetworks } from './networks.js';
 import {
   buildAlertEntry,
   partitionOpenAlerts,
@@ -43,15 +53,81 @@ import {
 import type { RevivalAlertEntry } from '@oct/shared';
 
 const LOCAL_USER_ID = 'local';
-const DEFAULT_POLL_MS = 150_000; // 2.5 min
+export const DEFAULT_POLL_MS = 150_000; // 2.5 min
 const UNIVERSE_LOOKBACK_MS = 48 * 3_600_000;
 const MAX_TOKENS_PER_USER = 30;
-// Global per-cycle cap across all users: 2 GeckoTerminal calls per token
-// (minute + hour; pool resolution is cached 1h) at 700ms spacing keeps the
-// keyless API comfortable. Larger universes rotate across cycles.
-const MAX_TOKENS_PER_CYCLE = 40;
-const REQUEST_SPACING_MS = 700;
 const ALERT_COOLDOWN_MS = 60 * 60_000;
+
+// --- Request budget -------------------------------------------------------
+// Pacing itself lives in candles.ts (one global serial queue, ~2200ms apart ≈
+// 27 req/min against GeckoTerminal's ~30/min keyless ceiling). What lives HERE
+// is the per-cycle token cap, which has to be sized so a cycle's requests fit
+// inside the poll interval:
+//
+//   slots per cycle      = 150_000ms / 2200ms          ≈ 68 requests
+//   reserved for the outcome tracker (shares the queue) =  8 requests
+//   available to the poller                             ≈ 60 requests
+//   steady-state cost per token
+//     minute candles, every cycle                       = 1
+//   + hour candles, 20m cache / 2.5m cycle              ≈ 0.125
+//   + pool resolution, 1h cache / 2.5m cycle            ≈ 0.042
+//                                                       ≈ 1.25 (rounded up)
+//   → 24 tokens × 1.25 ≈ 30 requests, ~56% of the interval. Comfortable.
+//
+// COLD START is the exception: with empty caches a token costs 3 requests
+// (pool + minute + hour), so the first cycle after boot needs ~80 slots and
+// spills ~30s past the interval. That is harmless — the `polling` guard skips
+// the overlapping tick and the caches are warm from the second cycle on.
+//
+// The real coverage limit is the global rate, not this cap: rotation (see
+// selectCycleSlice) sweeps universes larger than the cap across cycles, so a
+// smaller cap costs coverage LATENCY, never coverage.
+export const MAX_TOKENS_PER_CYCLE = 24;
+/** Steady-state GeckoTerminal requests per token per cycle (planning figure). */
+export const STEADY_STATE_REQUESTS_PER_TOKEN = 1.25;
+/** Cold-cache worst case: pool resolution + minute + hour. */
+export const COLD_START_REQUESTS_PER_TOKEN = 3;
+/** Slots held back for RevivalOutcomeTracker, which shares the same queue. */
+export const OUTCOME_TRACKER_RESERVED_REQUESTS = 8;
+
+export interface RevivalCyclePlan {
+  /** Requests the interval affords at the configured spacing. */
+  slots: number;
+  /** Steady-state requests a full cycle costs, tracker reserve included. */
+  steadyStateRequests: number;
+  /** Cold-cache requests a full cycle costs, tracker reserve included. */
+  coldStartRequests: number;
+  /** Requests/min the spacing implies — must stay under the API ceiling. */
+  requestsPerMinute: number;
+  /** Fraction of the interval a steady-state cycle consumes. */
+  steadyStateUtilization: number;
+}
+
+/**
+ * The pacing arithmetic above, as a function — so a future edit to the cap,
+ * the interval or the spacing is checked by a test instead of silently
+ * reintroducing the 429 storm (prod ran 85 req/min against a 30 req/min
+ * ceiling and spent most of its life backed off, which reads in the logs as
+ * "the signal is quiet" rather than "we are rate-limited").
+ */
+export function planRevivalCycle(
+  spacingMs: number,
+  pollMs: number = DEFAULT_POLL_MS,
+  tokensPerCycle: number = MAX_TOKENS_PER_CYCLE,
+): RevivalCyclePlan {
+  const slots = Math.floor(pollMs / spacingMs);
+  return {
+    slots,
+    steadyStateRequests:
+      tokensPerCycle * STEADY_STATE_REQUESTS_PER_TOKEN + OUTCOME_TRACKER_RESERVED_REQUESTS,
+    coldStartRequests:
+      tokensPerCycle * COLD_START_REQUESTS_PER_TOKEN + OUTCOME_TRACKER_RESERVED_REQUESTS,
+    requestsPerMinute: 60_000 / spacingMs,
+    steadyStateUtilization:
+      (tokensPerCycle * STEADY_STATE_REQUESTS_PER_TOKEN + OUTCOME_TRACKER_RESERVED_REQUESTS) /
+      slots,
+  };
+}
 
 function envFlag(name: string): string | undefined {
   return process.env[`OCT_${name}`] ?? process.env[`TRENCHCORD_${name}`];
@@ -68,45 +144,147 @@ function resolvePollMs(): number {
   return Number.isFinite(parsed) && parsed >= 30_000 ? parsed : DEFAULT_POLL_MS;
 }
 
-function sleep(ms: number): Promise<void> {
-  return new Promise((resolve) => setTimeout(resolve, ms));
+/** One watched token: an address ON a specific chain, plus who wants it. */
+export interface UniverseEntry {
+  address: string;
+  network: RevivalNetwork;
+  subscribers: Set<string>;
 }
 
-/** mint → subscribed userIds, insertion-ordered by feed recency. */
-export type RevivalUniverse = Map<string, Set<string>>;
+/** `network:address` → entry. The network is part of the key: the same 0x
+ * contract can exist on two chains and they are different tokens. */
+export type RevivalUniverse = Map<string, UniverseEntry>;
 
-interface UserContractRow {
+export function universeKey(network: RevivalNetwork, address: string): string {
+  return `${network}:${address}`;
+}
+
+export interface UserContractRow {
   userId: string;
   address: string;
+  network: RevivalNetwork;
   timestamp: string;
 }
 
 /**
- * Per-user cap + cross-user dedupe. Rows must be sorted newest-first; the
- * resulting map preserves that order so the per-cycle cap keeps the freshest
- * tokens.
+ * Per-user cap + cross-user dedupe.
+ *
+ * Rows must be sorted newest-first. The per-user cap is filled ROUND-ROBIN
+ * across chains rather than straight down the recency list: OCT's feed is
+ * overwhelmingly Solana, so "the 30 most recent contracts" would in practice
+ * be 30 Solana mints and a BNB/Robinhood revival could never enter the
+ * universe. Round-robin gives each chain an equal claim on the cap while
+ * letting a busy chain absorb the slack an idle one leaves (30 tokens with
+ * only 2 Robinhood contracts = 2 Robinhood + 28 split across the rest), and
+ * within each chain recency still decides.
  */
-export function buildUniverse(rows: UserContractRow[], maxPerUser: number = MAX_TOKENS_PER_USER): RevivalUniverse {
-  const perUser = new Map<string, Set<string>>();
-  const universe: RevivalUniverse = new Map();
+export function buildUniverse(
+  rows: UserContractRow[],
+  maxPerUser: number = MAX_TOKENS_PER_USER,
+): RevivalUniverse {
+  // userId → network → ordered, deduped keys (recency preserved).
+  const perUser = new Map<string, Map<RevivalNetwork, string[]>>();
+  const seenPerUser = new Map<string, Set<string>>();
+  const meta = new Map<string, { address: string; network: RevivalNetwork }>();
+
   for (const row of rows) {
-    const mint = row.address;
-    let mine = perUser.get(row.userId);
-    if (!mine) {
-      mine = new Set();
-      perUser.set(row.userId, mine);
+    const key = universeKey(row.network, row.address);
+    let seen = seenPerUser.get(row.userId);
+    if (!seen) {
+      seen = new Set();
+      seenPerUser.set(row.userId, seen);
     }
-    if (mine.has(mint)) continue;
-    if (mine.size >= maxPerUser) continue;
-    mine.add(mint);
-    let subs = universe.get(mint);
-    if (!subs) {
-      subs = new Set();
-      universe.set(mint, subs);
+    if (seen.has(key)) continue;
+    seen.add(key);
+    meta.set(key, { address: row.address, network: row.network });
+
+    let byNetwork = perUser.get(row.userId);
+    if (!byNetwork) {
+      byNetwork = new Map();
+      perUser.set(row.userId, byNetwork);
     }
-    subs.add(row.userId);
+    const list = byNetwork.get(row.network) ?? [];
+    list.push(key);
+    byNetwork.set(row.network, list);
+  }
+
+  const universe: RevivalUniverse = new Map();
+  for (const [userId, byNetwork] of perUser) {
+    const lists = [...byNetwork.values()];
+    const taken = new Array<number>(lists.length).fill(0);
+    let picked = 0;
+    let progressed = true;
+    while (picked < maxPerUser && progressed) {
+      progressed = false;
+      for (let i = 0; i < lists.length && picked < maxPerUser; i++) {
+        if (taken[i] >= lists[i].length) continue;
+        const key = lists[i][taken[i]];
+        taken[i] += 1;
+        picked += 1;
+        progressed = true;
+
+        const existing = universe.get(key);
+        if (existing) {
+          existing.subscribers.add(userId);
+        } else {
+          const m = meta.get(key)!;
+          universe.set(key, {
+            address: m.address,
+            network: m.network,
+            subscribers: new Set([userId]),
+          });
+        }
+      }
+    }
   }
   return universe;
+}
+
+export interface NetworkRotation {
+  network: RevivalNetwork;
+  keys: string[];
+  /** Index into `keys` this cycle starts at (rotates across cycles). */
+  offset: number;
+}
+
+/**
+ * Pick this cycle's tokens, round-robin across chains, each chain resuming
+ * where it left off last cycle.
+ *
+ * Two properties matter and both need the per-network offsets:
+ * - fairness WITHIN a cycle — a chain with 200 tokens can't consume the whole
+ *   40-token budget and hide a 3-token chain;
+ * - full coverage ACROSS cycles — each chain's own pointer walks its own list,
+ *   so a big Solana universe is still swept end to end, just interleaved.
+ *
+ * Returns the selected keys plus the advanced offsets (pure — the caller
+ * stores them).
+ */
+export function selectCycleSlice(
+  rotations: NetworkRotation[],
+  cap: number,
+): { selected: string[]; offsets: Map<RevivalNetwork, number> } {
+  const taken = new Array<number>(rotations.length).fill(0);
+  const selected: string[] = [];
+  let progressed = true;
+  while (selected.length < cap && progressed) {
+    progressed = false;
+    for (let i = 0; i < rotations.length && selected.length < cap; i++) {
+      const r = rotations[i];
+      if (r.keys.length === 0 || taken[i] >= r.keys.length) continue;
+      const idx = (r.offset + taken[i]) % r.keys.length;
+      selected.push(r.keys[idx]);
+      taken[i] += 1;
+      progressed = true;
+    }
+  }
+
+  const offsets = new Map<RevivalNetwork, number>();
+  for (let i = 0; i < rotations.length; i++) {
+    const r = rotations[i];
+    offsets.set(r.network, r.keys.length > 0 ? (r.offset + taken[i]) % r.keys.length : 0);
+  }
+  return { selected, offsets };
 }
 
 class RevivalPoller {
@@ -115,10 +293,10 @@ class RevivalPoller {
   private timer: NodeJS.Timeout | null = null;
   private started = false;
   private polling = false;
-  /** mint → last alert epoch ms (in-memory v1 cooldown; resets on reboot). */
+  /** `network:address` → last alert epoch ms (in-memory v1 cooldown; resets on reboot). */
   private cooldowns = new Map<string, number>();
-  /** Rotation pointer so universes above the per-cycle cap are fully covered. */
-  private rotationOffset = 0;
+  /** Per-network rotation pointers so every chain is fully covered over time. */
+  private rotationOffsets = new Map<RevivalNetwork, number>();
   /** 24h peak tracking for fired alerts (slow cadence, write-on-improvement). */
   private outcomes = new RevivalOutcomeTracker();
 
@@ -143,7 +321,9 @@ class RevivalPoller {
     }
 
     const interval = resolvePollMs();
-    console.log(`[RevivalPoller] Started (interval ${interval}ms, cap ${MAX_TOKENS_PER_CYCLE} tokens/cycle).`);
+    console.log(
+      `[RevivalPoller] Started (interval ${interval}ms, cap ${MAX_TOKENS_PER_CYCLE} tokens/cycle, networks: ${resolveRevivalNetworks().join(', ')}).`,
+    );
     this.outcomes.start();
     void this.resumeOpenOutcomes().catch((err) =>
       console.error('[RevivalPoller] outcome resume error:', (err as Error)?.message),
@@ -220,23 +400,45 @@ class RevivalPoller {
 
   private async loadUniverse(): Promise<RevivalUniverse> {
     const since = new Date(Date.now() - UNIVERSE_LOOKBACK_MS).toISOString();
+    const enabled = new Set(resolveRevivalNetworks());
+    if (enabled.size === 0) return new Map();
 
     if (!isHostedMode()) {
       const contracts = await getStorageProvider().getContracts(LOCAL_USER_ID, 500, since);
-      const rows: UserContractRow[] = contracts
-        .filter((c) => c.chain === 'sol')
-        .sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime())
-        .map((c) => ({ userId: LOCAL_USER_ID, address: c.address, timestamp: c.timestamp }));
+      const rows: UserContractRow[] = [];
+      for (const c of contracts) {
+        // Contracts whose chain hasn't resolved yet (EVM address, background
+        // lookup pending) or whose chain we don't watch are simply skipped.
+        const network = revivalNetworkForChain(c.chain, c.evmChain);
+        if (!network || !enabled.has(network)) continue;
+        rows.push({
+          userId: LOCAL_USER_ID,
+          address: c.address,
+          network,
+          timestamp: c.timestamp,
+        });
+      }
+      rows.sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
       return buildUniverse(rows);
     }
 
     if (!this.db) return new Map();
     // Column-scoped read (mirrors the missed-runner poller's slim load): the
-    // universe needs only user/address/recency, never the message payloads.
+    // universe needs only user/address/chain/recency, never the message
+    // payloads. The chain filter is pushed into the query so a Solana-heavy
+    // feed doesn't crowd EVM rows out of the row limit.
+    const orParts: string[] = [];
+    if (enabled.has('solana')) orParts.push('chain.eq.sol');
+    const evmSlugs = [...enabled]
+      .filter((n) => n !== 'solana')
+      .map((n) => REVIVAL_NETWORK_CHAIN_SLUGS[n]);
+    if (evmSlugs.length > 0) orParts.push(`evm_chain.in.(${evmSlugs.join(',')})`);
+    if (orParts.length === 0) return new Map();
+
     const { data, error } = await this.db
       .from('contracts')
-      .select('user_id, address, timestamp')
-      .eq('chain', 'sol')
+      .select('user_id, address, chain, evm_chain, timestamp')
+      .or(orParts.join(','))
       .gt('timestamp', since)
       .order('timestamp', { ascending: false })
       .limit(2000);
@@ -244,24 +446,40 @@ class RevivalPoller {
       console.warn('[RevivalPoller] Universe load failed:', error.message);
       return new Map();
     }
-    const rows: UserContractRow[] = (data ?? []).map((r: any) => ({
-      userId: r.user_id as string,
-      address: r.address as string,
-      timestamp: r.timestamp as string,
-    }));
+    const rows: UserContractRow[] = [];
+    for (const r of (data ?? []) as any[]) {
+      const network = revivalNetworkForChain(r.chain, r.evm_chain);
+      if (!network || !enabled.has(network)) continue;
+      rows.push({
+        userId: r.user_id as string,
+        address: r.address as string,
+        network,
+        timestamp: r.timestamp as string,
+      });
+    }
     return buildUniverse(rows);
   }
 
-  /** Next up-to-cap window of mints, advancing the rotation pointer. */
-  private nextSlice(all: string[]): string[] {
-    if (all.length <= MAX_TOKENS_PER_CYCLE) {
-      this.rotationOffset = 0;
-      return all;
+  /**
+   * Next up-to-cap window of tokens, round-robin across chains, advancing each
+   * chain's own rotation pointer (see selectCycleSlice).
+   */
+  private nextSlice(universe: RevivalUniverse): string[] {
+    const byNetwork = new Map<RevivalNetwork, string[]>();
+    for (const [key, entry] of universe) {
+      const list = byNetwork.get(entry.network) ?? [];
+      list.push(key);
+      byNetwork.set(entry.network, list);
     }
-    if (this.rotationOffset >= all.length) this.rotationOffset = 0;
-    const slice = all.slice(this.rotationOffset, this.rotationOffset + MAX_TOKENS_PER_CYCLE);
-    this.rotationOffset += MAX_TOKENS_PER_CYCLE;
-    return slice;
+    const rotations: NetworkRotation[] = [...byNetwork].map(([network, keys]) => ({
+      network,
+      keys,
+      offset: Math.min(this.rotationOffsets.get(network) ?? 0, Math.max(keys.length - 1, 0)),
+    }));
+
+    const { selected, offsets } = selectCycleSlice(rotations, MAX_TOKENS_PER_CYCLE);
+    this.rotationOffsets = offsets;
+    return selected;
   }
 
   private async poll(): Promise<void> {
@@ -271,23 +489,22 @@ class RevivalPoller {
       const universe = await this.loadUniverse();
       if (universe.size === 0) return;
 
-      const slice = this.nextSlice([...universe.keys()]);
-      let first = true;
-      for (const mint of slice) {
+      const slice = this.nextSlice(universe);
+      for (const key of slice) {
         if (isBackedOff()) return; // rate-limited — resume next cycle
-        const subscribers = universe.get(mint);
-        if (!subscribers || subscribers.size === 0) continue;
+        const entry = universe.get(key);
+        if (!entry || entry.subscribers.size === 0) continue;
 
-        const last = this.cooldowns.get(mint);
+        const last = this.cooldowns.get(key);
         if (last != null && Date.now() - last < ALERT_COOLDOWN_MS) continue;
 
-        if (!first && REQUEST_SPACING_MS > 0) await sleep(REQUEST_SPACING_MS);
-        first = false;
-
+        // No sleep here: candles.ts owns the request spacing for every revival
+        // consumer. Pacing in both places is what let the poller and the
+        // outcome tracker each stay "under the limit" while their SUM was not.
         try {
-          await this.evaluateToken(mint, subscribers);
+          await this.evaluateToken(key, entry);
         } catch (err) {
-          console.warn(`[RevivalPoller] evaluate failed for ${mint.slice(0, 8)}…:`, (err as Error)?.message);
+          console.warn(`[RevivalPoller] evaluate failed for ${key.slice(0, 20)}…:`, (err as Error)?.message);
         }
       }
     } finally {
@@ -295,15 +512,16 @@ class RevivalPoller {
     }
   }
 
-  private async evaluateToken(mint: string, subscribers: Set<string>): Promise<void> {
-    const candles = await fetchRevivalCandles(mint);
+  private async evaluateToken(key: string, target: UniverseEntry): Promise<void> {
+    const { address: mint, network, subscribers } = target;
+    const candles = await fetchRevivalCandles(network, mint);
     if (!candles) return;
 
     const now = Date.now();
     const verdict = evaluateRevival(candles.minute, candles.hour, now);
     if (!verdict.fired) return;
 
-    this.cooldowns.set(mint, now);
+    this.cooldowns.set(key, now);
 
     const price = verdict.price;
     const mcapUsd =
@@ -312,6 +530,7 @@ class RevivalPoller {
         : null;
     const data: RevivalAlertData = {
       mint,
+      network,
       symbol: candles.pool.symbol,
       price,
       mcapUsd,
@@ -322,7 +541,7 @@ class RevivalPoller {
 
     const sym = data.symbol ? `$${data.symbol}` : `${mint.slice(0, 6)}…`;
     console.log(
-      `[RevivalPoller] IGNITION ${sym} (${mint.slice(0, 8)}…) atrZ=${data.atrZ.toFixed(1)} rvol=${data.rvol.toFixed(1)} → ${subscribers.size} user(s)`,
+      `[RevivalPoller] IGNITION ${sym} on ${revivalNetworkLabel(network)} (${mint.slice(0, 8)}…) atrZ=${data.atrZ.toFixed(1)} rvol=${data.rvol.toFixed(1)} → ${subscribers.size} user(s)`,
     );
 
     for (const userId of subscribers) {
@@ -336,6 +555,7 @@ class RevivalPoller {
           alertId: entry.id,
           userId,
           mint: entry.mint,
+          network,
           alertPriceUsd: entry.priceUsd,
           peakPriceUsd: entry.peakPriceUsd,
           triggeredAtMs: now,
@@ -353,13 +573,16 @@ class RevivalPoller {
       const config = await getStorageProvider().getConfig(userId);
       if (!config.pushover?.enabled) return;
       const mc = data.mcapUsd != null ? formatCompact(data.mcapUsd) : '—';
-      const url = buildContractUrl(data.mint, config.contractLinkTemplates);
+      // Chain-aware link: a BNB or Robinhood revival must not open on the EVM
+      // template's default chain (Base).
+      const url = buildRevivalContractUrl(data.mint, data.network, config.contractLinkTemplates);
+      const chain = revivalNetworkLabel(data.network);
       // EMERGENCY tier is reserved for revival: re-alerts every 30s for 30min
       // until acknowledged. Every other alert keeps the user's configured
       // priority — only revival overrides it.
       await sendPushover(config.pushover, {
-        title: `REVIVAL: ${sym} igniting`,
-        message: `${sym} igniting — mcap ${mc}, RVOL ${data.rvol.toFixed(1)}x, ATR z ${data.atrZ.toFixed(1)}`,
+        title: `REVIVAL: ${sym} igniting on ${chain}`,
+        message: `${sym} igniting on ${chain} — mcap ${mc}, RVOL ${data.rvol.toFixed(1)}x, ATR z ${data.atrZ.toFixed(1)}`,
         url,
         urlTitle: 'Open token',
         priority: 2,
