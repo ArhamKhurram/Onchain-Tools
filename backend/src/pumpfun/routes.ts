@@ -580,7 +580,13 @@ export function createPumpfunRouter(): Router {
     }
     try {
       const caller = await getPumpCalloutFeedClient().resolveUsername(username.trim());
-      if (!caller) return res.status(404).json({ error: `No pump.fun user found for "${username.trim()}".` });
+      if (!caller) {
+        // pump's keyless lookup keys on the pump.fun username only — a linked
+        // X/Twitter handle (which can differ) is not resolvable here. Say so.
+        return res.status(404).json({
+          error: `No pump.fun user found for "${username.trim()}". This must be their pump.fun username, which can differ from their X/Twitter handle.`,
+        });
+      }
       res.json(caller);
     } catch (err) {
       sendPumpfunError(res, err);
@@ -616,7 +622,11 @@ export function createPumpfunRouter(): Router {
           return res.status(400).json({ error: 'Provide a caller "address" or a "username" to resolve.' });
         }
         const caller = await getPumpCalloutFeedClient().resolveUsername(username.trim());
-        if (!caller) return res.status(404).json({ error: `No pump.fun user found for "${username.trim()}".` });
+        if (!caller) {
+          return res.status(404).json({
+            error: `No pump.fun user found for "${username.trim()}". This must be their pump.fun username, which can differ from their X/Twitter handle.`,
+          });
+        }
         address = caller.address;
         username = caller.username;
         avatar = caller.avatar;

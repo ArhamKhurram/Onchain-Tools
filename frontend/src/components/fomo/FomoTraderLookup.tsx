@@ -78,7 +78,7 @@ export default function FomoTraderLookup() {
         <input
           value={input}
           onChange={(e) => setInput(e.target.value)}
-          placeholder="FOMO handle or display name…"
+          placeholder="X handle or display name…"
           spellCheck={false}
           className="oct-input flex-1 min-w-0 px-2.5 py-2 font-mono text-xs"
         />
@@ -109,7 +109,7 @@ export default function FomoTraderLookup() {
               <Search size={22} className="text-oct-muted" />
             </div>
             <p className="text-sm text-oct-muted max-w-xs leading-relaxed">
-              Search any fomo.family trader to see their wallets, holdings and PnL.
+              Search any fomo.family trader by their X handle or display name to see their wallets, holdings and PnL.
             </p>
           </div>
         )}
