@@ -202,7 +202,7 @@ export default function PumpCallersTab() {
                 setInput(e.target.value);
                 if (formError) setFormError(null);
               }}
-              placeholder="Follow a caller by @username (e.g. ansem)"
+              placeholder="Follow by pump.fun @username (e.g. ansem)"
               className="oct-input w-full pl-9 pr-3 py-2.5 text-sm"
             />
           </div>
@@ -217,6 +217,12 @@ export default function PumpCallersTab() {
         {formError && <p className="mt-2 text-sm text-oct-flame">{formError}</p>}
         <p className="mt-2 text-xs text-oct-muted">
           When a caller you follow posts a callout, you get a toast + Pushover ping in real time.
+        </p>
+        <p className="mt-1 text-xs text-oct-muted">
+          This is the caller&apos;s <span className="text-oct-text font-semibold">pump.fun</span> username, which can
+          differ from their X/Twitter handle — pump can&apos;t look someone up by their X handle. To follow by their X
+          identity, use the <span className="text-oct-text font-semibold">leaderboard</span> below (each row shows the
+          linked @X and follows by wallet).
         </p>
       </div>
 
@@ -308,8 +314,22 @@ export default function PumpCallersTab() {
               return (
                 <li key={e.walletAddress ?? i} className="flex items-center gap-3">
                   <span className="w-5 text-xs font-mono font-bold text-oct-muted tabular-nums shrink-0">{i + 1}</span>
-                  <span className="font-semibold text-oct-text truncate flex-1">
-                    {e.username ? `@${e.username}` : e.walletAddress ? shortAddress(e.walletAddress) : '—'}
+                  <span className="min-w-0 flex-1">
+                    <span className="font-semibold text-oct-text truncate block">
+                      {e.username ? `@${e.username}` : e.walletAddress ? shortAddress(e.walletAddress) : '—'}
+                    </span>
+                    {e.xUsername && (
+                      <a
+                        href={`https://x.com/${e.xUsername}`}
+                        target="_blank"
+                        rel="noreferrer noopener"
+                        onClick={(ev) => ev.stopPropagation()}
+                        className="text-xs text-oct-muted hover:text-oct-accent truncate block"
+                        title={`@${e.xUsername} on X`}
+                      >
+                        @{e.xUsername} on X
+                      </a>
+                    )}
                   </span>
                   <button
                     disabled={busy || followed || !e.walletAddress}
