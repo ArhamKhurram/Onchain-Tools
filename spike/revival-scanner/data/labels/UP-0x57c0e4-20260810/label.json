@@ -1,0 +1,74 @@
+{
+  "mint": "0x57c0e45cb534413d1c20a4240955d6bb250bb4f1",
+  "symbol": "UP",
+  "label": "revival",
+  "note": "UP on Robinhood Chain. Ignited Aug 10 21:11 UTC: ATR z=3.4, RVOL 16.3x at $0.0959 (~$1.45M mcap), 3.4x+ within 25 min, still running at capture. Relative dormancy (<=20% of prior-72h peak 6h window) flips DORMANT at 20:00 UTC (18.8%), trigger 71 min later -> admitted via 2h lookback. Absolute 5-SOL/h ceiling blocked ($2.3K + $1.95K hours in the window). Second case validating relative dormancy after MANLET; hybrid archetype (slow 20-day fader with a true quiet spell right before ignition).",
+  "firstCapturedAt": "2026-08-10T21:37:57.378Z",
+  "capturedAt": "2026-08-10T21:37:57.378Z",
+  "network": "robinhood",
+  "pools": [
+    {
+      "pool": "0x23d641feccd207e8794c593e8240444a0674c4ba",
+      "name": "UP / WETH 1%",
+      "dex": "up-v3",
+      "volumeUsd24h": 2131784.82534126,
+      "reserveUsd": 788815.3125,
+      "createdAt": "2026-07-21T03:27:47Z",
+      "minuteCandles": 5000,
+      "hourCandles": 498
+    },
+    {
+      "pool": "0x73ef7245b40392ae8710dfb5398f270b07e20d1d",
+      "name": "UP / STONKBROKER 1%",
+      "dex": "up-v3",
+      "volumeUsd24h": 754919.968152549,
+      "reserveUsd": 825757.5,
+      "createdAt": "2026-08-10T20:15:45Z",
+      "minuteCandles": 39,
+      "hourCandles": 2
+    },
+    {
+      "pool": "0x4ef94cd1ab45ebbb50f9e73cd6e45c5027caa3f7",
+      "name": "UP / WETH 1%",
+      "dex": "uniswap-v3-robinhood",
+      "volumeUsd24h": 408345.673452005,
+      "reserveUsd": 64827.9375,
+      "createdAt": "2026-07-11T01:49:28Z",
+      "minuteCandles": 837,
+      "hourCandles": 500
+    }
+  ],
+  "dexscreener": {
+    "pair": "0x23D641FeCcD207E8794c593e8240444A0674C4Ba",
+    "priceUsd": 0.3031,
+    "priceNative": 0.0001615,
+    "solUsd": 1876.7801857585139,
+    "liquidityUsd": 786011.74,
+    "fdv": 156559868,
+    "marketCap": 4589054,
+    "txns": {
+      "m5": {
+        "buys": 421,
+        "sells": 281
+      },
+      "h1": {
+        "buys": 2242,
+        "sells": 1238
+      },
+      "h6": {
+        "buys": 2255,
+        "sells": 1278
+      },
+      "h24": {
+        "buys": 2277,
+        "sells": 1416
+      }
+    },
+    "volume": {
+      "h24": 2254406.56,
+      "h6": 2207975.7,
+      "h1": 2202180.54,
+      "m5": 563948.22
+    }
+  }
+}

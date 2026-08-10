@@ -1,0 +1,1302 @@
+{
+  "schemaVersion": "1.0.0",
+  "pairs": [
+    {
+      "chainId": "robinhood",
+      "dexId": "up",
+      "url": "https://dexscreener.com/robinhood/0x23d641feccd207e8794c593e8240444a0674c4ba",
+      "pairAddress": "0x23D641FeCcD207E8794c593e8240444A0674C4Ba",
+      "baseToken": {
+        "address": "0x57C0E45cB534413D1C20A4240955d6bB250BB4F1",
+        "name": "up",
+        "symbol": "UP"
+      },
+      "quoteToken": {
+        "address": "0x0Bd7D308f8E1639FAb988df18A8011f41EAcAD73",
+        "name": "WETH",
+        "symbol": "WETH"
+      },
+      "priceNative": "0.0001615",
+      "priceUsd": "0.3031",
+      "txns": {
+        "m5": {
+          "buys": 421,
+          "sells": 281
+        },
+        "h1": {
+          "buys": 2242,
+          "sells": 1238
+        },
+        "h6": {
+          "buys": 2255,
+          "sells": 1278
+        },
+        "h24": {
+          "buys": 2277,
+          "sells": 1416
+        }
+      },
+      "volume": {
+        "h24": 2254406.56,
+        "h6": 2207975.7,
+        "h1": 2202180.54,
+        "m5": 563948.22
+      },
+      "priceChange": {
+        "m5": -5.02,
+        "h1": 287,
+        "h6": 288,
+        "h24": 253
+      },
+      "liquidity": {
+        "usd": 786011.74,
+        "base": 1144309,
+        "quote": 233.9162
+      },
+      "fdv": 156559868,
+      "marketCap": 4589054,
+      "info": {
+        "imageUrl": "https://cdn.dexscreener.com/cms/images/ZIigH50N_HPHeoaX?width=800&height=800&quality=95&format=auto",
+        "header": "https://cdn.dexscreener.com/cms/images/KyMN7yd9Ebm6rHLm?width=1500&height=500&quality=95&format=auto",
+        "openGraph": "https://cdn.dexscreener.com/token-images/og/robinhood/0x57c0e45cb534413d1c20a4240955d6bb250bb4f1?timestamp=1786397700000",
+        "websites": [
+          {
+            "url": "https://up33.xyz",
+            "label": "Website"
+          },
+          {
+            "url": "https://up33.xyz/docs",
+            "label": "Docs"
+          }
+        ],
+        "socials": [
+          {
+            "url": "https://x.com/uponrh",
+            "type": "twitter"
+          },
+          {
+            "url": "https://t.me/uponrh",
+            "type": "telegram"
+          }
+        ]
+      }
+    },
+    {
+      "chainId": "robinhood",
+      "dexId": "uniswap",
+      "url": "https://dexscreener.com/robinhood/0x4ef94cd1ab45ebbb50f9e73cd6e45c5027caa3f7",
+      "pairAddress": "0x4EF94cD1Ab45eBbB50F9E73Cd6e45C5027caa3F7",
+      "labels": [
+        "v3"
+      ],
+      "baseToken": {
+        "address": "0x57C0E45cB534413D1C20A4240955d6bB250BB4F1",
+        "name": "up",
+        "symbol": "UP"
+      },
+      "quoteToken": {
+        "address": "0x0Bd7D308f8E1639FAb988df18A8011f41EAcAD73",
+        "name": "WETH",
+        "symbol": "WETH"
+      },
+      "priceNative": "0.0001613",
+      "priceUsd": "0.3028",
+      "txns": {
+        "m5": {
+          "buys": 267,
+          "sells": 357
+        },
+        "h1": {
+          "buys": 1416,
+          "sells": 1419
+        },
+        "h6": {
+          "buys": 1424,
+          "sells": 1450
+        },
+        "h24": {
+          "buys": 1437,
+          "sells": 1491
+        }
+      },
+      "volume": {
+        "h24": 404291.69,
+        "h6": 402291.56,
+        "h1": 398937.09,
+        "m5": 104269.08
+      },
+      "priceChange": {
+        "m5": -6.51,
+        "h1": 283,
+        "h6": 288,
+        "h24": 254
+      },
+      "liquidity": {
+        "usd": 64432.35,
+        "base": 102420,
+        "quote": 17.8002
+      },
+      "fdv": 156398091,
+      "marketCap": 4584313,
+      "pairCreatedAt": 1783734568000,
+      "info": {
+        "imageUrl": "https://cdn.dexscreener.com/cms/images/ZIigH50N_HPHeoaX?width=800&height=800&quality=95&format=auto",
+        "header": "https://cdn.dexscreener.com/cms/images/KyMN7yd9Ebm6rHLm?width=1500&height=500&quality=95&format=auto",
+        "openGraph": "https://cdn.dexscreener.com/token-images/og/robinhood/0x57c0e45cb534413d1c20a4240955d6bb250bb4f1?timestamp=1786397700000",
+        "websites": [
+          {
+            "url": "https://up33.xyz",
+            "label": "Website"
+          },
+          {
+            "url": "https://up33.xyz/docs",
+            "label": "Docs"
+          }
+        ],
+        "socials": [
+          {
+            "url": "https://x.com/uponrh",
+            "type": "twitter"
+          },
+          {
+            "url": "https://t.me/uponrh",
+            "type": "telegram"
+          }
+        ]
+      }
+    },
+    {
+      "chainId": "robinhood",
+      "dexId": "uniswap",
+      "url": "https://dexscreener.com/robinhood/0x29d1e4a51c5225b3c0a930929190ab579177b0ba06c012c89987f949eeebf5d3",
+      "pairAddress": "0x29d1e4a51c5225b3c0a930929190ab579177b0ba06c012c89987f949eeebf5d3",
+      "labels": [
+        "v4"
+      ],
+      "baseToken": {
+        "address": "0x57C0E45cB534413D1C20A4240955d6bB250BB4F1",
+        "name": "up",
+        "symbol": "UP"
+      },
+      "quoteToken": {
+        "address": "0x5fc5360D0400a0Fd4f2af552ADD042D716F1d168",
+        "name": "Global Dollar",
+        "symbol": "USDG"
+      },
+      "priceNative": "0.3111",
+      "priceUsd": "0.3114",
+      "txns": {
+        "m5": {
+          "buys": 26,
+          "sells": 47
+        },
+        "h1": {
+          "buys": 48,
+          "sells": 55
+        },
+        "h6": {
+          "buys": 48,
+          "sells": 55
+        },
+        "h24": {
+          "buys": 48,
+          "sells": 55
+        }
+      },
+      "volume": {
+        "h24": 2216.57,
+        "h6": 2216.57,
+        "h1": 2216.57,
+        "m5": 1816.59
+      },
+      "priceChange": {
+        "h1": 8.46,
+        "h6": 8.46,
+        "h24": 8.46
+      },
+      "liquidity": {
+        "usd": 209.41,
+        "base": 0.006978,
+        "quote": 209.2071
+      },
+      "fdv": 160824380,
+      "marketCap": 4714055,
+      "pairCreatedAt": 1786397387000,
+      "info": {
+        "imageUrl": "https://cdn.dexscreener.com/cms/images/ZIigH50N_HPHeoaX?width=800&height=800&quality=95&format=auto",
+        "header": "https://cdn.dexscreener.com/cms/images/KyMN7yd9Ebm6rHLm?width=1500&height=500&quality=95&format=auto",
+        "openGraph": "https://cdn.dexscreener.com/token-images/og/robinhood/0x57c0e45cb534413d1c20a4240955d6bb250bb4f1?timestamp=1786397700000",
+        "websites": [
+          {
+            "url": "https://up33.xyz",
+            "label": "Website"
+          },
+          {
+            "url": "https://up33.xyz/docs",
+            "label": "Docs"
+          }
+        ],
+        "socials": [
+          {
+            "url": "https://x.com/uponrh",
+            "type": "twitter"
+          },
+          {
+            "url": "https://t.me/uponrh",
+            "type": "telegram"
+          }
+        ]
+      }
+    },
+    {
+      "chainId": "robinhood",
+      "dexId": "uniswap",
+      "url": "https://dexscreener.com/robinhood/0xce7193c2e29d5a4d5512f31c6486b8c8eaeba2fb1fe6e33f12a7294d853e0ad2",
+      "pairAddress": "0xce7193c2e29d5a4d5512f31c6486b8c8eaeba2fb1fe6e33f12a7294d853e0ad2",
+      "labels": [
+        "v4"
+      ],
+      "baseToken": {
+        "address": "0x57C0E45cB534413D1C20A4240955d6bB250BB4F1",
+        "name": "up",
+        "symbol": "UP"
+      },
+      "quoteToken": {
+        "address": "0x5fc5360D0400a0Fd4f2af552ADD042D716F1d168",
+        "name": "Global Dollar",
+        "symbol": "USDG"
+      },
+      "priceNative": "0.1911",
+      "priceUsd": "0.1913",
+      "txns": {
+        "m5": {
+          "buys": 0,
+          "sells": 0
+        },
+        "h1": {
+          "buys": 1,
+          "sells": 0
+        },
+        "h6": {
+          "buys": 1,
+          "sells": 0
+        },
+        "h24": {
+          "buys": 1,
+          "sells": 0
+        }
+      },
+      "volume": {
+        "h24": 2.96,
+        "h6": 2.96,
+        "h1": 2.96,
+        "m5": 0
+      },
+      "priceChange": {},
+      "liquidity": {
+        "usd": 78.24,
+        "base": 311.7552,
+        "quote": 18.5728
+      },
+      "fdv": 98806919,
+      "marketCap": 2896211,
+      "pairCreatedAt": 1786396899000,
+      "info": {
+        "imageUrl": "https://cdn.dexscreener.com/cms/images/ZIigH50N_HPHeoaX?width=800&height=800&quality=95&format=auto",
+        "header": "https://cdn.dexscreener.com/cms/images/KyMN7yd9Ebm6rHLm?width=1500&height=500&quality=95&format=auto",
+        "openGraph": "https://cdn.dexscreener.com/token-images/og/robinhood/0x57c0e45cb534413d1c20a4240955d6bb250bb4f1?timestamp=1786397700000",
+        "websites": [
+          {
+            "url": "https://up33.xyz",
+            "label": "Website"
+          },
+          {
+            "url": "https://up33.xyz/docs",
+            "label": "Docs"
+          }
+        ],
+        "socials": [
+          {
+            "url": "https://x.com/uponrh",
+            "type": "twitter"
+          },
+          {
+            "url": "https://t.me/uponrh",
+            "type": "telegram"
+          }
+        ]
+      }
+    },
+    {
+      "chainId": "robinhood",
+      "dexId": "uniswap",
+      "url": "https://dexscreener.com/robinhood/0xfeb259177df1bded166e97a19844d3eea5786f41ea4a636b106d0ebcf630a333",
+      "pairAddress": "0xfeb259177df1bded166e97a19844d3eea5786f41ea4a636b106d0ebcf630a333",
+      "labels": [
+        "v4"
+      ],
+      "baseToken": {
+        "address": "0x57C0E45cB534413D1C20A4240955d6bB250BB4F1",
+        "name": "up",
+        "symbol": "UP"
+      },
+      "quoteToken": {
+        "address": "0x5fc5360D0400a0Fd4f2af552ADD042D716F1d168",
+        "name": "Global Dollar",
+        "symbol": "USDG"
+      },
+      "priceNative": "0.3206",
+      "priceUsd": "0.3209",
+      "txns": {
+        "m5": {
+          "buys": 0,
+          "sells": 0
+        },
+        "h1": {
+          "buys": 13,
+          "sells": 0
+        },
+        "h6": {
+          "buys": 13,
+          "sells": 0
+        },
+        "h24": {
+          "buys": 13,
+          "sells": 0
+        }
+      },
+      "volume": {
+        "h24": 46.39,
+        "h6": 46.39,
+        "h1": 46.39,
+        "m5": 0
+      },
+      "priceChange": {
+        "h1": 29.28,
+        "h6": 29.28,
+        "h24": 29.28
+      },
+      "liquidity": {
+        "usd": 66.37,
+        "base": 0.00568,
+        "quote": 66.3113
+      },
+      "fdv": 165720357,
+      "marketCap": 4857565,
+      "pairCreatedAt": 1786397159000,
+      "info": {
+        "imageUrl": "https://cdn.dexscreener.com/cms/images/ZIigH50N_HPHeoaX?width=800&height=800&quality=95&format=auto",
+        "header": "https://cdn.dexscreener.com/cms/images/KyMN7yd9Ebm6rHLm?width=1500&height=500&quality=95&format=auto",
+        "openGraph": "https://cdn.dexscreener.com/token-images/og/robinhood/0x57c0e45cb534413d1c20a4240955d6bb250bb4f1?timestamp=1786397700000",
+        "websites": [
+          {
+            "url": "https://up33.xyz",
+            "label": "Website"
+          },
+          {
+            "url": "https://up33.xyz/docs",
+            "label": "Docs"
+          }
+        ],
+        "socials": [
+          {
+            "url": "https://x.com/uponrh",
+            "type": "twitter"
+          },
+          {
+            "url": "https://t.me/uponrh",
+            "type": "telegram"
+          }
+        ]
+      }
+    },
+    {
+      "chainId": "robinhood",
+      "dexId": "uniswap",
+      "url": "https://dexscreener.com/robinhood/0xc7669ae49f734cfbd75f3e7fc73a92759a1e80f204d2136f4807f3bd1fc272c1",
+      "pairAddress": "0xc7669ae49f734cfbd75f3e7fc73a92759a1e80f204d2136f4807f3bd1fc272c1",
+      "labels": [
+        "v4"
+      ],
+      "baseToken": {
+        "address": "0x57C0E45cB534413D1C20A4240955d6bB250BB4F1",
+        "name": "up",
+        "symbol": "UP"
+      },
+      "quoteToken": {
+        "address": "0x5fc5360D0400a0Fd4f2af552ADD042D716F1d168",
+        "name": "Global Dollar",
+        "symbol": "USDG"
+      },
+      "priceNative": "0.05639",
+      "priceUsd": "0.05645",
+      "txns": {
+        "m5": {
+          "buys": 1,
+          "sells": 0
+        },
+        "h1": {
+          "buys": 1,
+          "sells": 0
+        },
+        "h6": {
+          "buys": 1,
+          "sells": 0
+        },
+        "h24": {
+          "buys": 1,
+          "sells": 0
+        }
+      },
+      "volume": {
+        "h24": 24.87,
+        "h6": 24.87,
+        "h1": 24.87,
+        "m5": 24.87
+      },
+      "priceChange": {},
+      "liquidity": {
+        "usd": 103.71,
+        "base": 918.579,
+        "quote": 51.8069
+      },
+      "fdv": 29152728,
+      "marketCap": 854519,
+      "pairCreatedAt": 1785292253000,
+      "info": {
+        "imageUrl": "https://cdn.dexscreener.com/cms/images/ZIigH50N_HPHeoaX?width=800&height=800&quality=95&format=auto",
+        "header": "https://cdn.dexscreener.com/cms/images/KyMN7yd9Ebm6rHLm?width=1500&height=500&quality=95&format=auto",
+        "openGraph": "https://cdn.dexscreener.com/token-images/og/robinhood/0x57c0e45cb534413d1c20a4240955d6bb250bb4f1?timestamp=1786397700000",
+        "websites": [
+          {
+            "url": "https://up33.xyz",
+            "label": "Website"
+          },
+          {
+            "url": "https://up33.xyz/docs",
+            "label": "Docs"
+          }
+        ],
+        "socials": [
+          {
+            "url": "https://x.com/uponrh",
+            "type": "twitter"
+          },
+          {
+            "url": "https://t.me/uponrh",
+            "type": "telegram"
+          }
+        ]
+      }
+    },
+    {
+      "chainId": "robinhood",
+      "dexId": "uniswap",
+      "url": "https://dexscreener.com/robinhood/0x7f713329c7ba52b15917685c939afa2bab7160ae111b462b74cb614eeda5a7ae",
+      "pairAddress": "0x7f713329c7ba52b15917685c939afa2bab7160ae111b462b74cb614eeda5a7ae",
+      "labels": [
+        "v4"
+      ],
+      "baseToken": {
+        "address": "0x57C0E45cB534413D1C20A4240955d6bB250BB4F1",
+        "name": "up",
+        "symbol": "UP"
+      },
+      "quoteToken": {
+        "address": "0x5fc5360D0400a0Fd4f2af552ADD042D716F1d168",
+        "name": "Global Dollar",
+        "symbol": "USDG"
+      },
+      "priceNative": "0.2677",
+      "priceUsd": "0.2680",
+      "txns": {
+        "m5": {
+          "buys": 6,
+          "sells": 7
+        },
+        "h1": {
+          "buys": 60,
+          "sells": 38
+        },
+        "h6": {
+          "buys": 60,
+          "sells": 38
+        },
+        "h24": {
+          "buys": 60,
+          "sells": 38
+        }
+      },
+      "volume": {
+        "h24": 2485.65,
+        "h6": 2485.65,
+        "h1": 2485.65,
+        "m5": 12.96
+      },
+      "priceChange": {
+        "m5": -100,
+        "h1": 28.48,
+        "h6": 28.48,
+        "h24": 28.48
+      },
+      "liquidity": {
+        "usd": 10,
+        "base": 0.000005142,
+        "quote": 9.9999
+      },
+      "fdv": 138423953,
+      "marketCap": 4057458,
+      "pairCreatedAt": 1786396985000,
+      "info": {
+        "imageUrl": "https://cdn.dexscreener.com/cms/images/ZIigH50N_HPHeoaX?width=800&height=800&quality=95&format=auto",
+        "header": "https://cdn.dexscreener.com/cms/images/KyMN7yd9Ebm6rHLm?width=1500&height=500&quality=95&format=auto",
+        "openGraph": "https://cdn.dexscreener.com/token-images/og/robinhood/0x57c0e45cb534413d1c20a4240955d6bb250bb4f1?timestamp=1786397700000",
+        "websites": [
+          {
+            "url": "https://up33.xyz",
+            "label": "Website"
+          },
+          {
+            "url": "https://up33.xyz/docs",
+            "label": "Docs"
+          }
+        ],
+        "socials": [
+          {
+            "url": "https://x.com/uponrh",
+            "type": "twitter"
+          },
+          {
+            "url": "https://t.me/uponrh",
+            "type": "telegram"
+          }
+        ]
+      }
+    },
+    {
+      "chainId": "robinhood",
+      "dexId": "uniswap",
+      "url": "https://dexscreener.com/robinhood/0x0224d44e9b93199c477cdda0caf0e0cdc5a5a601de376bf310da92045949e12f",
+      "pairAddress": "0x0224d44e9b93199c477cdda0caf0e0cdc5a5a601de376bf310da92045949e12f",
+      "labels": [
+        "v4"
+      ],
+      "baseToken": {
+        "address": "0x57C0E45cB534413D1C20A4240955d6bB250BB4F1",
+        "name": "up",
+        "symbol": "UP"
+      },
+      "quoteToken": {
+        "address": "0x5fc5360D0400a0Fd4f2af552ADD042D716F1d168",
+        "name": "Global Dollar",
+        "symbol": "USDG"
+      },
+      "priceNative": "0.3079",
+      "priceUsd": "0.3082",
+      "txns": {
+        "m5": {
+          "buys": 1,
+          "sells": 0
+        },
+        "h1": {
+          "buys": 1,
+          "sells": 0
+        },
+        "h6": {
+          "buys": 1,
+          "sells": 0
+        },
+        "h24": {
+          "buys": 1,
+          "sells": 0
+        }
+      },
+      "volume": {
+        "h24": 1.41,
+        "h6": 1.41,
+        "h1": 1.41,
+        "m5": 1.41
+      },
+      "priceChange": {},
+      "liquidity": {
+        "usd": 2.7,
+        "base": 4.2267,
+        "quote": 1.4014
+      },
+      "fdv": 159175074,
+      "marketCap": 4665711,
+      "pairCreatedAt": 1786397754000,
+      "info": {
+        "imageUrl": "https://cdn.dexscreener.com/cms/images/ZIigH50N_HPHeoaX?width=800&height=800&quality=95&format=auto",
+        "header": "https://cdn.dexscreener.com/cms/images/KyMN7yd9Ebm6rHLm?width=1500&height=500&quality=95&format=auto",
+        "openGraph": "https://cdn.dexscreener.com/token-images/og/robinhood/0x57c0e45cb534413d1c20a4240955d6bb250bb4f1?timestamp=1786397700000",
+        "websites": [
+          {
+            "url": "https://up33.xyz",
+            "label": "Website"
+          },
+          {
+            "url": "https://up33.xyz/docs",
+            "label": "Docs"
+          }
+        ],
+        "socials": [
+          {
+            "url": "https://x.com/uponrh",
+            "type": "twitter"
+          },
+          {
+            "url": "https://t.me/uponrh",
+            "type": "telegram"
+          }
+        ]
+      }
+    },
+    {
+      "chainId": "robinhood",
+      "dexId": "uniswap",
+      "url": "https://dexscreener.com/robinhood/0x1e8ac9202c7a511a354d1fe534678bc059726798ff7af973e57a78c393a2467e",
+      "pairAddress": "0x1e8ac9202c7a511a354d1fe534678bc059726798ff7af973e57a78c393a2467e",
+      "labels": [
+        "v4"
+      ],
+      "baseToken": {
+        "address": "0x57C0E45cB534413D1C20A4240955d6bB250BB4F1",
+        "name": "up",
+        "symbol": "UP"
+      },
+      "quoteToken": {
+        "address": "0x0Bd7D308f8E1639FAb988df18A8011f41EAcAD73",
+        "name": "WETH",
+        "symbol": "WETH"
+      },
+      "priceNative": "340256786540651493917091211303512565200.8163",
+      "priceUsd": "638644975497475821507684349056127909253672.25",
+      "txns": {
+        "m5": {
+          "buys": 2,
+          "sells": 27
+        },
+        "h1": {
+          "buys": 2,
+          "sells": 27
+        },
+        "h6": {
+          "buys": 2,
+          "sells": 27
+        },
+        "h24": {
+          "buys": 2,
+          "sells": 27
+        }
+      },
+      "volume": {
+        "h24": 2373.29,
+        "h6": 2373.29,
+        "h1": 2373.29,
+        "m5": 2373.29
+      },
+      "priceChange": {
+        "m5": 1.852531125212462e+44,
+        "h1": 1.852531125212462e+44,
+        "h6": 1.852531125212462e+44,
+        "h24": 1.852531125212462e+44
+      },
+      "marketCap": 9.666835621428081e+48,
+      "pairCreatedAt": 1786397563000,
+      "info": {
+        "imageUrl": "https://cdn.dexscreener.com/cms/images/ZIigH50N_HPHeoaX?width=800&height=800&quality=95&format=auto",
+        "header": "https://cdn.dexscreener.com/cms/images/KyMN7yd9Ebm6rHLm?width=1500&height=500&quality=95&format=auto",
+        "openGraph": "https://cdn.dexscreener.com/token-images/og/robinhood/0x57c0e45cb534413d1c20a4240955d6bb250bb4f1?timestamp=1786397700000",
+        "websites": [
+          {
+            "url": "https://up33.xyz",
+            "label": "Website"
+          },
+          {
+            "url": "https://up33.xyz/docs",
+            "label": "Docs"
+          }
+        ],
+        "socials": [
+          {
+            "url": "https://x.com/uponrh",
+            "type": "twitter"
+          },
+          {
+            "url": "https://t.me/uponrh",
+            "type": "telegram"
+          }
+        ]
+      }
+    },
+    {
+      "chainId": "robinhood",
+      "dexId": "uniswap",
+      "url": "https://dexscreener.com/robinhood/0x6d666a37e15399b7d40139adf40bdd7023a3f3726f6ef5d4c40fd2d319209217",
+      "pairAddress": "0x6d666a37e15399b7d40139adf40bdd7023a3f3726f6ef5d4c40fd2d319209217",
+      "labels": [
+        "v4"
+      ],
+      "baseToken": {
+        "address": "0x57C0E45cB534413D1C20A4240955d6bB250BB4F1",
+        "name": "up",
+        "symbol": "UP"
+      },
+      "quoteToken": {
+        "address": "0x0000000000000000000000000000000000000000",
+        "name": "Ether",
+        "symbol": "ETH"
+      },
+      "priceNative": "0.0001777",
+      "priceUsd": "0.3335",
+      "txns": {
+        "m5": {
+          "buys": 5,
+          "sells": 13
+        },
+        "h1": {
+          "buys": 20,
+          "sells": 16
+        },
+        "h6": {
+          "buys": 20,
+          "sells": 16
+        },
+        "h24": {
+          "buys": 20,
+          "sells": 16
+        }
+      },
+      "volume": {
+        "h24": 12.95,
+        "h6": 12.95,
+        "h1": 12.95,
+        "m5": 8.17
+      },
+      "priceChange": {
+        "m5": 5.11,
+        "h1": 230,
+        "h6": 230,
+        "h24": 230
+      },
+      "liquidity": {
+        "usd": 11.72,
+        "base": 17.5711,
+        "quote": 0.003122
+      },
+      "fdv": 172243993,
+      "marketCap": 5048785,
+      "pairCreatedAt": 1784007126000,
+      "info": {
+        "imageUrl": "https://cdn.dexscreener.com/cms/images/ZIigH50N_HPHeoaX?width=800&height=800&quality=95&format=auto",
+        "header": "https://cdn.dexscreener.com/cms/images/KyMN7yd9Ebm6rHLm?width=1500&height=500&quality=95&format=auto",
+        "openGraph": "https://cdn.dexscreener.com/token-images/og/robinhood/0x57c0e45cb534413d1c20a4240955d6bb250bb4f1?timestamp=1786397700000",
+        "websites": [
+          {
+            "url": "https://up33.xyz",
+            "label": "Website"
+          },
+          {
+            "url": "https://up33.xyz/docs",
+            "label": "Docs"
+          }
+        ],
+        "socials": [
+          {
+            "url": "https://x.com/uponrh",
+            "type": "twitter"
+          },
+          {
+            "url": "https://t.me/uponrh",
+            "type": "telegram"
+          }
+        ]
+      }
+    },
+    {
+      "chainId": "robinhood",
+      "dexId": "uniswap",
+      "url": "https://dexscreener.com/robinhood/0x634e93ee36e823dc6e5b8d0d803565d37cb230bd6c9180a28dbf7f7e805f5d19",
+      "pairAddress": "0x634e93ee36e823dc6e5b8d0d803565d37cb230bd6c9180a28dbf7f7e805f5d19",
+      "labels": [
+        "v4"
+      ],
+      "baseToken": {
+        "address": "0x57C0E45cB534413D1C20A4240955d6bB250BB4F1",
+        "name": "up",
+        "symbol": "UP"
+      },
+      "quoteToken": {
+        "address": "0x0000000000000000000000000000000000000000",
+        "name": "Ether",
+        "symbol": "ETH"
+      },
+      "priceNative": "0.0001706",
+      "priceUsd": "0.3202",
+      "txns": {
+        "m5": {
+          "buys": 8,
+          "sells": 11
+        },
+        "h1": {
+          "buys": 18,
+          "sells": 14
+        },
+        "h6": {
+          "buys": 18,
+          "sells": 14
+        },
+        "h24": {
+          "buys": 18,
+          "sells": 14
+        }
+      },
+      "volume": {
+        "h24": 5.43,
+        "h6": 5.43,
+        "h1": 5.43,
+        "m5": 3.75
+      },
+      "priceChange": {
+        "m5": 5.13,
+        "h1": 204,
+        "h6": 204,
+        "h24": 204
+      },
+      "liquidity": {
+        "usd": 3.93,
+        "base": 6.1467,
+        "quote": 0.001048
+      },
+      "fdv": 165354026,
+      "marketCap": 4846827,
+      "pairCreatedAt": 1783923003000,
+      "info": {
+        "imageUrl": "https://cdn.dexscreener.com/cms/images/ZIigH50N_HPHeoaX?width=800&height=800&quality=95&format=auto",
+        "header": "https://cdn.dexscreener.com/cms/images/KyMN7yd9Ebm6rHLm?width=1500&height=500&quality=95&format=auto",
+        "openGraph": "https://cdn.dexscreener.com/token-images/og/robinhood/0x57c0e45cb534413d1c20a4240955d6bb250bb4f1?timestamp=1786397700000",
+        "websites": [
+          {
+            "url": "https://up33.xyz",
+            "label": "Website"
+          },
+          {
+            "url": "https://up33.xyz/docs",
+            "label": "Docs"
+          }
+        ],
+        "socials": [
+          {
+            "url": "https://x.com/uponrh",
+            "type": "twitter"
+          },
+          {
+            "url": "https://t.me/uponrh",
+            "type": "telegram"
+          }
+        ]
+      }
+    },
+    {
+      "chainId": "robinhood",
+      "dexId": "uniswap",
+      "url": "https://dexscreener.com/robinhood/0x10dfbbaf8402572fbb9a0bac7c00a8458e2bea2d217e2cd1de2c61346b218873",
+      "pairAddress": "0x10dfbbaf8402572fbb9a0bac7c00a8458e2bea2d217e2cd1de2c61346b218873",
+      "labels": [
+        "v4"
+      ],
+      "baseToken": {
+        "address": "0x57C0E45cB534413D1C20A4240955d6bB250BB4F1",
+        "name": "up",
+        "symbol": "UP"
+      },
+      "quoteToken": {
+        "address": "0x0000000000000000000000000000000000000000",
+        "name": "Ether",
+        "symbol": "ETH"
+      },
+      "priceNative": "0.0001943",
+      "priceUsd": "0.3648",
+      "txns": {
+        "m5": {
+          "buys": 2,
+          "sells": 5
+        },
+        "h1": {
+          "buys": 11,
+          "sells": 5
+        },
+        "h6": {
+          "buys": 11,
+          "sells": 5
+        },
+        "h24": {
+          "buys": 11,
+          "sells": 5
+        }
+      },
+      "volume": {
+        "h24": 2.95,
+        "h6": 2.95,
+        "h1": 2.95,
+        "m5": 1.7
+      },
+      "priceChange": {
+        "m5": 17.3,
+        "h1": 339,
+        "h6": 339,
+        "h24": 339
+      },
+      "liquidity": {
+        "usd": 4.42,
+        "base": 6.05734,
+        "quote": 0.001177
+      },
+      "fdv": 188420457,
+      "marketCap": 5522946,
+      "pairCreatedAt": 1783923146000,
+      "info": {
+        "imageUrl": "https://cdn.dexscreener.com/cms/images/ZIigH50N_HPHeoaX?width=800&height=800&quality=95&format=auto",
+        "header": "https://cdn.dexscreener.com/cms/images/KyMN7yd9Ebm6rHLm?width=1500&height=500&quality=95&format=auto",
+        "openGraph": "https://cdn.dexscreener.com/token-images/og/robinhood/0x57c0e45cb534413d1c20a4240955d6bb250bb4f1?timestamp=1786397700000",
+        "websites": [
+          {
+            "url": "https://up33.xyz",
+            "label": "Website"
+          },
+          {
+            "url": "https://up33.xyz/docs",
+            "label": "Docs"
+          }
+        ],
+        "socials": [
+          {
+            "url": "https://x.com/uponrh",
+            "type": "twitter"
+          },
+          {
+            "url": "https://t.me/uponrh",
+            "type": "telegram"
+          }
+        ]
+      }
+    },
+    {
+      "chainId": "robinhood",
+      "dexId": "uniswap",
+      "url": "https://dexscreener.com/robinhood/0x3720e2bbe9acd13657ca9dc59eca957e13a83275b128d1782935b54b48b55def",
+      "pairAddress": "0x3720e2bbe9acd13657ca9dc59eca957e13a83275b128d1782935b54b48b55def",
+      "labels": [
+        "v4"
+      ],
+      "baseToken": {
+        "address": "0x57C0E45cB534413D1C20A4240955d6bB250BB4F1",
+        "name": "up",
+        "symbol": "UP"
+      },
+      "quoteToken": {
+        "address": "0x0000000000000000000000000000000000000000",
+        "name": "Ether",
+        "symbol": "ETH"
+      },
+      "priceNative": "0.00001180",
+      "priceUsd": "0.02216",
+      "txns": {
+        "m5": {
+          "buys": 1,
+          "sells": 0
+        },
+        "h1": {
+          "buys": 10,
+          "sells": 0
+        },
+        "h6": {
+          "buys": 10,
+          "sells": 0
+        },
+        "h24": {
+          "buys": 10,
+          "sells": 0
+        }
+      },
+      "volume": {
+        "h24": 1.76,
+        "h6": 1.76,
+        "h1": 1.76,
+        "m5": 0.38
+      },
+      "priceChange": {
+        "m5": 28.46,
+        "h1": 268,
+        "h6": 268,
+        "h24": 268
+      },
+      "liquidity": {
+        "usd": 0.32,
+        "base": 7.3824,
+        "quote": 0.00008717
+      },
+      "fdv": 11445668,
+      "marketCap": 335493,
+      "pairCreatedAt": 1785784425000,
+      "info": {
+        "imageUrl": "https://cdn.dexscreener.com/cms/images/ZIigH50N_HPHeoaX?width=800&height=800&quality=95&format=auto",
+        "header": "https://cdn.dexscreener.com/cms/images/KyMN7yd9Ebm6rHLm?width=1500&height=500&quality=95&format=auto",
+        "openGraph": "https://cdn.dexscreener.com/token-images/og/robinhood/0x57c0e45cb534413d1c20a4240955d6bb250bb4f1?timestamp=1786397700000",
+        "websites": [
+          {
+            "url": "https://up33.xyz",
+            "label": "Website"
+          },
+          {
+            "url": "https://up33.xyz/docs",
+            "label": "Docs"
+          }
+        ],
+        "socials": [
+          {
+            "url": "https://x.com/uponrh",
+            "type": "twitter"
+          },
+          {
+            "url": "https://t.me/uponrh",
+            "type": "telegram"
+          }
+        ]
+      }
+    },
+    {
+      "chainId": "robinhood",
+      "dexId": "uniswap",
+      "url": "https://dexscreener.com/robinhood/0x121dcf8c28adb030a9deef330c2ed80f5090092111268f790932ff9ce4bda445",
+      "pairAddress": "0x121dcf8c28adb030a9deef330c2ed80f5090092111268f790932ff9ce4bda445",
+      "labels": [
+        "v4"
+      ],
+      "baseToken": {
+        "address": "0x57C0E45cB534413D1C20A4240955d6bB250BB4F1",
+        "name": "up",
+        "symbol": "UP"
+      },
+      "quoteToken": {
+        "address": "0x0000000000000000000000000000000000000000",
+        "name": "Ether",
+        "symbol": "ETH"
+      },
+      "priceNative": "0.00001542",
+      "priceUsd": "0.02895",
+      "txns": {
+        "m5": {
+          "buys": 1,
+          "sells": 0
+        },
+        "h1": {
+          "buys": 9,
+          "sells": 0
+        },
+        "h6": {
+          "buys": 9,
+          "sells": 0
+        },
+        "h24": {
+          "buys": 9,
+          "sells": 0
+        }
+      },
+      "volume": {
+        "h24": 1.5,
+        "h6": 1.5,
+        "h1": 1.5,
+        "m5": 0.21
+      },
+      "priceChange": {
+        "m5": 17.21,
+        "h1": 243,
+        "h6": 243,
+        "h24": 243
+      },
+      "liquidity": {
+        "usd": 0.38,
+        "base": 6.6818,
+        "quote": 0.000103
+      },
+      "fdv": 14951803,
+      "marketCap": 438265,
+      "pairCreatedAt": 1785692118000,
+      "info": {
+        "imageUrl": "https://cdn.dexscreener.com/cms/images/ZIigH50N_HPHeoaX?width=800&height=800&quality=95&format=auto",
+        "header": "https://cdn.dexscreener.com/cms/images/KyMN7yd9Ebm6rHLm?width=1500&height=500&quality=95&format=auto",
+        "openGraph": "https://cdn.dexscreener.com/token-images/og/robinhood/0x57c0e45cb534413d1c20a4240955d6bb250bb4f1?timestamp=1786397700000",
+        "websites": [
+          {
+            "url": "https://up33.xyz",
+            "label": "Website"
+          },
+          {
+            "url": "https://up33.xyz/docs",
+            "label": "Docs"
+          }
+        ],
+        "socials": [
+          {
+            "url": "https://x.com/uponrh",
+            "type": "twitter"
+          },
+          {
+            "url": "https://t.me/uponrh",
+            "type": "telegram"
+          }
+        ]
+      }
+    },
+    {
+      "chainId": "robinhood",
+      "dexId": "up",
+      "url": "https://dexscreener.com/robinhood/0x73ef7245b40392ae8710dfb5398f270b07e20d1d",
+      "pairAddress": "0x73eF7245B40392ae8710dFB5398f270b07E20d1D",
+      "baseToken": {
+        "address": "0xe934e36A439C94017B64a3FecE66AF12099aBF50",
+        "name": "StonkBroker",
+        "symbol": "STONKBROKER"
+      },
+      "quoteToken": {
+        "address": "0x57C0E45cB534413D1C20A4240955d6bB250BB4F1",
+        "name": "up",
+        "symbol": "UP"
+      },
+      "priceNative": "0.09324",
+      "priceUsd": "0.02826",
+      "txns": {
+        "m5": {
+          "buys": 269,
+          "sells": 120
+        },
+        "h1": {
+          "buys": 723,
+          "sells": 859
+        },
+        "h6": {
+          "buys": 723,
+          "sells": 859
+        },
+        "h24": {
+          "buys": 723,
+          "sells": 859
+        }
+      },
+      "volume": {
+        "h24": 847862.44,
+        "h6": 847862.44,
+        "h1": 847862.44,
+        "m5": 368689.96
+      },
+      "priceChange": {
+        "m5": -13.29,
+        "h1": -11.3,
+        "h6": -11.3,
+        "h24": -11.3
+      },
+      "liquidity": {
+        "usd": 797939.14,
+        "base": 4306294,
+        "quote": 2230377
+      },
+      "fdv": 68589712,
+      "marketCap": 68589712,
+      "info": {
+        "imageUrl": "https://cdn.dexscreener.com/cms/images/_dQRN4wt4hctn71c?width=800&height=800&quality=95&format=auto",
+        "header": "https://cdn.dexscreener.com/cms/images/VpeGGxbZYDFNTveG?width=1500&height=500&quality=95&format=auto",
+        "openGraph": "https://cdn.dexscreener.com/token-images/og/robinhood/0xe934e36a439c94017b64a3fece66af12099abf50?timestamp=1786397700000",
+        "websites": [
+          {
+            "url": "https://stonkbrokers.cash",
+            "label": "Website"
+          }
+        ],
+        "socials": [
+          {
+            "url": "https://x.com/ClutchMarkets?lang=en",
+            "type": "twitter"
+          }
+        ]
+      }
+    },
+    {
+      "chainId": "robinhood",
+      "dexId": "up",
+      "url": "https://dexscreener.com/robinhood/0xcf3d9b31e31ff319adbf6150b793a5485c748ff8",
+      "pairAddress": "0xcF3d9b31E31FF319aDBF6150b793A5485c748fF8",
+      "baseToken": {
+        "address": "0x96765066f6a040a21EB027167D2315B707c82633",
+        "name": "Ravenhood",
+        "symbol": "RVH"
+      },
+      "quoteToken": {
+        "address": "0x57C0E45cB534413D1C20A4240955d6bB250BB4F1",
+        "name": "up",
+        "symbol": "UP"
+      },
+      "priceNative": "0.004820",
+      "priceUsd": "0.001515",
+      "txns": {
+        "m5": {
+          "buys": 39,
+          "sells": 10
+        },
+        "h1": {
+          "buys": 84,
+          "sells": 137
+        },
+        "h6": {
+          "buys": 86,
+          "sells": 137
+        },
+        "h24": {
+          "buys": 89,
+          "sells": 137
+        }
+      },
+      "volume": {
+        "h24": 1515.36,
+        "h6": 1505.06,
+        "h1": 1504.12,
+        "m5": 613.85
+      },
+      "priceChange": {
+        "m5": -0.24,
+        "h1": 2.89,
+        "h6": 2.43,
+        "h24": 0.9
+      },
+      "liquidity": {
+        "usd": 1520.07,
+        "base": 496652,
+        "quote": 2441.9932
+      },
+      "fdv": 125482,
+      "marketCap": 125482,
+      "info": {
+        "imageUrl": "https://cdn.dexscreener.com/cms/images/VIYURaySQRE1nule?width=800&height=800&quality=95&format=auto",
+        "header": "https://cdn.dexscreener.com/cms/images/xpWiBig4b8SUeyjY?width=1500&height=500&quality=95&format=auto",
+        "openGraph": "https://cdn.dexscreener.com/token-images/og/robinhood/0x96765066f6a040a21eb027167d2315b707c82633?timestamp=1786397700000",
+        "websites": [
+          {
+            "url": "https://www.ravenhood.xyz/",
+            "label": "Website"
+          }
+        ],
+        "socials": [
+          {
+            "url": "https://x.com/RVHProtocol",
+            "type": "twitter"
+          },
+          {
+            "url": "https://t.me/RVHProtocol",
+            "type": "telegram"
+          }
+        ]
+      }
+    }
+  ]
+}

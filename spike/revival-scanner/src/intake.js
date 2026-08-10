@@ -28,7 +28,8 @@ const HERE = path.dirname(fileURLToPath(import.meta.url));
 const LABELS_DIR = path.resolve(HERE, '../data/labels');
 
 const GT_BASE = 'https://api.geckoterminal.com/api/v2';
-const NETWORK = 'solana';
+// GeckoTerminal network id: solana (default), bsc, robinhood, ... (--network).
+let NETWORK = 'solana';
 const TOP_POOLS = 3;
 const MINUTE_PAGES = 5;       // 5 x 1000 min ≈ 3.5 days of minute tape
 const GT_INTERVAL_MS = 2200;  // free tier: 30 calls/min — stay well under
@@ -42,7 +43,7 @@ function parseArgs(argv) {
     const i = args.indexOf(name);
     return i >= 0 && args[i + 1] !== undefined ? args[i + 1] : null;
   };
-  return { mint, label: opt('--label'), note: opt('--note') };
+  return { mint, label: opt('--label'), note: opt('--note'), network: opt('--network') };
 }
 
 let lastCall = 0;
@@ -115,13 +116,14 @@ function findExistingDir(mint8) {
 }
 
 async function main() {
-  const { mint, label, note } = parseArgs(process.argv);
+  const { mint, label, note, network } = parseArgs(process.argv);
   if (!mint || !label || !VALID_LABELS.has(label)) {
-    console.error('usage: node src/intake.js <mint> --label <revival|non-revival|fader> [--note "..."]');
+    console.error('usage: node src/intake.js <mint> --label <revival|non-revival|fader> [--note "..."] [--network <gt-network-id, default solana>]');
     process.exit(1);
   }
+  if (network) NETWORK = network;
 
-  console.log(`intake: ${mint} label=${label}`);
+  console.log(`intake: ${mint} label=${label} network=${NETWORK}`);
 
   // 1. All pools for the mint.
   const poolsJson = await throttledJson(
