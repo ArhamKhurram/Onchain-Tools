@@ -1,7 +1,7 @@
 /**
  * Revival ignition poller.
  *
- * Every OCT_REVIVAL_POLL_MS (default 2.5 min):
+ * Every OCT_REVIVAL_POLL_MS (default 5 min):
  * 1. Build the per-user token universe: contracts detected in the user's feed
  *    within the last 48h on any WATCHED chain (OCT_REVIVAL_NETWORKS; Solana +
  *    BNB + Robinhood by default), capped at 30/user.
@@ -12,6 +12,10 @@
  * 3. Fetch minute + hour candles from GeckoTerminal and run the ATR-gate
  *    detector. Request pacing is NOT done here — candles.ts owns one global
  *    queue shared with the outcome tracker (see the request-budget note below).
+ * 3b. Emit one coverage line per cycle (tokens scanned / universe size,
+ *    requests spent, 429s absorbed, estimated full-sweep latency). Coverage
+ *    loss used to be invisible: a rate-limited poller and a quiet market
+ *    produce the same empty log.
  * 4. On ignition (subject to a 60-min per-token cooldown): fan out a
  *    `revival_alert` WS frame to every subscribed user and send Pushover at
  *    EMERGENCY priority (2, retry 30s, expire 30min) — revival is the loudest
@@ -42,7 +46,12 @@ import { getFomoServiceClient } from '../fomo/store.js';
 import { sendPushover } from '../utils/pushover.js';
 import { formatCompact } from '../wallets/balanceChecker.js';
 import { evaluateRevival } from './detector.js';
-import { fetchRevivalCandles, isBackedOff } from './candles.js';
+import {
+  fetchRevivalCandles,
+  isBackedOff,
+  resolveRequestSpacingMs,
+  revivalRequestCounters,
+} from './candles.js';
 import { resolveRevivalNetworks } from './networks.js';
 import {
   buildAlertEntry,
@@ -53,42 +62,57 @@ import {
 import type { RevivalAlertEntry } from '@oct/shared';
 
 const LOCAL_USER_ID = 'local';
-export const DEFAULT_POLL_MS = 150_000; // 2.5 min
+export const DEFAULT_POLL_MS = 300_000; // 5 min
 const UNIVERSE_LOOKBACK_MS = 48 * 3_600_000;
 const MAX_TOKENS_PER_USER = 30;
 const ALERT_COOLDOWN_MS = 60 * 60_000;
 
 // --- Request budget -------------------------------------------------------
-// Pacing itself lives in candles.ts (one global serial queue, ~2200ms apart ≈
-// 27 req/min against GeckoTerminal's ~30/min keyless ceiling). What lives HERE
-// is the per-cycle token cap, which has to be sized so a cycle's requests fit
-// inside the poll interval:
+// Pacing itself lives in candles.ts (one global serial queue, 10s apart ≈ 6
+// req/min — the MEASURED sustainable GeckoTerminal keyless rate, not the ~30
+// req/min this subsystem was originally built around; see the measurement
+// table in candles.ts). What lives HERE is the per-cycle token cap, which has
+// to be sized so a cycle's requests fit inside the poll interval:
 //
-//   slots per cycle      = 150_000ms / 2200ms          ≈ 68 requests
-//   reserved for the outcome tracker (shares the queue) =  8 requests
-//   available to the poller                             ≈ 60 requests
+//   slots per cycle      = 300_000ms / 10_000ms        =  30 requests
+//   reserved for the outcome tracker (shares the queue) =  3 requests
+//   available to the poller                             =  27 requests
 //   steady-state cost per token
 //     minute candles, every cycle                       = 1
-//   + hour candles, 20m cache / 2.5m cycle              ≈ 0.125
-//   + pool resolution, 1h cache / 2.5m cycle            ≈ 0.042
-//                                                       ≈ 1.25 (rounded up)
-//   → 24 tokens × 1.25 ≈ 30 requests, ~56% of the interval. Comfortable.
+//   + hour candles, 45m cache / 5m cycle                ≈ 0.111
+//   + pool resolution, 1h cache / 5m cycle              ≈ 0.083
+//                                                       ≈ 1.19, budgeted 1.25
+//   → 15 tokens × 1.25 ≈ 18.75 + 3 = 21.75 requests, ~73% of the interval.
+//
+// Full-sweep latency at 15 tokens per 5 minutes = 3 tokens/min:
+//   30-token universe  → 2 cycles → ~10 min
+//   37-token universe  → 3 cycles → ~15 min
+//   100-token universe → 7 cycles → ~35 min
+// The 100-token figure is close to the floor the API itself imposes: 100
+// tokens × 1.19 req ≈ 119 requests, which at 6 req/min cannot be done in less
+// than ~20 min by any config. Revival runs last tens of minutes to hours, so
+// minutes of latency are acceptable; what is not acceptable is never reaching
+// the tail of the universe at all (see seedRotationOffset).
 //
 // COLD START is the exception: with empty caches a token costs 3 requests
-// (pool + minute + hour), so the first cycle after boot needs ~80 slots and
-// spills ~30s past the interval. That is harmless — the `polling` guard skips
-// the overlapping tick and the caches are warm from the second cycle on.
+// (pool + minute + hour), so the first cycle after boot needs ~48 slots and
+// spills ~3 min past the interval. That is harmless — the `polling` guard
+// skips the overlapping tick and the caches are warm from the second cycle on.
 //
 // The real coverage limit is the global rate, not this cap: rotation (see
 // selectCycleSlice) sweeps universes larger than the cap across cycles, so a
 // smaller cap costs coverage LATENCY, never coverage.
-export const MAX_TOKENS_PER_CYCLE = 24;
+export const MAX_TOKENS_PER_CYCLE = 15;
 /** Steady-state GeckoTerminal requests per token per cycle (planning figure). */
 export const STEADY_STATE_REQUESTS_PER_TOKEN = 1.25;
 /** Cold-cache worst case: pool resolution + minute + hour. */
 export const COLD_START_REQUESTS_PER_TOKEN = 3;
-/** Slots held back for RevivalOutcomeTracker, which shares the same queue. */
-export const OUTCOME_TRACKER_RESERVED_REQUESTS = 8;
+/**
+ * Slots held back for RevivalOutcomeTracker, which shares the same queue. It
+ * sweeps every 10 min and costs ~1-2 requests per open alert; 3 per 5-minute
+ * cycle covers a handful of concurrently-tracked alerts.
+ */
+export const OUTCOME_TRACKER_RESERVED_REQUESTS = 3;
 
 export interface RevivalCyclePlan {
   /** Requests the interval affords at the configured spacing. */
@@ -106,9 +130,10 @@ export interface RevivalCyclePlan {
 /**
  * The pacing arithmetic above, as a function — so a future edit to the cap,
  * the interval or the spacing is checked by a test instead of silently
- * reintroducing the 429 storm (prod ran 85 req/min against a 30 req/min
- * ceiling and spent most of its life backed off, which reads in the logs as
- * "the signal is quiet" rather than "we are rate-limited").
+ * reintroducing the 429 storm. Every previous iteration of this config failed
+ * the same way: over-budget pacing reads in the logs as "the signal is quiet"
+ * rather than "we are rate-limited". That is also why the poller now emits a
+ * coverage line every cycle (see summarizeCycle).
  */
 export function planRevivalCycle(
   spacingMs: number,
@@ -129,6 +154,91 @@ export function planRevivalCycle(
   };
 }
 
+// --- Coverage reporting ----------------------------------------------------
+
+export interface RevivalCycleSummary {
+  /** Tokens eligible this cycle across every watched chain. */
+  universeSize: number;
+  /** Tokens this cycle actually attempted a candle fetch for. */
+  scanned: number;
+  /** GeckoTerminal requests the cycle consumed (retries included). */
+  requests: number;
+  /** Responses that came back 429 during the cycle. */
+  rateLimited: number;
+  /** Estimated wall time for one full pass over the universe, or null when
+   *  the cycle scanned nothing and no honest estimate exists. */
+  fullSweepMs: number | null;
+  /** True when the safety-valve backoff cut the cycle short. */
+  pausedEarly: boolean;
+}
+
+/**
+ * Per-cycle coverage arithmetic. Pure so the numbers the operator reads during
+ * a data-collection bake are unit-tested rather than assembled inline.
+ *
+ * The sweep estimate deliberately extrapolates from `scanned`, not from the
+ * configured cap: a cycle that got rate-limited into scanning 4 tokens should
+ * report the slow sweep it is actually achieving, not the fast one the config
+ * hoped for. Scanning nothing yields null rather than a fabricated number —
+ * silence must not be mistakable for coverage.
+ */
+export function summarizeCycle(input: {
+  universeSize: number;
+  scanned: number;
+  requests: number;
+  rateLimited: number;
+  pollMs: number;
+  pausedEarly: boolean;
+}): RevivalCycleSummary {
+  const { universeSize, scanned, requests, rateLimited, pollMs, pausedEarly } = input;
+  const cyclesForSweep = scanned > 0 ? Math.ceil(universeSize / scanned) : null;
+  return {
+    universeSize,
+    scanned,
+    requests,
+    rateLimited,
+    fullSweepMs: cyclesForSweep != null ? cyclesForSweep * pollMs : null,
+    pausedEarly,
+  };
+}
+
+/** One-line, info-level rendering of the summary above. */
+export function formatCycleSummary(s: RevivalCycleSummary): string {
+  const sweep =
+    s.fullSweepMs != null ? `full sweep ~${Math.round(s.fullSweepMs / 60_000)}min` : 'full sweep STALLED';
+  const paused = s.pausedEarly ? ', paused early (rate-limit backoff)' : '';
+  return (
+    `[RevivalPoller] cycle: ${s.scanned}/${s.universeSize} tokens scanned, ` +
+    `${s.requests} requests, ${s.rateLimited} rate-limited, ${sweep}${paused}`
+  );
+}
+
+/**
+ * Where a chain's rotation pointer starts on a fresh process.
+ *
+ * The pointers are in-memory (a persisted cursor would mean a new table in two
+ * storage backends for one integer per chain). On its own that is a fairness
+ * bug: Railway redeploys often, the universe is ordered newest-first, and a
+ * pointer that resets to 0 every boot means the head of the universe is
+ * re-scanned forever while the tail is never reached.
+ *
+ * Deriving the FIRST offset from wall-clock time fixes that for free. The
+ * cursor advances at exactly the rate a continuously-running process would
+ * have advanced it, so a restart resumes roughly where the old process was
+ * instead of at zero — no persistence, no I/O, no new schema. Subsequent
+ * cycles advance the pointer incrementally as before, which is what keeps it
+ * correct when the universe changes size mid-run.
+ */
+export function seedRotationOffset(
+  keyCount: number,
+  cap: number = MAX_TOKENS_PER_CYCLE,
+  pollMs: number = DEFAULT_POLL_MS,
+  now: number = Date.now(),
+): number {
+  if (keyCount <= 0 || cap <= 0 || pollMs <= 0) return 0;
+  return (Math.floor(now / pollMs) * cap) % keyCount;
+}
+
 function envFlag(name: string): string | undefined {
   return process.env[`OCT_${name}`] ?? process.env[`TRENCHCORD_${name}`];
 }
@@ -139,9 +249,14 @@ export function isRevivalEnabled(): boolean {
   return !(v === 'false' || v === '0' || v === 'off');
 }
 
+/**
+ * Floor raised from 30s to 60s alongside the pacing recalibration: at 10s
+ * spacing a 30-second cycle affords 3 requests, which cannot complete a single
+ * token's cold fetch.
+ */
 function resolvePollMs(): number {
   const parsed = Number.parseInt(envFlag('REVIVAL_POLL_MS') ?? '', 10);
-  return Number.isFinite(parsed) && parsed >= 30_000 ? parsed : DEFAULT_POLL_MS;
+  return Number.isFinite(parsed) && parsed >= 60_000 ? parsed : DEFAULT_POLL_MS;
 }
 
 /** One watched token: an address ON a specific chain, plus who wants it. */
@@ -295,8 +410,11 @@ class RevivalPoller {
   private polling = false;
   /** `network:address` → last alert epoch ms (in-memory v1 cooldown; resets on reboot). */
   private cooldowns = new Map<string, number>();
-  /** Per-network rotation pointers so every chain is fully covered over time. */
+  /** Per-network rotation pointers so every chain is fully covered over time.
+   *  Absent on the first cycle — seeded from wall clock, see seedRotationOffset. */
   private rotationOffsets = new Map<RevivalNetwork, number>();
+  /** Resolved once at start(); the cycle summary reports against it. */
+  private pollMs = DEFAULT_POLL_MS;
   /** 24h peak tracking for fired alerts (slow cadence, write-on-improvement). */
   private outcomes = new RevivalOutcomeTracker();
 
@@ -321,8 +439,12 @@ class RevivalPoller {
     }
 
     const interval = resolvePollMs();
+    this.pollMs = interval;
+    const plan = planRevivalCycle(resolveRequestSpacingMs(), interval, MAX_TOKENS_PER_CYCLE);
     console.log(
-      `[RevivalPoller] Started (interval ${interval}ms, cap ${MAX_TOKENS_PER_CYCLE} tokens/cycle, networks: ${resolveRevivalNetworks().join(', ')}).`,
+      `[RevivalPoller] Started (interval ${interval}ms, cap ${MAX_TOKENS_PER_CYCLE} tokens/cycle, ` +
+        `${plan.requestsPerMinute.toFixed(1)} req/min budget, ${Math.round(plan.steadyStateUtilization * 100)}% utilization, ` +
+        `networks: ${resolveRevivalNetworks().join(', ')}).`,
     );
     this.outcomes.start();
     void this.resumeOpenOutcomes().catch((err) =>
@@ -471,11 +593,17 @@ class RevivalPoller {
       list.push(key);
       byNetwork.set(entry.network, list);
     }
-    const rotations: NetworkRotation[] = [...byNetwork].map(([network, keys]) => ({
-      network,
-      keys,
-      offset: Math.min(this.rotationOffsets.get(network) ?? 0, Math.max(keys.length - 1, 0)),
-    }));
+    const rotations: NetworkRotation[] = [...byNetwork].map(([network, keys]) => {
+      // A chain we have no pointer for yet (first cycle of this process) starts
+      // from the wall-clock-derived cursor, not from 0 — otherwise frequent
+      // redeploys would re-scan the head of the universe forever.
+      const stored = this.rotationOffsets.get(network);
+      const offset =
+        stored != null
+          ? Math.min(stored, Math.max(keys.length - 1, 0))
+          : seedRotationOffset(keys.length, MAX_TOKENS_PER_CYCLE, this.pollMs);
+      return { network, keys, offset };
+    });
 
     const { selected, offsets } = selectCycleSlice(rotations, MAX_TOKENS_PER_CYCLE);
     this.rotationOffsets = offsets;
@@ -485,13 +613,24 @@ class RevivalPoller {
   private async poll(): Promise<void> {
     if (this.polling) return;
     this.polling = true;
+    const before = revivalRequestCounters();
+    let scanned = 0;
+    let pausedEarly = false;
+    let universeSize = 0;
     try {
       const universe = await this.loadUniverse();
+      universeSize = universe.size;
       if (universe.size === 0) return;
 
       const slice = this.nextSlice(universe);
       for (const key of slice) {
-        if (isBackedOff()) return; // rate-limited — resume next cycle
+        // Only the hard safety valve can stop a cycle now. An ordinary 429 is
+        // absorbed inside candles.ts (re-queue + widened spacing) and shows up
+        // here only as a higher rate-limited count in the summary below.
+        if (isBackedOff()) {
+          pausedEarly = true;
+          break;
+        }
         const entry = universe.get(key);
         if (!entry || entry.subscribers.size === 0) continue;
 
@@ -501,6 +640,7 @@ class RevivalPoller {
         // No sleep here: candles.ts owns the request spacing for every revival
         // consumer. Pacing in both places is what let the poller and the
         // outcome tracker each stay "under the limit" while their SUM was not.
+        scanned += 1;
         try {
           await this.evaluateToken(key, entry);
         } catch (err) {
@@ -509,6 +649,24 @@ class RevivalPoller {
       }
     } finally {
       this.polling = false;
+      // Emitted on EVERY cycle, including empty and cut-short ones. During a
+      // multi-day bake this line is the only thing that distinguishes "the
+      // universe is quiet" from "we are only reaching a third of it".
+      if (universeSize > 0) {
+        const after = revivalRequestCounters();
+        console.log(
+          formatCycleSummary(
+            summarizeCycle({
+              universeSize,
+              scanned,
+              requests: after.sent - before.sent,
+              rateLimited: after.rateLimited - before.rateLimited,
+              pollMs: this.pollMs,
+              pausedEarly,
+            }),
+          ),
+        );
+      }
     }
   }
 

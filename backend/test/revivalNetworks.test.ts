@@ -10,16 +10,25 @@ import type { ContractLinkTemplates } from '@oct/shared';
 import { parseRevivalNetworks } from '../src/revival/networks.js';
 import {
   DEFAULT_REQUEST_SPACING_MS,
-  GECKOTERMINAL_RATE_LIMIT_PER_MIN,
+  GECKOTERMINAL_MAX_REQUESTS_PER_MIN,
+  GECKOTERMINAL_SUSTAINED_REQUESTS_PER_MIN,
   _clearPoolCacheForTest,
   _setRequestSpacingForTest,
+  currentSpacingMultiplier,
   fetchRevivalCandles,
+  isBackedOff,
   resolveTopPool,
+  revivalRequestCounters,
 } from '../src/revival/candles.js';
 import {
   DEFAULT_POLL_MS,
   MAX_TOKENS_PER_CYCLE,
+  OUTCOME_TRACKER_RESERVED_REQUESTS,
+  STEADY_STATE_REQUESTS_PER_TOKEN,
+  formatCycleSummary,
   planRevivalCycle,
+  seedRotationOffset,
+  summarizeCycle,
 } from '../src/revival/poller.js';
 
 // The Robinhood Chain token whose revival the Solana-only universe could never
@@ -150,7 +159,7 @@ describe('GeckoTerminal candle client (mocked HTTP)', () => {
 
   beforeEach(() => {
     _clearPoolCacheForTest();
-    _setRequestSpacingForTest(0); // the queue's real 2.2s spacing is asserted separately
+    _setRequestSpacingForTest(0); // the queue's real 10s spacing is asserted separately
     urls = [];
     vi.stubGlobal('fetch', async (url: string) => {
       urls.push(url);
@@ -214,16 +223,115 @@ describe('GeckoTerminal candle client (mocked HTTP)', () => {
 });
 
 // ---------------------------------------------------------------------------
-// Pacing guard. Prod ran 700ms spacing (~85 req/min) against a ~30 req/min
-// ceiling and lived in the 429 backoff; the failure is SILENT (it looks like
-// "no revivals are firing"), so the config has to be checked by a test.
+// 429 strategy. Measured behaviour (2026-08-11, two IPs): 429s arrive
+// INTERMITTENTLY even at compliant rates — 5 of 12 at 5000ms spacing,
+// interleaved with successes. So one 429 must re-queue that request and widen
+// the spacing, NOT halt every revival fetch; only sustained failure may stop us.
 // ---------------------------------------------------------------------------
 
-describe('request pacing fits the GeckoTerminal budget', () => {
+describe('429 handling re-queues rather than halting', () => {
+  beforeEach(() => {
+    _clearPoolCacheForTest();
+    _setRequestSpacingForTest(0);
+  });
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+    _clearPoolCacheForTest();
+  });
+
+  it('retries the individual request and still returns data', async () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    let calls = 0;
+    vi.stubGlobal('fetch', async (url: string) => {
+      calls += 1;
+      if (calls === 1) return { ok: false, status: 429, json: async () => ({}) };
+      return {
+        ok: true,
+        status: 200,
+        json: async () => poolsPayload('pool-retry', 'UP'),
+      };
+    });
+
+    const pool = await resolveTopPool('bsc', UP_ADDRESS);
+    expect(pool?.poolAddress).toBe('pool-retry'); // the 429 did not lose the item
+    expect(calls).toBe(2);
+    expect(revivalRequestCounters().retried).toBe(1);
+    warn.mockRestore();
+  });
+
+  it('does not pause every revival fetch on an isolated 429', async () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    let calls = 0;
+    vi.stubGlobal('fetch', async () => {
+      calls += 1;
+      if (calls === 1) return { ok: false, status: 429, json: async () => ({}) };
+      return { ok: true, status: 200, json: async () => poolsPayload('pool-ok', 'UP') };
+    });
+
+    await resolveTopPool('bsc', UP_ADDRESS);
+    // The old behaviour was a 30s global halt here. The new behaviour is a
+    // spacing widen that any subsequent chain can still fetch through.
+    expect(isBackedOff()).toBe(false);
+    expect(currentSpacingMultiplier()).toBeGreaterThan(1);
+    expect(await resolveTopPool('robinhood', UP_ADDRESS)).not.toBeNull();
+    warn.mockRestore();
+  });
+
+  it('recovers the spacing after a run of consecutive successes', async () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    let calls = 0;
+    vi.stubGlobal('fetch', async () => {
+      calls += 1;
+      if (calls === 1) return { ok: false, status: 429, json: async () => ({}) };
+      return { ok: true, status: 200, json: async () => poolsPayload(`pool-${calls}`, 'UP') };
+    });
+
+    await resolveTopPool('bsc', UP_ADDRESS);
+    expect(currentSpacingMultiplier()).toBeGreaterThan(1);
+    // Four clean requests walk the slowdown back off (RECOVERY_SUCCESSES).
+    for (const n of ['solana', 'robinhood'] as const) {
+      await resolveTopPool(n, UP_ADDRESS);
+      await fetchRevivalCandles(n, `${UP_ADDRESS}-other`);
+    }
+    expect(currentSpacingMultiplier()).toBe(1);
+    warn.mockRestore();
+  });
+
+  it('still backs off hard when failure is sustained, and says so', async () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    vi.stubGlobal('fetch', async () => ({ ok: false, status: 429, json: async () => ({}) }));
+
+    // Every request refused: the rolling failure rate passes 50% over the
+    // minimum sample count and the safety valve trips.
+    for (let i = 0; i < 6 && !isBackedOff(); i++) {
+      await resolveTopPool('bsc', `${UP_ADDRESS}-${i}`);
+    }
+    expect(isBackedOff()).toBe(true);
+    expect(warn.mock.calls.flat().join(' ')).toContain('sustained rate limiting');
+
+    // And once backed off we genuinely stop asking.
+    const before = revivalRequestCounters().sent;
+    await resolveTopPool('solana', `${UP_ADDRESS}-after`);
+    expect(revivalRequestCounters().sent).toBe(before);
+    warn.mockRestore();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Pacing guard. The ceiling this subsystem was built around (~30 req/min) was
+// never measured and was wrong by ~4x; prod was cut off at 6 req/60s. The
+// failure is SILENT (it looks like "no revivals are firing"), so both the
+// config and the coverage reporting have to be checked by a test.
+// ---------------------------------------------------------------------------
+
+describe('request pacing fits the MEASURED GeckoTerminal budget', () => {
   const plan = planRevivalCycle(DEFAULT_REQUEST_SPACING_MS);
 
-  it('stays under the documented keyless rate ceiling', () => {
-    expect(plan.requestsPerMinute).toBeLessThanOrEqual(GECKOTERMINAL_RATE_LIMIT_PER_MIN);
+  it('paces to the measured sustainable rate, not the ~30/min myth', () => {
+    expect(DEFAULT_REQUEST_SPACING_MS).toBe(10_000);
+    expect(plan.requestsPerMinute).toBe(GECKOTERMINAL_SUSTAINED_REQUESTS_PER_MIN);
+    expect(plan.requestsPerMinute).toBeLessThanOrEqual(GECKOTERMINAL_MAX_REQUESTS_PER_MIN);
   });
 
   it('fits a full steady-state cycle inside the poll interval, with headroom', () => {
@@ -238,16 +346,122 @@ describe('request pacing fits the GeckoTerminal budget', () => {
     expect(plan.coldStartRequests).toBeLessThanOrEqual(plan.slots * 2);
   });
 
-  it('would reject the configuration that caused the prod 429 storm', () => {
-    const bad = planRevivalCycle(700, DEFAULT_POLL_MS, 40);
-    expect(bad.requestsPerMinute).toBeGreaterThan(GECKOTERMINAL_RATE_LIMIT_PER_MIN);
+  it('rejects both configurations prod has actually shipped', () => {
+    // #113-era: 700ms spacing, 40 tokens.
+    expect(planRevivalCycle(700, 150_000, 40).requestsPerMinute).toBeGreaterThan(
+      GECKOTERMINAL_MAX_REQUESTS_PER_MIN,
+    );
+    // #121-era: 2200ms spacing, 24 tokens, 150s interval — the config this
+    // change replaces. ~27 req/min against a measured ~6-8.
+    const shipped = planRevivalCycle(2200, 150_000, 24);
+    expect(shipped.requestsPerMinute).toBeGreaterThan(GECKOTERMINAL_MAX_REQUESTS_PER_MIN);
   });
 
   it('sizes the per-cycle cap from the interval, not by hand', () => {
     // Guards an edit that raises the cap without re-checking the budget.
     const affordable = Math.floor(
-      (plan.slots * 0.75 - 8) / 1.25,
+      (plan.slots * 0.75 - OUTCOME_TRACKER_RESERVED_REQUESTS) / STEADY_STATE_REQUESTS_PER_TOKEN,
     );
     expect(MAX_TOKENS_PER_CYCLE).toBeLessThanOrEqual(affordable);
+  });
+
+  it('sweeps a realistic universe inside the latency the PR promises', () => {
+    const sweepMinutes = (size: number) =>
+      (Math.ceil(size / MAX_TOKENS_PER_CYCLE) * DEFAULT_POLL_MS) / 60_000;
+    expect(sweepMinutes(30)).toBe(10);
+    expect(sweepMinutes(100)).toBe(35);
+    // Revival runs last tens of minutes to hours, so a sweep measured in
+    // minutes is fine — never reaching the tail at all is not.
+    expect(sweepMinutes(30)).toBeLessThanOrEqual(15);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Coverage reporting. The operator runs multi-day bakes off these numbers;
+// a rate-limited poller and a quiet market must not produce the same log.
+// ---------------------------------------------------------------------------
+
+describe('per-cycle coverage summary', () => {
+  it('extrapolates the sweep from what was actually scanned', () => {
+    const s = summarizeCycle({
+      universeSize: 37,
+      scanned: 15,
+      requests: 19,
+      rateLimited: 2,
+      pollMs: DEFAULT_POLL_MS,
+      pausedEarly: false,
+    });
+    expect(s.fullSweepMs).toBe(3 * DEFAULT_POLL_MS); // ceil(37/15) cycles
+    expect(formatCycleSummary(s)).toBe(
+      '[RevivalPoller] cycle: 15/37 tokens scanned, 19 requests, 2 rate-limited, full sweep ~15min',
+    );
+  });
+
+  it('reports the SLOWER sweep a rate-limited cycle is really achieving', () => {
+    const healthy = summarizeCycle({
+      universeSize: 60,
+      scanned: 15,
+      requests: 19,
+      rateLimited: 0,
+      pollMs: DEFAULT_POLL_MS,
+      pausedEarly: false,
+    });
+    const starved = summarizeCycle({
+      universeSize: 60,
+      scanned: 4,
+      requests: 9,
+      rateLimited: 5,
+      pollMs: DEFAULT_POLL_MS,
+      pausedEarly: true,
+    });
+    expect(starved.fullSweepMs!).toBeGreaterThan(healthy.fullSweepMs!);
+    expect(formatCycleSummary(starved)).toContain('paused early');
+  });
+
+  it('refuses to invent a sweep time for a cycle that scanned nothing', () => {
+    const s = summarizeCycle({
+      universeSize: 40,
+      scanned: 0,
+      requests: 0,
+      rateLimited: 3,
+      pollMs: DEFAULT_POLL_MS,
+      pausedEarly: true,
+    });
+    expect(s.fullSweepMs).toBeNull();
+    expect(formatCycleSummary(s)).toContain('STALLED');
+  });
+});
+
+describe('rotation fairness across restarts', () => {
+  it('does not restart every boot at the head of the universe', () => {
+    const keys = 37;
+    // Two boots five cycles apart must not land on the same token.
+    const bootA = seedRotationOffset(keys, MAX_TOKENS_PER_CYCLE, DEFAULT_POLL_MS, 0);
+    const bootB = seedRotationOffset(
+      keys,
+      MAX_TOKENS_PER_CYCLE,
+      DEFAULT_POLL_MS,
+      5 * DEFAULT_POLL_MS,
+    );
+    expect(bootA).toBe(0);
+    expect(bootB).toBe((5 * MAX_TOKENS_PER_CYCLE) % keys);
+    expect(bootB).not.toBe(bootA);
+  });
+
+  it('advances at the same rate a process that never restarted would have', () => {
+    const keys = 50;
+    const at = (cycle: number) =>
+      seedRotationOffset(keys, MAX_TOKENS_PER_CYCLE, DEFAULT_POLL_MS, cycle * DEFAULT_POLL_MS);
+    // Consecutive boots differ by exactly one cycle's worth of tokens.
+    expect((at(4) - at(3) + keys) % keys).toBe(MAX_TOKENS_PER_CYCLE % keys);
+  });
+
+  it('stays a valid index for any universe size', () => {
+    for (const keys of [1, 3, 15, 16, 200]) {
+      const o = seedRotationOffset(keys, MAX_TOKENS_PER_CYCLE, DEFAULT_POLL_MS, 1_754_000_000_000);
+      expect(o).toBeGreaterThanOrEqual(0);
+      expect(o).toBeLessThan(keys);
+    }
+    expect(seedRotationOffset(0)).toBe(0);
   });
 });
