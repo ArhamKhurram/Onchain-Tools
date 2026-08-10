@@ -22,6 +22,8 @@ export class RevivalAlertsRepo extends BaseRepo {
       mcapUsd: row.mcap_usd != null ? Number(row.mcap_usd) : null,
       atrZ: Number(row.atr_z ?? 0),
       rvol: Number(row.rvol ?? 0),
+      baselinePriceUsd: row.baseline_price_usd != null ? Number(row.baseline_price_usd) : null,
+      runMultiple: row.run_multiple != null ? Number(row.run_multiple) : null,
       triggeredAt: row.triggered_at,
       peakPriceUsd: row.peak_price_usd != null ? Number(row.peak_price_usd) : null,
       peakMcapUsd: row.peak_mcap_usd != null ? Number(row.peak_mcap_usd) : null,
@@ -32,7 +34,7 @@ export class RevivalAlertsRepo extends BaseRepo {
   }
 
   async logRevivalAlert(userId: string, alert: RevivalAlertEntry): Promise<RevivalAlertEntry> {
-    const result = await this.supabase.from('revival_alerts').insert({
+    const row: Record<string, unknown> = {
       id: alert.id,
       user_id: userId,
       mint: alert.mint,
@@ -42,13 +44,32 @@ export class RevivalAlertsRepo extends BaseRepo {
       mcap_usd: alert.mcapUsd,
       atr_z: alert.atrZ,
       rvol: alert.rvol,
+      baseline_price_usd: alert.baselinePriceUsd,
+      run_multiple: alert.runMultiple,
       triggered_at: alert.triggeredAt,
       peak_price_usd: alert.peakPriceUsd,
       peak_mcap_usd: alert.peakMcapUsd,
       peak_multiple: alert.peakMultiple,
       peak_at: alert.peakAt,
       outcome_window_closed_at: alert.outcomeWindowClosedAt,
-    });
+    };
+
+    const result = await this.supabase.from('revival_alerts').insert(row);
+    // Deploy-order tolerance: migrations here are applied BY HAND, so the code
+    // can reach prod a few minutes before baseline_price_usd/run_multiple
+    // exist. Losing the row entirely would cost the review surface for the
+    // app's loudest signal, so retry once without the new columns and say so
+    // loudly. Delete this branch once the migration is applied everywhere.
+    if (result.error && /baseline_price_usd|run_multiple/.test(result.error.message ?? '')) {
+      console.warn(
+        '[Supabase] revival_alerts is missing baseline_price_usd/run_multiple — apply migration 20260811160000_revival_run_multiple.sql. Logging without them.',
+      );
+      delete row.baseline_price_usd;
+      delete row.run_multiple;
+      const retry = await this.supabase.from('revival_alerts').insert(row);
+      throwIfError(retry, 'Failed to log revival alert');
+      return alert;
+    }
     throwIfError(result, 'Failed to log revival alert');
     return alert;
   }

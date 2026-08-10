@@ -4,10 +4,14 @@ import {
   computeAtrPctSeries,
   evaluateRevival,
   isRecentlyDormant,
+  resolveBaselinePrice,
   type Candle,
 } from '../src/revival/detector.js';
 import {
+  ALERT_COOLDOWN_MS,
   buildUniverse,
+  evaluateRunSuppression,
+  RUN_SUPPRESSION_CEILING_MS,
   selectCycleSlice,
   type UserContractRow,
 } from '../src/revival/poller.js';
@@ -56,24 +60,34 @@ interface HourSpec {
   fromHour: number;
   toHour: number;
   volumePerHour: number;
+  /** Hourly close. Defaults to 1 — the run gate reads these. */
+  price?: number;
 }
 
 function hours(specs: HourSpec[]): Candle[] {
   const out: Candle[] = [];
   for (const s of specs) {
+    const p = s.price ?? 1;
     for (let h = s.fromHour; h > s.toHour; h--) {
       const ts = NOW - h * HOUR;
-      out.push({ ts, open: 1, high: 1, low: 1, close: 1, volume: s.volumePerHour });
+      out.push({ ts, open: p, high: p, low: p, close: p, volume: s.volumePerHour });
     }
   }
   return out.sort((a, b) => a.ts - b.ts);
 }
 
-/** ~78h of hourly history: busy past, collapsed last 6h — classic fader. */
-const FADED_HOURS = hours([
-  { fromHour: 78, toHour: 8, volumePerHour: 50_000 },
-  { fromHour: 8, toHour: 0, volumePerHour: 500 },
-]);
+/**
+ * ~78h of hourly history: busy past, collapsed last 6h — classic fader.
+ * `price` is the pre-ignition baseline the run gate measures against.
+ */
+function fadedHours(price = 1): Candle[] {
+  return hours([
+    { fromHour: 78, toHour: 8, volumePerHour: 50_000, price },
+    { fromHour: 8, toHour: 0, volumePerHour: 500, price },
+  ]);
+}
+
+const FADED_HOURS = fadedHours();
 
 /** Uniformly busy the whole time — never dormant. */
 const ALWAYS_ACTIVE_HOURS = hours([{ fromHour: 78, toHour: 0, volumePerHour: 50_000 }]);
@@ -81,6 +95,25 @@ const ALWAYS_ACTIVE_HOURS = hours([{ fromHour: 78, toHour: 0, volumePerHour: 50_
 /** A big ignition burst in the last 5 minutes: wide candles, huge volume. */
 function ignition(price: number): MinuteSpec {
   return { fromMin: 5, toMin: 0, price: price * 1.3, rangePct: 0.12, volumePerMin: 40_000 };
+}
+
+/** Same burst, but landing at an exact price (for run-multiple calibration). */
+function ignitionTo(price: number): MinuteSpec {
+  return { fromMin: 5, toMin: 0, price, rangePct: 0.12, volumePerMin: 40_000 };
+}
+
+/**
+ * A labeled true positive: dormant at `baseline` for 16h, then igniting to
+ * `trigger`. Used to prove the run gate keeps the revivals we want.
+ */
+function labelledRevival(baseline: number, trigger: number) {
+  return {
+    minute: minutes([
+      { fromMin: 960, toMin: 5, price: baseline, rangePct: 0.001, volumePerMin: 10, every: 5 },
+      ignitionTo(trigger),
+    ]),
+    hour: fadedHours(baseline),
+  };
 }
 
 describe('evaluateRevival', () => {
@@ -110,7 +143,7 @@ describe('evaluateRevival', () => {
       { fromMin: 960, toMin: 5, price: 2.0, rangePct: 0.0002, volumePerMin: 5 },
       ignition(2.0),
     ]);
-    const r = evaluateRevival(m, FADED_HOURS, NOW);
+    const r = evaluateRevival(m, fadedHours(2.0), NOW);
     expect(r.warmedUp).toBe(true);
     expect(r.dormant).toBe(true);
     expect(Number.isFinite(r.atrZ!)).toBe(true);
@@ -152,6 +185,195 @@ describe('evaluateRevival', () => {
   it('never-traded tokens are dead, not dormant (zero prior peak)', () => {
     const dead = hours([{ fromHour: 78, toHour: 0, volumePerHour: 0 }]);
     expect(isRecentlyDormant(dead, NOW)).toBe(false);
+  });
+});
+
+/**
+ * The run gate. These four cases are the calibration record for
+ * maxRunFromBaseline; changing that default means re-running them, not
+ * adjusting them.
+ */
+describe('evaluateRevival — the run gate ("has it already run?")', () => {
+  it('REGRESSION (TOAD): does NOT fire mid-run, even though ATR-z, RVOL and recent-dormancy all pass', () => {
+    // The exact prod failure. TOAD alerted at $16-17M after running ~600x off
+    // a ~$25K baseline, because every OTHER gate stays satisfied deep into a
+    // run: the ATR%/RVOL baselines still average over the dormant period, and
+    // "was dormant within the last 2h" slides forward with wall-clock time.
+    //
+    // Built as the WORST case on purpose — the run's own volume is kept low
+    // enough that the dormancy gate still holds, so nothing but the run gate
+    // can save us.
+    const baseline = 0.0001;
+    const runPrice = 0.06; // 600× the baseline
+
+    const hourCandles = hours([
+      { fromHour: 78, toHour: 8, volumePerHour: 50_000, price: baseline },
+      // Still-dormant hours at the old price…
+      { fromHour: 8, toHour: 2, volumePerHour: 500, price: baseline },
+      // …then two hours of run. The newest qualifying dormant window spans the
+      // last 6h, so it straddles the ignition — which is exactly why the
+      // baseline statistic is a MEDIAN (4 quiet hours outvote 2 hot ones).
+      { fromHour: 2, toHour: 0, volumePerHour: 12_000, price: 0.05 },
+    ]);
+    const m = minutes([
+      { fromMin: 960, toMin: 120, price: baseline, rangePct: 0.001, volumePerMin: 5 },
+      // Stair-step run: price is up 500× but each minute candle is tight, so
+      // ATR% is still depressed and a fresh burst reads as a huge expansion.
+      { fromMin: 120, toMin: 5, price: 0.05, rangePct: 0.0005, volumePerMin: 200 },
+      ignitionTo(runPrice),
+    ]);
+
+    const r = evaluateRevival(m, hourCandles, NOW);
+
+    // Every legacy gate passes — this is the whole point of the case.
+    expect(r.warmedUp).toBe(true);
+    expect(r.dormant).toBe(true);
+    expect(r.atrZ!).toBeGreaterThanOrEqual(DEFAULT_REVIVAL_CONFIG.atrZThreshold);
+    expect(r.rvol!).toBeGreaterThanOrEqual(DEFAULT_REVIVAL_CONFIG.rvolThreshold);
+
+    // …and the run gate is the only thing holding it.
+    expect(r.baselinePrice).toBeCloseTo(baseline, 10);
+    expect(r.runMultiple!).toBeGreaterThan(100);
+    expect(r.runGate).toBe(false);
+    expect(r.fired).toBe(false);
+  });
+
+  it('MANLET-shaped (~2.0× above baseline) MUST still fire — the binding lower constraint', () => {
+    // Solana, Aug 10. Pre-ignition hourly closes ~0.00027; the good trigger was
+    // at ~0.000543. Anyone tempted to tighten maxRunFromBaseline to 1.5× would
+    // start dropping real revivals — this test is the tripwire.
+    const { minute, hour } = labelledRevival(0.00027, 0.000543);
+    const r = evaluateRevival(minute, hour, NOW);
+
+    expect(r.baselinePrice).toBeCloseTo(0.00027, 10);
+    expect(r.runMultiple!).toBeGreaterThan(1.9);
+    expect(r.runMultiple!).toBeLessThan(2.1);
+    expect(r.runGate).toBe(true);
+    expect(r.fired).toBe(true);
+  });
+
+  it('UP-shaped (~1.2× above baseline) MUST still fire', () => {
+    // Robinhood. Baseline ~0.077-0.08, trigger ~0.0959.
+    const { minute, hour } = labelledRevival(0.078, 0.0959);
+    const r = evaluateRevival(minute, hour, NOW);
+
+    expect(r.runMultiple!).toBeGreaterThan(1.15);
+    expect(r.runMultiple!).toBeLessThan(1.3);
+    expect(r.runGate).toBe(true);
+    expect(r.fired).toBe(true);
+  });
+
+  it('separates all three labeled cases at the default threshold', () => {
+    // The calibration itself, asserted rather than left in a comment.
+    const manletCase = labelledRevival(0.00027, 0.000543);
+    const upCase = labelledRevival(0.078, 0.0959);
+    const manlet = evaluateRevival(manletCase.minute, manletCase.hour, NOW);
+    const up = evaluateRevival(upCase.minute, upCase.hour, NOW);
+    const threshold = DEFAULT_REVIVAL_CONFIG.maxRunFromBaseline;
+
+    expect(threshold).toBeGreaterThan(manlet.runMultiple!); // MANLET survives
+    expect(threshold).toBeGreaterThan(up.runMultiple!); // UP survives
+    expect(threshold).toBeLessThan(600); // TOAD does not
+  });
+
+  it('abstains rather than vetoing when no baseline can be established', () => {
+    // Hourly candles with no usable closes inside the dormant window: unknown
+    // is not evidence of a run, and dormancy has already gated the signal.
+    const m = minutes([
+      { fromMin: 960, toMin: 600, price: 1.0, rangePct: 0.004, volumePerMin: 300 },
+      { fromMin: 600, toMin: 5, price: 0.95, rangePct: 0.001, volumePerMin: 10, every: 5 },
+      ignition(0.95),
+    ]);
+    // Drop every hour candle inside the trailing 6h window; dormancy still
+    // holds (missing buckets count as zero volume) but there is no close.
+    const sparse = FADED_HOURS.filter((c) => c.ts < NOW - 6 * HOUR);
+    const r = evaluateRevival(m, sparse, NOW);
+
+    expect(r.dormant).toBe(true);
+    expect(r.baselinePrice).toBeNull();
+    expect(r.runMultiple).toBeNull();
+    expect(r.runGate).toBe(true);
+    expect(r.fired).toBe(true);
+  });
+});
+
+describe('resolveBaselinePrice', () => {
+  it('is unmoved by a minority of ignition candles inside the window', () => {
+    const window = { fromMs: NOW - 6 * HOUR, toMs: NOW };
+    const candles = hours([
+      { fromHour: 6, toHour: 2, volumePerHour: 100, price: 0.001 },
+      { fromHour: 2, toHour: 0, volumePerHour: 100, price: 10 },
+    ]);
+    // The mean would be ~3.33 here; the median holds the pre-ignition level.
+    expect(resolveBaselinePrice(candles, window)).toBeCloseTo(0.001, 10);
+  });
+
+  it('returns null when the window holds no candles', () => {
+    expect(resolveBaselinePrice(FADED_HOURS, { fromMs: NOW + HOUR, toMs: NOW + 2 * HOUR })).toBeNull();
+  });
+});
+
+/**
+ * Repeat-alert suppression. The old 60-min cooldown let a 6h run alert six
+ * times, each later and higher; what ends an alert's validity is the token
+ * leaving the run state, not elapsed time.
+ */
+describe('evaluateRunSuppression', () => {
+  const running = { dormant: true, runMultiple: 2.4 };
+  const backToBaseline = { dormant: true, runMultiple: 1.05 };
+
+  it('lets a first-ever ignition through', () => {
+    expect(evaluateRunSuppression(undefined, running, NOW).suppress).toBe(false);
+  });
+
+  it('suppresses a second qualifying trigger during the SAME run', () => {
+    // 90 minutes later — past the old cooldown, so the pre-fix code would have
+    // fired again, higher. The token never left the run.
+    const prior = { alertedAt: NOW - 90 * MINUTE };
+    const d = evaluateRunSuppression(prior, running, NOW);
+    expect(d.suppress).toBe(true);
+    expect(d.reason).toBe('run-in-progress');
+  });
+
+  it('keeps the short cooldown as a floor', () => {
+    const prior = { alertedAt: NOW - ALERT_COOLDOWN_MS / 2 };
+    const d = evaluateRunSuppression(prior, backToBaseline, NOW);
+    expect(d.suppress).toBe(true);
+    expect(d.reason).toBe('cooldown');
+  });
+
+  it('allows a new alert after a genuine return to dormancy', () => {
+    const prior = { alertedAt: NOW - 5 * HOUR };
+    expect(evaluateRunSuppression(prior, backToBaseline, NOW).suppress).toBe(false);
+  });
+
+  it('will not re-open on an unknown baseline', () => {
+    const prior = { alertedAt: NOW - 5 * HOUR };
+    const d = evaluateRunSuppression(prior, { dormant: true, runMultiple: null }, NOW);
+    expect(d.suppress).toBe(true);
+    expect(d.reason).toBe('unknown-baseline');
+  });
+
+  it('lapses at the absolute ceiling however the token is behaving', () => {
+    const prior = { alertedAt: NOW - RUN_SUPPRESSION_CEILING_MS - MINUTE };
+    expect(evaluateRunSuppression(prior, running, NOW).suppress).toBe(false);
+  });
+
+  it('full sequence: alert → suppressed through the run → alert again after dormancy', () => {
+    let state: { alertedAt: number } | undefined;
+    const fire = (at: number, verdict: { dormant: boolean; runMultiple: number | null }) => {
+      if (evaluateRunSuppression(state, verdict, at).suppress) return false;
+      state = { alertedAt: at };
+      return true;
+    };
+
+    expect(fire(NOW, { dormant: true, runMultiple: 1.1 })).toBe(true);
+    // The run continues; every detector gate keeps passing for hours.
+    expect(fire(NOW + 70 * MINUTE, running)).toBe(false);
+    expect(fire(NOW + 3 * HOUR, running)).toBe(false);
+    expect(fire(NOW + 5 * HOUR, running)).toBe(false);
+    // It finally rounds back down and goes quiet again — that is a new setup.
+    expect(fire(NOW + 8 * HOUR, backToBaseline)).toBe(true);
   });
 });
 
