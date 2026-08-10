@@ -15,6 +15,12 @@
  * - The dormancy precondition is RELATIVE (trailing 6h volume vs the token's
  *   own prior 72h peak 6h-window volume), not an absolute SOL/h ceiling — an
  *   absolute ceiling provably missed a real revival (MANLET, Aug 10).
+ * - Dormancy alone is NOT enough. "Was dormant at some point in the last 2h"
+ *   keeps sliding forward while a token runs, and the ATR%/RVOL baselines stay
+ *   depressed by the dormant period they still average over — so every gate
+ *   stays satisfied for hours INTO a run. The run gate below (current price vs
+ *   the pre-ignition baseline) is what makes this detector fire at the START of
+ *   a move instead of anywhere along it.
  * - Sparse candles are normal (a minute with no trades yields no candle).
  *   All volume windows are computed over wall-clock time buckets with missing
  *   buckets counted as zero volume; ATR runs over the candle sequence as-is.
@@ -61,6 +67,12 @@ export interface RevivalDetectorConfig {
   dormancyRecentMs: number;
   /** Collapse ratio: trailing window ≤ ratio × prior peak window. */
   dormancyCollapseRatio: number;
+  /**
+   * Run gate: refuse to fire once price is already more than this multiple of
+   * the pre-ignition baseline (see resolveBaselinePrice). "Revival" means the
+   * ignition, not the middle of the move.
+   */
+  maxRunFromBaseline: number;
 }
 
 export const DEFAULT_REVIVAL_CONFIG: RevivalDetectorConfig = {
@@ -76,6 +88,19 @@ export const DEFAULT_REVIVAL_CONFIG: RevivalDetectorConfig = {
   dormancyPeakLookbackMs: 72 * HOUR_MS,
   dormancyRecentMs: 2 * HOUR_MS,
   dormancyCollapseRatio: 0.2,
+  // 3.0 is calibrated against labeled cases, not chosen for roundness:
+  //   MANLET (Solana, true positive) — baseline ~0.00027, good trigger at
+  //     ~0.000543 → 2.0x. This is the BINDING CONSTRAINT on the lower side:
+  //     tightening to 1.5x would have dropped a real revival. Do not tighten
+  //     below ~2.2x without re-labelling cases first.
+  //   UP (Robinhood, true positive) — baseline ~0.077, trigger ~0.0959 → 1.2x.
+  //   TOAD (false alert this gate exists to kill) — alerted at $16-17M after
+  //     running from a ~$25K baseline → ~600x.
+  // 3.0 clears MANLET with 50% headroom for baseline-estimation noise while
+  // sitting 200x below the TOAD case; anything in 2.5-3.0 separates all three,
+  // and the wider end is preferred because the cost of a slightly-late alert is
+  // far lower than the cost of silently dropping a real revival.
+  maxRunFromBaseline: 3.0,
 };
 
 export interface RevivalEvaluation {
@@ -92,6 +117,16 @@ export interface RevivalEvaluation {
   dormant: boolean;
   /** Last 1m close, if any candles exist. */
   price: number | null;
+  /**
+   * Pre-ignition price: median hourly close over the dormant window that
+   * satisfied the dormancy gate. Null when no dormant window was found or it
+   * contained no usable closes.
+   */
+  baselinePrice: number | null;
+  /** price / baselinePrice — how far the token has ALREADY run. */
+  runMultiple: number | null;
+  /** False when runMultiple > cfg.maxRunFromBaseline (the "already ran" veto). */
+  runGate: boolean;
 }
 
 const NOT_FIRED_COLD: RevivalEvaluation = {
@@ -102,6 +137,9 @@ const NOT_FIRED_COLD: RevivalEvaluation = {
   rvol: null,
   dormant: false,
   price: null,
+  baselinePrice: null,
+  runMultiple: null,
+  runGate: false,
 };
 
 /** Sentinel for "baseline had zero variance / zero volume but current is hot". */
@@ -166,6 +204,14 @@ function volumeInWindow(candles: Candle[], from: number, to: number): number {
   return sum;
 }
 
+/** The dormant stretch that satisfied the dormancy gate, as a half-open ms range. */
+export interface DormancyWindow {
+  /** Start of the first hour bucket in the window (inclusive), unix ms. */
+  fromMs: number;
+  /** End of the last hour bucket in the window (exclusive), unix ms. */
+  toMs: number;
+}
+
 /**
  * Relative dormancy: at some evaluation point within the last
  * `dormancyRecentMs`, the trailing `dormancyWindowMs` of volume was
@@ -173,14 +219,18 @@ function volumeInWindow(candles: Candle[], from: number, to: number): number {
  * `dormancyPeakLookbackMs`. Evaluated on hourly buckets (missing hours = 0).
  * Requires a non-zero prior peak — a token that never traded is not "dormant",
  * it is dead, and must not trivially satisfy the gate.
+ *
+ * Returns the MOST RECENT qualifying window (evaluation walks now → now-2h and
+ * stops at the first hit) so the baseline drawn from it is the freshest
+ * pre-ignition state, not a stale one from further back.
  */
-export function isRecentlyDormant(
+export function findRecentDormancy(
   hourCandles: Candle[],
   now: number,
   cfg: RevivalDetectorConfig = DEFAULT_REVIVAL_CONFIG,
-): boolean {
+): DormancyWindow | null {
   const sorted = sortValid(hourCandles);
-  if (sorted.length === 0) return false;
+  if (sorted.length === 0) return null;
 
   const windowHours = Math.max(1, Math.round(cfg.dormancyWindowMs / HOUR_MS));
   const peakHours = Math.max(1, Math.round(cfg.dormancyPeakLookbackMs / HOUR_MS));
@@ -219,9 +269,55 @@ export function isRecentlyDormant(
       if (!Number.isNaN(roll[j]) && roll[j] > peak) peak = roll[j];
     }
     if (peak <= 0) continue;
-    if (roll[i] <= cfg.dormancyCollapseRatio * peak) return true;
+    if (roll[i] <= cfg.dormancyCollapseRatio * peak) {
+      return {
+        fromMs: (startBucket + i - windowHours + 1) * HOUR_MS,
+        toMs: (startBucket + i + 1) * HOUR_MS,
+      };
+    }
   }
-  return false;
+  return null;
+}
+
+/** Boolean form of findRecentDormancy (the dormancy gate). */
+export function isRecentlyDormant(
+  hourCandles: Candle[],
+  now: number,
+  cfg: RevivalDetectorConfig = DEFAULT_REVIVAL_CONFIG,
+): boolean {
+  return findRecentDormancy(hourCandles, now, cfg) !== null;
+}
+
+/**
+ * Pre-ignition baseline price: the MEDIAN hourly close inside the dormant
+ * window.
+ *
+ * Median, deliberately, over the alternatives:
+ * - a single candle (first/last close) is one print away from being wrong on a
+ *   thin token, and the last close of the window is often already the first
+ *   ignition candle;
+ * - the mean is dragged upward by exactly those ignition hours — the newest
+ *   qualifying window can legitimately overlap the start of the move, so the
+ *   statistic has to tolerate a minority of hot candles;
+ * - the min understates the baseline, which inflates the run multiple and
+ *   would start vetoing genuine revivals.
+ * The median tolerates up to half the window being ignition candles and is
+ * unaffected by a single wick.
+ *
+ * Returns null when the window holds no usable closes — the caller must then
+ * ABSTAIN (dormancy has already gated the signal) rather than veto blindly.
+ */
+export function resolveBaselinePrice(
+  hourCandles: Candle[],
+  window: DormancyWindow,
+): number | null {
+  const closes = sortValid(hourCandles)
+    .filter((c) => c.ts >= window.fromMs && c.ts < window.toMs)
+    .map((c) => c.close)
+    .sort((a, b) => a - b);
+  if (closes.length === 0) return null;
+  const mid = closes.length >> 1;
+  return closes.length % 2 === 1 ? closes[mid] : (closes[mid - 1] + closes[mid]) / 2;
 }
 
 /**
@@ -230,9 +326,18 @@ export function isRecentlyDormant(
  *  2. ATR% expansion — z ≥ atrZThreshold vs trailing baseline, with an
  *     absolute atrPctFloor;
  *  3. RVOL — last-window volume ≥ rvolThreshold × trailing per-window average;
- *  4. relative dormancy within the recent window (see isRecentlyDormant).
+ *  4. relative dormancy within the recent window (see isRecentlyDormant);
+ *  5. the run gate — price is still within maxRunFromBaseline × the dormant
+ *     window's median close, i.e. the token has not ALREADY run.
  *
- * Cooldowns are the caller's job (poller state), not the detector's.
+ * Gate 5 exists because gates 2-4 all stay true deep into a move: the ATR% and
+ * RVOL baselines are still averaging over the dormant period, and "was dormant
+ * within the last 2h" slides forward with wall-clock time. Without it the
+ * detector alerts later and higher the harder a token runs, which is precisely
+ * backwards (observed in prod: TOAD alerted at $16-17M, ~600x off its
+ * pre-ignition baseline).
+ *
+ * Cooldowns and repeat suppression are the caller's job (poller state).
  */
 export function evaluateRevival(
   minuteCandles: Candle[],
@@ -288,15 +393,28 @@ export function evaluateRevival(
   const rvolGate = rvol >= cfg.rvolThreshold;
 
   // --- Gate 4: relative dormancy precondition ---
-  const dormant = isRecentlyDormant(hourCandles, now, cfg);
+  const dormancyWindow = findRecentDormancy(hourCandles, now, cfg);
+  const dormant = dormancyWindow !== null;
+
+  // --- Gate 5: the run gate ("has it already run?") ---
+  // Abstain (pass) when there is no baseline to compare against: an unknown
+  // run multiple is not evidence of a run, and dormancy has already gated us.
+  const baselinePrice =
+    dormancyWindow != null ? resolveBaselinePrice(hourCandles, dormancyWindow) : null;
+  const runMultiple =
+    baselinePrice != null && baselinePrice > 0 ? price / baselinePrice : null;
+  const runGate = runMultiple == null || runMultiple <= cfg.maxRunFromBaseline;
 
   return {
-    fired: atrGate && rvolGate && dormant,
+    fired: atrGate && rvolGate && dormant && runGate,
     warmedUp: true,
     atrPct: current.atrPct,
     atrZ,
     rvol,
     dormant,
     price,
+    baselinePrice,
+    runMultiple,
+    runGate,
   };
 }

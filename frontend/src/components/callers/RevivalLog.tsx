@@ -32,6 +32,21 @@ function multipleClass(multiple: number | null): string {
 }
 
 /**
+ * How far the token had ALREADY run when the alert fired (price at alert ÷
+ * pre-ignition baseline). This is the honesty column: near 1x means the alert
+ * caught the ignition, a big number means it caught the middle of a move —
+ * the failure this log used to hide. The detector's run gate now refuses to
+ * fire above 3x, so elevated values here should only appear on legacy rows;
+ * if they start appearing on new ones, the gate needs recalibrating.
+ */
+function runClass(multiple: number | null): string {
+  if (multiple == null) return 'text-oct-muted';
+  if (multiple > 3) return 'text-oct-flame font-bold';
+  if (multiple > 1.5) return 'text-oct-yellow';
+  return 'text-oct-muted';
+}
+
+/**
  * Revival log — every fired revival ignition alert, persisted with the mcap
  * it fired AT plus the peak reached in the 24h after (tracked server-side).
  * This is the review surface for "was that alert actually useful?" and for
@@ -112,13 +127,14 @@ export default function RevivalLog() {
       </div>
 
       <div className="flex-1 min-h-0 overflow-auto overscroll-contain" style={{ overflowAnchor: 'none' }}>
-        <table className="w-full text-left border-collapse min-w-[820px]">
+        <table className="w-full text-left border-collapse min-w-[920px]">
           <thead className="oct-thead sticky top-0 z-10">
             <tr className="font-mono text-[10px] font-bold uppercase tracking-wider text-oct-muted">
               <th className={TH}>When</th>
               <th className={TH}>Token</th>
               <th className={TH}>Network</th>
               <th className={`${TH} text-right`}>MC @ alert</th>
+              <th className={`${TH} text-right`}>Run @ alert</th>
               <th className={`${TH} text-right`}>Peak since</th>
               <th className={`${TH} text-right`}>Multiple</th>
               <th className={`${TH} text-right`}>Signal</th>
@@ -158,6 +174,16 @@ export default function RevivalLog() {
                   </td>
                   <td className="px-3 py-2 font-mono text-xs text-oct-text text-right tabular-nums">
                     {formatMcap(a.mcapUsd)}
+                  </td>
+                  <td
+                    className={`px-3 py-2 font-mono text-xs text-right tabular-nums ${runClass(a.runMultiple)}`}
+                    title={
+                      a.runMultiple != null
+                        ? `Already ${a.runMultiple.toFixed(2)}× above its pre-ignition baseline${a.baselinePriceUsd != null ? ` ($${a.baselinePriceUsd})` : ''} when the alert fired`
+                        : 'No pre-ignition baseline was established for this alert'
+                    }
+                  >
+                    {a.runMultiple != null ? `${a.runMultiple.toFixed(2)}×` : '—'}
                   </td>
                   <td className="px-3 py-2 font-mono text-xs text-oct-text text-right tabular-nums">
                     {formatMcap(a.peakMcapUsd)}

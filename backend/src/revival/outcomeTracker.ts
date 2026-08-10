@@ -151,6 +151,8 @@ export function buildAlertEntry(data: {
   mcapUsd: number | null;
   atrZ: number;
   rvol: number;
+  baselinePrice: number | null;
+  runMultiple: number | null;
   triggeredAt: string;
 }): RevivalAlertEntry {
   const hasPrice = data.price != null && data.price > 0;
@@ -163,6 +165,8 @@ export function buildAlertEntry(data: {
     mcapUsd: data.mcapUsd,
     atrZ: data.atrZ,
     rvol: data.rvol,
+    baselinePriceUsd: data.baselinePrice,
+    runMultiple: data.runMultiple,
     triggeredAt: data.triggeredAt,
     peakPriceUsd: hasPrice ? data.price : null,
     peakMcapUsd: hasPrice ? data.mcapUsd : null,

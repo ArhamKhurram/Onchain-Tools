@@ -12,14 +12,15 @@
  * 3. Fetch minute + hour candles from GeckoTerminal and run the ATR-gate
  *    detector. Request pacing is NOT done here — candles.ts owns one global
  *    queue shared with the outcome tracker (see the request-budget note below).
- * 4. On ignition (subject to a 60-min per-token cooldown): fan out a
- *    `revival_alert` WS frame to every subscribed user and send Pushover at
- *    EMERGENCY priority (2, retry 30s, expire 30min) — revival is the loudest
- *    alert class in the app; every other alert keeps its configured priority.
+ * 4. On ignition (subject to run-state suppression — see
+ *    evaluateRunSuppression): fan out a `revival_alert` WS frame to every
+ *    subscribed user and send Pushover at EMERGENCY priority (2, retry 30s,
+ *    expire 30min) — revival is the loudest alert class in the app; every
+ *    other alert keeps its configured priority.
  *
  * Self-gates cleanly: local mode reads the JSON contract log (no Supabase
  * required); hosted mode reads the contracts table via the service client.
- * Cooldowns are in-memory (v1); fired alerts are persisted via the storage
+ * Suppression state is in-memory (v1, resets on reboot); fired alerts are persisted via the storage
  * provider (revival-alerts.json locally, revival_alerts in hosted mode) and
  * their outcomes tracked for 24h by RevivalOutcomeTracker — open windows are
  * resumed from storage on boot.
@@ -56,7 +57,75 @@ const LOCAL_USER_ID = 'local';
 export const DEFAULT_POLL_MS = 150_000; // 2.5 min
 const UNIVERSE_LOOKBACK_MS = 48 * 3_600_000;
 const MAX_TOKENS_PER_USER = 30;
-const ALERT_COOLDOWN_MS = 60 * 60_000;
+
+// --- Repeat-alert suppression -------------------------------------------
+// A fixed cooldown is the WRONG SHAPE for this signal. The original 60-min
+// cooldown let a 6h run re-alert five more times, each one later and higher,
+// because every detector gate stays satisfied mid-run (see detector.ts). What
+// actually ends an alert's validity is not elapsed time, it is the token
+// leaving the run state.
+//
+// So: once a token alerts it is suppressed until it has GENUINELY returned to
+// dormancy — dormancy holds again AND price is back near a freshly computed
+// baseline — or a long absolute ceiling elapses, whichever comes first. The
+// short cooldown survives only as a floor, and only because it lets the poll
+// loop skip the candle fetch entirely for the first hour (request budget).
+/** Floor: never re-alert a token within this, and skip its fetch meanwhile. */
+export const ALERT_COOLDOWN_MS = 60 * 60_000;
+/** Ceiling: suppression lapses after this no matter what the token did. */
+export const RUN_SUPPRESSION_CEILING_MS = 24 * 3_600_000;
+/**
+ * "Back near a fresh baseline": the token must be within this multiple of the
+ * baseline computed from its NEW dormant window. A token still mid-run reads
+ * between this and maxRunFromBaseline (3.0) — above 3.0 the detector never
+ * fired in the first place.
+ */
+export const REENTRY_MAX_RUN_MULTIPLE = 1.5;
+
+/** In-memory per-token suppression record (v1 — resets on reboot). */
+export interface RunSuppression {
+  /** Epoch ms of the alert that opened this suppression. */
+  alertedAt: number;
+}
+
+export interface SuppressionDecision {
+  suppress: boolean;
+  reason: 'cooldown' | 'run-in-progress' | 'unknown-baseline' | null;
+}
+
+/**
+ * Should this qualifying ignition be suppressed as a repeat of a run we have
+ * already alerted on? Pure — the caller owns the state map.
+ *
+ * `runMultiple == null` (no usable baseline) is treated as NOT a proven return
+ * to dormancy: the detector abstains from vetoing on a missing baseline, but
+ * "we cannot tell" must not be enough to re-open the loudest alert in the app.
+ */
+export function evaluateRunSuppression(
+  prior: RunSuppression | undefined,
+  verdict: { dormant: boolean; runMultiple: number | null },
+  now: number,
+  opts: {
+    cooldownMs?: number;
+    ceilingMs?: number;
+    reentryMaxRunMultiple?: number;
+  } = {},
+): SuppressionDecision {
+  if (!prior) return { suppress: false, reason: null };
+
+  const cooldownMs = opts.cooldownMs ?? ALERT_COOLDOWN_MS;
+  const ceilingMs = opts.ceilingMs ?? RUN_SUPPRESSION_CEILING_MS;
+  const reentry = opts.reentryMaxRunMultiple ?? REENTRY_MAX_RUN_MULTIPLE;
+
+  const elapsed = now - prior.alertedAt;
+  if (elapsed >= ceilingMs) return { suppress: false, reason: null };
+  if (elapsed < cooldownMs) return { suppress: true, reason: 'cooldown' };
+
+  if (!verdict.dormant) return { suppress: true, reason: 'run-in-progress' };
+  if (verdict.runMultiple == null) return { suppress: true, reason: 'unknown-baseline' };
+  if (verdict.runMultiple > reentry) return { suppress: true, reason: 'run-in-progress' };
+  return { suppress: false, reason: null };
+}
 
 // --- Request budget -------------------------------------------------------
 // Pacing itself lives in candles.ts (one global serial queue, ~2200ms apart ≈
@@ -293,8 +362,8 @@ class RevivalPoller {
   private timer: NodeJS.Timeout | null = null;
   private started = false;
   private polling = false;
-  /** `network:address` → last alert epoch ms (in-memory v1 cooldown; resets on reboot). */
-  private cooldowns = new Map<string, number>();
+  /** `network:address` → run-state suppression (in-memory v1; resets on reboot). */
+  private suppression = new Map<string, RunSuppression>();
   /** Per-network rotation pointers so every chain is fully covered over time. */
   private rotationOffsets = new Map<RevivalNetwork, number>();
   /** 24h peak tracking for fired alerts (slow cadence, write-on-improvement). */
@@ -373,6 +442,8 @@ class RevivalPoller {
           mcapUsd: r.mcap_usd != null ? Number(r.mcap_usd) : null,
           atrZ: Number(r.atr_z ?? 0),
           rvol: Number(r.rvol ?? 0),
+          baselinePriceUsd: r.baseline_price_usd != null ? Number(r.baseline_price_usd) : null,
+          runMultiple: r.run_multiple != null ? Number(r.run_multiple) : null,
           triggeredAt: r.triggered_at,
           peakPriceUsd: r.peak_price_usd != null ? Number(r.peak_price_usd) : null,
           peakMcapUsd: r.peak_mcap_usd != null ? Number(r.peak_mcap_usd) : null,
@@ -495,8 +566,11 @@ class RevivalPoller {
         const entry = universe.get(key);
         if (!entry || entry.subscribers.size === 0) continue;
 
-        const last = this.cooldowns.get(key);
-        if (last != null && Date.now() - last < ALERT_COOLDOWN_MS) continue;
+        // Cheap pre-fetch skip only. The real control (run-state suppression)
+        // needs the verdict, so it runs after evaluation in evaluateToken;
+        // this floor just spares the candle request during the first hour.
+        const prior = this.suppression.get(key);
+        if (prior != null && Date.now() - prior.alertedAt < ALERT_COOLDOWN_MS) continue;
 
         // No sleep here: candles.ts owns the request spacing for every revival
         // consumer. Pacing in both places is what let the poller and the
@@ -521,7 +595,19 @@ class RevivalPoller {
     const verdict = evaluateRevival(candles.minute, candles.hour, now);
     if (!verdict.fired) return;
 
-    this.cooldowns.set(key, now);
+    // Repeat suppression: is this a fresh ignition, or the same run we already
+    // alerted on still satisfying every gate?
+    const decision = evaluateRunSuppression(this.suppression.get(key), verdict, now);
+    if (decision.suppress) {
+      if (decision.reason !== 'cooldown') {
+        console.log(
+          `[RevivalPoller] Suppressed repeat ignition for ${key.slice(0, 24)}… (${decision.reason}, run ${verdict.runMultiple?.toFixed(2) ?? '?'}x).`,
+        );
+      }
+      return;
+    }
+
+    this.suppression.set(key, { alertedAt: now });
 
     const price = verdict.price;
     const mcapUsd =
@@ -536,12 +622,14 @@ class RevivalPoller {
       mcapUsd,
       atrZ: verdict.atrZ ?? 0,
       rvol: verdict.rvol ?? 0,
+      baselinePrice: verdict.baselinePrice,
+      runMultiple: verdict.runMultiple,
       triggeredAt: new Date(now).toISOString(),
     };
 
     const sym = data.symbol ? `$${data.symbol}` : `${mint.slice(0, 6)}…`;
     console.log(
-      `[RevivalPoller] IGNITION ${sym} on ${revivalNetworkLabel(network)} (${mint.slice(0, 8)}…) atrZ=${data.atrZ.toFixed(1)} rvol=${data.rvol.toFixed(1)} → ${subscribers.size} user(s)`,
+      `[RevivalPoller] IGNITION ${sym} on ${revivalNetworkLabel(network)} (${mint.slice(0, 8)}…) atrZ=${data.atrZ.toFixed(1)} rvol=${data.rvol.toFixed(1)} run=${data.runMultiple != null ? `${data.runMultiple.toFixed(2)}x` : '?'} → ${subscribers.size} user(s)`,
     );
 
     for (const userId of subscribers) {

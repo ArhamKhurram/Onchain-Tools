@@ -286,6 +286,18 @@ export interface RevivalAlertData {
   atrZ: number;
   /** Last-5m volume vs trailing 24h per-5m average. */
   rvol: number;
+  /**
+   * Pre-ignition baseline price (median hourly close over the dormant window
+   * that qualified the token), USD. Null when it could not be established.
+   */
+  baselinePrice: number | null;
+  /**
+   * price / baselinePrice at the moment of the alert — how far the token had
+   * ALREADY run when it fired. Near 1x is an alert at the ignition; a large
+   * value is an alert into an exhausted move, which is what the detector's run
+   * gate now refuses. Surfaced so a late alert is diagnosable, not invisible.
+   */
+  runMultiple: number | null;
   /** ISO timestamp of the detection. */
   triggeredAt: string;
 }
@@ -309,6 +321,10 @@ export interface RevivalAlertEntry {
   mcapUsd: number | null;
   atrZ: number;
   rvol: number;
+  /** Pre-ignition baseline price the run gate measured against (USD). */
+  baselinePriceUsd: number | null;
+  /** priceUsd / baselinePriceUsd at fire time — how far it had already run. */
+  runMultiple: number | null;
   /** ISO timestamp of the detection. */
   triggeredAt: string;
   // ---- Outcome (filled by the 24h tracker; peak state lives in the row so

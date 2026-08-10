@@ -185,6 +185,8 @@ describe('buildAlertEntry', () => {
     mcapUsd: 500_000,
     atrZ: 4.2,
     rvol: 6.1,
+    baselinePrice: 0.25,
+    runMultiple: 2,
     triggeredAt: new Date(NOW).toISOString(),
   };
 
