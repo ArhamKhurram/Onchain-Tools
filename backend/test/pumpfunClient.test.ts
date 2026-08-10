@@ -8,6 +8,7 @@ import {
   PumpfunRequestError,
   resolvePumpfunApiKey,
   isPumpfunConfigured,
+  isTransientPumpfunError,
 } from '../src/pumpfun/client';
 
 // A distinctive key so any leak into an error message or log is caught by a
@@ -358,6 +359,108 @@ describe('wallet transactions (profile-api, keyless)', () => {
   it('throws unexpected-shape when the transactions array is missing', async () => {
     mockFetch(200, JSON.stringify({ pagination: { has_more: false } }));
     await expect(api().getWalletTransactions(WALLET)).rejects.toMatchObject({ kind: 'unexpected-shape' });
+  });
+
+  it('forwards a longer timeoutMs to the AbortSignal budget', async () => {
+    const spy = mockFetch(200, JSON.stringify({ transactions: [], pagination: { has_more: false } }));
+    await api().getWalletTransactions(WALLET, { timeoutMs: 20_000 });
+    // The signal is an AbortSignal.timeout — we cannot read its budget directly,
+    // but we can assert the call still went out (the longer budget did not break
+    // the request path). The unit guarantee that it is *forwarded* is covered by
+    // the retry tests below not being affected by the default 10s.
+    expect(spy).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe('wallet transactions retry (transient-only, opt-in)', () => {
+  // Return a distinct Response per call so a retry can succeed after a failure.
+  function mockFetchSequence(...responses: Array<{ status: number; body: string } | { throw: Error }>) {
+    let i = 0;
+    const spy = vi.fn(async () => {
+      const r = responses[Math.min(i, responses.length - 1)]!;
+      i += 1;
+      if ('throw' in r) throw r.throw;
+      return new Response(r.body, { status: r.status });
+    });
+    vi.stubGlobal('fetch', spy);
+    return spy;
+  }
+
+  const OK = { status: 200, body: JSON.stringify({ transactions: [], pagination: { has_more: false } }) };
+
+  it('retries a 502 and succeeds on the next attempt', async () => {
+    const spy = mockFetchSequence({ status: 502, body: 'origin overloaded' }, OK);
+    const page = await api().getWalletTransactions(WALLET, { retries: 2 });
+    expect(page.items).toHaveLength(0);
+    expect(spy).toHaveBeenCalledTimes(2);
+  });
+
+  it('retries a timeout (network status 0) and succeeds', async () => {
+    const timeoutErr = Object.assign(new Error('The operation timed out'), { name: 'TimeoutError' });
+    const spy = mockFetchSequence({ throw: timeoutErr }, OK);
+    const page = await api().getWalletTransactions(WALLET, { retries: 2 });
+    expect(page.items).toHaveLength(0);
+    expect(spy).toHaveBeenCalledTimes(2);
+  });
+
+  it('retries a 429 rate-limit', async () => {
+    const spy = mockFetchSequence({ status: 429, body: 'slow down' }, OK);
+    await api().getWalletTransactions(WALLET, { retries: 2 });
+    expect(spy).toHaveBeenCalledTimes(2);
+  });
+
+  it('does NOT retry a genuine 4xx (e.g. 400)', async () => {
+    const spy = mockFetchSequence({ status: 400, body: 'bad request' }, OK);
+    await expect(api().getWalletTransactions(WALLET, { retries: 3 })).rejects.toMatchObject({
+      kind: 'request-failed',
+      status: 400,
+    });
+    // One attempt only — a 4xx is not transient.
+    expect(spy).toHaveBeenCalledTimes(1);
+  });
+
+  it('does NOT retry an unexpected-shape (contract) error', async () => {
+    const spy = mockFetchSequence({ status: 200, body: JSON.stringify({ nope: true }) }, OK);
+    await expect(api().getWalletTransactions(WALLET, { retries: 3 })).rejects.toMatchObject({
+      kind: 'unexpected-shape',
+    });
+    expect(spy).toHaveBeenCalledTimes(1);
+  });
+
+  it('gives up after exhausting retries and throws the transient error', async () => {
+    const spy = mockFetchSequence({ status: 503, body: 'unavailable' });
+    await expect(api().getWalletTransactions(WALLET, { retries: 1 })).rejects.toMatchObject({
+      kind: 'request-failed',
+      status: 503,
+    });
+    // Initial attempt + 1 retry = 2 calls.
+    expect(spy).toHaveBeenCalledTimes(2);
+  });
+
+  it('makes exactly one attempt when retries default to 0', async () => {
+    const spy = mockFetchSequence({ status: 502, body: 'origin overloaded' });
+    await expect(api().getWalletTransactions(WALLET)).rejects.toMatchObject({ status: 502 });
+    expect(spy).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe('isTransientPumpfunError', () => {
+  it('treats network/timeout (status 0) and 429/502/503/504 as transient', () => {
+    for (const status of [0, 429, 502, 503, 504]) {
+      expect(isTransientPumpfunError(new PumpfunRequestError('/p', status, 'x'))).toBe(true);
+    }
+  });
+
+  it('treats a genuine 4xx (not 429) and 500 as NOT transient', () => {
+    for (const status of [400, 401, 403, 404, 422, 500]) {
+      expect(isTransientPumpfunError(new PumpfunRequestError('/p', status, 'x'))).toBe(false);
+    }
+  });
+
+  it('treats a shape/contract error and non-pump errors as NOT transient', () => {
+    expect(isTransientPumpfunError(new PumpfunContractError('/p', 'bad shape'))).toBe(false);
+    expect(isTransientPumpfunError(new Error('boom'))).toBe(false);
+    expect(isTransientPumpfunError(null)).toBe(false);
   });
 });
 

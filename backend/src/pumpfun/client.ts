@@ -49,8 +49,18 @@ const PROFILE_BASE = 'https://profile-api.pump.fun';
 const SOL_MINT = 'So11111111111111111111111111111111111111112';
 
 // The API answers a settings/console screen, not a fire path — a slow call
-// should fail and let the caller retry rather than hold a request open.
+// should fail and let the caller retry rather than hold a request open. This is
+// the DEFAULT per-request budget; a caller that polls the flaky profile-api on a
+// schedule (the wallet-movement poller) can pass a longer `timeoutMs` without
+// changing it for anyone else.
 const TIMEOUT_MS = 10_000;
+
+// Backoff pacing for the opt-in retry path. Only callers that pass `retries > 0`
+// retry at all; every existing caller keeps its single-attempt behavior. Backoff
+// is exponential (base * 2^attempt) plus a jitter of up to JITTER_MS to avoid a
+// thundering-herd re-hit of an already-overloaded origin.
+const RETRY_BASE_MS = 500;
+const RETRY_JITTER_MS = 250;
 
 // Bound how much vendor error text rides out on a PumpfunRequestError. Enough to
 // carry an actionable message, capped so an HTML error page from a proxy cannot
@@ -140,6 +150,22 @@ export class PumpfunRequestError extends PumpfunError {
     super('request-failed', `pump.fun API call to ${endpoint} failed (${status}): ${detail}`);
     this.name = 'PumpfunRequestError';
   }
+}
+
+/**
+ * True when a failure is worth retrying: a timeout / network drop (status 0) or a
+ * transient upstream condition (429 rate-limit, 502/503/504 origin-overloaded).
+ * A genuine 4xx (bad request, not-found) is NOT transient — retrying it just
+ * re-earns the same rejection — and neither is a shape/auth/config error. Kept as
+ * a free function so the retry wrapper and its tests share one definition.
+ */
+export function isTransientPumpfunError(err: unknown): boolean {
+  if (!(err instanceof PumpfunRequestError)) return false;
+  return err.status === 0 || err.status === 429 || err.status === 502 || err.status === 503 || err.status === 504;
+}
+
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
 /**
@@ -557,6 +583,7 @@ export class PumpfunClient {
   private async profileFetch(
     path: string,
     init: { method: 'GET' } | { method: 'POST'; body: unknown },
+    timeoutMs: number = TIMEOUT_MS,
   ): Promise<unknown> {
     const headers: Record<string, string> = { accept: 'application/json' };
     let body: string | undefined;
@@ -572,7 +599,7 @@ export class PumpfunClient {
         headers,
         body,
         credentials: 'omit',
-        signal: AbortSignal.timeout(TIMEOUT_MS),
+        signal: AbortSignal.timeout(timeoutMs),
       });
     } catch (err) {
       const detail = err instanceof Error && err.name === 'TimeoutError' ? 'timed out' : 'network error';
@@ -595,21 +622,51 @@ export class PumpfunClient {
   }
 
   /**
+   * `profileFetch` with opt-in retry on TRANSIENT failures only (see
+   * isTransientPumpfunError). `retries` is the number of EXTRA attempts after the
+   * first, so `retries: 0` (the default) is exactly one call and behaves like
+   * `profileFetch` did before. A non-transient error (4xx, shape, auth) throws on
+   * the first attempt without burning the budget.
+   */
+  private async profileFetchWithRetry(
+    path: string,
+    init: { method: 'GET' } | { method: 'POST'; body: unknown },
+    timeoutMs: number | undefined,
+    retries: number,
+  ): Promise<unknown> {
+    let attempt = 0;
+    for (;;) {
+      try {
+        return await this.profileFetch(path, init, timeoutMs);
+      } catch (err) {
+        if (attempt >= retries || !isTransientPumpfunError(err)) throw err;
+        const backoff = RETRY_BASE_MS * 2 ** attempt + Math.floor(Math.random() * RETRY_JITTER_MS);
+        await sleep(backoff);
+        attempt += 1;
+      }
+    }
+  }
+
+  /**
    * A wallet's activity (buys/sells/transfers/fee-claims/…), newest first, one
    * cursor page at a time. `dustFilter` defaults true to match the verified call;
    * pass a `cursor` from a prior page's `pagination.nextCursor` to continue. An
    * unknown row `type` is preserved (see parseTransaction), so the returned count
    * reflects the wallet's real activity rather than only the modeled subset.
+   *
+   * `timeoutMs` and `retries` let a scheduled poller of this flaky endpoint take a
+   * longer per-request budget and retry transient failures WITHOUT affecting any
+   * other caller — both default to today's behavior (10s, single attempt).
    */
   async getWalletTransactions(
     wallet: string,
-    opts: { cursor?: string; dustFilter?: boolean } = {},
+    opts: { cursor?: string; dustFilter?: boolean; timeoutMs?: number; retries?: number } = {},
   ): Promise<PumpTransactionsPage> {
     const params = new URLSearchParams();
     params.set('dustFilter', String(opts.dustFilter ?? true));
     if (opts.cursor) params.set('cursor', opts.cursor);
     const path = `/transactions/${encodeURIComponent(wallet)}?${params.toString()}`;
-    const raw = await this.profileFetch(path, { method: 'GET' });
+    const raw = await this.profileFetchWithRetry(path, { method: 'GET' }, opts.timeoutMs, opts.retries ?? 0);
     if (!isRecord(raw) || !Array.isArray(raw.transactions)) {
       throw new PumpfunContractError(path, 'expected { transactions: [...] }');
     }
