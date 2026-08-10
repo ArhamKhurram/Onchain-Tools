@@ -18,12 +18,12 @@ export default function PortfolioWalletPicker({
   const showAll = wallets.length > 1;
 
   return (
-    <label className="flex flex-col gap-1 min-w-[220px]">
-      <span className="font-mono text-[10px] uppercase tracking-[0.14em] text-oct-accent/80">My Wallet</span>
+    <label className="flex flex-col gap-1.5 min-w-[220px]">
+      <span className="oct-eyebrow">My Wallet</span>
       <select
         value={selectedId}
         onChange={(e) => onChange(e.target.value)}
-        className="font-mono text-xs bg-black border-2 border-oct-accent/40 px-3 py-2 text-white focus:outline-none focus:border-oct-accent"
+        className="oct-input font-mono text-xs px-3 py-2"
       >
         {showAll && (
           <option value={PORTFOLIO_ALL_WALLETS}>All Wallets ({wallets.length})</option>

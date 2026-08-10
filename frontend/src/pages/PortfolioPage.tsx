@@ -162,7 +162,7 @@ export default function PortfolioPage() {
   if (!userId) {
     return (
       <div className="flex items-center justify-center h-full p-6 bg-oct-bg">
-        <p className="font-mono text-sm text-white/60">Unable to load account. Try signing in again.</p>
+        <p className="font-mono text-sm text-oct-muted">Unable to load account. Try signing in again.</p>
       </div>
     );
   }
@@ -192,12 +192,12 @@ export default function PortfolioPage() {
 
   return (
     <div className="h-full min-h-0 flex flex-col bg-oct-bg overflow-hidden">
-      <div className="shrink-0 px-4 sm:px-6 py-4 border-b-2 border-oct-accent/30 bg-gradient-to-r from-oct-accent/[0.06] to-transparent">
+      <div className="oct-headerbar shrink-0 px-4 sm:px-6 py-4">
         <div className="flex flex-wrap items-end gap-4 justify-between">
           <div>
-            <p className="font-mono text-[10px] tracking-[0.2em] text-oct-accent mb-1">[ PORTFOLIO ]</p>
-            <h1 className="font-display text-2xl sm:text-3xl text-white tracking-tight">Wallet Dashboard</h1>
-            <p className="font-mono text-[10px] text-white/40 mt-1 max-w-xl">
+            <p className="oct-eyebrow tracking-[0.2em] mb-1.5">[ PORTFOLIO ]</p>
+            <h1 className="font-display text-2xl sm:text-3xl text-oct-text tracking-tight">Wallet Dashboard</h1>
+            <p className="font-mono text-[11px] text-oct-muted mt-1.5 max-w-xl">
               Powered by Birdeye. GMGN is reserved for missed-runner alerts — Portfolio does not call GMGN.
             </p>
           </div>
@@ -210,12 +210,12 @@ export default function PortfolioPage() {
                   selectedId={pickerValue}
                   onChange={handleWalletChange}
                 />
-                <div className="flex">
+                <div className="flex gap-1">
                   <button
                     type="button"
                     onClick={openAddWallet}
                     title="Add wallet"
-                    className="font-mono border-2 border-oct-accent/40 px-2.5 py-2 text-white/70 hover:text-white hover:border-oct-accent transition-colors"
+                    className="oct-icon-btn px-2.5 py-2"
                   >
                     <Plus size={14} />
                   </button>
@@ -225,7 +225,7 @@ export default function PortfolioPage() {
                         type="button"
                         onClick={openEditWallet}
                         title="Edit selected wallet"
-                        className="font-mono border-2 border-l-0 border-oct-accent/40 px-2.5 py-2 text-white/70 hover:text-white hover:border-oct-accent transition-colors"
+                        className="oct-icon-btn px-2.5 py-2"
                       >
                         <Pencil size={14} />
                       </button>
@@ -233,7 +233,7 @@ export default function PortfolioPage() {
                         type="button"
                         onClick={() => setDeleteTarget(selectedWallet)}
                         title="Remove selected wallet"
-                        className="font-mono border-2 border-l-0 border-oct-accent/40 px-2.5 py-2 text-white/70 hover:text-oct-accent hover:border-oct-accent transition-colors"
+                        className="oct-icon-btn px-2.5 py-2 hover:!text-oct-accent"
                       >
                         <Trash2 size={14} />
                       </button>
@@ -243,15 +243,17 @@ export default function PortfolioPage() {
               </div>
             )}
 
-            <div className="flex border-2 border-oct-accent/40">
+            <div className="flex gap-1 p-0.5 rounded-oct border border-oct-border bg-oct-bg">
               {(['7d', '30d'] as PortfolioPeriod[]).map((p) => (
                 <button
                   key={p}
                   type="button"
                   onClick={() => setPeriod(p)}
                   className={[
-                    'font-mono text-[11px] uppercase px-3 py-2 transition-colors',
-                    period === p ? 'bg-oct-accent text-black font-bold' : 'bg-black text-white/60 hover:text-white',
+                    'font-mono text-[11px] uppercase px-3 py-1.5 rounded-oct-sm transition-all',
+                    period === p
+                      ? 'bg-oct-accent text-white font-bold shadow-oct-glow-accent'
+                      : 'text-oct-muted hover:text-oct-text',
                   ].join(' ')}
                 >
                   {p}
@@ -262,7 +264,7 @@ export default function PortfolioPage() {
             <button
               type="button"
               onClick={() => refresh()}
-              className="font-mono text-[11px] uppercase border-2 border-oct-accent/40 px-3 py-2 text-white/70 hover:text-white hover:border-oct-accent inline-flex items-center gap-1"
+              className="oct-icon-btn font-mono text-[11px] uppercase px-3 py-2"
               title="Refresh"
             >
               <RefreshCw size={14} className={loading ? 'animate-spin' : ''} />
@@ -271,13 +273,13 @@ export default function PortfolioPage() {
           </div>
         </div>
 
-        <p className="font-mono text-xs text-white/50 mt-3">
+        <p className="font-mono text-xs text-oct-muted mt-3">
           {isAllWallets ? (
             <span className="text-oct-accent font-semibold">All {dedupedWallets.length} wallets combined</span>
           ) : selectedWallet ? (
             <>
               {selectedWallet.label ? `${selectedWallet.label} · ` : ''}
-              <span className="text-white/70">{selectedWallet.address}</span>
+              <span className="text-oct-text">{selectedWallet.address}</span>
               {isEvmAggregated && (
                 <span className="text-oct-accent"> · ETH · Base · BSC</span>
               )}
@@ -288,21 +290,21 @@ export default function PortfolioPage() {
 
       <div className="flex-1 min-h-0 overflow-y-auto px-4 sm:px-6 py-5 space-y-5">
         {portfolioApiMissing && (
-          <div className="border-2 border-amber-500/50 bg-amber-950/30 px-4 py-3 font-mono text-xs text-amber-200">
-            Portfolio requires <code className="text-amber-100">BIRDEYE_API_KEY</code> on the backend server (Railway).
+          <div className="rounded-oct border border-oct-yellow/50 bg-oct-yellow/10 px-4 py-3 font-mono text-xs text-oct-yellow">
+            Portfolio requires <code className="text-oct-text">BIRDEYE_API_KEY</code> on the backend server (Railway).
           </div>
         )}
 
         {!portfolioApiMissing && (
-          <div className="border border-oct-accent/25 bg-oct-accent/[0.04] px-4 py-2.5 font-mono text-[10px] text-white/45 leading-relaxed">
-            <span className="text-oct-accent/80 uppercase tracking-wider">Rate limits:</span>{' '}
+          <div className="rounded-oct border border-oct-accent/25 bg-oct-accent/[0.05] px-4 py-2.5 font-mono text-[11px] text-oct-muted leading-relaxed">
+            <span className="text-oct-accent uppercase tracking-wider">Rate limits:</span>{' '}
             Birdeye Standard tier caps wallet API traffic (~5 req/s). All Wallets loads many requests — pick one wallet
             if data is slow or errors. Missed-runner alerts use GMGN separately and are unaffected.
           </div>
         )}
 
         {walletActionError && (
-          <div className="border-2 border-red-500/50 bg-red-950/30 px-4 py-3 font-mono text-xs text-red-200 flex items-center justify-between gap-3">
+          <div className="rounded-oct border border-oct-flame/50 bg-oct-flame/10 px-4 py-3 font-mono text-xs text-oct-flame flex items-center justify-between gap-3">
             <span>{walletActionError}</span>
             <button type="button" onClick={() => setWalletActionError(null)} className="text-oct-accent underline hover:no-underline">
               Dismiss
@@ -311,7 +313,7 @@ export default function PortfolioPage() {
         )}
 
         {(statsError || activityError || holdingsError) && !portfolioApiMissing && (
-          <div className="border-2 border-red-500/50 bg-red-950/30 px-4 py-3 font-mono text-xs text-red-200 flex items-center justify-between gap-3">
+          <div className="rounded-oct border border-oct-flame/50 bg-oct-flame/10 px-4 py-3 font-mono text-xs text-oct-flame flex items-center justify-between gap-3">
             <span>{formatPortfolioError(statsError ?? activityError ?? holdingsError)}</span>
             <button type="button" onClick={() => refresh()} className="text-oct-accent underline hover:no-underline">
               Retry
@@ -325,7 +327,7 @@ export default function PortfolioPage() {
           <button
             type="button"
             onClick={() => setChartOpen(true)}
-            className="font-mono text-[11px] uppercase border-2 border-oct-accent/50 px-4 py-2 bg-oct-accent/10 text-white hover:bg-oct-accent hover:text-black inline-flex items-center gap-2 transition-colors"
+            className="oct-icon-btn font-mono text-[11px] uppercase px-4 py-2 gap-2"
           >
             <BarChart3 size={14} />
             PnL Chart
@@ -333,7 +335,7 @@ export default function PortfolioPage() {
           <button
             type="button"
             onClick={() => setCalendarOpen(true)}
-            className="font-mono text-[11px] uppercase border-2 border-oct-accent/50 px-4 py-2 bg-oct-accent/10 text-white hover:bg-oct-accent hover:text-black inline-flex items-center gap-2 transition-colors"
+            className="oct-icon-btn font-mono text-[11px] uppercase px-4 py-2 gap-2"
           >
             <CalendarDays size={14} />
             PnL Calendar

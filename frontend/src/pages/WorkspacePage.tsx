@@ -170,8 +170,8 @@ export default function WorkspacePage() {
         onClose={() => setRoomPick(null)}
       />
       {editMode && (
-        <div className="shrink-0 px-4 py-2 border-t-2 border-black bg-black/80 text-center">
-          <p className="font-mono text-[10px] uppercase tracking-widest text-oct-muted">
+        <div className="oct-headerbar shrink-0 px-4 py-2 text-center">
+          <p className="oct-eyebrow">
             Drag panel headers to reorder · drag splitters to resize · fits your screen
           </p>
         </div>

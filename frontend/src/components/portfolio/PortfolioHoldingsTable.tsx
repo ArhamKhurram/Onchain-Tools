@@ -36,21 +36,21 @@ export default function PortfolioHoldingsTable({
     <section className={`${PORTFOLIO_PANEL} flex flex-col min-h-0`}>
       <div className={PORTFOLIO_PANEL_HEADER}>
         <h2 className={PORTFOLIO_PANEL_TITLE}>Holdings</h2>
-        {loading && <span className="font-mono text-[10px] text-oct-accent/70">Loading…</span>}
+        {loading && <span className="oct-eyebrow text-oct-accent">Loading…</span>}
       </div>
 
       {error && (
-        <p className="px-4 py-3 font-mono text-xs text-red-300">{formatPortfolioError(error)}</p>
+        <p className="px-4 py-3 font-mono text-xs text-oct-flame">{formatPortfolioError(error)}</p>
       )}
 
       {!error && holdings.length === 0 && !loading && (
-        <p className="px-4 py-8 font-mono text-sm text-white/50 text-center">No open positions reported by Birdeye.</p>
+        <p className="px-4 py-10 font-mono text-sm text-oct-muted text-center">No open positions reported by Birdeye.</p>
       )}
 
       {holdings.length > 0 && (
         <div className="overflow-auto">
           <table className="w-full min-w-[720px] text-left font-mono text-xs">
-            <thead className="sticky top-0 bg-black/80 border-b border-oct-accent/25 text-oct-accent/70 uppercase tracking-[0.1em]">
+            <thead className="oct-thead sticky top-0 z-10 text-oct-muted uppercase tracking-[0.1em]">
               <tr>
                 <th className="px-3 py-2">Token</th>
                 <th className="px-3 py-2">Balance</th>
@@ -68,23 +68,23 @@ export default function PortfolioHoldingsTable({
                 const rowChain = (row.chain ?? fallbackChain) as GmgnChain;
                 const pnlPct = toNumber(row.profit_change) * 100;
                 return (
-                  <tr key={`${row.walletLabel ?? ''}-${rowChain}-${addr ?? idx}`} className="border-b border-oct-accent/15 hover:bg-oct-accent/[0.04]">
+                  <tr key={`${row.walletLabel ?? ''}-${rowChain}-${addr ?? idx}`} className="border-b border-oct-border/60 oct-row-hover">
                     <td className="px-3 py-2.5">
                       <div className="flex items-center gap-2 flex-wrap">
                         {showWalletTag && row.walletLabel && (
-                          <span className="font-mono text-[9px] px-1 py-0.5 border border-oct-accent/30 text-oct-accent/90">
+                          <span className="font-mono text-[10px] px-1.5 py-0.5 rounded-oct-sm border border-oct-accent/30 text-oct-accent">
                             {row.walletLabel}
                           </span>
                         )}
                         {showChainTag && (
-                          <span className="font-mono text-[9px] px-1 py-0.5 border border-white/15 text-white/50">
+                          <span className="font-mono text-[10px] px-1.5 py-0.5 rounded-oct-sm border border-oct-border text-oct-muted">
                             {GMGN_CHAIN_SHORT[rowChain] ?? rowChain.toUpperCase()}
                           </span>
                         )}
                         <button
                           type="button"
                           onClick={() => openToken(addr, rowChain)}
-                          className="inline-flex items-center gap-1 text-white font-semibold hover:text-oct-accent disabled:opacity-50"
+                          className="inline-flex items-center gap-1 text-oct-text font-semibold hover:text-oct-accent disabled:opacity-50"
                           disabled={!addr || !templates}
                         >
                           {symbol}
@@ -92,14 +92,14 @@ export default function PortfolioHoldingsTable({
                         </button>
                       </div>
                     </td>
-                    <td className="px-3 py-2.5 text-white/80">{toNumber(row.balance).toLocaleString(undefined, { maximumFractionDigits: 4 })}</td>
-                    <td className="px-3 py-2.5 text-white">{formatUsd(row.usd_value)}</td>
-                    <td className="px-3 py-2.5">{formatUsd(row.total_profit, { signed: true })}</td>
-                    <td className={`px-3 py-2 ${pnlPct >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>
+                    <td className="px-3 py-2.5 text-oct-muted tabular-nums">{toNumber(row.balance).toLocaleString(undefined, { maximumFractionDigits: 4 })}</td>
+                    <td className="px-3 py-2.5 text-oct-text tabular-nums">{formatUsd(row.usd_value)}</td>
+                    <td className="px-3 py-2.5 tabular-nums">{formatUsd(row.total_profit, { signed: true })}</td>
+                    <td className={`px-3 py-2 tabular-nums ${pnlPct >= 0 ? 'text-oct-green' : 'text-oct-flame'}`}>
                       {Number.isFinite(pnlPct) ? `${pnlPct >= 0 ? '+' : ''}${pnlPct.toFixed(1)}%` : '—'}
                     </td>
-                    <td className="px-3 py-2">{formatUsd(row.avg_cost)}</td>
-                    <td className="px-3 py-2">{toNumber(row.buy_tx_count)} / {toNumber(row.sell_tx_count)}</td>
+                    <td className="px-3 py-2 tabular-nums">{formatUsd(row.avg_cost)}</td>
+                    <td className="px-3 py-2 tabular-nums">{toNumber(row.buy_tx_count)} / {toNumber(row.sell_tx_count)}</td>
                   </tr>
                 );
               })}

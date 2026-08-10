@@ -64,15 +64,15 @@ export default function SniperWalletsTable({ wallets }: SniperWalletsTableProps)
 
   return (
     <div className="h-full flex flex-col min-h-0 bg-oct-bg overflow-hidden">
-      <div className="shrink-0 flex items-center gap-2 px-4 py-2.5 border-b-2 border-black bg-oct-surface">
-        <span className="font-mono text-[10px] font-bold uppercase tracking-widest text-oct-muted">view: wallets</span>
+      <div className="oct-headerbar shrink-0 flex items-center gap-2 px-4 py-2.5">
+        <span className="oct-eyebrow">view: wallets</span>
         <div className="flex-1" />
         {notice && <span className="font-mono text-[11px] text-oct-flame">{notice}</span>}
-        <span className="font-mono text-[11px] text-oct-muted">{wallets.wallets.length} wallets</span>
+        <span className="font-mono text-[11px] text-oct-muted tabular-nums">{wallets.wallets.length} wallets</span>
         <button
           type="button"
           onClick={openAdd}
-          className="flex items-center gap-1.5 px-2 py-1 rounded-cockpit text-xs font-bold uppercase text-oct-muted hover:text-oct-text border-2 border-oct-border-bright hover:border-oct-text transition-colors"
+          className="oct-icon-btn flex items-center gap-1.5 px-2.5 py-1.5 text-xs font-bold uppercase"
         >
           <Plus size={12} />
           add
@@ -81,7 +81,7 @@ export default function SniperWalletsTable({ wallets }: SniperWalletsTableProps)
 
       <div className="flex-1 min-h-0 overflow-auto overscroll-contain" style={{ overflowAnchor: 'none' }}>
         <table className="w-full text-left border-collapse min-w-[900px]">
-          <thead className="sticky top-0 bg-oct-surface border-b-2 border-black z-10">
+          <thead className="oct-thead sticky top-0 z-10">
             <tr className="font-mono text-[10px] font-bold uppercase tracking-wider text-oct-muted">
               <th className={TH}>Label</th>
               <th className={TH}>Venue</th>
@@ -98,7 +98,7 @@ export default function SniperWalletsTable({ wallets }: SniperWalletsTableProps)
             {wallets.wallets.map((w) => {
               const b = budgetFor(w.walletId);
               return (
-                <tr key={w.walletId} className="border-b border-oct-border/50 hover:bg-oct-surface-raised/50 transition-colors">
+                <tr key={w.walletId} className="border-b border-oct-border/50 oct-row-hover">
                   <td className="px-3 py-2 text-sm text-oct-text">{w.label || <span className="text-oct-muted">—</span>}</td>
                   <td className="px-3 py-2 font-mono text-xs text-oct-muted">{w.venue}</td>
                   <td className="px-3 py-2 font-mono text-xs text-oct-muted">{w.chain}</td>
@@ -106,11 +106,11 @@ export default function SniperWalletsTable({ wallets }: SniperWalletsTableProps)
                     {truncateAddress(w.address)}
                   </td>
                   <td className="px-3 py-2 font-mono text-xs text-oct-muted">{w.unit}</td>
-                  <td className="px-3 py-2 font-mono text-xs text-oct-text text-right">{w.perFireCap}</td>
-                  <td className="px-3 py-2 font-mono text-xs text-oct-text text-right">
+                  <td className="px-3 py-2 font-mono text-xs text-oct-text text-right tabular-nums">{w.perFireCap}</td>
+                  <td className="px-3 py-2 font-mono text-xs text-oct-text text-right tabular-nums">
                     {(b?.spentToday ?? 0).toLocaleString(undefined, { maximumFractionDigits: 6 })} / {b?.dailyCap ?? w.dailyCap}
                   </td>
-                  <td className="px-3 py-2 font-mono text-xs text-oct-text text-right">
+                  <td className="px-3 py-2 font-mono text-xs text-oct-text text-right tabular-nums">
                     {b?.openPositions ?? 0} / {b?.maxOpen ?? w.maxOpen}
                   </td>
                   <td className="px-3 py-2">
@@ -121,14 +121,14 @@ export default function SniperWalletsTable({ wallets }: SniperWalletsTableProps)
                           setEditing(w);
                           setFormOpen(true);
                         }}
-                        className="px-2 py-0.5 rounded-cockpit text-[10px] font-mono font-bold uppercase border-2 border-oct-border text-oct-muted hover:text-oct-text hover:border-oct-border-bright transition-colors"
+                        className="px-2 py-0.5 rounded-oct-sm text-[10px] font-mono font-bold uppercase border border-oct-border text-oct-muted hover:text-oct-text hover:border-oct-border-bright transition-colors"
                       >
                         edit
                       </button>
                       <button
                         type="button"
                         onClick={() => setDeleting(w)}
-                        className="px-2 py-0.5 rounded-cockpit text-[10px] font-mono font-bold uppercase border-2 border-oct-border text-oct-muted hover:text-oct-accent hover:border-oct-accent transition-colors"
+                        className="px-2 py-0.5 rounded-oct-sm text-[10px] font-mono font-bold uppercase border border-oct-border text-oct-muted hover:text-oct-accent hover:border-oct-accent transition-colors"
                       >
                         delete
                       </button>

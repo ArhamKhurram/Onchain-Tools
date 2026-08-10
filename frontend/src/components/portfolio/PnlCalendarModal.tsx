@@ -54,15 +54,15 @@ export default function PnlCalendarModal({ open, onClose, data, loading, error }
   return (
     <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/80 p-4" onClick={onClose}>
       <div
-        className="bg-oct-surface border-2 border-oct-accent/40 shadow-oct-hard-lg w-full max-w-2xl overflow-hidden"
+        className="oct-card oct-card-flush shadow-oct-soft-lg w-full max-w-2xl overflow-hidden"
         onClick={(e) => e.stopPropagation()}
       >
-        <div className="px-5 py-4 border-b-2 border-oct-accent/30 bg-oct-accent/[0.06] flex items-center justify-between gap-3">
+        <div className="oct-headerbar px-5 py-4 flex items-center justify-between gap-3">
           <div>
-            <h3 className="font-display text-2xl text-white tracking-tight">PnL Calendar</h3>
-            <p className="font-mono text-[10px] text-white/50 mt-1">Daily net PnL from buy/sell USD (estimated)</p>
+            <h3 className="font-display text-2xl text-oct-text tracking-tight">PnL Calendar</h3>
+            <p className="font-mono text-[11px] text-oct-muted mt-1">Daily net PnL from buy/sell USD (estimated)</p>
           </div>
-          <button type="button" onClick={onClose} className="p-1 text-oct-muted hover:text-white">
+          <button type="button" onClick={onClose} className="oct-icon-btn p-1.5">
             <X size={18} />
           </button>
         </div>
@@ -70,7 +70,7 @@ export default function PnlCalendarModal({ open, onClose, data, loading, error }
         <div className="p-5">
           {loading && <p className="font-mono text-xs text-oct-muted text-center py-8">Loading calendar…</p>}
           {!loading && error && (
-            <p className="font-mono text-xs text-red-400 text-center py-8">{formatPortfolioError(error)}</p>
+            <p className="font-mono text-xs text-oct-flame text-center py-8">{formatPortfolioError(error)}</p>
           )}
 
           {!loading && !error && (
@@ -79,15 +79,15 @@ export default function PnlCalendarModal({ open, onClose, data, loading, error }
                 <button
                   type="button"
                   onClick={() => setViewDate(new Date(year, month - 1, 1))}
-                  className="p-1 border border-black text-oct-muted hover:text-white"
+                  className="oct-icon-btn p-1.5"
                 >
                   <ChevronLeft size={16} />
                 </button>
-                <p className="font-mono text-sm uppercase tracking-[0.12em]">{monthLabel}</p>
+                <p className="font-mono text-sm uppercase tracking-[0.12em] text-oct-text">{monthLabel}</p>
                 <button
                   type="button"
                   onClick={() => setViewDate(new Date(year, month + 1, 1))}
-                  className="p-1 border border-black text-oct-muted hover:text-white"
+                  className="oct-icon-btn p-1.5"
                 >
                   <ChevronRight size={16} />
                 </button>
@@ -113,13 +113,13 @@ export default function PnlCalendarModal({ open, onClose, data, loading, error }
                       key={cell.date}
                       title={pnl != null ? `${cell.date}: ${formatUsd(pnl, { signed: true })}` : cell.date}
                       className={[
-                        'aspect-square border border-black/40 flex flex-col items-center justify-center p-1',
-                        positive ? 'bg-emerald-900/40' : negative ? 'bg-red-900/40' : 'bg-oct-bg/30',
+                        'aspect-square rounded-oct-sm border border-oct-border/60 flex flex-col items-center justify-center p-1',
+                        positive ? 'bg-oct-green/15' : negative ? 'bg-oct-flame/15' : 'bg-oct-bg/40',
                       ].join(' ')}
                     >
                       <span className="font-mono text-[10px] text-oct-muted">{dayNum}</span>
                       {pnl != null && (
-                        <span className={`font-mono text-[9px] ${positive ? 'text-emerald-300' : negative ? 'text-red-300' : 'text-oct-muted'}`}>
+                        <span className={`font-mono text-[9px] tabular-nums ${positive ? 'text-oct-green' : negative ? 'text-oct-flame' : 'text-oct-muted'}`}>
                           {formatUsd(pnl, { signed: true })}
                         </span>
                       )}

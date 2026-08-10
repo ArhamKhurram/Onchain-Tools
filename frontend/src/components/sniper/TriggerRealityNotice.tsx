@@ -15,7 +15,7 @@ import { AlertTriangle } from 'lucide-react';
  */
 export default function TriggerRealityNotice() {
   return (
-    <div className="shrink-0 flex items-start gap-2.5 px-4 sm:px-6 py-2.5 border-b-2 border-black border-l-4 border-l-oct-yellow bg-oct-yellow/10">
+    <div className="shrink-0 flex items-start gap-2.5 px-4 sm:px-6 py-2.5 border-b border-oct-border border-l-4 border-l-oct-yellow bg-oct-yellow/10">
       <AlertTriangle size={14} className="text-oct-yellow shrink-0 mt-0.5" strokeWidth={2.5} />
       <p className="font-mono text-[11px] leading-relaxed text-oct-text">
         <strong className="font-bold">Triggers live in Slotshark, not here.</strong> In this alpha OCT does not watch
