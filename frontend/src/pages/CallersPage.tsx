@@ -4,15 +4,17 @@ import { TrendingUp } from 'lucide-react';
 import { useAuthSession } from '../hooks/useAuthSession';
 import ContractDashboard from '../components/ContractDashboard';
 import RadarTable from '../components/callers/RadarTable';
+import RevivalLog from '../components/callers/RevivalLog';
 import ConsoleEmptyState from '../components/console/ConsoleEmptyState';
 import ConsoleSubnav from '../components/console/ConsoleSubnav';
 import { routes } from '../lib/routes';
 
-type CallersView = 'feed' | 'radar';
+type CallersView = 'feed' | 'radar' | 'revival';
 
 const CALLERS_TABS = [
   { id: 'feed' as const, label: 'Contracts' },
   { id: 'radar' as const, label: 'Radar' },
+  { id: 'revival' as const, label: 'Revival' },
 ];
 
 export default function CallersPage() {
@@ -20,7 +22,7 @@ export default function CallersPage() {
   const [searchParams, setSearchParams] = useSearchParams();
   const view = useMemo<CallersView>(() => {
     const q = searchParams.get('view');
-    return q === 'radar' ? 'radar' : 'feed';
+    return q === 'radar' || q === 'revival' ? q : 'feed';
   }, [searchParams]);
 
   const setView = (next: CallersView) => {
@@ -53,7 +55,7 @@ export default function CallersPage() {
   return (
     <div className="h-full min-h-0 flex flex-col bg-oct-bg">
       <ConsoleSubnav tabs={CALLERS_TABS} active={view} onChange={setView} />
-      {view === 'radar' ? <RadarTable /> : <ContractDashboard />}
+      {view === 'radar' ? <RadarTable /> : view === 'revival' ? <RevivalLog /> : <ContractDashboard />}
     </div>
   );
 }

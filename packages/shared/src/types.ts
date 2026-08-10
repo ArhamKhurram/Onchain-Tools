@@ -284,6 +284,49 @@ export interface RevivalAlertData {
   triggeredAt: string;
 }
 
+/**
+ * A persisted revival alert row (JSON log in local mode, `revival_alerts` in
+ * hosted mode). Captures the numbers AT the moment of ignition plus the
+ * outcome fields the 24h tracker fills in afterwards — so a missed alert can
+ * be reviewed later ("it fired at $412K mcap and peaked at 3.1×").
+ */
+export interface RevivalAlertEntry {
+  id: string;
+  /** Solana mint address. */
+  mint: string;
+  symbol: string | null;
+  /** Network the detection ran on. Solana-only today. */
+  network: string;
+  /** Price at the moment the alert fired (last 1m close, USD). */
+  priceUsd: number | null;
+  /** Market-cap estimate at the moment the alert fired (USD). */
+  mcapUsd: number | null;
+  atrZ: number;
+  rvol: number;
+  /** ISO timestamp of the detection. */
+  triggeredAt: string;
+  // ---- Outcome (filled by the 24h tracker; peak state lives in the row so
+  // ---- tracking survives restarts) ----
+  /** Highest price observed since the alert (USD). */
+  peakPriceUsd: number | null;
+  /** Market-cap at the peak price (USD). */
+  peakMcapUsd: number | null;
+  /** peakPriceUsd / priceUsd-at-alert. */
+  peakMultiple: number | null;
+  /** ISO timestamp of the peak observation. */
+  peakAt: string | null;
+  /** Set once the 24h outcome window ends; null while still tracking. */
+  outcomeWindowClosedAt: string | null;
+}
+
+/** Partial outcome update written by the tracker (only on improvement/close). */
+export type RevivalOutcomePatch = Partial<
+  Pick<
+    RevivalAlertEntry,
+    'peakPriceUsd' | 'peakMcapUsd' | 'peakMultiple' | 'peakAt' | 'outcomeWindowClosedAt'
+  >
+>;
+
 // ---------------------------------------------------------------------------
 // Workspace layout (persisted per user)
 // ---------------------------------------------------------------------------

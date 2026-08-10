@@ -1,9 +1,11 @@
 import { configStore } from '../config/store.js';
 import { contractLog } from '../utils/contractLog.js';
+import { revivalAlertLog } from '../utils/revivalAlertLog.js';
 import { pumpSessionStore } from '../pumpfun/pumpSessionStore.js';
 import type { PumpSession, StorageProvider } from './interface.js';
 import type { AppConfig, Room } from '../discord/types.js';
 import type { ContractEntry, ContractEnrichmentPatch, EnrichContractOptions } from '../utils/contractLog.js';
+import type { RevivalAlertEntry, RevivalOutcomePatch } from '@oct/shared';
 
 /**
  * JSON file-backed storage provider for local (single-user) mode.
@@ -108,5 +110,17 @@ export class JsonStorageProvider implements StorageProvider {
 
   async cacheUserName(_userId: string, discordUserId: string, displayName: string): Promise<void> {
     configStore.cacheUserName(discordUserId, displayName);
+  }
+
+  async logRevivalAlert(_userId: string, alert: RevivalAlertEntry): Promise<RevivalAlertEntry> {
+    return revivalAlertLog.log(alert);
+  }
+
+  async listRevivalAlerts(_userId: string, limit?: number): Promise<RevivalAlertEntry[]> {
+    return revivalAlertLog.list(limit);
+  }
+
+  async updateRevivalAlertOutcome(_userId: string, alertId: string, outcome: RevivalOutcomePatch): Promise<void> {
+    revivalAlertLog.updateOutcome(alertId, outcome);
   }
 }
