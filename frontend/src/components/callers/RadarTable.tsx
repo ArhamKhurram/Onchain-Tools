@@ -547,22 +547,24 @@ export default function RadarTable({ embedded: _embedded = false }: { embedded?:
 
   return (
     <div className="h-full flex flex-col min-h-0 bg-oct-bg overflow-hidden">
-      <div className="shrink-0 flex items-center gap-2 px-4 py-2.5 border-b-2 border-black bg-oct-surface">
-        <span className="font-mono text-[10px] font-bold uppercase tracking-widest text-oct-muted">view: tokens</span>
-        {(['1h', '4h', '24h', 'all'] as const).map((w) => (
-          <button
-            key={w}
-            type="button"
-            onClick={() => setWindowFilter(w)}
-            className={`px-2 py-1 rounded-cockpit text-xs font-mono font-bold border-2 transition-all duration-100 ${
-              windowFilter === w
-                ? 'bg-oct-accent text-white border-black shadow-oct-hard-sm'
-                : 'text-oct-muted border-transparent hover:text-oct-text hover:border-oct-border-bright'
-            }`}
-          >
-            {w}
-          </button>
-        ))}
+      <div className="oct-headerbar shrink-0 flex items-center gap-2 px-4 py-2.5">
+        <span className="oct-eyebrow">view: tokens</span>
+        <div className="flex gap-1">
+          {(['1h', '4h', '24h', 'all'] as const).map((w) => (
+            <button
+              key={w}
+              type="button"
+              onClick={() => setWindowFilter(w)}
+              className={`px-2.5 py-1 rounded-oct-sm text-[11px] font-mono font-bold border transition-all ${
+                windowFilter === w
+                  ? 'bg-oct-accent text-white border-oct-accent/50 shadow-oct-glow-accent'
+                  : 'text-oct-muted border-transparent hover:text-oct-text hover:border-oct-border-bright'
+              }`}
+            >
+              {w}
+            </button>
+          ))}
+        </div>
         <RadarSettings
           mentionWindow={mentionWindow}
           onMentionWindowChange={setMentionWindow}
@@ -574,9 +576,9 @@ export default function RadarTable({ embedded: _embedded = false }: { embedded?:
           <button
             type="button"
             onClick={() => setRevealMuted((v) => !v)}
-            className={`flex items-center gap-1.5 px-2 py-1 rounded-cockpit text-xs font-bold uppercase border-2 transition-colors ${
+            className={`flex items-center gap-1.5 px-2.5 py-1 rounded-oct-sm text-[11px] font-mono font-bold uppercase border transition-all ${
               revealMuted
-                ? 'bg-oct-accent text-white border-black'
+                ? 'bg-oct-accent text-white border-oct-accent/50 shadow-oct-glow-accent'
                 : 'text-oct-muted border-oct-border-bright hover:text-oct-text hover:border-oct-text'
             }`}
             title="Tokens only muted callers have posted"
@@ -585,14 +587,14 @@ export default function RadarTable({ embedded: _embedded = false }: { embedded?:
             {mutedOnlyCount} muted
           </button>
         )}
-        <span className="font-mono text-[11px] text-oct-muted">
+        <span className="font-mono text-[11px] font-semibold text-oct-muted tabular-nums">
           {rows.length} tokens
         </span>
         <button
           type="button"
           onClick={refreshAll}
           disabled={refreshing}
-          className="flex items-center gap-1.5 px-2 py-1 rounded-cockpit text-xs font-bold uppercase text-oct-muted hover:text-oct-text border-2 border-oct-border-bright hover:border-oct-text transition-colors"
+          className="oct-icon-btn px-2.5 py-1.5 text-[11px] font-mono font-bold uppercase"
         >
           <RefreshCw size={12} className={refreshing ? 'animate-spin' : ''} />
           refresh
@@ -601,8 +603,8 @@ export default function RadarTable({ embedded: _embedded = false }: { embedded?:
 
       <div className="flex-1 min-h-0 overflow-auto overscroll-contain" style={{ overflowAnchor: 'none' }}>
         <table className="w-full text-left border-collapse min-w-[900px]">
-          <thead className="sticky top-0 bg-oct-surface border-b-2 border-black z-10">
-            <tr className="font-mono text-[10px] font-bold uppercase tracking-wider text-oct-muted">
+          <thead className="oct-thead sticky top-0 z-10">
+            <tr className="font-mono text-[11px] font-bold uppercase tracking-[0.1em] text-oct-muted">
               <SortHeader<SortKey> label="Token" sortKey="token" activeKey={sortKey} dir={sortDir} onSort={handleSort} />
               {activeColumns.map((col) =>
                 col === 'windowMentions' ? (
@@ -654,7 +656,7 @@ export default function RadarTable({ embedded: _embedded = false }: { embedded?:
               return (
                 <tr
                   key={r.address}
-                  className="border-b border-oct-border/50 hover:bg-oct-surface-raised/50 transition-colors"
+                  className="border-b border-oct-border/50 oct-row-hover"
                 >
                   <td className="px-3 py-2">
                     <div className="flex items-center gap-2 min-w-0 max-w-[260px]">
@@ -673,12 +675,12 @@ export default function RadarTable({ embedded: _embedded = false }: { embedded?:
                             {ticker}
                           </span>
                           {tag === 'crowded' && (
-                            <span className="shrink-0 text-[9px] font-mono uppercase px-1.5 py-0.5 rounded-cockpit bg-oct-accent/15 text-oct-accent">
+                            <span className="shrink-0 text-[10px] font-mono font-semibold uppercase px-1.5 py-0.5 rounded-full bg-oct-accent/15 text-oct-accent">
                               crowded
                             </span>
                           )}
                           {tag === 'early' && (
-                            <span className="shrink-0 text-[9px] font-mono uppercase px-1.5 py-0.5 rounded-cockpit bg-green-500/15 text-green-400">
+                            <span className="shrink-0 text-[10px] font-mono font-semibold uppercase px-1.5 py-0.5 rounded-full bg-oct-green/15 text-oct-green">
                               early
                             </span>
                           )}
@@ -699,7 +701,7 @@ export default function RadarTable({ embedded: _embedded = false }: { embedded?:
                         className="shrink-0 p-1 rounded hover:bg-oct-surface text-oct-muted hover:text-oct-text transition-colors"
                         title="Copy address"
                       >
-                        {isCopied ? <Check size={13} className="text-green-400" /> : <Copy size={13} />}
+                        {isCopied ? <Check size={13} className="text-oct-green" /> : <Copy size={13} />}
                       </button>
                     </div>
                   </td>
@@ -759,7 +761,7 @@ export default function RadarTable({ embedded: _embedded = false }: { embedded?:
                                 the radar was the one place that withheld that. */}
                             {r.firstCallerBand && bandIsNotable(r.firstCallerBand) && (
                               <span
-                                className={`text-[9px] font-bold uppercase px-1 py-0.5 rounded-cockpit mr-1 align-middle ${BAND_BADGE_CLASS[r.firstCallerBand]}`}
+                                className={`text-[10px] font-bold uppercase px-1.5 py-0.5 rounded-full mr-1 align-middle ${BAND_BADGE_CLASS[r.firstCallerBand]}`}
                                 title={BAND_TITLE[r.firstCallerBand]}
                               >
                                 {BAND_LABELS[r.firstCallerBand]}
@@ -792,7 +794,7 @@ export default function RadarTable({ embedded: _embedded = false }: { embedded?:
                         return (
                           <td key={col} className="px-3 py-2 text-right font-mono text-sm tabular-nums">
                             {mult != null ? (
-                              <span className={mult >= 1 ? 'text-green-400' : 'text-oct-accent'}>
+                              <span className={mult >= 1 ? 'text-oct-green' : 'text-oct-accent'}>
                                 {mult.toFixed(1)}x
                               </span>
                             ) : (
@@ -836,8 +838,9 @@ export default function RadarTable({ embedded: _embedded = false }: { embedded?:
             })}
             {rows.length === 0 && (
               <tr>
-                <td colSpan={2 + activeColumns.length} className="px-4 py-16 text-center text-sm text-oct-muted">
-                  No tokens in this window. Contracts from Feed will aggregate here.
+                <td colSpan={2 + activeColumns.length} className="px-4 py-20 text-center">
+                  <p className="oct-eyebrow mb-2">Radar</p>
+                  <p className="text-sm text-oct-muted">No tokens in this window. Contracts from Feed will aggregate here.</p>
                 </td>
               </tr>
             )}
