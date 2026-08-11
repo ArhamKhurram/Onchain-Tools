@@ -29,6 +29,7 @@ import {
   type CallerStatDelta,
   type CalloutObservation,
 } from './callerBoardStore.js';
+import { postCalloutsToDiscord } from './calloutDiscord.js';
 
 const DEFAULT_INTERVAL_MS = Number.parseInt(process.env.PUMP_CALLOUT_POLL_INTERVAL_MS ?? '', 10) || 12_000;
 const IDLE_INTERVAL_MS = Number.parseInt(process.env.PUMP_CALLOUT_IDLE_INTERVAL_MS ?? '', 10) || 60_000;
@@ -164,6 +165,13 @@ class PumpCalloutPoller {
           const matched = fresh.filter((c) => trackers.has(c.callerAddress));
           if (matched.length > 0) await this.dispatch(matched, trackers);
         }
+
+        // Public Discord-channel post — LAST, so it can never delay or break the
+        // WS/Pushover delivery above, and driven from `fresh` (one post per
+        // callout) rather than from the per-follower loop inside dispatch(). It
+        // reads its OWN operator-configured caller set, never `trackers`: the
+        // follow graph must not become public. Default OFF; no-ops when unset.
+        await postCalloutsToDiscord(fresh);
       }
 
       if (newestId && newestId !== cursor) await setCalloutPollState(newestId, true);

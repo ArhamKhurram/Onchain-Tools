@@ -5,7 +5,8 @@
 // Retiring the FOMO commands removed the only paginated, thumbnailed and
 // PnL-badged surfaces, so makeNavRow / makeThumbnail / makeSection / pnlBadge
 // went with them. What's left is what /ping, /token, alerts and announcements
-// actually render.
+// actually render — plus makeSection/makeThumbnail, which came back for the
+// pump.fun callout cards (a caller's avatar next to their headline).
 
 export const BRAND = {
   red: 0xed4245,
@@ -44,6 +45,20 @@ export function makeText(content: string) {
 /** Media gallery — a single full-width image (Components V2 type 12). */
 export function makeImage(url: string) {
   return { type: 12, items: [{ media: { url } }] };
+}
+
+/** Thumbnail accessory (Components V2 type 11) — only valid inside a section. */
+export function makeThumbnail(url: string) {
+  return { type: 11, media: { url } };
+}
+
+/**
+ * Section (Components V2 type 9): up to three text components with one accessory
+ * (a thumbnail or a button) floated to the right. This is the only V2 shape that
+ * puts a small image *beside* text — makeImage is a full-width gallery.
+ */
+export function makeSection(components: any[], accessory: any) {
+  return { type: 9, components, accessory };
 }
 
 export function makeContainer(accentColor: number, components: any[]) {
