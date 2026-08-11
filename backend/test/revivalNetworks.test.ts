@@ -418,6 +418,26 @@ describe('per-cycle coverage summary', () => {
     expect(formatCycleSummary(starved)).toContain('paused early');
   });
 
+  it('surfaces drawdown-blocked tokens, and only when the gate held something', () => {
+    // The drawdown gate has no persisted column (no migration), so this line
+    // is the only record of how often it is rejecting consolidations.
+    const base = {
+      universeSize: 20,
+      scanned: 15,
+      requests: 19,
+      rateLimited: 0,
+      pollMs: DEFAULT_POLL_MS,
+      pausedEarly: false,
+    };
+    const held = summarizeCycle({ ...base, drawdownBlocked: 2 });
+    expect(held.drawdownBlocked).toBe(2);
+    expect(formatCycleSummary(held)).toContain('2 drawdown-blocked');
+    // Omitted (pre-gate caller shape) defaults to 0 and stays off the line.
+    const quiet = summarizeCycle(base);
+    expect(quiet.drawdownBlocked).toBe(0);
+    expect(formatCycleSummary(quiet)).not.toContain('drawdown');
+  });
+
   it('refuses to invent a sweep time for a cycle that scanned nothing', () => {
     const s = summarizeCycle({
       universeSize: 40,

@@ -73,6 +73,21 @@ export interface RevivalDetectorConfig {
    * ignition, not the middle of the move.
    */
   maxRunFromBaseline: number;
+  /**
+   * Drawdown gate: a dormant window only counts as revival-eligible when its
+   * baseline price sits at least this far below the trailing peak hourly close
+   * over the `dormancyPeakLookbackMs` span preceding the window (0.35 = the
+   * baseline must be ≥35% below the peak). Volume collapse alone is not death:
+   * a token consolidating near its highs goes quiet WITHOUT drawing down, and
+   * that shape is a continuation/breakout setup, not a revival (see the TOAD
+   * plateau case on the default below).
+   *
+   * The lookback is deliberately the same `dormancyPeakLookbackMs` the volume
+   * collapse is measured over — dormancy is already defined as "quiet relative
+   * to the token's own prior 72h", so "died" is measured against the same era
+   * rather than through a second knob that could drift out of sync with it.
+   */
+  minDrawdownFromPeak: number;
 }
 
 export const DEFAULT_REVIVAL_CONFIG: RevivalDetectorConfig = {
@@ -101,6 +116,24 @@ export const DEFAULT_REVIVAL_CONFIG: RevivalDetectorConfig = {
   // and the wider end is preferred because the cost of a slightly-late alert is
   // far lower than the cost of silently dropping a real revival.
   maxRunFromBaseline: 3.0,
+  // 0.35 is calibrated against labeled cases, not chosen for roundness:
+  //   MANLET (Solana, true positive) — dormant baseline ~0.00027 vs trailing
+  //     peak ~0.0009 → ~70% drawdown → passes comfortably.
+  //   UP (Robinhood, true positive) — baseline ~0.077 vs peak ~0.133 → ~42%
+  //     drawdown → passes. This is the BINDING CONSTRAINT on the upper side:
+  //     pushing the threshold past ~40% starts killing real revivals. Do not
+  //     raise it without re-labelling cases first.
+  //   TOAD plateau (the false alert this gate exists to kill, Aug 10-11) —
+  //     ran to ~0.0137, chopped ~0.011-0.016 for ~20h, then went genuinely
+  //     quiet (hourly vol $87-150K vs prior-run 6h windows over $6M — the
+  //     relative volume-collapse gate flags this as dormancy). Plateau
+  //     baseline ~0.0120 vs peak ~0.0164 → ~27% drawdown → BLOCKED. The
+  //     breakout to 0.0215 was only ~1.7x above the plateau, so the run gate
+  //     passed and the alert fired AT the all-time high.
+  // 0.35 sits between TOAD's 27% and UP's 42% with roughly symmetric margin;
+  // the drawdown of a consolidation is bounded by its own chop range, so the
+  // separation is structural, not lucky.
+  minDrawdownFromPeak: 0.35,
 };
 
 export interface RevivalEvaluation {
@@ -127,6 +160,25 @@ export interface RevivalEvaluation {
   runMultiple: number | null;
   /** False when runMultiple > cfg.maxRunFromBaseline (the "already ran" veto). */
   runGate: boolean;
+  /**
+   * Max hourly close over the dormancyPeakLookbackMs span PRECEDING the
+   * dormant window. Null when no dormant window was found or the lookback
+   * held no usable closes.
+   */
+  trailingPeakPrice: number | null;
+  /**
+   * 1 - baselinePrice / trailingPeakPrice — how far the token had DIED from
+   * its trailing peak before going quiet. Negative when the dormant window
+   * sits above the prior peak. Null when either side is unknown.
+   */
+  drawdownFromPeak: number | null;
+  /**
+   * False when drawdownFromPeak < cfg.minDrawdownFromPeak (the "never died"
+   * veto). True (abstain) when drawdownFromPeak is null — missing data is not
+   * evidence of a consolidation, and dormancy has already gated the signal;
+   * the abstention is visible as trailingPeakPrice/drawdownFromPeak == null.
+   */
+  drawdownGate: boolean;
 }
 
 const NOT_FIRED_COLD: RevivalEvaluation = {
@@ -140,6 +192,9 @@ const NOT_FIRED_COLD: RevivalEvaluation = {
   baselinePrice: null,
   runMultiple: null,
   runGate: false,
+  trailingPeakPrice: null,
+  drawdownFromPeak: null,
+  drawdownGate: false,
 };
 
 /** Sentinel for "baseline had zero variance / zero volume but current is hot". */
@@ -321,6 +376,38 @@ export function resolveBaselinePrice(
 }
 
 /**
+ * Trailing peak: the MAX hourly close over the `dormancyPeakLookbackMs` span
+ * strictly BEFORE the dormant window. This is the price the token "died" from;
+ * the drawdown gate compares the dormant window's baseline against it.
+ *
+ * The lookback reuses dormancyPeakLookbackMs on purpose (see the config doc):
+ * the volume-collapse gate already defines the token's "prior life" as that
+ * span, and the drawdown must be measured against the same era.
+ *
+ * Max, not median: a revival is measured from the top the token fell from —
+ * a single-wick close can't inflate it because these are hourly CLOSES, and
+ * understating the peak (mean/median would) shrinks real drawdowns and starts
+ * vetoing genuine revivals.
+ *
+ * Returns null when the lookback holds no usable closes — the caller must
+ * ABSTAIN (missing history is not evidence of a consolidation) while surfacing
+ * the abstention on the verdict.
+ */
+export function resolveTrailingPeak(
+  hourCandles: Candle[],
+  window: DormancyWindow,
+  cfg: RevivalDetectorConfig = DEFAULT_REVIVAL_CONFIG,
+): number | null {
+  const from = window.fromMs - cfg.dormancyPeakLookbackMs;
+  let peak: number | null = null;
+  for (const c of sortValid(hourCandles)) {
+    if (c.ts < from || c.ts >= window.fromMs) continue;
+    if (peak == null || c.close > peak) peak = c.close;
+  }
+  return peak;
+}
+
+/**
  * The full ATR-gate revival check. Fires only when ALL hold:
  *  1. warmup — ≥ warmupMs span of 1m history (and enough candles for ATR);
  *  2. ATR% expansion — z ≥ atrZThreshold vs trailing baseline, with an
@@ -328,7 +415,10 @@ export function resolveBaselinePrice(
  *  3. RVOL — last-window volume ≥ rvolThreshold × trailing per-window average;
  *  4. relative dormancy within the recent window (see isRecentlyDormant);
  *  5. the run gate — price is still within maxRunFromBaseline × the dormant
- *     window's median close, i.e. the token has not ALREADY run.
+ *     window's median close, i.e. the token has not ALREADY run;
+ *  6. the drawdown gate — the dormant window's baseline sits at least
+ *     minDrawdownFromPeak below the trailing peak, i.e. the token actually
+ *     DIED before going quiet.
  *
  * Gate 5 exists because gates 2-4 all stay true deep into a move: the ATR% and
  * RVOL baselines are still averaging over the dormant period, and "was dormant
@@ -336,6 +426,13 @@ export function resolveBaselinePrice(
  * detector alerts later and higher the harder a token runs, which is precisely
  * backwards (observed in prod: TOAD alerted at $16-17M, ~600x off its
  * pre-ignition baseline).
+ *
+ * Gate 6 exists because dormancy measures VOLUME collapse only. A token
+ * consolidating near its highs has volume collapse without drawdown; the quiet
+ * plateau then becomes the baseline, a mere breakout reads as a small run
+ * multiple, and every other gate passes — observed in prod the night after the
+ * run gate shipped: TOAD alerted AGAIN at $20.6M, at its all-time high, off a
+ * ~27%-below-peak plateau. A revival requires the token to have died first.
  *
  * Cooldowns and repeat suppression are the caller's job (poller state).
  */
@@ -405,8 +502,21 @@ export function evaluateRevival(
     baselinePrice != null && baselinePrice > 0 ? price / baselinePrice : null;
   const runGate = runMultiple == null || runMultiple <= cfg.maxRunFromBaseline;
 
+  // --- Gate 6: the drawdown gate ("did it actually die?") ---
+  // Same abstention rule as the run gate: an unknowable trailing peak (or
+  // baseline) is not evidence of a consolidation, so a null drawdown passes —
+  // but the verdict records the abstention via the null fields.
+  const trailingPeakPrice =
+    dormancyWindow != null ? resolveTrailingPeak(hourCandles, dormancyWindow, cfg) : null;
+  const drawdownFromPeak =
+    baselinePrice != null && trailingPeakPrice != null && trailingPeakPrice > 0
+      ? 1 - baselinePrice / trailingPeakPrice
+      : null;
+  const drawdownGate =
+    drawdownFromPeak == null || drawdownFromPeak >= cfg.minDrawdownFromPeak;
+
   return {
-    fired: atrGate && rvolGate && dormant && runGate,
+    fired: atrGate && rvolGate && dormant && runGate && drawdownGate,
     warmedUp: true,
     atrPct: current.atrPct,
     atrZ,
@@ -416,5 +526,8 @@ export function evaluateRevival(
     baselinePrice,
     runMultiple,
     runGate,
+    trailingPeakPrice,
+    drawdownFromPeak,
+    drawdownGate,
   };
 }

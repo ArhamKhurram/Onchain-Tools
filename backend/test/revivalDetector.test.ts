@@ -5,6 +5,7 @@ import {
   evaluateRevival,
   isRecentlyDormant,
   resolveBaselinePrice,
+  resolveTrailingPeak,
   type Candle,
 } from '../src/revival/detector.js';
 import {
@@ -77,12 +78,15 @@ function hours(specs: HourSpec[]): Candle[] {
 }
 
 /**
- * ~78h of hourly history: busy past, collapsed last 6h — classic fader.
- * `price` is the pre-ignition baseline the run gate measures against.
+ * ~78h of hourly history: busy past at `peakPrice`, collapsed last 6h at
+ * `price` — classic fader. `price` is the pre-ignition baseline the run gate
+ * measures against; `peakPrice` is the trailing peak the DRAWDOWN gate
+ * measures against (default 2× the baseline = a 50% drawdown, comfortably
+ * revival-eligible — a token that died, not one consolidating at its highs).
  */
-function fadedHours(price = 1): Candle[] {
+function fadedHours(price = 1, peakPrice = price * 2): Candle[] {
   return hours([
-    { fromHour: 78, toHour: 8, volumePerHour: 50_000, price },
+    { fromHour: 78, toHour: 8, volumePerHour: 50_000, price: peakPrice },
     { fromHour: 8, toHour: 0, volumePerHour: 500, price },
   ]);
 }
@@ -103,16 +107,17 @@ function ignitionTo(price: number): MinuteSpec {
 }
 
 /**
- * A labeled true positive: dormant at `baseline` for 16h, then igniting to
- * `trigger`. Used to prove the run gate keeps the revivals we want.
+ * A labeled true positive: ran to `priorPeak`, died back to `baseline`, went
+ * dormant for 16h, then ignited to `trigger`. Used to prove the run and
+ * drawdown gates keep the revivals we want.
  */
-function labelledRevival(baseline: number, trigger: number) {
+function labelledRevival(baseline: number, trigger: number, priorPeak = baseline * 2) {
   return {
     minute: minutes([
       { fromMin: 960, toMin: 5, price: baseline, rangePct: 0.001, volumePerMin: 10, every: 5 },
       ignitionTo(trigger),
     ]),
-    hour: fadedHours(baseline),
+    hour: fadedHours(baseline, priorPeak),
   };
 }
 
@@ -207,7 +212,9 @@ describe('evaluateRevival — the run gate ("has it already run?")', () => {
     const runPrice = 0.06; // 600× the baseline
 
     const hourCandles = hours([
-      { fromHour: 78, toHour: 8, volumePerHour: 50_000, price: baseline },
+      // Active era at 4× the dormant baseline (75% drawdown): the drawdown
+      // gate is satisfied on purpose so the run gate stays the ONLY blocker.
+      { fromHour: 78, toHour: 8, volumePerHour: 50_000, price: baseline * 4 },
       // Still-dormant hours at the old price…
       { fromHour: 8, toHour: 2, volumePerHour: 500, price: baseline },
       // …then two hours of run. The newest qualifying dormant window spans the
@@ -230,6 +237,7 @@ describe('evaluateRevival — the run gate ("has it already run?")', () => {
     expect(r.dormant).toBe(true);
     expect(r.atrZ!).toBeGreaterThanOrEqual(DEFAULT_REVIVAL_CONFIG.atrZThreshold);
     expect(r.rvol!).toBeGreaterThanOrEqual(DEFAULT_REVIVAL_CONFIG.rvolThreshold);
+    expect(r.drawdownGate).toBe(true); // 75% drawdown — a genuine prior death
 
     // …and the run gate is the only thing holding it.
     expect(r.baselinePrice).toBeCloseTo(baseline, 10);
@@ -238,35 +246,43 @@ describe('evaluateRevival — the run gate ("has it already run?")', () => {
     expect(r.fired).toBe(false);
   });
 
-  it('MANLET-shaped (~2.0× above baseline) MUST still fire — the binding lower constraint', () => {
-    // Solana, Aug 10. Pre-ignition hourly closes ~0.00027; the good trigger was
-    // at ~0.000543. Anyone tempted to tighten maxRunFromBaseline to 1.5× would
-    // start dropping real revivals — this test is the tripwire.
-    const { minute, hour } = labelledRevival(0.00027, 0.000543);
+  it('MANLET-shaped (~2.0× above baseline, ~70% drawdown) MUST still fire — the binding lower constraint', () => {
+    // Solana, Aug 10. Ran to ~0.0009, died to hourly closes ~0.00027; the good
+    // trigger was at ~0.000543. Anyone tempted to tighten maxRunFromBaseline
+    // to 1.5× would start dropping real revivals — this test is the tripwire.
+    const { minute, hour } = labelledRevival(0.00027, 0.000543, 0.0009);
     const r = evaluateRevival(minute, hour, NOW);
 
     expect(r.baselinePrice).toBeCloseTo(0.00027, 10);
     expect(r.runMultiple!).toBeGreaterThan(1.9);
     expect(r.runMultiple!).toBeLessThan(2.1);
     expect(r.runGate).toBe(true);
+    expect(r.drawdownFromPeak!).toBeCloseTo(0.7, 2);
+    expect(r.drawdownGate).toBe(true);
     expect(r.fired).toBe(true);
   });
 
-  it('UP-shaped (~1.2× above baseline) MUST still fire', () => {
-    // Robinhood. Baseline ~0.077-0.08, trigger ~0.0959.
-    const { minute, hour } = labelledRevival(0.078, 0.0959);
+  it('UP-shaped (~1.2× above baseline, ~42% drawdown) MUST still fire — the binding UPPER drawdown constraint', () => {
+    // Robinhood. Peak ~0.133, baseline ~0.077-0.08, trigger ~0.0959. At ~42%
+    // drawdown this is the shallowest labeled true positive: pushing
+    // minDrawdownFromPeak past ~40% starts killing real revivals — this test
+    // is the tripwire on the drawdown side.
+    const { minute, hour } = labelledRevival(0.078, 0.0959, 0.133);
     const r = evaluateRevival(minute, hour, NOW);
 
     expect(r.runMultiple!).toBeGreaterThan(1.15);
     expect(r.runMultiple!).toBeLessThan(1.3);
     expect(r.runGate).toBe(true);
+    expect(r.drawdownFromPeak!).toBeGreaterThan(0.4);
+    expect(r.drawdownFromPeak!).toBeLessThan(0.43);
+    expect(r.drawdownGate).toBe(true);
     expect(r.fired).toBe(true);
   });
 
   it('separates all three labeled cases at the default threshold', () => {
     // The calibration itself, asserted rather than left in a comment.
-    const manletCase = labelledRevival(0.00027, 0.000543);
-    const upCase = labelledRevival(0.078, 0.0959);
+    const manletCase = labelledRevival(0.00027, 0.000543, 0.0009);
+    const upCase = labelledRevival(0.078, 0.0959, 0.133);
     const manlet = evaluateRevival(manletCase.minute, manletCase.hour, NOW);
     const up = evaluateRevival(upCase.minute, upCase.hour, NOW);
     const threshold = DEFAULT_REVIVAL_CONFIG.maxRunFromBaseline;
@@ -293,7 +309,88 @@ describe('evaluateRevival — the run gate ("has it already run?")', () => {
     expect(r.baselinePrice).toBeNull();
     expect(r.runMultiple).toBeNull();
     expect(r.runGate).toBe(true);
+    // The drawdown gate abstains the same way — the trailing peak is known
+    // but a drawdown vs a missing baseline is not, and the abstention is
+    // recorded on the verdict rather than silently vetoing (or passing).
+    expect(r.trailingPeakPrice).toBe(2);
+    expect(r.drawdownFromPeak).toBeNull();
+    expect(r.drawdownGate).toBe(true);
     expect(r.fired).toBe(true);
+  });
+});
+
+/**
+ * The drawdown gate. Dormancy measures VOLUME collapse only; this gate is the
+ * "did it actually die?" precondition. Calibration: MANLET ~70% and UP ~42%
+ * (both asserted in the run-gate suite above) pass; UP binds the upper limit.
+ */
+describe('evaluateRevival — the drawdown gate ("did it actually die?")', () => {
+  it('REGRESSION (TOAD plateau): consolidation at the highs does NOT fire — the drawdown gate is the ONLY blocker', () => {
+    // The prod failure of Aug 11, the night after the run gate shipped. TOAD
+    // ran to ~0.0137, chopped ~0.011-0.016 for ~20h on heavy volume, then had
+    // a genuinely quiet spell (hourly vol $87-150K vs prior-run 6h windows
+    // over $6M — the RELATIVE volume-collapse gate flags that as dormancy).
+    // The quiet plateau became the baseline, so the 0.0215 breakout read as a
+    // mere ~1.7x "run" and the 3.0x run gate waved it through: the alert
+    // fired at $20.6M — the all-time high. A consolidation near the highs has
+    // volume collapse WITHOUT drawdown; that shape is a continuation
+    // breakout, not a revival.
+    const plateau = 0.012;
+    const chopHigh = 0.0164;
+    const breakout = 0.0215;
+
+    const hourCandles = hours([
+      // The run up.
+      { fromHour: 78, toHour: 28, volumePerHour: 800_000, price: 0.0137 },
+      // ~20h of chop near the highs, still heavy (~$6M per 6h window).
+      { fromHour: 28, toHour: 8, volumePerHour: 1_000_000, price: chopHigh },
+      // The quiet plateau — volume collapsed, price did NOT.
+      { fromHour: 8, toHour: 0, volumePerHour: 120_000, price: plateau },
+    ]);
+    const m = minutes([
+      { fromMin: 960, toMin: 5, price: plateau, rangePct: 0.001, volumePerMin: 10, every: 5 },
+      ignitionTo(breakout),
+    ]);
+
+    const r = evaluateRevival(m, hourCandles, NOW);
+
+    // Every other gate passes — the point of the case.
+    expect(r.warmedUp).toBe(true);
+    expect(r.dormant).toBe(true); // volume collapse alone flags dormancy
+    expect(r.atrZ!).toBeGreaterThanOrEqual(DEFAULT_REVIVAL_CONFIG.atrZThreshold);
+    expect(r.rvol!).toBeGreaterThanOrEqual(DEFAULT_REVIVAL_CONFIG.rvolThreshold);
+    expect(r.baselinePrice).toBeCloseTo(plateau, 10);
+    expect(r.runMultiple!).toBeGreaterThan(1.6);
+    expect(r.runMultiple!).toBeLessThan(1.9);
+    expect(r.runGate).toBe(true); // the bug: the breakout reads as a small run
+
+    // …and the drawdown gate is the only thing holding it.
+    expect(r.trailingPeakPrice).toBeCloseTo(chopHigh, 10);
+    expect(r.drawdownFromPeak!).toBeCloseTo(1 - plateau / chopHigh, 3); // ~27%
+    expect(r.drawdownFromPeak!).toBeLessThan(DEFAULT_REVIVAL_CONFIG.minDrawdownFromPeak);
+    expect(r.drawdownGate).toBe(false);
+    expect(r.fired).toBe(false);
+  });
+});
+
+describe('resolveTrailingPeak', () => {
+  it('takes the max hourly close over the lookback PRECEDING the window', () => {
+    const window = { fromMs: NOW - 6 * HOUR, toMs: NOW };
+    const candles = hours([
+      { fromHour: 78, toHour: 30, volumePerHour: 100, price: 0.9 },
+      { fromHour: 30, toHour: 6, volumePerHour: 100, price: 2 },
+      // Inside the window — a high close here must NOT count as the peak the
+      // token "died from".
+      { fromHour: 6, toHour: 0, volumePerHour: 100, price: 5 },
+    ]);
+    expect(resolveTrailingPeak(candles, window)).toBe(2);
+  });
+
+  it('returns null when the lookback holds no usable closes (abstain upstream)', () => {
+    const window = { fromMs: NOW - 6 * HOUR, toMs: NOW };
+    const onlyInsideWindow = hours([{ fromHour: 6, toHour: 0, volumePerHour: 100, price: 5 }]);
+    expect(resolveTrailingPeak(onlyInsideWindow, window)).toBeNull();
+    expect(resolveTrailingPeak([], window)).toBeNull();
   });
 });
 
@@ -319,8 +416,11 @@ describe('resolveBaselinePrice', () => {
  * leaving the run state, not elapsed time.
  */
 describe('evaluateRunSuppression', () => {
-  const running = { dormant: true, runMultiple: 2.4 };
-  const backToBaseline = { dormant: true, runMultiple: 1.05 };
+  const running = { dormant: true, runMultiple: 2.4, drawdownFromPeak: 0.5 };
+  /** Crashed back down (≥35% off the trailing peak) AND went quiet again. */
+  const backToBaseline = { dormant: true, runMultiple: 1.05, drawdownFromPeak: 0.6 };
+  /** Went quiet AT the top: volume-only "dormancy", price never died. */
+  const plateauAtTop = { dormant: true, runMultiple: 1.05, drawdownFromPeak: 0.15 };
 
   it('lets a first-ever ignition through', () => {
     expect(evaluateRunSuppression(undefined, running, NOW).suppress).toBe(false);
@@ -349,9 +449,44 @@ describe('evaluateRunSuppression', () => {
 
   it('will not re-open on an unknown baseline', () => {
     const prior = { alertedAt: NOW - 5 * HOUR };
-    const d = evaluateRunSuppression(prior, { dormant: true, runMultiple: null }, NOW);
+    const d = evaluateRunSuppression(
+      prior,
+      { dormant: true, runMultiple: null, drawdownFromPeak: null },
+      NOW,
+    );
     expect(d.suppress).toBe(true);
     expect(d.reason).toBe('unknown-baseline');
+  });
+
+  it('a post-alert plateau at the top does NOT re-arm — quiet is not dead', () => {
+    // The token alerted, ran, then went quiet near its highs. Volume-only
+    // dormancy plus a near-1x multiple vs the NEW (plateau) baseline would
+    // have re-armed it for exactly the consolidation-breakout false alert the
+    // detector's drawdown gate blocks (TOAD, Aug 11). The suppression's
+    // "returned to dormancy" check must demand the same drawdown.
+    const prior = { alertedAt: NOW - 5 * HOUR };
+    const d = evaluateRunSuppression(prior, plateauAtTop, NOW);
+    expect(d.suppress).toBe(true);
+    expect(d.reason).toBe('no-drawdown');
+  });
+
+  it('a genuine crash back down (drawdown + volume collapse) DOES re-arm', () => {
+    const prior = { alertedAt: NOW - 5 * HOUR };
+    expect(evaluateRunSuppression(prior, backToBaseline, NOW).suppress).toBe(false);
+  });
+
+  it('will not re-open on an unknown drawdown', () => {
+    // Same rule as the unknown baseline: the detector abstains from vetoing
+    // on missing data, but "we cannot tell" must not re-open the loudest
+    // alert in the app.
+    const prior = { alertedAt: NOW - 5 * HOUR };
+    const d = evaluateRunSuppression(
+      prior,
+      { dormant: true, runMultiple: 1.05, drawdownFromPeak: null },
+      NOW,
+    );
+    expect(d.suppress).toBe(true);
+    expect(d.reason).toBe('unknown-drawdown');
   });
 
   it('lapses at the absolute ceiling however the token is behaving', () => {
@@ -359,20 +494,25 @@ describe('evaluateRunSuppression', () => {
     expect(evaluateRunSuppression(prior, running, NOW).suppress).toBe(false);
   });
 
-  it('full sequence: alert → suppressed through the run → alert again after dormancy', () => {
+  it('full sequence: alert → suppressed through the run AND the top plateau → alert again after a real crash', () => {
     let state: { alertedAt: number } | undefined;
-    const fire = (at: number, verdict: { dormant: boolean; runMultiple: number | null }) => {
+    const fire = (
+      at: number,
+      verdict: { dormant: boolean; runMultiple: number | null; drawdownFromPeak: number | null },
+    ) => {
       if (evaluateRunSuppression(state, verdict, at).suppress) return false;
       state = { alertedAt: at };
       return true;
     };
 
-    expect(fire(NOW, { dormant: true, runMultiple: 1.1 })).toBe(true);
+    expect(fire(NOW, { dormant: true, runMultiple: 1.1, drawdownFromPeak: 0.55 })).toBe(true);
     // The run continues; every detector gate keeps passing for hours.
     expect(fire(NOW + 70 * MINUTE, running)).toBe(false);
     expect(fire(NOW + 3 * HOUR, running)).toBe(false);
-    expect(fire(NOW + 5 * HOUR, running)).toBe(false);
-    // It finally rounds back down and goes quiet again — that is a new setup.
+    // It stalls near the top: quiet, near the fresh plateau baseline — but it
+    // never died, so it stays suppressed.
+    expect(fire(NOW + 5 * HOUR, plateauAtTop)).toBe(false);
+    // It finally crashes back down and goes quiet again — that is a new setup.
     expect(fire(NOW + 8 * HOUR, backToBaseline)).toBe(true);
   });
 });
