@@ -6,6 +6,7 @@ import {
   Search,
   TrendingUp,
   User,
+  UserPlus,
   Zap,
   type LucideIcon,
 } from 'lucide-react';
@@ -23,6 +24,8 @@ export function alertBorderClass(type: Alert['type']): string {
       return 'border-l-orange-400';
     case 'pump_callout':
       return 'border-l-purple-400';
+    case 'fomo_join':
+      return 'border-l-teal-400';
     case 'revival':
       return 'border-l-red-500';
     case 'breakout':
@@ -45,6 +48,8 @@ export function alertIcon(type: Alert['type']): LucideIcon {
       return Search;
     case 'pump_callout':
       return Megaphone;
+    case 'fomo_join':
+      return UserPlus;
     case 'revival':
       return Flame;
     case 'breakout':
@@ -66,6 +71,8 @@ export function alertIconClass(type: Alert['type']): string {
       return 'text-orange-400';
     case 'pump_callout':
       return 'text-purple-400';
+    case 'fomo_join':
+      return 'text-teal-400';
     case 'revival':
       return 'text-red-500';
     case 'breakout':

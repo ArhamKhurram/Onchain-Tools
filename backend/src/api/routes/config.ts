@@ -132,6 +132,7 @@ export function createConfigRoutes(ctx: RouterContext): Router {
             keyword: Boolean(discordBotDm.triggers?.keyword),
             missedRunner: Boolean(discordBotDm.triggers?.missedRunner),
             releaseNotes: Boolean(discordBotDm.triggers?.releaseNotes),
+            dailyDigest: Boolean(discordBotDm.triggers?.dailyDigest),
           },
         },
       }),

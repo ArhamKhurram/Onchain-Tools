@@ -85,6 +85,19 @@ export default function DiscordBotSection({ form }: { form: SettingsForm }) {
             </p>
           </div>
 
+          <div className="mt-4 pt-4 border-t border-oct-border">
+            <Toggle
+              value={discordBotDm.triggers.dailyDigest}
+              onChange={(v) => setTrigger('dailyDigest', v)}
+              label="Daily digest"
+            />
+            <p className="text-xs text-oct-muted mt-1.5">
+              One DM a day summarizing your last 24h: revival alerts and their peak
+              multiples, the day's top pump.fun callouts, and the caller-board movers.
+              Not a live signal, so it's a separate opt-in like release notes.
+            </p>
+          </div>
+
           <p className="text-xs text-oct-muted mt-3">
             Signal-convergence alerts aren't available over DM yet — they're raised in the browser
             rather than on the server. Use Pushover for those.

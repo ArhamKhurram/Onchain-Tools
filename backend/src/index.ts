@@ -24,6 +24,7 @@ import { createBotRouter } from './api/routes/bot.js';
 import { createSniperRouter } from './api/sniper/router.js';
 import { requireBotAuth } from './auth/botAuth.js';
 import { startBot } from './bot/index.js';
+import { startDailyDigestScheduler } from './bot/dailyDigest.js';
 import { getStorageProvider, isHostedMode } from './storage/index.js';
 import { authMiddleware } from './auth/middleware.js';
 import { getGateway, setGateway } from './gateway/state.js';
@@ -39,6 +40,7 @@ import type { MessageProcessorContext } from './utils/messageProcessor.js';
 import { sendPushover } from './utils/pushover.js';
 import { broadcastFrontendAlerts } from './utils/frontendAlerts.js';
 import { startFomoPoller } from './fomo/poller.js';
+import { startFomoJoinWatcher } from './fomo/joinWatcher.js';
 import { startPumpCalloutPoller } from './pumpfun/calloutPoller.js';
 import { startWalletMovementPoller } from './wallets/movementPoller.js';
 import { startFomoRetentionSweeper } from './fomo/retention.js';
@@ -709,6 +711,10 @@ httpServer.listen(PORT, HOST, async () => {
   // Global FOMO fan-out poller. Self-gates: idle without a shared FOMO service
   // account (FOMO_REFRESH_TOKEN) or Supabase, so this never crashes the server.
   startFomoPoller(wsServer);
+  // Global FOMO new-join watcher (notable accounts joining fomo.family IS the
+  // signal). Self-gates exactly like the poller above: idle without Supabase
+  // or the shared FOMO refresh token.
+  startFomoJoinWatcher(wsServer);
   // Keeps the FOMO trade log from growing without bound; the console only ever
   // replays the last day of it.
   startFomoRetentionSweeper();
@@ -733,6 +739,11 @@ httpServer.listen(PORT, HOST, async () => {
   // In-process OCT Discord bot. Self-gates on DISCORD_BOT_TOKEN and swallows
   // its own failures, so it can never take the backend down.
   startBot(wsServer);
+
+  // Once-a-day signal digest DMs (opt-in). Self-gates on Supabase + the bot
+  // token; if the process was down at the scheduled hour it waits for the next
+  // one rather than sending a stale digest on boot.
+  startDailyDigestScheduler();
 
   if (!isHostedMode()) {
     const storage = getStorageProvider();

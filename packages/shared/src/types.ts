@@ -205,6 +205,13 @@ export interface DiscordBotTriggers {
    * changelog posts.
    */
   releaseNotes: boolean;
+  /**
+   * Once-a-day signal digest DM (revival alert outcomes, top pump.fun
+   * callouts, caller-board movers). Like releaseNotes this is not a live
+   * market signal, so it is its own opt-in — turning on alert DMs is not
+   * asking for a daily summary. Default off.
+   */
+  dailyDigest: boolean;
 }
 
 export interface DiscordBotDmConfig {

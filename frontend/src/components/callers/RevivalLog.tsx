@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import { Flame, RefreshCw } from 'lucide-react';
 import ConsoleEmptyState from '../console/ConsoleEmptyState';
+import RevivalStats from './RevivalStats';
 import { useAppStore } from '../../stores/appStore';
 import { API_BASE, apiFetch } from '../../stores/appStore.helpers';
 import {
@@ -125,6 +126,8 @@ export default function RevivalLog() {
           refresh
         </button>
       </div>
+
+      <RevivalStats alerts={alerts} fetchLimit={200} />
 
       <div className="flex-1 min-h-0 overflow-auto overscroll-contain" style={{ overflowAnchor: 'none' }}>
         <table className="w-full text-left border-collapse min-w-[920px]">
