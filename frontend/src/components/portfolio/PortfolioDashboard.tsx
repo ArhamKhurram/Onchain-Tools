@@ -1,0 +1,402 @@
+import { useEffect, useMemo, useState } from 'react';
+import { BarChart3, CalendarDays, PieChart, Plus, Pencil, RefreshCw, Trash2 } from 'lucide-react';
+import ConsoleEmptyState from '../console/ConsoleEmptyState';
+import ConfirmModal from '../ConfirmModal';
+import HoldingWalletFormModal, { type HoldingWalletFormValues } from '../wallets/HoldingWalletFormModal';
+import PortfolioActivityFeed from './PortfolioActivityFeed';
+import PortfolioHoldingsTable from './PortfolioHoldingsTable';
+import PortfolioSummary from './PortfolioSummary';
+import PortfolioWalletPicker from './PortfolioWalletPicker';
+import PnlCalendarModal from './PnlCalendarModal';
+import PnlChartModal from './PnlChartModal';
+import { useAuthSession } from '../../hooks/useAuthSession';
+import { useHoldingWallets } from '../../hooks/useHoldingWallets';
+import type { HoldingWallet } from '../../types/holdingWallets';
+import {
+  getStoredPortfolioWalletId,
+  PORTFOLIO_ALL_WALLETS,
+  setStoredPortfolioWalletId,
+  usePortfolio,
+  usePortfolioPnlDaily,
+} from '../../hooks/usePortfolio';
+import { routes } from '../../lib/routes';
+import type { PortfolioPeriod } from '../../types/portfolio';
+import { aggregateDailyPnlFromActivity, formatPortfolioError, isEvmWalletChain } from '../../types/portfolio';
+
+export default function PortfolioDashboard() {
+  const { isAuthenticated, ready, userId } = useAuthSession();
+  const { wallets, loading: walletsLoading, createWallet, updateWallet, deleteWallet } =
+    useHoldingWallets(userId);
+  const [selectedWalletId, setSelectedWalletId] = useState<string | null>(
+    () => getStoredPortfolioWalletId() ?? PORTFOLIO_ALL_WALLETS,
+  );
+  const [period, setPeriod] = useState<PortfolioPeriod>('30d');
+  const [chartOpen, setChartOpen] = useState(false);
+  const [calendarOpen, setCalendarOpen] = useState(false);
+  // Wallet management now lives here (formerly the Wallets → My Wallets tab):
+  // add via the +, edit/remove the selected wallet. No separate list — the
+  // picker is the list.
+  const [formMode, setFormMode] = useState<'add' | 'edit'>('add');
+  const [formOpen, setFormOpen] = useState(false);
+  const [deleteTarget, setDeleteTarget] = useState<HoldingWallet | null>(null);
+  const [walletActionError, setWalletActionError] = useState<string | null>(null);
+
+  const {
+    stats,
+    holdings,
+    activity,
+    loading,
+    statsError,
+    holdingsError,
+    activityError,
+    birdeyeMissing,
+    portfolioApiMissing,
+    totalHoldingsUsd,
+    isAllWallets,
+    refresh,
+    dedupedWallets,
+  } = usePortfolio(wallets, selectedWalletId, period);
+
+  const selectedWallet = useMemo(() => {
+    if (selectedWalletId === PORTFOLIO_ALL_WALLETS) return null;
+    return dedupedWallets.find((w) => w.id === selectedWalletId) ?? dedupedWallets[0] ?? null;
+  }, [dedupedWallets, selectedWalletId]);
+
+  useEffect(() => {
+    if (dedupedWallets.length === 0) return;
+    if (selectedWalletId === PORTFOLIO_ALL_WALLETS) return;
+    const exists = dedupedWallets.some((w) => w.id === selectedWalletId);
+    if (!exists) {
+      const next = dedupedWallets.length > 1 ? PORTFOLIO_ALL_WALLETS : dedupedWallets[0].id;
+      setSelectedWalletId(next);
+      setStoredPortfolioWalletId(next);
+    }
+  }, [dedupedWallets, selectedWalletId]);
+
+  const pnlEnabled = chartOpen || calendarOpen;
+  const { data: pnlFetched, loading: pnlLoading, error: pnlError } = usePortfolioPnlDaily(
+    wallets,
+    selectedWalletId,
+    period,
+    pnlEnabled,
+  );
+
+  const pnlFromActivity = useMemo(
+    () => aggregateDailyPnlFromActivity(activity, period),
+    [activity, period],
+  );
+
+  const pnlData = useMemo(() => {
+    if (pnlFetched && pnlFetched.days.length > 0) return pnlFetched;
+    return pnlFromActivity;
+  }, [pnlFetched, pnlFromActivity]);
+
+  const handleWalletChange = (id: string) => {
+    setSelectedWalletId(id);
+    setStoredPortfolioWalletId(id);
+  };
+
+  const openAddWallet = () => {
+    setWalletActionError(null);
+    setFormMode('add');
+    setFormOpen(true);
+  };
+
+  const openEditWallet = () => {
+    if (!selectedWallet) return;
+    setWalletActionError(null);
+    setFormMode('edit');
+    setFormOpen(true);
+  };
+
+  const handleWalletSubmit = async (values: HoldingWalletFormValues) => {
+    if (formMode === 'edit' && selectedWallet) {
+      await updateWallet(selectedWallet.id, values);
+    } else {
+      const created = await createWallet(values);
+      setSelectedWalletId(created.id);
+      setStoredPortfolioWalletId(created.id);
+    }
+  };
+
+  const handleWalletDelete = async () => {
+    if (!deleteTarget) return;
+    try {
+      await deleteWallet(deleteTarget.id);
+      if (selectedWalletId === deleteTarget.id) {
+        setSelectedWalletId(PORTFOLIO_ALL_WALLETS);
+        setStoredPortfolioWalletId(PORTFOLIO_ALL_WALLETS);
+      }
+    } catch (err) {
+      setWalletActionError(err instanceof Error ? err.message : 'Failed to remove wallet.');
+    }
+    setDeleteTarget(null);
+  };
+
+  const isEvmAggregated = selectedWallet ? isEvmWalletChain(selectedWallet.chain) : false;
+  const pickerValue = selectedWalletId ?? (dedupedWallets.length > 1 ? PORTFOLIO_ALL_WALLETS : dedupedWallets[0]?.id ?? '');
+
+  if (!ready) {
+    return (
+      <div className="flex items-center justify-center h-full bg-oct-bg">
+        <div className="w-6 h-6 border-2 border-oct-accent border-t-transparent rounded-full animate-spin" />
+      </div>
+    );
+  }
+
+  if (!isAuthenticated) {
+    return (
+      <ConsoleEmptyState
+        icon={PieChart}
+        eyebrow="[ PORTFOLIO ]"
+        title="Sign in to view portfolio"
+        description="Portfolio pulls Birdeye stats, holdings, and trade history for the buy wallets you save here."
+        actionLabel="SIGN IN"
+        actionTo={routes.login}
+        secondaryLabel="← Back to console home"
+        secondaryTo={routes.home}
+      />
+    );
+  }
+
+  if (!userId) {
+    return (
+      <div className="flex items-center justify-center h-full p-6 bg-oct-bg">
+        <p className="font-mono text-sm text-oct-muted">Unable to load account. Try signing in again.</p>
+      </div>
+    );
+  }
+
+  if (!walletsLoading && wallets.length === 0) {
+    return (
+      <>
+        <ConsoleEmptyState
+          icon={PieChart}
+          eyebrow="[ PORTFOLIO ]"
+          title="Add your first wallet"
+          description="Portfolio tracks the buy wallets you save here. Add a SOL, Base, BSC, ETH, or Robinhood (HOOD) address to see holdings, PnL and activity."
+          actionLabel="ADD WALLET"
+          onActionClick={openAddWallet}
+          secondaryLabel="← Back to console home"
+          secondaryTo={routes.home}
+        />
+        <HoldingWalletFormModal
+          open={formOpen}
+          mode="add"
+          onClose={() => setFormOpen(false)}
+          onSubmit={handleWalletSubmit}
+        />
+      </>
+    );
+  }
+
+  return (
+    <div className="h-full min-h-0 flex flex-col bg-oct-bg overflow-hidden">
+      <div className="oct-headerbar shrink-0 px-4 sm:px-6 py-4">
+        <div className="flex flex-wrap items-end gap-4 justify-between">
+          <div>
+            <p className="oct-eyebrow tracking-[0.2em] mb-1.5">[ PORTFOLIO ]</p>
+            <h1 className="font-display text-2xl sm:text-3xl text-oct-text tracking-tight">Wallet Dashboard</h1>
+            <p className="font-mono text-[11px] text-oct-muted mt-1.5 max-w-xl">
+              Powered by Birdeye. GMGN is reserved for missed-runner alerts — Portfolio does not call GMGN.
+            </p>
+          </div>
+
+          <div className="flex flex-wrap items-end gap-3">
+            {dedupedWallets.length > 0 && (
+              <div className="flex items-end gap-2">
+                <PortfolioWalletPicker
+                  wallets={dedupedWallets}
+                  selectedId={pickerValue}
+                  onChange={handleWalletChange}
+                />
+                <div className="flex gap-1">
+                  <button
+                    type="button"
+                    onClick={openAddWallet}
+                    title="Add wallet"
+                    className="oct-icon-btn px-2.5 py-2"
+                  >
+                    <Plus size={14} />
+                  </button>
+                  {selectedWallet && (
+                    <>
+                      <button
+                        type="button"
+                        onClick={openEditWallet}
+                        title="Edit selected wallet"
+                        className="oct-icon-btn px-2.5 py-2"
+                      >
+                        <Pencil size={14} />
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setDeleteTarget(selectedWallet)}
+                        title="Remove selected wallet"
+                        className="oct-icon-btn px-2.5 py-2 hover:!text-oct-accent"
+                      >
+                        <Trash2 size={14} />
+                      </button>
+                    </>
+                  )}
+                </div>
+              </div>
+            )}
+
+            <div className="flex gap-1 p-0.5 rounded-oct border border-oct-border bg-oct-bg">
+              {(['7d', '30d'] as PortfolioPeriod[]).map((p) => (
+                <button
+                  key={p}
+                  type="button"
+                  onClick={() => setPeriod(p)}
+                  className={[
+                    'font-mono text-[11px] uppercase px-3 py-1.5 rounded-oct-sm transition-all',
+                    period === p
+                      ? 'bg-oct-accent text-white font-bold shadow-oct-glow-accent'
+                      : 'text-oct-muted hover:text-oct-text',
+                  ].join(' ')}
+                >
+                  {p}
+                </button>
+              ))}
+            </div>
+
+            <button
+              type="button"
+              onClick={() => refresh()}
+              className="oct-icon-btn font-mono text-[11px] uppercase px-3 py-2"
+              title="Refresh"
+            >
+              <RefreshCw size={14} className={loading ? 'animate-spin' : ''} />
+              Refresh
+            </button>
+          </div>
+        </div>
+
+        <p className="font-mono text-xs text-oct-muted mt-3">
+          {isAllWallets ? (
+            <span className="text-oct-accent font-semibold">All {dedupedWallets.length} wallets combined</span>
+          ) : selectedWallet ? (
+            <>
+              {selectedWallet.label ? `${selectedWallet.label} · ` : ''}
+              <span className="text-oct-text">{selectedWallet.address}</span>
+              {isEvmAggregated && (
+                <span className="text-oct-accent"> · ETH · Base · BSC</span>
+              )}
+            </>
+          ) : null}
+        </p>
+      </div>
+
+      <div className="flex-1 min-h-0 overflow-y-auto px-4 sm:px-6 py-5 space-y-5">
+        {portfolioApiMissing && (
+          <div className="rounded-oct border border-oct-yellow/50 bg-oct-yellow/10 px-4 py-3 font-mono text-xs text-oct-yellow">
+            Portfolio requires <code className="text-oct-text">BIRDEYE_API_KEY</code> on the backend server (Railway).
+          </div>
+        )}
+
+        {!portfolioApiMissing && (
+          <div className="rounded-oct border border-oct-accent/25 bg-oct-accent/[0.05] px-4 py-2.5 font-mono text-[11px] text-oct-muted leading-relaxed">
+            <span className="text-oct-accent uppercase tracking-wider">Rate limits:</span>{' '}
+            Birdeye Standard tier caps wallet API traffic (~5 req/s). All Wallets loads many requests — pick one wallet
+            if data is slow or errors. Missed-runner alerts use GMGN separately and are unaffected.
+          </div>
+        )}
+
+        {walletActionError && (
+          <div className="rounded-oct border border-oct-flame/50 bg-oct-flame/10 px-4 py-3 font-mono text-xs text-oct-flame flex items-center justify-between gap-3">
+            <span>{walletActionError}</span>
+            <button type="button" onClick={() => setWalletActionError(null)} className="text-oct-accent underline hover:no-underline">
+              Dismiss
+            </button>
+          </div>
+        )}
+
+        {(statsError || activityError || holdingsError) && !portfolioApiMissing && (
+          <div className="rounded-oct border border-oct-flame/50 bg-oct-flame/10 px-4 py-3 font-mono text-xs text-oct-flame flex items-center justify-between gap-3">
+            <span>{formatPortfolioError(statsError ?? activityError ?? holdingsError)}</span>
+            <button type="button" onClick={() => refresh()} className="text-oct-accent underline hover:no-underline">
+              Retry
+            </button>
+          </div>
+        )}
+
+        <PortfolioSummary stats={stats} totalHoldingsUsd={totalHoldingsUsd} loading={loading} />
+
+        <div className="flex flex-wrap gap-2">
+          <button
+            type="button"
+            onClick={() => setChartOpen(true)}
+            className="oct-icon-btn font-mono text-[11px] uppercase px-4 py-2 gap-2"
+          >
+            <BarChart3 size={14} />
+            PnL Chart
+          </button>
+          <button
+            type="button"
+            onClick={() => setCalendarOpen(true)}
+            className="oct-icon-btn font-mono text-[11px] uppercase px-4 py-2 gap-2"
+          >
+            <CalendarDays size={14} />
+            PnL Calendar
+          </button>
+        </div>
+
+        <div className="grid grid-cols-1 xl:grid-cols-2 gap-5 min-h-0">
+          <PortfolioHoldingsTable
+            holdings={holdings}
+            chain={selectedWallet?.chain ?? 'robinhood'}
+            loading={loading}
+            error={holdingsError}
+            needsPrivateKey={false}
+            showChainTag={isEvmAggregated || isAllWallets}
+            showWalletTag={isAllWallets}
+          />
+          <PortfolioActivityFeed
+            activity={activity}
+            chain={selectedWallet?.chain ?? 'robinhood'}
+            loading={loading}
+            error={activityError}
+            showChainTag={isEvmAggregated || isAllWallets}
+            showWalletTag={isAllWallets}
+          />
+        </div>
+      </div>
+
+      <PnlChartModal
+        open={chartOpen}
+        onClose={() => setChartOpen(false)}
+        data={pnlData}
+        loading={pnlLoading && pnlData.days.length === 0}
+        error={pnlData.days.length === 0 ? pnlError : null}
+      />
+      <PnlCalendarModal
+        open={calendarOpen}
+        onClose={() => setCalendarOpen(false)}
+        data={pnlData}
+        loading={pnlLoading && pnlData.days.length === 0}
+        error={pnlData.days.length === 0 ? pnlError : null}
+      />
+
+      <HoldingWalletFormModal
+        open={formOpen}
+        mode={formMode}
+        wallet={formMode === 'edit' ? selectedWallet : null}
+        onClose={() => setFormOpen(false)}
+        onSubmit={handleWalletSubmit}
+      />
+      <ConfirmModal
+        open={!!deleteTarget}
+        title="Remove wallet"
+        message={
+          deleteTarget
+            ? `Remove ${deleteTarget.label?.trim() || deleteTarget.address} from your portfolio? This only stops tracking it here.`
+            : ''
+        }
+        confirmLabel="Remove"
+        onConfirm={handleWalletDelete}
+        onCancel={() => setDeleteTarget(null)}
+      />
+    </div>
+  );
+}

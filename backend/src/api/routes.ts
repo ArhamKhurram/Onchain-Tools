@@ -14,6 +14,7 @@ import { createMessagingRoutes } from './routes/messaging.js';
 import { createContractsRoutes } from './routes/contracts.js';
 import { createAlertsRoutes } from './routes/alerts.js';
 import { createRevivalRoutes } from './routes/revival.js';
+import { createJournalRoutes } from './routes/journal.js';
 import { createCallersRoutes } from './routes/callers.js';
 import { createAdminRoutes } from './routes/admin.js';
 import { createPushoverRoutes } from './routes/pushover.js';
@@ -36,6 +37,7 @@ export function createRouter(wsServer: WsServer): Router {
   router.use(createContractsRoutes(ctx));  // /tokens/*/snapshot, /contracts*
   router.use(createAlertsRoutes(ctx));     // /alerts/missed-runner/test
   router.use(createRevivalRoutes(ctx));    // /revival/alerts
+  router.use(createJournalRoutes(ctx));    // /journal/*
   router.use(createCallersRoutes(ctx));    // /callers/scores
   router.use(createAdminRoutes(wsServer)); // /admin/stats (operator only)
   router.use(createPushoverRoutes(ctx));   // /pushover/signal-convergence

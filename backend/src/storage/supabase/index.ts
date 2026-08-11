@@ -1,7 +1,13 @@
 import type { PumpSession, StorageProvider } from '../interface.js';
 import type { AppConfig, Room } from '../../discord/types.js';
 import type { ContractEntry, ContractEnrichmentPatch, EnrichContractOptions } from '../../utils/contractLog.js';
-import type { RevivalAlertEntry, RevivalOutcomePatch } from '@oct/shared';
+import type {
+  JournalPosition,
+  JournalTrade,
+  JournalWallet,
+  RevivalAlertEntry,
+  RevivalOutcomePatch,
+} from '@oct/shared';
 import { createServiceClient, SupabaseContext } from './client.js';
 import { ConfigRepo } from './configRepo.js';
 import { TokensRepo } from './tokensRepo.js';
@@ -11,6 +17,7 @@ import { ContractsRepo } from './contractsRepo.js';
 import { TelegramRepo } from './telegramRepo.js';
 import { UserCacheRepo } from './userCacheRepo.js';
 import { RevivalAlertsRepo } from './revivalAlertsRepo.js';
+import { JournalRepo } from './journalRepo.js';
 
 export class SupabaseStorageProvider implements StorageProvider {
   private config: ConfigRepo;
@@ -21,6 +28,7 @@ export class SupabaseStorageProvider implements StorageProvider {
   private telegram: TelegramRepo;
   private userCache: UserCacheRepo;
   private revivalAlerts: RevivalAlertsRepo;
+  private journal: JournalRepo;
 
   constructor() {
     const ctx = new SupabaseContext(createServiceClient());
@@ -33,6 +41,7 @@ export class SupabaseStorageProvider implements StorageProvider {
     this.telegram = new TelegramRepo(ctx);
     this.userCache = new UserCacheRepo(ctx);
     this.revivalAlerts = new RevivalAlertsRepo(ctx);
+    this.journal = new JournalRepo(ctx);
 
     // Wire cross-repo dependencies (rooms ↔ config ↔ highlights/keywords seam).
     this.config.rooms = this.rooms;
@@ -162,5 +171,48 @@ export class SupabaseStorageProvider implements StorageProvider {
 
   updateRevivalAlertOutcome(userId: string, alertId: string, outcome: RevivalOutcomePatch): Promise<void> {
     return this.revivalAlerts.updateRevivalAlertOutcome(userId, alertId, outcome);
+  }
+
+  // ---- Trade journal ----
+
+  listJournalWallets(userId: string): Promise<JournalWallet[]> {
+    return this.journal.listJournalWallets(userId);
+  }
+
+  addJournalWallet(userId: string, address: string, label: string | null): Promise<JournalWallet> {
+    return this.journal.addJournalWallet(userId, address, label);
+  }
+
+  removeJournalWallet(userId: string, walletId: string): Promise<boolean> {
+    return this.journal.removeJournalWallet(userId, walletId);
+  }
+
+  updateJournalWalletCursor(
+    userId: string,
+    walletId: string,
+    lastSignature: string | null,
+    lastPolledAt: string,
+  ): Promise<void> {
+    return this.journal.updateJournalWalletCursor(userId, walletId, lastSignature, lastPolledAt);
+  }
+
+  addJournalTrades(userId: string, trades: JournalTrade[]): Promise<number> {
+    return this.journal.addJournalTrades(userId, trades);
+  }
+
+  listJournalTrades(userId: string, limit?: number, walletId?: string): Promise<JournalTrade[]> {
+    return this.journal.listJournalTrades(userId, limit, walletId);
+  }
+
+  replaceJournalPositions(userId: string, walletId: string, positions: JournalPosition[]): Promise<void> {
+    return this.journal.replaceJournalPositions(userId, walletId, positions);
+  }
+
+  listJournalPositions(userId: string, status?: 'open' | 'closed'): Promise<JournalPosition[]> {
+    return this.journal.listJournalPositions(userId, status);
+  }
+
+  updateJournalPositionPrice(userId: string, positionId: string, priceUsd: number, at: string): Promise<void> {
+    return this.journal.updateJournalPositionPrice(userId, positionId, priceUsd, at);
   }
 }

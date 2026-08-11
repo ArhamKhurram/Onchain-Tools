@@ -400,6 +400,166 @@ export type RevivalOutcomePatch = Partial<
 >;
 
 // ---------------------------------------------------------------------------
+// Trade journal (the operator's OWN wallets — distinct from tracked/copy
+// wallets). Solana only in v1. See backend/src/journal/.
+// ---------------------------------------------------------------------------
+
+/**
+ * A wallet the user journals their own trading from. Distinct from
+ * user_tracked_wallets (other people's wallets watched for movement) and
+ * user_holding_wallets (Portfolio's Birdeye views) — the journal ingests raw
+ * swaps via Helius and pairs them into positions itself.
+ */
+export interface JournalWallet {
+  id: string;
+  address: string;
+  label: string | null;
+  /** Solana only in v1. */
+  chain: 'solana';
+  /**
+   * Ingestion cursor: the newest tx signature already ingested. Null until the
+   * first poll completes (which triggers the capped history backfill).
+   */
+  lastSignature: string | null;
+  /** When the poller last completed a cycle for this wallet. */
+  lastPolledAt: string | null;
+  createdAt: string;
+}
+
+export type JournalTradeSide = 'buy' | 'sell';
+
+/**
+ * One normalized swap leg from a journal wallet. Derived from
+ * wallet-perspective balance deltas (NOT Helius events.swap, which is
+ * unreliable on Jupiter routes) — see backend/src/journal/normalize.ts.
+ */
+export interface JournalTrade {
+  id: string;
+  walletId: string;
+  walletAddress: string;
+  mint: string;
+  symbol: string | null;
+  side: JournalTradeSide;
+  /** Token quantity moved (always positive). */
+  amountToken: number;
+  /**
+   * SOL paid (buy) / received (sell), fee-adjusted. Null when the tx paid or
+   * received a stablecoin instead, or when the SOL split of a multi-token
+   * route could not be attributed.
+   */
+  amountSol: number | null;
+  /** USD value of the native leg (stable face value, or SOL × daily price). */
+  amountUsd: number | null;
+  txSignature: string;
+  /** Helius `source` (JUPITER, PUMP_FUN, RAYDIUM, …) when known. */
+  dex: string | null;
+  /** ISO timestamp of the transaction. */
+  ts: string;
+}
+
+export type JournalPositionStatus = 'open' | 'closed';
+
+/**
+ * A FIFO trade episode per (wallet, token): opens on the first buy from flat,
+ * closes when the remaining balance falls under the dust threshold (2% of
+ * total acquired). Realized PnL accrues on each sell against FIFO lots.
+ */
+export interface JournalPosition {
+  /** Deterministic: `${walletId}|${mint}|${openedAt}` — recomputes stably. */
+  id: string;
+  walletId: string;
+  walletAddress: string;
+  mint: string;
+  symbol: string | null;
+  status: JournalPositionStatus;
+  /** Total tokens bought over the episode. */
+  acquiredToken: number;
+  /** Tokens still held (≤ dust threshold once closed). */
+  remainingToken: number;
+  /** Total SOL spent on buys (known legs only). */
+  costSol: number;
+  /** Total USD spent on buys (known legs only). */
+  costUsd: number | null;
+  realizedPnlSol: number;
+  realizedPnlUsd: number | null;
+  /**
+   * True when some leg lacked a SOL/USD value (stable-paid, token-to-token
+   * route, missing price) — realized PnL then under-reports that leg.
+   */
+  pnlIncomplete: boolean;
+  openedAt: string;
+  closedAt: string | null;
+  lastTradeAt: string;
+  /** Last DexScreener price observed for the mint (volume poller side-writes). */
+  lastPriceUsd: number | null;
+  lastPriceAt: string | null;
+}
+
+/**
+ * Payload of the `journal_alert` WS frame. v1 has one kind: `volume_dying` —
+ * an OPEN journal position whose market volume is collapsing (m5 rate < ratio
+ * × h1 rate AND h1 rate < ratio × h6 rate) while the operator still holds.
+ * This is its own independent signal: never fused with revival/breakout/
+ * convergence/missed-runner/FOMO detections.
+ */
+export interface JournalAlertData {
+  kind: 'volume_dying';
+  mint: string;
+  symbol: string | null;
+  walletAddress: string;
+  /** Rolling DexScreener volume windows (USD, summed across pairs). */
+  m5VolumeUsd: number;
+  h1VolumeUsd: number;
+  h6VolumeUsd: number;
+  /** Per-minute m5 rate ÷ per-minute h1 rate at fire time. */
+  m5RateVsH1: number;
+  /** Per-minute h1 rate ÷ per-minute h6 rate at fire time. */
+  h1RateVsH6: number;
+  /** remainingToken × last price, when a price was available. */
+  positionValueUsd: number | null;
+  triggeredAt: string;
+}
+
+/** One calendar day of realized PnL (journal day list). */
+export interface JournalDayRow {
+  /** YYYY-MM-DD (UTC). */
+  date: string;
+  trades: number;
+  realizedPnlSol: number;
+  realizedPnlUsd: number | null;
+}
+
+/** One point of the cumulative realized PnL curve (per realizing sell). */
+export interface JournalCurvePoint {
+  ts: string;
+  cumSol: number;
+  cumUsd: number | null;
+}
+
+/**
+ * Header stats + curve + day list for the Journal tab. The drawdown fields are
+ * the give-back meter: how far cumulative realized PnL sits below its
+ * all-time high — the run-up→give-back cycle made visible.
+ */
+export interface JournalSummary {
+  totalTrades: number;
+  realized7dSol: number;
+  realized7dUsd: number | null;
+  /** Closed episodes with realizedPnlSol > 0 ÷ all closed episodes (0..1). */
+  winRate: number | null;
+  closedEpisodes: number;
+  openEpisodes: number;
+  cumRealizedSol: number;
+  cumRealizedUsd: number | null;
+  peakCumRealizedSol: number;
+  /** peak − current cumulative realized PnL, ≥ 0. THE give-back meter. */
+  drawdownFromPeakSol: number;
+  drawdownFromPeakUsd: number | null;
+  curve: JournalCurvePoint[];
+  days: JournalDayRow[];
+}
+
+// ---------------------------------------------------------------------------
 // Workspace layout (persisted per user)
 // ---------------------------------------------------------------------------
 

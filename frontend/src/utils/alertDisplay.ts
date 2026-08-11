@@ -4,6 +4,7 @@ import {
   Megaphone,
   Rocket,
   Search,
+  TrendingDown,
   TrendingUp,
   User,
   UserPlus,
@@ -31,6 +32,9 @@ export function alertBorderClass(type: Alert['type']): string {
     case 'breakout':
       // Amber/gold — one tier quieter than revival's red by design.
       return 'border-l-oct-accent-2';
+    case 'journal':
+      // Meta-dying: you're HOLDING this — orange, urgent but not revival-red.
+      return 'border-l-orange-500';
     default:
       return 'border-l-oct-yellow';
   }
@@ -54,6 +58,8 @@ export function alertIcon(type: Alert['type']): LucideIcon {
       return Flame;
     case 'breakout':
       return Rocket;
+    case 'journal':
+      return TrendingDown;
     default:
       return AlertTriangle;
   }
@@ -77,6 +83,8 @@ export function alertIconClass(type: Alert['type']): string {
       return 'text-red-500';
     case 'breakout':
       return 'text-oct-accent-2';
+    case 'journal':
+      return 'text-orange-500';
     default:
       return 'text-discord-yellow';
   }
