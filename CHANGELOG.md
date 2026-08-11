@@ -4,6 +4,14 @@ All notable changes to Onchain Tools are documented here. Entries before the
 rename still say "Trenchcord" — that was the product's name at the time, and
 they're left as the record of what shipped.
 
+## 2026-08-12
+
+### Added
+- **FOMO new-join alerts** — when a notable account joins fomo.family, OCT tells you in real time. Joining is the signal: by the time a famous name's first buys hit the feed, the easy entry is gone. The console pings you (notification history + sound), and if you get Pushover alerts for FOMO trades you'll get these too. fomo's own "new traders with smart followers" feed drives it, so it's the same joins the app surfaces — just without you having to be looking. Bursts are capped at five pings a cycle with a "+N more" summary, so a signup wave can't flood you.
+- **Breakout alerts** — revival's sibling signal. Revival only fires on tokens that died first; a token consolidating quietly near its highs and then igniting is a different, real setup — and now it gets its own amber alert with its own sound, at normal loudness (the emergency klaxon stays revival-only). Breakouts land in the same Revival log with a kind chip, and get the same 24-hour outcome tracking.
+- **Revival receipts** — the Revival tab now opens with the scoreboard: alerts this week, how many tracked to close, median peak multiple, the ≥2× hit rate, and your best catch. No numbers until there's evidence — empty states stay honest.
+- **Daily digest DM** — opt in and the Outpost bot DMs you once a day with your revival and breakout alerts and how they played out, the day's top callouts, and who moved on the caller board. Settings → Discord Bot → Daily digest.
+
 ## 2026-08-08
 
 ### Added
