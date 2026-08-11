@@ -166,6 +166,10 @@ export default function RevivalLog() {
                     >
                       {sym}
                     </button>
+                    {/* Signal kind — rows without one predate breakout and are revivals. */}
+                    <span className={`ml-1.5 align-middle text-[9px] font-mono font-bold uppercase tracking-wider px-1.5 py-0.5 rounded-oct-sm border ${a.kind === 'breakout' ? 'text-oct-accent-2 border-oct-accent-2/40 bg-oct-accent-2/10' : 'text-red-500 border-red-500/40 bg-red-500/10'}`}>
+                      {a.kind === 'breakout' ? 'BREAKOUT' : 'REVIVAL'}
+                    </span>
                   </td>
                   <td className="px-3 py-2">
                     <span

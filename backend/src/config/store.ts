@@ -41,6 +41,8 @@ const DEFAULT_CONFIG: AppConfig = {
     pumpCallout: { ...DEFAULT_SOUND_CONFIG },
     // Revival is the loudest alert class: full volume, repeats until dismissed.
     revival: { ...DEFAULT_SOUND_CONFIG, volume: 100, repeatUntilDismissed: true },
+    // Breakout is one tier quieter than revival: moderate volume, no repeat.
+    breakout: { ...DEFAULT_SOUND_CONFIG },
   },
   channelSounds: {},
   pushover: {
@@ -112,7 +114,7 @@ class ConfigStore {
         if (!parsed.soundSettings) {
           parsed.soundSettings = { ...DEFAULT_CONFIG.soundSettings };
         } else {
-          for (const key of ['highlight', 'contractAlert', 'keywordAlert', 'fomoTrade', 'pumpCallout', 'revival'] as const) {
+          for (const key of ['highlight', 'contractAlert', 'keywordAlert', 'fomoTrade', 'pumpCallout', 'revival', 'breakout'] as const) {
             const defaults = DEFAULT_CONFIG.soundSettings[key];
             parsed.soundSettings[key] = { ...defaults, ...parsed.soundSettings[key] };
           }

@@ -1,6 +1,6 @@
 import { useEffect, useRef } from 'react';
 import { useAppStore, IS_POPOUT } from '../stores/appStore';
-import { playHighlightSound, playContractAlertSound, playKeywordAlertSound, playFomoTradeSound, playPumpCalloutSound, playSound } from '../utils/notificationSound';
+import { playHighlightSound, playContractAlertSound, playKeywordAlertSound, playFomoTradeSound, playPumpCalloutSound, playBreakoutSound, playSound } from '../utils/notificationSound';
 import { buildContractUrl, buildRevivalContractUrl, revivalNetworkLabel } from '../utils/contractUrl';
 import { showDesktopNotification } from '../utils/desktopNotification';
 import { fomoTradeDisplay, buildFomoTradeAlertMessage } from '../utils/fomoTradeDisplay';
@@ -10,7 +10,7 @@ import { isHostedMode, getSupabase } from '../lib/supabase';
 import { isClientGatewayMode } from '../discord/clientGateway';
 import { hasLocalDiscordTokens } from '../discord/tokenStore';
 import { buildStreamMessage, STREAM_POOL } from '../demo/demoData';
-import type { WsIncoming, Alert, FrontendMessage, ContractEntry, RevivalAlertData } from '../types';
+import type { WsIncoming, Alert, FrontendMessage, ContractEntry, RevivalAlertData, BreakoutAlertData } from '../types';
 import type { FomoTradeEvent } from '../types/fomo';
 
 let idCounter = 0;
@@ -374,6 +374,50 @@ export function useWebSocket() {
                 timestamp: Date.now(),
               };
               addAlert(alert);
+            }
+          } else if (incoming.type === 'breakout_alert') {
+            // Revival's quieter sibling: a token that consolidated near its
+            // highs just ignited. One presentation tier BELOW revival by
+            // design — a standard auto-dismissing toast + notification-history
+            // entry (amber, via alertDisplay) and a single sound, never the
+            // persistent banner or the repeating klaxon. Breakout is its own
+            // signal: never fused with revival or anything else.
+            const d = incoming.data as BreakoutAlertData;
+            if (!IS_POPOUT) {
+              const cfg = useAppStore.getState().config;
+              const sym = d.symbol ? `$${d.symbol}` : `${d.mint.slice(0, 6)}…`;
+              const mc = typeof d.mcapUsd === 'number' ? formatMcap(d.mcapUsd) : '—';
+              const chain = revivalNetworkLabel(d.network);
+              const dd = typeof d.drawdownFromPeak === 'number' ? `${(d.drawdownFromPeak * 100).toFixed(0)}%` : '?';
+              // Chain-aware link, same rule as revival.
+              const url = cfg
+                ? buildRevivalContractUrl(d.mint, d.network, cfg.contractLinkTemplates)
+                : undefined;
+              const alert: Alert = {
+                id: `breakout-${d.mint}-${d.triggeredAt}`,
+                type: 'breakout',
+                reason: `BREAKOUT: ${sym} igniting at highs on ${chain}`,
+                message: {
+                  id: `breakout-${d.mint}-${d.triggeredAt}`,
+                  channelId: 'breakout',
+                  guildId: null,
+                  channelName: 'BREAKOUT',
+                  guildName: null,
+                  author: { id: 'oct-breakout', username: 'OCT', displayName: 'Breakout', avatar: null },
+                  content: `${sym} breaking out on ${chain} — mcap ${mc}, RVOL ${d.rvol.toFixed(1)}x, ATR z ${d.atrZ.toFixed(1)}, ${dd} off peak`,
+                  timestamp: d.triggeredAt,
+                  attachments: [],
+                  embeds: [],
+                  isHighlighted: false,
+                  hasContractAddress: true,
+                  contractAddresses: [d.mint],
+                  mentions: {},
+                  platformUrl: url,
+                },
+                timestamp: Date.now(),
+              };
+              addAlert(alert);
+              if (cfg?.messageSounds) playBreakoutSound(cfg.soundSettings?.breakout);
             }
           } else if (incoming.type === 'wallet_movement') {
             // A tracked Directory (user_tracked_wallets) SOLANA wallet made an

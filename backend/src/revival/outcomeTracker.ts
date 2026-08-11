@@ -22,7 +22,7 @@
  */
 
 import { randomUUID } from 'crypto';
-import type { RevivalAlertEntry, RevivalNetwork, RevivalOutcomePatch } from '@oct/shared';
+import type { RevivalAlertEntry, RevivalNetwork, RevivalOutcomePatch, RevivalSignalKind } from '@oct/shared';
 import { isRevivalNetwork } from '@oct/shared';
 import { getStorageProvider } from '../storage/index.js';
 import { fetchOhlcv, isBackedOff, resolveTopPool } from './candles.js';
@@ -141,7 +141,12 @@ export function partitionOpenAlerts<
   return { open, expired };
 }
 
-/** Build a fresh alert row for persistence. Peak starts at the alert price (1.0×). */
+/**
+ * Build a fresh alert row for persistence. Peak starts at the alert price
+ * (1.0×). `kind` defaults to 'revival'; the breakout poller path passes
+ * 'breakout' — outcome tracking is identical for both, the kind just rides
+ * along in the row.
+ */
 export function buildAlertEntry(data: {
   mint: string;
   /** GeckoTerminal network id the detection ran on. */
@@ -153,11 +158,21 @@ export function buildAlertEntry(data: {
   rvol: number;
   baselinePrice: number | null;
   runMultiple: number | null;
+  /**
+   * Fire-time drawdown label (1 - baseline/trailing-peak) — persisted so the
+   * drawdown knobs can later be calibrated from logged alerts, not just from
+   * a console line. Always known for a breakout; may be null for a revival
+   * (the gate's abstention). Absent = null (not measured).
+   */
+  drawdownFromPeak?: number | null;
   triggeredAt: string;
+  /** Signal kind for the row; absent = 'revival'. */
+  kind?: RevivalSignalKind;
 }): RevivalAlertEntry {
   const hasPrice = data.price != null && data.price > 0;
   return {
     id: randomUUID(),
+    kind: data.kind ?? 'revival',
     mint: data.mint,
     symbol: data.symbol,
     network: data.network,
@@ -167,6 +182,7 @@ export function buildAlertEntry(data: {
     rvol: data.rvol,
     baselinePriceUsd: data.baselinePrice,
     runMultiple: data.runMultiple,
+    drawdownFromPeak: data.drawdownFromPeak ?? null,
     triggeredAt: data.triggeredAt,
     peakPriceUsd: hasPrice ? data.price : null,
     peakMcapUsd: hasPrice ? data.mcapUsd : null,

@@ -139,6 +139,7 @@ export default function SoundsSection({ form }: { form: SettingsForm }) {
                             ['fomoTrade', 'FOMO Trade'],
                             ['pumpCallout', 'Pump Callout'],
                             ['revival', 'Revival'],
+                            ['breakout', 'Breakout'],
                           ] as [SoundType, string][]).map(([type, label]) => {
                             const sc = soundSettings[type];
                             return (

@@ -123,6 +123,8 @@ export type {
   SoundConfig,
   SoundSettings,
   RevivalAlertData,
+  BreakoutAlertData,
+  RevivalSignalKind,
   RevivalAlertEntry,
   RevivalOutcomePatch,
   CallerTier,
