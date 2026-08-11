@@ -22,7 +22,7 @@
  */
 
 import { randomUUID } from 'crypto';
-import type { RevivalAlertEntry, RevivalNetwork, RevivalOutcomePatch } from '@oct/shared';
+import type { RevivalAlertEntry, RevivalNetwork, RevivalOutcomePatch, RevivalSignalKind } from '@oct/shared';
 import { isRevivalNetwork } from '@oct/shared';
 import { getStorageProvider } from '../storage/index.js';
 import { fetchOhlcv, isBackedOff, resolveTopPool } from './candles.js';
@@ -141,7 +141,12 @@ export function partitionOpenAlerts<
   return { open, expired };
 }
 
-/** Build a fresh alert row for persistence. Peak starts at the alert price (1.0×). */
+/**
+ * Build a fresh alert row for persistence. Peak starts at the alert price
+ * (1.0×). `kind` defaults to 'revival'; the breakout poller path passes
+ * 'breakout' — outcome tracking is identical for both, the kind just rides
+ * along in the row.
+ */
 export function buildAlertEntry(data: {
   mint: string;
   /** GeckoTerminal network id the detection ran on. */
@@ -154,10 +159,13 @@ export function buildAlertEntry(data: {
   baselinePrice: number | null;
   runMultiple: number | null;
   triggeredAt: string;
+  /** Signal kind for the row; absent = 'revival'. */
+  kind?: RevivalSignalKind;
 }): RevivalAlertEntry {
   const hasPrice = data.price != null && data.price > 0;
   return {
     id: randomUUID(),
+    kind: data.kind ?? 'revival',
     mint: data.mint,
     symbol: data.symbol,
     network: data.network,

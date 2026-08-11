@@ -26,6 +26,8 @@ export const DEFAULT_SETTINGS: Omit<AppConfig, 'discordTokens' | 'rooms'> = {
     pumpCallout: { enabled: true, volume: 80, useCustom: false },
     // Revival is the loudest alert class: full volume, repeats until dismissed.
     revival: { enabled: true, volume: 100, useCustom: false, repeatUntilDismissed: true },
+    // Breakout is one tier quieter than revival: moderate volume, no repeat.
+    breakout: { enabled: true, volume: 80, useCustom: false },
   },
   channelSounds: {},
   pushover: {

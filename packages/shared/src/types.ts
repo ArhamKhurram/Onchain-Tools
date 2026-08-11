@@ -241,7 +241,7 @@ export interface ContractLinkTemplates {
   evmPlatform: EvmPlatform;
 }
 
-export type SoundType = 'highlight' | 'contractAlert' | 'keywordAlert' | 'fomoTrade' | 'pumpCallout' | 'revival';
+export type SoundType = 'highlight' | 'contractAlert' | 'keywordAlert' | 'fomoTrade' | 'pumpCallout' | 'revival' | 'breakout';
 
 export interface SoundConfig {
   enabled: boolean;
@@ -303,13 +303,45 @@ export interface RevivalAlertData {
 }
 
 /**
+ * Payload of the `breakout_alert` WS frame — a token that consolidated
+ * QUIETLY NEAR ITS HIGHS just ignited. Same detector pass as revival; the
+ * only difference is the drawdown gate: revival requires the token to have
+ * died first (≥35% below its trailing peak), breakout requires that it did
+ * NOT (sub-35% drawdown — the TOAD-plateau shape). Breakout is its own
+ * independent signal, a sibling of revival: routed/displayed alongside it,
+ * never fused with it (or with convergence / missed-runner / FOMO).
+ */
+export interface BreakoutAlertData extends RevivalAlertData {
+  /**
+   * 1 - baselinePrice / trailingPeakPrice at fire time — how little the
+   * consolidation sat below the trailing peak. Always known for a breakout
+   * (the gate requires it); bounded above by the revival drawdown threshold.
+   */
+  drawdownFromPeak: number;
+}
+
+/**
+ * Which signal a persisted alert row came from. Rows written before breakout
+ * existed carry no kind — absent/null means 'revival'.
+ */
+export type RevivalSignalKind = 'revival' | 'breakout';
+
+/**
  * A persisted revival alert row (JSON log in local mode, `revival_alerts` in
  * hosted mode). Captures the numbers AT the moment of ignition plus the
  * outcome fields the 24h tracker fills in afterwards — so a missed alert can
  * be reviewed later ("it fired at $412K mcap and peaked at 3.1×").
+ *
+ * Breakout alerts share this table/shape (they differ only in the drawdown
+ * gate), discriminated by `kind`.
  */
 export interface RevivalAlertEntry {
   id: string;
+  /**
+   * Signal kind the row was fired by. Optional/null on rows written before
+   * breakout existed — treat absent as 'revival'.
+   */
+  kind?: RevivalSignalKind | null;
   /** Token address — a Solana mint, or an EVM contract on `network`. */
   mint: string;
   symbol: string | null;

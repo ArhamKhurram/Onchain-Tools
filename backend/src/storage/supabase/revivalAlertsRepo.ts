@@ -15,6 +15,9 @@ export class RevivalAlertsRepo extends BaseRepo {
   private rowToEntry(row: any): RevivalAlertEntry {
     return {
       id: row.id,
+      // Rows written before the kind column (or by a backend older than it)
+      // are revivals; null keeps that explicit for the frontend.
+      kind: row.kind === 'breakout' || row.kind === 'revival' ? row.kind : null,
       mint: row.mint,
       symbol: row.symbol ?? null,
       network: row.network ?? 'solana',
@@ -37,6 +40,7 @@ export class RevivalAlertsRepo extends BaseRepo {
     const row: Record<string, unknown> = {
       id: alert.id,
       user_id: userId,
+      kind: alert.kind ?? 'revival',
       mint: alert.mint,
       symbol: alert.symbol,
       network: alert.network,
@@ -54,12 +58,21 @@ export class RevivalAlertsRepo extends BaseRepo {
       outcome_window_closed_at: alert.outcomeWindowClosedAt,
     };
 
-    const result = await this.supabase.from('revival_alerts').insert(row);
+    let result = await this.supabase.from('revival_alerts').insert(row);
     // Deploy-order tolerance: migrations here are applied BY HAND, so the code
-    // can reach prod a few minutes before baseline_price_usd/run_multiple
-    // exist. Losing the row entirely would cost the review surface for the
-    // app's loudest signal, so retry once without the new columns and say so
-    // loudly. Delete this branch once the migration is applied everywhere.
+    // can reach prod a few minutes before the `kind` column exists. Losing the
+    // row entirely would cost the review surface for the signal, so retry once
+    // without it and say so loudly — the row then reads as a revival until the
+    // migration lands. Delete this branch once it is applied everywhere.
+    if (result.error && /['"]kind['"]|column "kind"/.test(result.error.message ?? '')) {
+      console.warn(
+        '[Supabase] revival_alerts is missing the kind column — apply migration 20260812093000_revival_alerts_kind.sql. Logging without it.',
+      );
+      delete row.kind;
+      result = await this.supabase.from('revival_alerts').insert(row);
+    }
+    // Same tolerance for the older baseline_price_usd/run_multiple columns
+    // (migration 20260811160000). Delete once applied everywhere.
     if (result.error && /baseline_price_usd|run_multiple/.test(result.error.message ?? '')) {
       console.warn(
         '[Supabase] revival_alerts is missing baseline_price_usd/run_multiple — apply migration 20260811160000_revival_run_multiple.sql. Logging without them.',

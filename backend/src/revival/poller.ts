@@ -32,11 +32,20 @@
  *
  * Revival is its own signal end-to-end. It is never fused with convergence,
  * missed-runner, or FOMO detections.
+ *
+ * BREAKOUT rides the same cycle as a sibling signal (one tier quieter): the
+ * detector's evaluate pass yields both verdicts from the same candles, so
+ * breakout adds ZERO GeckoTerminal requests. On a breakout verdict the poller
+ * emits a `breakout_alert` WS frame (payload = revival's + drawdownFromPeak)
+ * and Pushover at NORMAL priority — emergency stays reserved for revival.
+ * Suppression state is kept PER KIND: a token's revival suppression never
+ * mutes its breakout and vice versa. Rows share the revival_alerts store,
+ * discriminated by `kind`. Gate: OCT_BREAKOUT_ENABLED (default on).
  */
 
 import type { SupabaseClient } from '@supabase/supabase-js';
 import type { WsServer } from '../ws/server.js';
-import type { RevivalAlertData, RevivalNetwork } from '@oct/shared';
+import type { BreakoutAlertData, RevivalAlertData, RevivalNetwork, RevivalSignalKind } from '@oct/shared';
 import {
   REVIVAL_NETWORK_CHAIN_SLUGS,
   buildRevivalContractUrl,
@@ -47,12 +56,13 @@ import { getStorageProvider, isHostedMode } from '../storage/index.js';
 import { getFomoServiceClient } from '../fomo/store.js';
 import { sendPushover } from '../utils/pushover.js';
 import { formatCompact } from '../wallets/balanceChecker.js';
-import { DEFAULT_REVIVAL_CONFIG, evaluateRevival } from './detector.js';
+import { DEFAULT_REVIVAL_CONFIG, evaluateRevival, type RevivalEvaluation } from './detector.js';
 import {
   fetchRevivalCandles,
   isBackedOff,
   resolveRequestSpacingMs,
   revivalRequestCounters,
+  type RevivalCandleSet,
 } from './candles.js';
 import { resolveRevivalNetworks } from './networks.js';
 import {
@@ -100,6 +110,38 @@ export const REENTRY_MAX_RUN_MULTIPLE = 1.5;
 export interface RunSuppression {
   /** Epoch ms of the alert that opened this suppression. */
   alertedAt: number;
+}
+
+/**
+ * Suppression is tracked PER SIGNAL KIND: a token that fired a revival must
+ * still be able to fire a breakout (and vice versa) — the two are independent
+ * signals that happen to share an evaluate pass. The map key is therefore
+ * `kind|network:address`; the kind values can never collide with a network
+ * prefix because of the `|` separator.
+ */
+export function suppressionKey(kind: RevivalSignalKind, tokenKey: string): string {
+  return `${kind}|${tokenKey}`;
+}
+
+/**
+ * The pre-fetch cooldown skip, kind-aware. The 60-min floor exists to spare
+ * the candle FETCH — but the fetch feeds BOTH verdicts, so it may only be
+ * skipped when every kind that could still alert is inside its own floor:
+ * skipping on revival's floor alone would silently mute breakout for an hour
+ * (and vice versa). With breakout disabled this degrades to exactly the old
+ * revival-only behaviour, so the request budget is unchanged there.
+ */
+export function shouldSkipCandleFetch(
+  revivalPrior: RunSuppression | undefined,
+  breakoutPrior: RunSuppression | undefined,
+  breakoutEnabled: boolean,
+  now: number,
+  cooldownMs: number = ALERT_COOLDOWN_MS,
+): boolean {
+  const inCooldown = (p: RunSuppression | undefined): boolean =>
+    p != null && now - p.alertedAt < cooldownMs;
+  if (!inCooldown(revivalPrior)) return false;
+  return !breakoutEnabled || inCooldown(breakoutPrior);
 }
 
 export interface SuppressionDecision {
@@ -259,8 +301,12 @@ export interface RevivalCycleSummary {
   fullSweepMs: number | null;
   /** True when the safety-valve backoff cut the cycle short. */
   pausedEarly: boolean;
-  /** Dormant tokens the drawdown gate rejected as consolidations this cycle. */
+  /** Dormant tokens the drawdown gate rejected as consolidations this cycle
+   *  WITHOUT a breakout alert being emitted for them (disabled/suppressed/
+   *  below the floor) — the two counts never double-report one token. */
   drawdownBlocked: number;
+  /** Breakout alerts emitted this cycle. */
+  breakouts: number;
 }
 
 /**
@@ -282,6 +328,8 @@ export function summarizeCycle(input: {
   pausedEarly: boolean;
   /** Optional so pre-drawdown-gate callers/tests keep reading; defaults to 0. */
   drawdownBlocked?: number;
+  /** Optional so pre-breakout callers/tests keep reading; defaults to 0. */
+  breakouts?: number;
 }): RevivalCycleSummary {
   const { universeSize, scanned, requests, rateLimited, pollMs, pausedEarly } = input;
   const cyclesForSweep = scanned > 0 ? Math.ceil(universeSize / scanned) : null;
@@ -293,6 +341,7 @@ export function summarizeCycle(input: {
     fullSweepMs: cyclesForSweep != null ? cyclesForSweep * pollMs : null,
     pausedEarly,
     drawdownBlocked: input.drawdownBlocked ?? 0,
+    breakouts: input.breakouts ?? 0,
   };
 }
 
@@ -304,9 +353,11 @@ export function formatCycleSummary(s: RevivalCycleSummary): string {
   // Only rendered when non-zero: the count is a diagnostic for the drawdown
   // gate (dormant tokens rejected as consolidations), not routine coverage.
   const drawdown = s.drawdownBlocked > 0 ? `, ${s.drawdownBlocked} drawdown-blocked` : '';
+  // Only rendered when non-zero — breakouts are rarer than revivals.
+  const breakouts = s.breakouts > 0 ? `, ${s.breakouts} breakout(s)` : '';
   return (
     `[RevivalPoller] cycle: ${s.scanned}/${s.universeSize} tokens scanned, ` +
-    `${s.requests} requests, ${s.rateLimited} rate-limited, ${sweep}${paused}${drawdown}`
+    `${s.requests} requests, ${s.rateLimited} rate-limited, ${sweep}${paused}${drawdown}${breakouts}`
   );
 }
 
@@ -348,6 +399,16 @@ function envFlag(name: string): string | undefined {
 export function isRevivalEnabled(): boolean {
   const v = (envFlag('REVIVAL_ENABLED') ?? '').trim().toLowerCase();
   // Default ON in both modes; only an explicit falsy value disables.
+  return !(v === 'false' || v === '0' || v === 'off');
+}
+
+/**
+ * Breakout sub-gate (OCT_BREAKOUT_ENABLED / TRENCHCORD_BREAKOUT_ENABLED).
+ * Default ON; only an explicit falsy value disables. Rides the revival poller
+ * — with revival itself disabled nothing scans, so nothing can break out.
+ */
+export function isBreakoutEnabled(): boolean {
+  const v = (envFlag('BREAKOUT_ENABLED') ?? '').trim().toLowerCase();
   return !(v === 'false' || v === '0' || v === 'off');
 }
 
@@ -510,9 +571,11 @@ class RevivalPoller {
   private timer: NodeJS.Timeout | null = null;
   private started = false;
   private polling = false;
-  /** `network:address` → run-state suppression (in-memory v1; resets on reboot).
-   *  Subsumes the old per-token cooldown map — the 60-min floor is one of the
-   *  reasons evaluateRunSuppression can return, not a separate mechanism. */
+  /** `kind|network:address` (see suppressionKey) → run-state suppression
+   *  (in-memory v1; resets on reboot). Keyed PER SIGNAL KIND so a token's
+   *  revival suppression never mutes its breakout and vice versa. Subsumes the
+   *  old per-token cooldown map — the 60-min floor is one of the reasons
+   *  evaluateRunSuppression can return, not a separate mechanism. */
   private suppression = new Map<string, RunSuppression>();
   /** Per-network rotation pointers so every chain is fully covered over time.
    *  Absent on the first cycle — seeded from wall clock, see seedRotationOffset. */
@@ -548,7 +611,7 @@ class RevivalPoller {
     console.log(
       `[RevivalPoller] Started (interval ${interval}ms, cap ${MAX_TOKENS_PER_CYCLE} tokens/cycle, ` +
         `${plan.requestsPerMinute.toFixed(1)} req/min budget, ${Math.round(plan.steadyStateUtilization * 100)}% utilization, ` +
-        `networks: ${resolveRevivalNetworks().join(', ')}).`,
+        `networks: ${resolveRevivalNetworks().join(', ')}, breakout ${isBreakoutEnabled() ? 'on' : 'off'}).`,
     );
     this.outcomes.start();
     void this.resumeOpenOutcomes().catch((err) =>
@@ -592,6 +655,7 @@ class RevivalPoller {
       for (const r of (data ?? []) as any[]) {
         rows.push({
           id: r.id,
+          kind: r.kind === 'breakout' || r.kind === 'revival' ? r.kind : null,
           mint: r.mint,
           symbol: r.symbol ?? null,
           network: r.network ?? 'solana',
@@ -724,6 +788,7 @@ class RevivalPoller {
     let pausedEarly = false;
     let universeSize = 0;
     let drawdownBlocked = 0;
+    let breakouts = 0;
     try {
       const universe = await this.loadUniverse();
       universeSize = universe.size;
@@ -743,16 +808,28 @@ class RevivalPoller {
 
         // Cheap pre-fetch skip only. The real control (run-state suppression)
         // needs the verdict, so it runs after evaluation in evaluateToken;
-        // this floor just spares the candle request during the first hour.
-        const prior = this.suppression.get(key);
-        if (prior != null && Date.now() - prior.alertedAt < ALERT_COOLDOWN_MS) continue;
+        // this floor just spares the candle request during the first hour —
+        // and only when EVERY kind that could alert is inside its own floor
+        // (see shouldSkipCandleFetch), since one fetch feeds both verdicts.
+        if (
+          shouldSkipCandleFetch(
+            this.suppression.get(suppressionKey('revival', key)),
+            this.suppression.get(suppressionKey('breakout', key)),
+            isBreakoutEnabled(),
+            Date.now(),
+          )
+        ) {
+          continue;
+        }
 
         // No sleep here: candles.ts owns the request spacing for every revival
         // consumer. Pacing in both places is what let the poller and the
         // outcome tracker each stay "under the limit" while their SUM was not.
         scanned += 1;
         try {
-          if (await this.evaluateToken(key, entry)) drawdownBlocked += 1;
+          const outcome = await this.evaluateToken(key, entry);
+          if (outcome.drawdownBlocked) drawdownBlocked += 1;
+          if (outcome.breakout) breakouts += 1;
         } catch (err) {
           console.warn(`[RevivalPoller] evaluate failed for ${key.slice(0, 20)}…:`, (err as Error)?.message);
         }
@@ -774,6 +851,7 @@ class RevivalPoller {
               pollMs: this.pollMs,
               pausedEarly,
               drawdownBlocked,
+              breakouts,
             }),
           ),
         );
@@ -782,45 +860,66 @@ class RevivalPoller {
   }
 
   /**
-   * Returns true when the drawdown gate was what held a dormant token back
-   * (surfaced in the per-cycle summary — the gate has no persisted column, so
-   * the log IS its observability).
+   * Evaluate one token and emit whichever signal (if either) fired — the two
+   * verdicts are mutually exclusive by construction. Returns the per-cycle
+   * bookkeeping: `drawdownBlocked` when the drawdown gate held a dormant
+   * token WITHOUT a breakout alert being emitted for it (the gate has no
+   * persisted column, so the log/count IS its observability), `breakout` when
+   * a breakout alert went out.
    */
-  private async evaluateToken(key: string, target: UniverseEntry): Promise<boolean> {
+  private async evaluateToken(
+    key: string,
+    target: UniverseEntry,
+  ): Promise<{ drawdownBlocked: boolean; breakout: boolean }> {
     const { address: mint, network, subscribers } = target;
+    const none = { drawdownBlocked: false, breakout: false };
     const candles = await fetchRevivalCandles(network, mint);
-    if (!candles) return false;
+    if (!candles) return none;
 
     const now = Date.now();
     const verdict = evaluateRevival(candles.minute, candles.hour, now);
+
+    // Breakout: the sibling verdict — quiet consolidation at the highs, now
+    // igniting. Same evaluation, zero extra requests; independent signal.
+    if (verdict.breakoutFired && isBreakoutEnabled()) {
+      const emitted = await this.emitBreakout(key, target, verdict, candles, now);
+      // A suppressed repeat still counts as a drawdown-blocked consolidation
+      // for the cycle summary — one token never lands in both counts.
+      return emitted
+        ? { drawdownBlocked: false, breakout: true }
+        : { drawdownBlocked: true, breakout: false };
+    }
+
     if (!verdict.fired) {
       // A dormant token the drawdown gate rejected is the one non-firing shape
       // worth a line: it is exactly the consolidation-at-highs false positive
-      // (TOAD, Aug 11) that every other gate waves through.
+      // (TOAD, Aug 11) that every other gate waves through. (With breakout
+      // enabled the alert-worthy subset of these emits above instead.)
       if (verdict.dormant && !verdict.drawdownGate) {
         console.log(
           `[RevivalPoller] Drawdown gate held ${key.slice(0, 24)}…: baseline ` +
             `${verdict.baselinePrice ?? '?'} is only ${formatDrawdownPct(verdict.drawdownFromPeak)} below ` +
             `trailing peak ${verdict.trailingPeakPrice ?? '?'} — consolidation, not a revival.`,
         );
-        return true;
+        return { drawdownBlocked: true, breakout: false };
       }
-      return false;
+      return none;
     }
 
     // Repeat suppression: is this a fresh ignition, or the same run we already
-    // alerted on still satisfying every gate?
-    const decision = evaluateRunSuppression(this.suppression.get(key), verdict, now);
+    // alerted on still satisfying every gate? Keyed per signal kind.
+    const revivalKey = suppressionKey('revival', key);
+    const decision = evaluateRunSuppression(this.suppression.get(revivalKey), verdict, now);
     if (decision.suppress) {
       if (decision.reason !== 'cooldown') {
         console.log(
           `[RevivalPoller] Suppressed repeat ignition for ${key.slice(0, 24)}… (${decision.reason}, run ${verdict.runMultiple?.toFixed(2) ?? '?'}x, drawdown ${formatDrawdownPct(verdict.drawdownFromPeak)}).`,
         );
       }
-      return false;
+      return none;
     }
 
-    this.suppression.set(key, { alertedAt: now });
+    this.suppression.set(revivalKey, { alertedAt: now });
 
     const price = verdict.price;
     const mcapUsd =
@@ -869,7 +968,117 @@ class RevivalPoller {
       this.wsServer.broadcastRevivalAlert(data, userId);
       void this.notifyPushover(userId, data, sym);
     }
-    return false;
+    return none;
+  }
+
+  /**
+   * Fan-out for a breakout verdict. Returns true when the alert was actually
+   * emitted (false = suppressed as a repeat of a setup we already alerted).
+   *
+   * One tier quieter than revival on every channel by design: `breakout_alert`
+   * WS frame (toast + history client-side, no persistent banner), Pushover at
+   * NORMAL priority — emergency (2, with retry/expire) stays reserved for
+   * revival. Suppression reuses evaluateRunSuppression under the 'breakout'
+   * key, so a token's revival state never mutes its breakout or vice versa.
+   */
+  private async emitBreakout(
+    key: string,
+    target: UniverseEntry,
+    verdict: RevivalEvaluation,
+    candles: RevivalCandleSet,
+    now: number,
+  ): Promise<boolean> {
+    const { address: mint, network, subscribers } = target;
+    // breakoutFired guarantees a measured drawdown; guard anyway so a future
+    // detector change cannot emit a breakout with an unknown drawdown.
+    if (verdict.drawdownFromPeak == null) return false;
+
+    const breakoutKey = suppressionKey('breakout', key);
+    const decision = evaluateRunSuppression(this.suppression.get(breakoutKey), verdict, now);
+    if (decision.suppress) {
+      if (decision.reason !== 'cooldown') {
+        console.log(
+          `[RevivalPoller] Suppressed repeat breakout for ${key.slice(0, 24)}… (${decision.reason}, run ${verdict.runMultiple?.toFixed(2) ?? '?'}x, drawdown ${formatDrawdownPct(verdict.drawdownFromPeak)}).`,
+        );
+      }
+      return false;
+    }
+
+    this.suppression.set(breakoutKey, { alertedAt: now });
+
+    const price = verdict.price;
+    const mcapUsd =
+      price != null && candles.pool.impliedSupply != null
+        ? price * candles.pool.impliedSupply
+        : null;
+    const data: BreakoutAlertData = {
+      mint,
+      network,
+      symbol: candles.pool.symbol,
+      price,
+      mcapUsd,
+      atrZ: verdict.atrZ ?? 0,
+      rvol: verdict.rvol ?? 0,
+      baselinePrice: verdict.baselinePrice,
+      runMultiple: verdict.runMultiple,
+      drawdownFromPeak: verdict.drawdownFromPeak,
+      triggeredAt: new Date(now).toISOString(),
+    };
+
+    const sym = data.symbol ? `$${data.symbol}` : `${mint.slice(0, 6)}…`;
+    console.log(
+      `[RevivalPoller] BREAKOUT ${sym} on ${revivalNetworkLabel(network)} (${mint.slice(0, 8)}…) atrZ=${data.atrZ.toFixed(1)} rvol=${data.rvol.toFixed(1)} run=${data.runMultiple != null ? `${data.runMultiple.toFixed(2)}x` : '?'} drawdown=${formatDrawdownPct(data.drawdownFromPeak)} (peak ${verdict.trailingPeakPrice ?? '?'}) → ${subscribers.size} user(s)`,
+    );
+
+    for (const userId of subscribers) {
+      // Same persist-before-broadcast contract as revival: a client refetching
+      // the log on frame arrival must find the row, and a storage failure
+      // never blocks the live alert.
+      try {
+        const entry = buildAlertEntry({ ...data, kind: 'breakout' });
+        await getStorageProvider().logRevivalAlert(userId, entry);
+        this.outcomes.track({
+          alertId: entry.id,
+          userId,
+          mint: entry.mint,
+          network,
+          alertPriceUsd: entry.priceUsd,
+          peakPriceUsd: entry.peakPriceUsd,
+          triggeredAtMs: now,
+        });
+      } catch (err) {
+        console.error('[RevivalPoller] Failed to persist breakout alert:', (err as Error)?.message);
+      }
+      this.wsServer.broadcastBreakoutAlert(data, userId);
+      void this.notifyBreakoutPushover(userId, data, sym);
+    }
+    return true;
+  }
+
+  private async notifyBreakoutPushover(
+    userId: string,
+    data: BreakoutAlertData,
+    sym: string,
+  ): Promise<void> {
+    try {
+      const config = await getStorageProvider().getConfig(userId);
+      if (!config.pushover?.enabled) return;
+      const mc = data.mcapUsd != null ? formatCompact(data.mcapUsd) : '—';
+      const url = buildRevivalContractUrl(data.mint, data.network, config.contractLinkTemplates);
+      const chain = revivalNetworkLabel(data.network);
+      // NORMAL priority, explicitly — never the user's configured priority
+      // (which may be emergency) and never revival's emergency tier. Breakout
+      // is one notch quieter than revival by definition.
+      await sendPushover(config.pushover, {
+        title: `BREAKOUT: ${sym} igniting at highs on ${chain}`,
+        message: `${sym} breaking out on ${chain} — mcap ${mc}, RVOL ${data.rvol.toFixed(1)}x, ATR z ${data.atrZ.toFixed(1)}, ${formatDrawdownPct(data.drawdownFromPeak)} off peak`,
+        url,
+        urlTitle: 'Open token',
+        priority: 0,
+      });
+    } catch (err) {
+      console.error('[RevivalPoller] Breakout Pushover notify failed:', (err as Error)?.message);
+    }
   }
 
   private async notifyPushover(userId: string, data: RevivalAlertData, sym: string): Promise<void> {

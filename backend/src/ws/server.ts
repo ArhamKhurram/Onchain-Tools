@@ -247,6 +247,20 @@ export class WsServer {
     }
   }
 
+  /**
+   * Breakout ignition alert — revival's quieter sibling (quiet consolidation
+   * at the highs igniting). Same delivery rules as revival_alert.
+   * Payload shape: BreakoutAlertData (@oct/shared).
+   */
+  broadcastBreakoutAlert(data: any, userId?: string): void {
+    const payload = JSON.stringify({ type: 'breakout_alert', data });
+    for (const [ws, state] of this.clients) {
+      if (ws.readyState !== WebSocket.OPEN) continue;
+      if (isHostedMode() && userId && state.userId !== userId) continue;
+      ws.send(payload);
+    }
+  }
+
   broadcastContractEnrichment(data: any, userId?: string): void {
     const payload = JSON.stringify({ type: 'contract_enrichment', data });
     for (const [ws, state] of this.clients) {

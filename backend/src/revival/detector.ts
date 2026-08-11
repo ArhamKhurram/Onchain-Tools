@@ -88,6 +88,34 @@ export interface RevivalDetectorConfig {
    * rather than through a second knob that could drift out of sync with it.
    */
   minDrawdownFromPeak: number;
+  /** Breakout sibling-signal knobs (see BreakoutDetectorConfig). */
+  breakout: BreakoutDetectorConfig;
+}
+
+/**
+ * Breakout — the sibling signal carved out of revival's one rejection shape.
+ *
+ * A breakout is the exact evaluation where every revival gate passes EXCEPT
+ * the drawdown gate: the token went quiet (relative volume collapse) while
+ * holding NEAR its highs, then ignited. Revival rejects that shape by design
+ * ("it never died"); the operator wants it as its own, quieter signal — a
+ * token igniting at/near its all-time high can keep going. Computed in the
+ * SAME evaluate pass over the same candles: zero extra fetches.
+ */
+export interface BreakoutDetectorConfig {
+  /**
+   * Lower bound on drawdownFromPeak for a consolidation to qualify as a
+   * breakout setup. The upper bound is always the revival threshold
+   * (minDrawdownFromPeak) — at or above it the shape is a revival instead.
+   *
+   * Default 0: any genuine sub-35% drawdown qualifies (TOAD's plateau was
+   * ~27%). A NEGATIVE drawdown (the dormant window sits ABOVE every close in
+   * the trailing lookback) is excluded by the 0 floor — that shape means the
+   * run's own peak landed inside the dormant window, where the volume-collapse
+   * gate is rarely trustworthy. Lower the floor below 0 only with labeled
+   * cases in hand.
+   */
+  minDrawdownFloor: number;
 }
 
 export const DEFAULT_REVIVAL_CONFIG: RevivalDetectorConfig = {
@@ -134,6 +162,9 @@ export const DEFAULT_REVIVAL_CONFIG: RevivalDetectorConfig = {
   // the drawdown of a consolidation is bounded by its own chop range, so the
   // separation is structural, not lucky.
   minDrawdownFromPeak: 0.35,
+  breakout: {
+    minDrawdownFloor: 0,
+  },
 };
 
 export interface RevivalEvaluation {
@@ -179,6 +210,16 @@ export interface RevivalEvaluation {
    * the abstention is visible as trailingPeakPrice/drawdownFromPeak == null.
    */
   drawdownGate: boolean;
+  /**
+   * The breakout sibling verdict: every revival gate passed EXCEPT the
+   * drawdown gate, whose measured drawdown sits in
+   * [breakout.minDrawdownFloor, minDrawdownFromPeak) — quiet consolidation
+   * near the highs, now igniting. Mutually exclusive with `fired` by
+   * construction (revival needs drawdownGate true, breakout needs it false).
+   * A null drawdown never fires breakout: missing data is not evidence of a
+   * consolidation any more than it is of a death.
+   */
+  breakoutFired: boolean;
 }
 
 const NOT_FIRED_COLD: RevivalEvaluation = {
@@ -195,6 +236,7 @@ const NOT_FIRED_COLD: RevivalEvaluation = {
   trailingPeakPrice: null,
   drawdownFromPeak: null,
   drawdownGate: false,
+  breakoutFired: false,
 };
 
 /** Sentinel for "baseline had zero variance / zero volume but current is hot". */
@@ -434,6 +476,10 @@ export function resolveTrailingPeak(
  * run gate shipped: TOAD alerted AGAIN at $20.6M, at its all-time high, off a
  * ~27%-below-peak plateau. A revival requires the token to have died first.
  *
+ * The same pass also yields the BREAKOUT sibling verdict (`breakoutFired`):
+ * gates 1-5 pass and gate 6's measured drawdown sits BELOW the revival
+ * threshold — see BreakoutDetectorConfig. No extra candles, no extra requests.
+ *
  * Cooldowns and repeat suppression are the caller's job (poller state).
  */
 export function evaluateRevival(
@@ -515,6 +561,21 @@ export function evaluateRevival(
   const drawdownGate =
     drawdownFromPeak == null || drawdownFromPeak >= cfg.minDrawdownFromPeak;
 
+  // --- Breakout sibling verdict (same pass, zero extra fetches) ---
+  // Exactly the shape the drawdown gate exists to reject FOR REVIVAL: quiet
+  // consolidation near the highs (a measured sub-threshold drawdown), every
+  // other gate passing. Requires a MEASURED drawdown — the gate's null
+  // abstention passes revival but must not fire breakout, because missing
+  // history is not evidence the token held its highs.
+  const breakoutFired =
+    atrGate &&
+    rvolGate &&
+    dormant &&
+    runGate &&
+    drawdownFromPeak != null &&
+    drawdownFromPeak < cfg.minDrawdownFromPeak &&
+    drawdownFromPeak >= cfg.breakout.minDrawdownFloor;
+
   return {
     fired: atrGate && rvolGate && dormant && runGate && drawdownGate,
     warmedUp: true,
@@ -529,5 +590,6 @@ export function evaluateRevival(
     trailingPeakPrice,
     drawdownFromPeak,
     drawdownGate,
+    breakoutFired,
   };
 }

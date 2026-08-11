@@ -108,6 +108,13 @@ const BUILT_IN_SOUNDS: Record<SoundType, { tones: [number, number, number][]; ty
     type: 'square',
     baseVolume: 0.22,
   },
+  breakout: {
+    // One tier quieter than revival: a single ascending three-note "lift-off"
+    // (no second klaxon pass, no repeat loop — it plays exactly once).
+    tones: [[659, 0, 0.1], [988, 0.11, 0.1], [1319, 0.22, 0.2]],
+    type: 'triangle',
+    baseVolume: 0.16,
+  },
 };
 
 export function playSound(soundType: SoundType, soundConfig?: SoundConfig) {
@@ -154,6 +161,10 @@ export function playPumpCalloutSound(soundConfig?: SoundConfig) {
 
 export function playRevivalSound(soundConfig?: SoundConfig) {
   playSound('revival', soundConfig);
+}
+
+export function playBreakoutSound(soundConfig?: SoundConfig) {
+  playSound('breakout', soundConfig);
 }
 
 export function previewSound(soundType: SoundType, soundConfig: SoundConfig) {

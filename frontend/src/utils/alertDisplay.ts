@@ -2,6 +2,7 @@ import {
   AlertTriangle,
   Flame,
   Megaphone,
+  Rocket,
   Search,
   TrendingUp,
   User,
@@ -24,6 +25,9 @@ export function alertBorderClass(type: Alert['type']): string {
       return 'border-l-purple-400';
     case 'revival':
       return 'border-l-red-500';
+    case 'breakout':
+      // Amber/gold — one tier quieter than revival's red by design.
+      return 'border-l-oct-accent-2';
     default:
       return 'border-l-oct-yellow';
   }
@@ -43,6 +47,8 @@ export function alertIcon(type: Alert['type']): LucideIcon {
       return Megaphone;
     case 'revival':
       return Flame;
+    case 'breakout':
+      return Rocket;
     default:
       return AlertTriangle;
   }
@@ -62,6 +68,8 @@ export function alertIconClass(type: Alert['type']): string {
       return 'text-purple-400';
     case 'revival':
       return 'text-red-500';
+    case 'breakout':
+      return 'text-oct-accent-2';
     default:
       return 'text-discord-yellow';
   }
