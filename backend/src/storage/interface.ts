@@ -1,6 +1,12 @@
 import type { AppConfig, Room } from '../discord/types.js';
 import type { ContractEntry, ContractEnrichmentPatch, EnrichContractOptions } from '../utils/contractLog.js';
-import type { RevivalAlertEntry, RevivalOutcomePatch } from '@oct/shared';
+import type {
+  JournalPosition,
+  JournalTrade,
+  JournalWallet,
+  RevivalAlertEntry,
+  RevivalOutcomePatch,
+} from '@oct/shared';
 
 /**
  * A stored pump.fun session bearer plus the moment it was stored.
@@ -62,4 +68,30 @@ export interface StorageProvider {
   listRevivalAlerts(userId: string, limit?: number): Promise<RevivalAlertEntry[]>;
   /** Merge an outcome patch (peak fields / window close) into one alert row. */
   updateRevivalAlertOutcome(userId: string, alertId: string, outcome: RevivalOutcomePatch): Promise<void>;
+
+  // ---- Trade journal (the user's OWN wallets; see backend/src/journal/) ----
+
+  listJournalWallets(userId: string): Promise<JournalWallet[]>;
+  /** Idempotent on (userId, address): re-adding returns the existing wallet. */
+  addJournalWallet(userId: string, address: string, label: string | null): Promise<JournalWallet>;
+  /** Removes the wallet AND its trades/positions. */
+  removeJournalWallet(userId: string, walletId: string): Promise<boolean>;
+  /** Advance the ingestion cursor after a successful poll. */
+  updateJournalWalletCursor(
+    userId: string,
+    walletId: string,
+    lastSignature: string | null,
+    lastPolledAt: string,
+  ): Promise<void>;
+
+  /** Insert trades, idempotent on (walletId, txSignature, mint, side). Returns rows added. */
+  addJournalTrades(userId: string, trades: JournalTrade[]): Promise<number>;
+  /** Newest-first. `walletId` narrows to one wallet. */
+  listJournalTrades(userId: string, limit?: number, walletId?: string): Promise<JournalTrade[]>;
+
+  /** Replace a wallet's positions wholesale (the pairing engine rebuilds them each ingest). */
+  replaceJournalPositions(userId: string, walletId: string, positions: JournalPosition[]): Promise<void>;
+  listJournalPositions(userId: string, status?: 'open' | 'closed'): Promise<JournalPosition[]>;
+  /** Side-write from the volume poller: last observed DexScreener price. */
+  updateJournalPositionPrice(userId: string, positionId: string, priceUsd: number, at: string): Promise<void>;
 }

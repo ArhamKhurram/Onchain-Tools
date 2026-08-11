@@ -1,11 +1,18 @@
 import { configStore } from '../config/store.js';
 import { contractLog } from '../utils/contractLog.js';
 import { revivalAlertLog } from '../utils/revivalAlertLog.js';
+import { journalLog } from '../journal/journalLog.js';
 import { pumpSessionStore } from '../pumpfun/pumpSessionStore.js';
 import type { PumpSession, StorageProvider } from './interface.js';
 import type { AppConfig, Room } from '../discord/types.js';
 import type { ContractEntry, ContractEnrichmentPatch, EnrichContractOptions } from '../utils/contractLog.js';
-import type { RevivalAlertEntry, RevivalOutcomePatch } from '@oct/shared';
+import type {
+  JournalPosition,
+  JournalTrade,
+  JournalWallet,
+  RevivalAlertEntry,
+  RevivalOutcomePatch,
+} from '@oct/shared';
 
 /**
  * JSON file-backed storage provider for local (single-user) mode.
@@ -122,5 +129,48 @@ export class JsonStorageProvider implements StorageProvider {
 
   async updateRevivalAlertOutcome(_userId: string, alertId: string, outcome: RevivalOutcomePatch): Promise<void> {
     revivalAlertLog.updateOutcome(alertId, outcome);
+  }
+
+  // ---- Trade journal ----
+
+  async listJournalWallets(_userId: string): Promise<JournalWallet[]> {
+    return journalLog.listWallets();
+  }
+
+  async addJournalWallet(_userId: string, address: string, label: string | null): Promise<JournalWallet> {
+    return journalLog.addWallet(address, label);
+  }
+
+  async removeJournalWallet(_userId: string, walletId: string): Promise<boolean> {
+    return journalLog.removeWallet(walletId);
+  }
+
+  async updateJournalWalletCursor(
+    _userId: string,
+    walletId: string,
+    lastSignature: string | null,
+    lastPolledAt: string,
+  ): Promise<void> {
+    journalLog.updateWalletCursor(walletId, lastSignature, lastPolledAt);
+  }
+
+  async addJournalTrades(_userId: string, trades: JournalTrade[]): Promise<number> {
+    return journalLog.addTrades(trades);
+  }
+
+  async listJournalTrades(_userId: string, limit?: number, walletId?: string): Promise<JournalTrade[]> {
+    return journalLog.listTrades(limit, walletId);
+  }
+
+  async replaceJournalPositions(_userId: string, walletId: string, positions: JournalPosition[]): Promise<void> {
+    journalLog.replacePositionsForWallet(walletId, positions);
+  }
+
+  async listJournalPositions(_userId: string, status?: 'open' | 'closed'): Promise<JournalPosition[]> {
+    return journalLog.listPositions(status);
+  }
+
+  async updateJournalPositionPrice(_userId: string, positionId: string, priceUsd: number, at: string): Promise<void> {
+    journalLog.updatePositionPrice(positionId, priceUsd, at);
   }
 }

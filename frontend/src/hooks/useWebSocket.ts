@@ -10,7 +10,7 @@ import { isHostedMode, getSupabase } from '../lib/supabase';
 import { isClientGatewayMode } from '../discord/clientGateway';
 import { hasLocalDiscordTokens } from '../discord/tokenStore';
 import { buildStreamMessage, STREAM_POOL } from '../demo/demoData';
-import type { WsIncoming, Alert, FrontendMessage, ContractEntry, RevivalAlertData, BreakoutAlertData } from '../types';
+import type { WsIncoming, Alert, FrontendMessage, ContractEntry, RevivalAlertData, BreakoutAlertData, JournalAlertData } from '../types';
 import type { FomoTradeEvent } from '../types/fomo';
 
 let idCounter = 0;
@@ -54,6 +54,7 @@ export function useWebSocket() {
   const fetchMaskedTokens = useAppStore((s) => s.fetchMaskedTokens);
   const addFomoTrade = useAppStore((s) => s.addFomoTrade);
   const addRevival = useAppStore((s) => s.addRevival);
+  const bumpJournalRefresh = useAppStore((s) => s.bumpJournalRefresh);
 
   useDemoStream();
 
@@ -419,6 +420,47 @@ export function useWebSocket() {
               addAlert(alert);
               if (cfg?.messageSounds) playBreakoutSound(cfg.soundSettings?.breakout);
             }
+          } else if (incoming.type === 'journal_alert') {
+            // "Meta dying": an OPEN journal position's volume is collapsing
+            // while the operator still holds. Toast + notification history at
+            // NORMAL loudness (never the revival klaxon). This is its own
+            // independent signal — never fused with revival/breakout/etc.
+            const d = incoming.data as JournalAlertData;
+            bumpJournalRefresh();
+            if (!IS_POPOUT) {
+              const sym = d.symbol ? `$${d.symbol}` : `${d.mint.slice(0, 6)}…`;
+              const held =
+                typeof d.positionValueUsd === 'number'
+                  ? ` — holding ~$${d.positionValueUsd >= 1000 ? `${(d.positionValueUsd / 1000).toFixed(1)}K` : d.positionValueUsd.toFixed(0)}`
+                  : '';
+              const alert: Alert = {
+                id: `journal-${d.mint}-${d.triggeredAt}`,
+                type: 'journal',
+                reason: `META DYING: ${sym} volume collapsing while you hold`,
+                message: {
+                  id: `journal-${d.mint}-${d.triggeredAt}`,
+                  channelId: 'journal',
+                  guildId: null,
+                  channelName: 'JOURNAL',
+                  guildName: null,
+                  author: { id: 'oct-journal', username: 'OCT', displayName: 'Journal', avatar: null },
+                  content: `${sym} volume dying${held} — m5 rate ${(d.m5RateVsH1 * 100).toFixed(0)}% of h1, h1 rate ${(d.h1RateVsH6 * 100).toFixed(0)}% of h6`,
+                  timestamp: d.triggeredAt,
+                  attachments: [],
+                  embeds: [],
+                  isHighlighted: false,
+                  hasContractAddress: true,
+                  contractAddresses: [d.mint],
+                  mentions: {},
+                  platformUrl: `https://dexscreener.com/solana/${d.mint}`,
+                },
+                timestamp: Date.now(),
+              };
+              addAlert(alert);
+            }
+          } else if (incoming.type === 'journal_update') {
+            // New journal trades landed server-side — refresh signal only.
+            bumpJournalRefresh();
           } else if (incoming.type === 'wallet_movement') {
             // A tracked Directory (user_tracked_wallets) SOLANA wallet made an
             // on-chain buy/sell. `notify` gates the toast/sound (mirrors FOMO);
@@ -511,5 +553,5 @@ export function useWebSocket() {
       clearTimeout(reconnectTimer);
       wsRef.current?.close();
     };
-  }, [addMessage, updateMessage, markMessageDeleted, addAlert, setConnected, updateReaction, addContract, enrichContract, updateContractChain, fetchGuilds, fetchDMChannels, fetchHistory, fetchTelegramChats, checkAuth, setGatewayAuthError, fetchMaskedTokens, addFomoTrade, addRevival]);
+  }, [addMessage, updateMessage, markMessageDeleted, addAlert, setConnected, updateReaction, addContract, enrichContract, updateContractChain, fetchGuilds, fetchDMChannels, fetchHistory, fetchTelegramChats, checkAuth, setGatewayAuthError, fetchMaskedTokens, addFomoTrade, addRevival, bumpJournalRefresh]);
 }

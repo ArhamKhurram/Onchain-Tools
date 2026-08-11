@@ -46,6 +46,8 @@ import { startWalletMovementPoller } from './wallets/movementPoller.js';
 import { startFomoRetentionSweeper } from './fomo/retention.js';
 import { startMissedRunnerPoller } from './alerts/missedRunnerPoller.js';
 import { startRevivalPoller } from './revival/poller.js';
+import { startJournalPoller } from './journal/poller.js';
+import { startJournalVolumeDeathPoller } from './journal/volumeDeathPoller.js';
 import { startTokenPeakSampler } from './alerts/tokenPeakSampler.js';
 import type { DiscordMessage, PushoverConfig, FrontendMessage, ContractLinkTemplates } from './discord/types.js';
 import type { ContractEnrichmentPatch } from './utils/contractLog.js';
@@ -723,6 +725,12 @@ httpServer.listen(PORT, HOST, async () => {
   // Runs in BOTH modes: local reads the JSON contract log, hosted the contracts
   // table. Keyless upstream, in-memory cooldowns, gated by OCT_REVIVAL_ENABLED.
   startRevivalPoller(wsServer);
+  // Trade journal: own-wallet swap ingestion (Helius) + FIFO position pairing.
+  // Runs in BOTH modes; self-gates on HELIUS_API_KEY (idle without it).
+  startJournalPoller(wsServer);
+  // "Meta dying" volume-collapse alerts for OPEN journal positions. Keyless
+  // DexScreener upstream; an independent signal, never fused with revival.
+  startJournalVolumeDeathPoller(wsServer);
   // Global pump.fun KOL-callout fan-out poller. Self-gates on Supabase (idle in
   // local mode), keyless upstream, so it never crashes the server.
   startPumpCalloutPoller(wsServer);
