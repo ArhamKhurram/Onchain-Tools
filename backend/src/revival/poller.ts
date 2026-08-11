@@ -47,7 +47,7 @@ import { getStorageProvider, isHostedMode } from '../storage/index.js';
 import { getFomoServiceClient } from '../fomo/store.js';
 import { sendPushover } from '../utils/pushover.js';
 import { formatCompact } from '../wallets/balanceChecker.js';
-import { evaluateRevival } from './detector.js';
+import { DEFAULT_REVIVAL_CONFIG, evaluateRevival } from './detector.js';
 import {
   fetchRevivalCandles,
   isBackedOff,
@@ -77,9 +77,13 @@ const MAX_TOKENS_PER_USER = 30;
 //
 // So: once a token alerts it is suppressed until it has GENUINELY returned to
 // dormancy — dormancy holds again AND price is back near a freshly computed
-// baseline — or a long absolute ceiling elapses, whichever comes first. The
-// short cooldown survives only as a floor, and only because it lets the poll
-// loop skip the candle fetch entirely for the first hour (request budget).
+// baseline AND the new dormant window shows a real drawdown from the trailing
+// peak (see the detector's drawdown gate; a token that plateaus at the top
+// after an alert has "returned to dormancy" by volume alone and must not
+// re-arm that way) — or a long absolute ceiling elapses, whichever comes
+// first. The short cooldown survives only as a floor, and only because it
+// lets the poll loop skip the candle fetch entirely for the first hour
+// (request budget).
 /** Floor: never re-alert a token within this, and skip its fetch meanwhile. */
 export const ALERT_COOLDOWN_MS = 60 * 60_000;
 /** Ceiling: suppression lapses after this no matter what the token did. */
@@ -100,7 +104,13 @@ export interface RunSuppression {
 
 export interface SuppressionDecision {
   suppress: boolean;
-  reason: 'cooldown' | 'run-in-progress' | 'unknown-baseline' | null;
+  reason:
+    | 'cooldown'
+    | 'run-in-progress'
+    | 'unknown-baseline'
+    | 'unknown-drawdown'
+    | 'no-drawdown'
+    | null;
 }
 
 /**
@@ -110,15 +120,21 @@ export interface SuppressionDecision {
  * `runMultiple == null` (no usable baseline) is treated as NOT a proven return
  * to dormancy: the detector abstains from vetoing on a missing baseline, but
  * "we cannot tell" must not be enough to re-open the loudest alert in the app.
+ * `drawdownFromPeak` follows the same rule: a genuine return to dormancy means
+ * the token actually CRASHED back down (≥ minDrawdownFromPeak below its
+ * trailing peak), not that it merely went quiet at the top — a post-alert
+ * plateau satisfies the volume-only dormancy check and would otherwise re-arm
+ * the token for the exact false alert the detector's drawdown gate blocks.
  */
 export function evaluateRunSuppression(
   prior: RunSuppression | undefined,
-  verdict: { dormant: boolean; runMultiple: number | null },
+  verdict: { dormant: boolean; runMultiple: number | null; drawdownFromPeak: number | null },
   now: number,
   opts: {
     cooldownMs?: number;
     ceilingMs?: number;
     reentryMaxRunMultiple?: number;
+    minDrawdownFromPeak?: number;
   } = {},
 ): SuppressionDecision {
   if (!prior) return { suppress: false, reason: null };
@@ -126,6 +142,7 @@ export function evaluateRunSuppression(
   const cooldownMs = opts.cooldownMs ?? ALERT_COOLDOWN_MS;
   const ceilingMs = opts.ceilingMs ?? RUN_SUPPRESSION_CEILING_MS;
   const reentry = opts.reentryMaxRunMultiple ?? REENTRY_MAX_RUN_MULTIPLE;
+  const minDrawdown = opts.minDrawdownFromPeak ?? DEFAULT_REVIVAL_CONFIG.minDrawdownFromPeak;
 
   const elapsed = now - prior.alertedAt;
   if (elapsed >= ceilingMs) return { suppress: false, reason: null };
@@ -134,6 +151,8 @@ export function evaluateRunSuppression(
   if (!verdict.dormant) return { suppress: true, reason: 'run-in-progress' };
   if (verdict.runMultiple == null) return { suppress: true, reason: 'unknown-baseline' };
   if (verdict.runMultiple > reentry) return { suppress: true, reason: 'run-in-progress' };
+  if (verdict.drawdownFromPeak == null) return { suppress: true, reason: 'unknown-drawdown' };
+  if (verdict.drawdownFromPeak < minDrawdown) return { suppress: true, reason: 'no-drawdown' };
   return { suppress: false, reason: null };
 }
 
@@ -240,6 +259,8 @@ export interface RevivalCycleSummary {
   fullSweepMs: number | null;
   /** True when the safety-valve backoff cut the cycle short. */
   pausedEarly: boolean;
+  /** Dormant tokens the drawdown gate rejected as consolidations this cycle. */
+  drawdownBlocked: number;
 }
 
 /**
@@ -259,6 +280,8 @@ export function summarizeCycle(input: {
   rateLimited: number;
   pollMs: number;
   pausedEarly: boolean;
+  /** Optional so pre-drawdown-gate callers/tests keep reading; defaults to 0. */
+  drawdownBlocked?: number;
 }): RevivalCycleSummary {
   const { universeSize, scanned, requests, rateLimited, pollMs, pausedEarly } = input;
   const cyclesForSweep = scanned > 0 ? Math.ceil(universeSize / scanned) : null;
@@ -269,6 +292,7 @@ export function summarizeCycle(input: {
     rateLimited,
     fullSweepMs: cyclesForSweep != null ? cyclesForSweep * pollMs : null,
     pausedEarly,
+    drawdownBlocked: input.drawdownBlocked ?? 0,
   };
 }
 
@@ -277,9 +301,12 @@ export function formatCycleSummary(s: RevivalCycleSummary): string {
   const sweep =
     s.fullSweepMs != null ? `full sweep ~${Math.round(s.fullSweepMs / 60_000)}min` : 'full sweep STALLED';
   const paused = s.pausedEarly ? ', paused early (rate-limit backoff)' : '';
+  // Only rendered when non-zero: the count is a diagnostic for the drawdown
+  // gate (dormant tokens rejected as consolidations), not routine coverage.
+  const drawdown = s.drawdownBlocked > 0 ? `, ${s.drawdownBlocked} drawdown-blocked` : '';
   return (
     `[RevivalPoller] cycle: ${s.scanned}/${s.universeSize} tokens scanned, ` +
-    `${s.requests} requests, ${s.rateLimited} rate-limited, ${sweep}${paused}`
+    `${s.requests} requests, ${s.rateLimited} rate-limited, ${sweep}${paused}${drawdown}`
   );
 }
 
@@ -307,6 +334,11 @@ export function seedRotationOffset(
 ): number {
   if (keyCount <= 0 || cap <= 0 || pollMs <= 0) return 0;
   return (Math.floor(now / pollMs) * cap) % keyCount;
+}
+
+/** "27%" / "-4%" / "?" — drawdowns are small numbers; whole percents suffice. */
+function formatDrawdownPct(drawdown: number | null): string {
+  return drawdown != null ? `${(drawdown * 100).toFixed(0)}%` : '?';
 }
 
 function envFlag(name: string): string | undefined {
@@ -691,6 +723,7 @@ class RevivalPoller {
     let scanned = 0;
     let pausedEarly = false;
     let universeSize = 0;
+    let drawdownBlocked = 0;
     try {
       const universe = await this.loadUniverse();
       universeSize = universe.size;
@@ -719,7 +752,7 @@ class RevivalPoller {
         // outcome tracker each stay "under the limit" while their SUM was not.
         scanned += 1;
         try {
-          await this.evaluateToken(key, entry);
+          if (await this.evaluateToken(key, entry)) drawdownBlocked += 1;
         } catch (err) {
           console.warn(`[RevivalPoller] evaluate failed for ${key.slice(0, 20)}…:`, (err as Error)?.message);
         }
@@ -740,6 +773,7 @@ class RevivalPoller {
               rateLimited: after.rateLimited - before.rateLimited,
               pollMs: this.pollMs,
               pausedEarly,
+              drawdownBlocked,
             }),
           ),
         );
@@ -747,14 +781,32 @@ class RevivalPoller {
     }
   }
 
-  private async evaluateToken(key: string, target: UniverseEntry): Promise<void> {
+  /**
+   * Returns true when the drawdown gate was what held a dormant token back
+   * (surfaced in the per-cycle summary — the gate has no persisted column, so
+   * the log IS its observability).
+   */
+  private async evaluateToken(key: string, target: UniverseEntry): Promise<boolean> {
     const { address: mint, network, subscribers } = target;
     const candles = await fetchRevivalCandles(network, mint);
-    if (!candles) return;
+    if (!candles) return false;
 
     const now = Date.now();
     const verdict = evaluateRevival(candles.minute, candles.hour, now);
-    if (!verdict.fired) return;
+    if (!verdict.fired) {
+      // A dormant token the drawdown gate rejected is the one non-firing shape
+      // worth a line: it is exactly the consolidation-at-highs false positive
+      // (TOAD, Aug 11) that every other gate waves through.
+      if (verdict.dormant && !verdict.drawdownGate) {
+        console.log(
+          `[RevivalPoller] Drawdown gate held ${key.slice(0, 24)}…: baseline ` +
+            `${verdict.baselinePrice ?? '?'} is only ${formatDrawdownPct(verdict.drawdownFromPeak)} below ` +
+            `trailing peak ${verdict.trailingPeakPrice ?? '?'} — consolidation, not a revival.`,
+        );
+        return true;
+      }
+      return false;
+    }
 
     // Repeat suppression: is this a fresh ignition, or the same run we already
     // alerted on still satisfying every gate?
@@ -762,10 +814,10 @@ class RevivalPoller {
     if (decision.suppress) {
       if (decision.reason !== 'cooldown') {
         console.log(
-          `[RevivalPoller] Suppressed repeat ignition for ${key.slice(0, 24)}… (${decision.reason}, run ${verdict.runMultiple?.toFixed(2) ?? '?'}x).`,
+          `[RevivalPoller] Suppressed repeat ignition for ${key.slice(0, 24)}… (${decision.reason}, run ${verdict.runMultiple?.toFixed(2) ?? '?'}x, drawdown ${formatDrawdownPct(verdict.drawdownFromPeak)}).`,
         );
       }
-      return;
+      return false;
     }
 
     this.suppression.set(key, { alertedAt: now });
@@ -789,8 +841,10 @@ class RevivalPoller {
     };
 
     const sym = data.symbol ? `$${data.symbol}` : `${mint.slice(0, 6)}…`;
+    // drawdown/peak have no column in the alert row (no migration for the
+    // gate), so this line is where a fired alert's drawdown is recorded.
     console.log(
-      `[RevivalPoller] IGNITION ${sym} on ${revivalNetworkLabel(network)} (${mint.slice(0, 8)}…) atrZ=${data.atrZ.toFixed(1)} rvol=${data.rvol.toFixed(1)} run=${data.runMultiple != null ? `${data.runMultiple.toFixed(2)}x` : '?'} → ${subscribers.size} user(s)`,
+      `[RevivalPoller] IGNITION ${sym} on ${revivalNetworkLabel(network)} (${mint.slice(0, 8)}…) atrZ=${data.atrZ.toFixed(1)} rvol=${data.rvol.toFixed(1)} run=${data.runMultiple != null ? `${data.runMultiple.toFixed(2)}x` : '?'} drawdown=${formatDrawdownPct(verdict.drawdownFromPeak)} (peak ${verdict.trailingPeakPrice ?? '?'}) → ${subscribers.size} user(s)`,
     );
 
     for (const userId of subscribers) {
@@ -815,6 +869,7 @@ class RevivalPoller {
       this.wsServer.broadcastRevivalAlert(data, userId);
       void this.notifyPushover(userId, data, sym);
     }
+    return false;
   }
 
   private async notifyPushover(userId: string, data: RevivalAlertData, sym: string): Promise<void> {
