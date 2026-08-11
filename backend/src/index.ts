@@ -24,6 +24,7 @@ import { createBotRouter } from './api/routes/bot.js';
 import { createSniperRouter } from './api/sniper/router.js';
 import { requireBotAuth } from './auth/botAuth.js';
 import { startBot } from './bot/index.js';
+import { startDailyDigestScheduler } from './bot/dailyDigest.js';
 import { getStorageProvider, isHostedMode } from './storage/index.js';
 import { authMiddleware } from './auth/middleware.js';
 import { getGateway, setGateway } from './gateway/state.js';
@@ -738,6 +739,11 @@ httpServer.listen(PORT, HOST, async () => {
   // In-process OCT Discord bot. Self-gates on DISCORD_BOT_TOKEN and swallows
   // its own failures, so it can never take the backend down.
   startBot(wsServer);
+
+  // Once-a-day signal digest DMs (opt-in). Self-gates on Supabase + the bot
+  // token; if the process was down at the scheduled hour it waits for the next
+  // one rather than sending a stale digest on boot.
+  startDailyDigestScheduler();
 
   if (!isHostedMode()) {
     const storage = getStorageProvider();
