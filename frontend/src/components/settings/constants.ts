@@ -25,8 +25,8 @@ export const defaultTriggers: PushoverTriggers = { highlightedUser: false, highl
 export const defaultFilters: PushoverFilters = { userIds: [], channelIds: [], guildIds: [] };
 export const defaultDiscordBotDm: DiscordBotDmConfig = {
   enabled: false,
-  // releaseNotes defaults off like every other trigger — enabling bot DMs is not
-  // consent to receive changelog posts.
-  triggers: { highlightedUser: false, highlightedUserContract: true, contract: false, keyword: false, missedRunner: true, releaseNotes: false },
+  // releaseNotes and dailyDigest default off like every other trigger — enabling
+  // bot DMs is not consent to receive changelog posts or a daily summary.
+  triggers: { highlightedUser: false, highlightedUserContract: true, contract: false, keyword: false, missedRunner: true, releaseNotes: false, dailyDigest: false },
 };
 export const defaultMissedRunner: MissedRunnerConfig = { enabled: false, minMultiplier: 1.5, lookbackHours: 24, cooldownHours: 24, notifyVia: 'toast' };
