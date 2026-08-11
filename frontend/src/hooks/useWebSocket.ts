@@ -284,6 +284,53 @@ export function useWebSocket() {
               const cfg = useAppStore.getState().config;
               if (cfg?.messageSounds) playPumpCalloutSound(cfg.soundSettings?.pumpCallout);
             }
+          } else if (incoming.type === 'fomo_join') {
+            // A notable account just joined fomo.family — their joining IS the
+            // signal (early awareness = free entry). Global broadcast, NORMAL
+            // loudness: notification history + one sound, never the revival
+            // klaxon. Stays independent from FOMO trades / convergence.
+            const d = incoming.data as {
+              feedId: string;
+              fomoUserId: string;
+              fomoHandle: string | null;
+              displayName: string | null;
+              imageUrl: string | null;
+              smartFollowerCount: number;
+              followerCount: number | null;
+              profileUrl: string | null;
+              suppressed?: number;
+            };
+            if (!IS_POPOUT) {
+              const who = d.displayName || (d.fomoHandle ? `@${d.fomoHandle}` : 'A notable account');
+              const more = d.suppressed && d.suppressed > 0 ? ` · +${d.suppressed} more new joins` : '';
+              const smart = d.smartFollowerCount > 0 ? ` · ${d.smartFollowerCount} smart followers already` : '';
+              const alert: Alert = {
+                id: `fomo-join-${d.feedId}`,
+                type: 'fomo_join',
+                reason: `NEW JOIN: ${who} just joined fomo${more}`,
+                message: {
+                  id: `fomo-join-${d.feedId}`,
+                  channelId: 'fomo-join',
+                  guildId: null,
+                  channelName: 'FOMO',
+                  guildName: null,
+                  author: { id: 'oct-fomo', username: 'OCT', displayName: 'FOMO Join', avatar: d.imageUrl ?? null },
+                  content: `${who} just joined fomo.family${smart}${more}`,
+                  timestamp: new Date().toISOString(),
+                  attachments: [],
+                  embeds: [],
+                  isHighlighted: false,
+                  hasContractAddress: false,
+                  contractAddresses: [],
+                  mentions: {},
+                  platformUrl: d.profileUrl ?? undefined,
+                },
+                timestamp: Date.now(),
+              };
+              addAlert(alert);
+              const cfg = useAppStore.getState().config;
+              if (cfg?.messageSounds) playFomoTradeSound(cfg.soundSettings?.fomoTrade);
+            }
           } else if (incoming.type === 'revival_alert') {
             // A dormant token on the user's radar just ignited — the loudest
             // alert class in the app. The banner (with its repeating sound
