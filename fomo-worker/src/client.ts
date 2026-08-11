@@ -7,6 +7,7 @@ import type { BrowserContext, Page } from 'playwright';
 import stealth from 'puppeteer-extra-plugin-stealth';
 import type { FomoCallResult, FomoCredentials, FomoTokenMetadata } from './types.js';
 import { persistRefreshToken } from './store.js';
+import { isBrowserDeathMessage } from './watchdog.js';
 
 chromium.use(stealth());
 
@@ -75,6 +76,7 @@ export class FomoBrowserClient {
   private pageOpenedAt = 0;
   private callsOnPage = 0;
   private inFlight = 0;
+  private contextClosed = false;
   lastCallAt: Date | null = null;
   lastCallPath: string | null = null;
   lastError: string | null = null;
@@ -91,6 +93,15 @@ export class FomoBrowserClient {
 
   get jwtReady(): boolean {
     return !!this.jwt;
+  }
+
+  /**
+   * Flag-based liveness — cheap enough for a health probe (no Playwright RPC).
+   * `context.browser()` is null for persistent contexts, so we track the
+   * context's own `close` event instead of `browser.isConnected()`.
+   */
+  get browserConnected(): boolean {
+    return !!this.context && !this.contextClosed && !!this.page && !this.page.isClosed();
   }
 
   /** Seconds the current tab has been open — health-check signal that recycling runs. */
@@ -155,6 +166,10 @@ export class FomoBrowserClient {
       await this.preparePage(page);
 
       this.context = context;
+      this.contextClosed = false;
+      context.on('close', () => {
+        this.contextClosed = true;
+      });
       this.page = page;
       this.pageOpenedAt = Date.now();
       this.callsOnPage = 0;
@@ -329,9 +344,22 @@ export class FomoBrowserClient {
       try {
         await this.recyclePage();
       } catch (err) {
+        const message = (err as Error)?.message ?? String(err);
+        // If the recycle failed because the context/browser itself is gone,
+        // "keeping the current tab" means keeping a corpse: every future
+        // page.evaluate would hang or throw forever (this is exactly how the
+        // 2026-08-11 18-hour wedge presented). A dead browser is
+        // unrecoverable in-process — exit and let systemd restart us clean.
+        if (isBrowserDeathMessage(message) || !this.browserConnected) {
+          console.error(
+            '[FomoWorker] Tab recycle failed and the browser context is dead — exiting for a clean restart:',
+            message,
+          );
+          process.exit(1);
+        }
         // A failed recycle is not worth failing the call over — the old tab
         // still works, it is just fatter than we would like.
-        console.warn('[FomoWorker] Tab recycle failed (keeping current tab):', (err as Error)?.message);
+        console.warn('[FomoWorker] Tab recycle failed (keeping current tab):', message);
       }
     }
 
