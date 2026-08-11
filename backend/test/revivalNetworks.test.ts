@@ -368,8 +368,11 @@ describe('request pacing fits the MEASURED GeckoTerminal budget', () => {
   it('sweeps a realistic universe inside the latency the PR promises', () => {
     const sweepMinutes = (size: number) =>
       (Math.ceil(size / MAX_TOKENS_PER_CYCLE) * DEFAULT_POLL_MS) / 60_000;
-    expect(sweepMinutes(30)).toBe(10);
-    expect(sweepMinutes(100)).toBe(35);
+    // Cap 13 since the tracker reserve was doubled for the second default-on
+    // alert class (breakout outcomes share the queue) — one cycle slower on a
+    // 30-token universe than the revival-only cap of 15.
+    expect(sweepMinutes(30)).toBe(15);
+    expect(sweepMinutes(100)).toBe(40);
     // Revival runs last tens of minutes to hours, so a sweep measured in
     // minutes is fine — never reaching the tail at all is not.
     expect(sweepMinutes(30)).toBeLessThanOrEqual(15);

@@ -5,6 +5,7 @@ import {
   type Candle,
 } from '../src/revival/detector.js';
 import {
+  ALERT_COOLDOWN_MS,
   evaluateRunSuppression,
   formatCycleSummary,
   isBreakoutEnabled,
@@ -252,27 +253,30 @@ describe('per-kind suppression', () => {
     ).toBe(false);
   });
 
-  describe('shouldSkipCandleFetch (the fetch feeds BOTH verdicts)', () => {
+  describe('shouldSkipCandleFetch (the 60-min post-revival fetch skip)', () => {
+    // The skip is keyed off the REVIVAL suppression alone — the pre-breakout
+    // behaviour, so detection-side request volume is unchanged. It does not
+    // mute breakout: inside revival's floor the only dormancy-qualifying
+    // window is the pre-ignition one that just measured drawdown ≥ threshold
+    // (post-ignition windows contain the ignition's own volume expansion),
+    // so no breakout verdict is reachable there. Symmetrically, the poll loop
+    // never passes the breakout prior: a breakout floor must not suppress the
+    // fetch, because revival (the loud tier) stays observable through it.
     const inCooldown: RunSuppression = { alertedAt: NOW - 10 * MINUTE };
     const expired: RunSuppression = { alertedAt: NOW - 2 * HOUR };
 
-    it('never skips when revival is not in its floor (fetch still needed for revival)', () => {
-      expect(shouldSkipCandleFetch(undefined, inCooldown, true, NOW)).toBe(false);
-      expect(shouldSkipCandleFetch(expired, inCooldown, true, NOW)).toBe(false);
+    it('skips for the hour after a revival alert (breakout is unreachable inside the floor)', () => {
+      expect(shouldSkipCandleFetch(inCooldown, NOW)).toBe(true);
     });
 
-    it('does NOT skip on revival cooldown alone while breakout could still fire', () => {
-      expect(shouldSkipCandleFetch(inCooldown, undefined, true, NOW)).toBe(false);
-      expect(shouldSkipCandleFetch(inCooldown, expired, true, NOW)).toBe(false);
+    it('fetches when no revival floor is open — first sight, lapsed floor, or breakout-cooldown-only', () => {
+      expect(shouldSkipCandleFetch(undefined, NOW)).toBe(false);
+      expect(shouldSkipCandleFetch(expired, NOW)).toBe(false);
     });
 
-    it('skips only when every kind that could alert is inside its own floor', () => {
-      expect(shouldSkipCandleFetch(inCooldown, inCooldown, true, NOW)).toBe(true);
-    });
-
-    it('with breakout disabled degrades to the old revival-only behaviour (request budget unchanged)', () => {
-      expect(shouldSkipCandleFetch(inCooldown, undefined, false, NOW)).toBe(true);
-      expect(shouldSkipCandleFetch(undefined, undefined, false, NOW)).toBe(false);
+    it('the floor is exactly ALERT_COOLDOWN_MS', () => {
+      expect(shouldSkipCandleFetch({ alertedAt: NOW - ALERT_COOLDOWN_MS + 1 }, NOW)).toBe(true);
+      expect(shouldSkipCandleFetch({ alertedAt: NOW - ALERT_COOLDOWN_MS }, NOW)).toBe(false);
     });
   });
 });
@@ -351,10 +355,17 @@ describe('buildAlertEntry — kind', () => {
   it('carries breakout through', () => {
     expect(buildAlertEntry({ ...data, kind: 'breakout' }).kind).toBe('breakout');
   });
+
+  it('persists the fire-time drawdown label — the calibration input for the drawdown knobs', () => {
+    expect(buildAlertEntry({ ...data, drawdownFromPeak: 0.27 }).drawdownFromPeak).toBe(0.27);
+    // Null when never measured (a revival firing on the gate's abstention).
+    expect(buildAlertEntry({ ...data, drawdownFromPeak: null }).drawdownFromPeak).toBeNull();
+    expect(buildAlertEntry(data).drawdownFromPeak).toBeNull();
+  });
 });
 
 describe('RevivalAlertsRepo.logRevivalAlert — missing-column fallback (#123 pattern)', () => {
-  function makeRepo(missing: { kind?: boolean; baseline?: boolean }) {
+  function makeRepo(missing: { kind?: boolean; drawdown?: boolean; baseline?: boolean }) {
     const inserts: Record<string, unknown>[] = [];
     const client = {
       from: (_table: string) => ({
@@ -364,6 +375,14 @@ describe('RevivalAlertsRepo.logRevivalAlert — missing-column fallback (#123 pa
             return {
               error: {
                 message: "Could not find the 'kind' column of 'revival_alerts' in the schema cache",
+              },
+            };
+          }
+          if (missing.drawdown && 'drawdown_from_peak' in row) {
+            return {
+              error: {
+                message:
+                  "Could not find the 'drawdown_from_peak' column of 'revival_alerts' in the schema cache",
               },
             };
           }
@@ -395,6 +414,7 @@ describe('RevivalAlertsRepo.logRevivalAlert — missing-column fallback (#123 pa
     rvol: 8,
     baselinePriceUsd: 0.012,
     runMultiple: 1.7,
+    drawdownFromPeak: 0.27,
     triggeredAt: new Date(NOW).toISOString(),
     peakPriceUsd: 0.02,
     peakMcapUsd: 20_000_000,
@@ -403,26 +423,40 @@ describe('RevivalAlertsRepo.logRevivalAlert — missing-column fallback (#123 pa
     outcomeWindowClosedAt: null,
   };
 
-  it('writes kind on the happy path (null kind defaults to revival)', async () => {
+  it('writes kind and the drawdown label on the happy path (null kind defaults to revival)', async () => {
     const { repo, inserts } = makeRepo({});
     await repo.logRevivalAlert('u1', alert);
     expect(inserts).toHaveLength(1);
     expect(inserts[0].kind).toBe('breakout');
+    expect(inserts[0].drawdown_from_peak).toBe(0.27);
 
     const { repo: repo2, inserts: inserts2 } = makeRepo({});
-    await repo2.logRevivalAlert('u1', { ...alert, kind: null });
+    await repo2.logRevivalAlert('u1', { ...alert, kind: null, drawdownFromPeak: undefined });
     expect(inserts2[0].kind).toBe('revival');
+    expect(inserts2[0].drawdown_from_peak).toBeNull();
   });
 
-  it('retries once WITHOUT kind when the column does not exist yet (deploy→migrate window)', async () => {
+  it('retries once WITHOUT kind + drawdown (one migration, missing together) in the deploy→migrate window', async () => {
     const { repo, inserts } = makeRepo({ kind: true });
     await repo.logRevivalAlert('u1', alert);
     expect(inserts).toHaveLength(2);
     expect('kind' in inserts[0]).toBe(true);
     expect('kind' in inserts[1]).toBe(false);
+    expect('drawdown_from_peak' in inserts[1]).toBe(false);
     // Nothing else was dropped from the row.
     expect(inserts[1].mint).toBe('MintA');
     expect(inserts[1].baseline_price_usd).toBe(0.012);
+  });
+
+  it('the same retry fires when the error names drawdown_from_peak instead of kind', async () => {
+    // PostgREST reports ONE missing column per attempt — whichever of the
+    // migration's two columns it names, the retry must drop both.
+    const { repo, inserts } = makeRepo({ drawdown: true });
+    await repo.logRevivalAlert('u1', { ...alert, kind: null });
+    expect(inserts).toHaveLength(2);
+    expect('kind' in inserts[1]).toBe(false);
+    expect('drawdown_from_peak' in inserts[1]).toBe(false);
+    expect(inserts[1].mint).toBe('MintA');
   });
 
   it('cascades with the older baseline/run_multiple fallback when both are missing', async () => {
@@ -431,9 +465,30 @@ describe('RevivalAlertsRepo.logRevivalAlert — missing-column fallback (#123 pa
     expect(inserts).toHaveLength(3);
     const last = inserts[2];
     expect('kind' in last).toBe(false);
+    expect('drawdown_from_peak' in last).toBe(false);
     expect('baseline_price_usd' in last).toBe(false);
     expect('run_multiple' in last).toBe(false);
     expect(last.mint).toBe('MintA');
+  });
+
+  it('maps drawdown_from_peak back out on reads (null on pre-migration rows)', async () => {
+    const rows = [
+      { id: 'a', kind: 'breakout', mint: 'MintA', triggered_at: new Date(NOW).toISOString(), drawdown_from_peak: '0.27' },
+      { id: 'b', mint: 'MintB', triggered_at: new Date(NOW).toISOString() },
+    ];
+    const client = {
+      from: () => ({
+        select: () => ({
+          eq: () => ({
+            order: () => ({ limit: async () => ({ data: rows, error: null }) }),
+          }),
+        }),
+      }),
+    };
+    const repo = new RevivalAlertsRepo({ supabase: client } as unknown as SupabaseContext);
+    const entries = await repo.listRevivalAlerts('u1');
+    expect(entries[0].drawdownFromPeak).toBe(0.27);
+    expect(entries[1].drawdownFromPeak).toBeNull();
   });
 
   it('still throws on an unrelated insert error', async () => {

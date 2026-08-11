@@ -158,6 +158,13 @@ export function buildAlertEntry(data: {
   rvol: number;
   baselinePrice: number | null;
   runMultiple: number | null;
+  /**
+   * Fire-time drawdown label (1 - baseline/trailing-peak) — persisted so the
+   * drawdown knobs can later be calibrated from logged alerts, not just from
+   * a console line. Always known for a breakout; may be null for a revival
+   * (the gate's abstention). Absent = null (not measured).
+   */
+  drawdownFromPeak?: number | null;
   triggeredAt: string;
   /** Signal kind for the row; absent = 'revival'. */
   kind?: RevivalSignalKind;
@@ -175,6 +182,7 @@ export function buildAlertEntry(data: {
     rvol: data.rvol,
     baselinePriceUsd: data.baselinePrice,
     runMultiple: data.runMultiple,
+    drawdownFromPeak: data.drawdownFromPeak ?? null,
     triggeredAt: data.triggeredAt,
     peakPriceUsd: hasPrice ? data.price : null,
     peakMcapUsd: hasPrice ? data.mcapUsd : null,

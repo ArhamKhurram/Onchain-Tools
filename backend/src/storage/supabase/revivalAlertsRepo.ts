@@ -27,6 +27,7 @@ export class RevivalAlertsRepo extends BaseRepo {
       rvol: Number(row.rvol ?? 0),
       baselinePriceUsd: row.baseline_price_usd != null ? Number(row.baseline_price_usd) : null,
       runMultiple: row.run_multiple != null ? Number(row.run_multiple) : null,
+      drawdownFromPeak: row.drawdown_from_peak != null ? Number(row.drawdown_from_peak) : null,
       triggeredAt: row.triggered_at,
       peakPriceUsd: row.peak_price_usd != null ? Number(row.peak_price_usd) : null,
       peakMcapUsd: row.peak_mcap_usd != null ? Number(row.peak_mcap_usd) : null,
@@ -50,6 +51,7 @@ export class RevivalAlertsRepo extends BaseRepo {
       rvol: alert.rvol,
       baseline_price_usd: alert.baselinePriceUsd,
       run_multiple: alert.runMultiple,
+      drawdown_from_peak: alert.drawdownFromPeak ?? null,
       triggered_at: alert.triggeredAt,
       peak_price_usd: alert.peakPriceUsd,
       peak_mcap_usd: alert.peakMcapUsd,
@@ -60,15 +62,21 @@ export class RevivalAlertsRepo extends BaseRepo {
 
     let result = await this.supabase.from('revival_alerts').insert(row);
     // Deploy-order tolerance: migrations here are applied BY HAND, so the code
-    // can reach prod a few minutes before the `kind` column exists. Losing the
-    // row entirely would cost the review surface for the signal, so retry once
-    // without it and say so loudly — the row then reads as a revival until the
-    // migration lands. Delete this branch once it is applied everywhere.
-    if (result.error && /['"]kind['"]|column "kind"/.test(result.error.message ?? '')) {
+    // can reach prod a few minutes before the `kind`/`drawdown_from_peak`
+    // columns exist (both ship in migration 20260812093000, so they are
+    // missing together). Losing the row entirely would cost the review surface
+    // for the signal, so retry once without them and say so loudly — the row
+    // then reads as an unlabeled revival until the migration lands. Delete
+    // this branch once it is applied everywhere.
+    if (
+      result.error &&
+      /['"]kind['"]|column "kind"|drawdown_from_peak/.test(result.error.message ?? '')
+    ) {
       console.warn(
-        '[Supabase] revival_alerts is missing the kind column — apply migration 20260812093000_revival_alerts_kind.sql. Logging without it.',
+        '[Supabase] revival_alerts is missing the kind/drawdown_from_peak columns — apply migration 20260812093000_revival_alerts_kind.sql. Logging without them.',
       );
       delete row.kind;
+      delete row.drawdown_from_peak;
       result = await this.supabase.from('revival_alerts').insert(row);
     }
     // Same tolerance for the older baseline_price_usd/run_multiple columns

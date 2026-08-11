@@ -357,6 +357,17 @@ export interface RevivalAlertEntry {
   baselinePriceUsd: number | null;
   /** priceUsd / baselinePriceUsd at fire time — how far it had already run. */
   runMultiple: number | null;
+  /**
+   * 1 - baselinePriceUsd / trailing-peak price, as the detector measured it at
+   * fire time — the label the drawdown knobs are calibrated from (the
+   * detector's docs say to move `breakout.minDrawdownFloor` /
+   * `minDrawdownFromPeak` only with labeled cases in hand, and this log IS the
+   * labeled-case set). Breakout rows always carry a measured value in
+   * [breakout floor, revival threshold); revival rows carry ≥ the threshold,
+   * or null when the gate abstained (missing history). Absent on rows written
+   * before the column existed.
+   */
+  drawdownFromPeak?: number | null;
   /** ISO timestamp of the detection. */
   triggeredAt: string;
   // ---- Outcome (filled by the 24h tracker; peak state lives in the row so

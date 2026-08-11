@@ -35,12 +35,19 @@
  *
  * BREAKOUT rides the same cycle as a sibling signal (one tier quieter): the
  * detector's evaluate pass yields both verdicts from the same candles, so
- * breakout adds ZERO GeckoTerminal requests. On a breakout verdict the poller
- * emits a `breakout_alert` WS frame (payload = revival's + drawdownFromPeak)
- * and Pushover at NORMAL priority — emergency stays reserved for revival.
- * Suppression state is kept PER KIND: a token's revival suppression never
- * mutes its breakout and vice versa. Rows share the revival_alerts store,
- * discriminated by `kind`. Gate: OCT_BREAKOUT_ENABLED (default on).
+ * DETECTION adds zero GeckoTerminal requests — including during revival's
+ * 60-min post-alert fetch skip, which stays in place because a breakout
+ * verdict is unreachable inside it (see shouldSkipCandleFetch). What a
+ * breakout does cost is its OUTCOME: every emitted alert enrolls in the 24h
+ * outcome tracker exactly like a revival (~1-2 requests per 10-min sweep for
+ * a day ≈ ~170 requests per tracked token), which is why
+ * OUTCOME_TRACKER_RESERVED_REQUESTS is sized for two default-on alert
+ * classes, not one. On a breakout verdict the poller emits a `breakout_alert`
+ * WS frame (payload = revival's + drawdownFromPeak) and Pushover at NORMAL
+ * priority — emergency stays reserved for revival. Suppression state is kept
+ * PER KIND: a token's revival suppression never mutes its breakout and vice
+ * versa. Rows share the revival_alerts store, discriminated by `kind`.
+ * Gate: OCT_BREAKOUT_ENABLED (default on).
  */
 
 import type { SupabaseClient } from '@supabase/supabase-js';
@@ -124,24 +131,36 @@ export function suppressionKey(kind: RevivalSignalKind, tokenKey: string): strin
 }
 
 /**
- * The pre-fetch cooldown skip, kind-aware. The 60-min floor exists to spare
- * the candle FETCH — but the fetch feeds BOTH verdicts, so it may only be
- * skipped when every kind that could still alert is inside its own floor:
- * skipping on revival's floor alone would silently mute breakout for an hour
- * (and vice versa). With breakout disabled this degrades to exactly the old
- * revival-only behaviour, so the request budget is unchanged there.
+ * The pre-fetch cooldown skip: skip a token's candle fetch while its REVIVAL
+ * suppression is inside the 60-min floor — the same behaviour the poller had
+ * before breakout existed, so the detection-side request budget is unchanged.
+ *
+ * The fetch feeds BOTH verdicts, so on its face this mutes breakout for an
+ * hour after every revival alert. Nothing is actually muted, because a
+ * breakout verdict is unreachable inside that hour:
+ * - a breakout needs `dormant` — but any 6h volume window ending AFTER the
+ *   revival ignition contains the ignition's own volume expansion, so the
+ *   only windows that can still satisfy the collapse gate are the
+ *   pre-ignition window(s), i.e. the very window that qualified the revival;
+ * - that window measured drawdownFromPeak ≥ minDrawdownFromPeak at fire time
+ *   (or null — and a null drawdown never fires breakout; sparse history does
+ *   not backfill retroactively), while breakout requires a MEASURED drawdown
+ *   BELOW the threshold on the same window. Within the floor the window
+ *   shifts by at most one hourly bucket, so the two requirements cannot both
+ *   hold short of a knife-edge drift across the threshold — and even then the
+ *   "breakout" would describe the same ignition the operator was just paged
+ *   for at EMERGENCY priority, so losing it costs nothing.
+ *
+ * Breakout's own cooldown deliberately does NOT skip the fetch: revival (the
+ * loud tier) must never be muted by the quiet tier's floor, so a token in
+ * breakout-cooldown-alone keeps being fetched and evaluated.
  */
 export function shouldSkipCandleFetch(
   revivalPrior: RunSuppression | undefined,
-  breakoutPrior: RunSuppression | undefined,
-  breakoutEnabled: boolean,
   now: number,
   cooldownMs: number = ALERT_COOLDOWN_MS,
 ): boolean {
-  const inCooldown = (p: RunSuppression | undefined): boolean =>
-    p != null && now - p.alertedAt < cooldownMs;
-  if (!inCooldown(revivalPrior)) return false;
-  return !breakoutEnabled || inCooldown(breakoutPrior);
+  return revivalPrior != null && now - revivalPrior.alertedAt < cooldownMs;
 }
 
 export interface SuppressionDecision {
@@ -206,19 +225,24 @@ export function evaluateRunSuppression(
 // to be sized so a cycle's requests fit inside the poll interval:
 //
 //   slots per cycle      = 300_000ms / 10_000ms        =  30 requests
-//   reserved for the outcome tracker (shares the queue) =  3 requests
-//   available to the poller                             =  27 requests
+//   reserved for the outcome tracker (shares the queue) =  6 requests
+//   available to the poller                             =  24 requests
 //   steady-state cost per token
 //     minute candles, every cycle                       = 1
 //   + hour candles, 45m cache / 5m cycle                ≈ 0.111
 //   + pool resolution, 1h cache / 5m cycle              ≈ 0.083
 //                                                       ≈ 1.19, budgeted 1.25
-//   → 15 tokens × 1.25 ≈ 18.75 + 3 = 21.75 requests, ~73% of the interval.
+//   → 13 tokens × 1.25 ≈ 16.25 + 6 = 22.25 requests, ~74% of the interval.
 //
-// Full-sweep latency at 15 tokens per 5 minutes = 3 tokens/min:
-//   30-token universe  → 2 cycles → ~10 min
-//   37-token universe  → 3 cycles → ~15 min
-//   100-token universe → 7 cycles → ~35 min
+// The cap was 15 with a reserve of 3 when revival was the only alert class.
+// Breakout (default on) enrolls its alerts in the same 24h outcome tracker,
+// so the reserve was doubled for two alert classes and the cap re-derived
+// from the same arithmetic — see OUTCOME_TRACKER_RESERVED_REQUESTS.
+//
+// Full-sweep latency at 13 tokens per 5 minutes = 2.6 tokens/min:
+//   26-token universe  → 2 cycles → ~10 min
+//   30-token universe  → 3 cycles → ~15 min
+//   100-token universe → 8 cycles → ~40 min
 // The 100-token figure is close to the floor the API itself imposes: 100
 // tokens × 1.19 req ≈ 119 requests, which at 6 req/min cannot be done in less
 // than ~20 min by any config. Revival runs last tens of minutes to hours, so
@@ -226,24 +250,33 @@ export function evaluateRunSuppression(
 // the tail of the universe at all (see seedRotationOffset).
 //
 // COLD START is the exception: with empty caches a token costs 3 requests
-// (pool + minute + hour), so the first cycle after boot needs ~48 slots and
-// spills ~3 min past the interval. That is harmless — the `polling` guard
+// (pool + minute + hour), so the first cycle after boot needs ~45 slots and
+// spills ~2.5 min past the interval. That is harmless — the `polling` guard
 // skips the overlapping tick and the caches are warm from the second cycle on.
 //
 // The real coverage limit is the global rate, not this cap: rotation (see
 // selectCycleSlice) sweeps universes larger than the cap across cycles, so a
 // smaller cap costs coverage LATENCY, never coverage.
-export const MAX_TOKENS_PER_CYCLE = 15;
+export const MAX_TOKENS_PER_CYCLE = 13;
 /** Steady-state GeckoTerminal requests per token per cycle (planning figure). */
 export const STEADY_STATE_REQUESTS_PER_TOKEN = 1.25;
 /** Cold-cache worst case: pool resolution + minute + hour. */
 export const COLD_START_REQUESTS_PER_TOKEN = 3;
 /**
- * Slots held back for RevivalOutcomeTracker, which shares the same queue. It
- * sweeps every 10 min and costs ~1-2 requests per open alert; 3 per 5-minute
- * cycle covers a handful of concurrently-tracked alerts.
+ * Slots held back for RevivalOutcomeTracker, which shares the same queue. The
+ * tracker sweeps every 10 min (= every 2 cycles) at ~1-2 requests per tracked
+ * token per sweep, so 6 slots per 5-minute cycle cover ~8-10 concurrently
+ * tracked outcome windows.
+ *
+ * Sized for TWO default-on alert classes, not one: every emitted alert —
+ * revival AND breakout — is tracked for 24h, and each tracked token costs
+ * ~170 requests over its window (~1.2/sweep × 144 sweeps). That is the real
+ * marginal request cost of the breakout signal (detection itself adds zero;
+ * one fetch feeds both verdicts). The original reserve of 3 was sized for "a
+ * handful" of revival alerts; a few breakouts/day on top of that would have
+ * pushed tracker load past the reserve and silently stretched poller cycles.
  */
-export const OUTCOME_TRACKER_RESERVED_REQUESTS = 3;
+export const OUTCOME_TRACKER_RESERVED_REQUESTS = 6;
 
 export interface RevivalCyclePlan {
   /** Requests the interval affords at the configured spacing. */
@@ -665,6 +698,7 @@ class RevivalPoller {
           rvol: Number(r.rvol ?? 0),
           baselinePriceUsd: r.baseline_price_usd != null ? Number(r.baseline_price_usd) : null,
           runMultiple: r.run_multiple != null ? Number(r.run_multiple) : null,
+          drawdownFromPeak: r.drawdown_from_peak != null ? Number(r.drawdown_from_peak) : null,
           triggeredAt: r.triggered_at,
           peakPriceUsd: r.peak_price_usd != null ? Number(r.peak_price_usd) : null,
           peakMcapUsd: r.peak_mcap_usd != null ? Number(r.peak_mcap_usd) : null,
@@ -808,16 +842,13 @@ class RevivalPoller {
 
         // Cheap pre-fetch skip only. The real control (run-state suppression)
         // needs the verdict, so it runs after evaluation in evaluateToken;
-        // this floor just spares the candle request during the first hour —
-        // and only when EVERY kind that could alert is inside its own floor
-        // (see shouldSkipCandleFetch), since one fetch feeds both verdicts.
+        // this floor just spares the candle request during the hour after a
+        // REVIVAL alert. One fetch feeds both verdicts, but no breakout is
+        // reachable inside revival's floor (see shouldSkipCandleFetch), so
+        // the skip costs nothing — and breakout's own floor never skips,
+        // because revival must stay observable through it.
         if (
-          shouldSkipCandleFetch(
-            this.suppression.get(suppressionKey('revival', key)),
-            this.suppression.get(suppressionKey('breakout', key)),
-            isBreakoutEnabled(),
-            Date.now(),
-          )
+          shouldSkipCandleFetch(this.suppression.get(suppressionKey('revival', key)), Date.now())
         ) {
           continue;
         }
@@ -940,8 +971,6 @@ class RevivalPoller {
     };
 
     const sym = data.symbol ? `$${data.symbol}` : `${mint.slice(0, 6)}…`;
-    // drawdown/peak have no column in the alert row (no migration for the
-    // gate), so this line is where a fired alert's drawdown is recorded.
     console.log(
       `[RevivalPoller] IGNITION ${sym} on ${revivalNetworkLabel(network)} (${mint.slice(0, 8)}…) atrZ=${data.atrZ.toFixed(1)} rvol=${data.rvol.toFixed(1)} run=${data.runMultiple != null ? `${data.runMultiple.toFixed(2)}x` : '?'} drawdown=${formatDrawdownPct(verdict.drawdownFromPeak)} (peak ${verdict.trailingPeakPrice ?? '?'}) → ${subscribers.size} user(s)`,
     );
@@ -951,7 +980,10 @@ class RevivalPoller {
       // frame arrival always finds the row. A storage failure never blocks
       // the live alert — the broadcast/pushover fan-out still runs.
       try {
-        const entry = buildAlertEntry(data);
+        // The measured drawdown is persisted on the row (drawdown_from_peak):
+        // it is the label the drawdown knobs are calibrated from, and the
+        // alert log is the training feedback loop — a console line is not.
+        const entry = buildAlertEntry({ ...data, drawdownFromPeak: verdict.drawdownFromPeak });
         await getStorageProvider().logRevivalAlert(userId, entry);
         this.outcomes.track({
           alertId: entry.id,
