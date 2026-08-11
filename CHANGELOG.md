@@ -4,11 +4,6 @@ All notable changes to Onchain Tools are documented here. Entries before the
 rename still say "Trenchcord" — that was the product's name at the time, and
 they're left as the record of what shipped.
 
-## 2026-08-12
-
-### Added
-- **FOMO new-join alerts** — when a notable account joins fomo.family, OCT tells you in real time. Joining is the signal: by the time a famous name's first buys hit the feed, the easy entry is gone. The console pings you (notification history + sound), and if you get Pushover alerts for FOMO trades you'll get these too. fomo's own "new traders with smart followers" feed drives it, so it's the same joins the app surfaces — just without you having to be looking. Bursts are capped at five pings a cycle with a "+N more" summary, so a signup wave can't flood you.
-
 ## 2026-08-08
 
 ### Added
