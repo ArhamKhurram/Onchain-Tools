@@ -11,6 +11,13 @@ import type { FomoClientLike } from './types.js';
 import { syncAllTrackedFollows } from './follows.js';
 import { resolveTradeTokenInfo } from './tokenInfo.js';
 import {
+  deadUserSkipMs,
+  isUserNotFound,
+  recordNotFound,
+  shouldSkipUser,
+  type DeadUserEntry,
+} from './deadUserCache.js';
+import {
   loadActivityCursors,
   storeAndFanOutTrade,
   upsertActivityCursor,
@@ -44,6 +51,9 @@ class FomoPoller {
   private lastSuccessfulPollAt: string | null = null;
   private trackedUserCount = 0;
   private status: FomoPollerStatus = { active: false, reason: 'no_supabase' };
+  // Users the upstream API says don't exist — parked instead of retried every
+  // poll (see deadUserCache.ts for the 404-spam incident this stops).
+  private deadUsers = new Map<string, DeadUserEntry>();
 
   constructor(wsServer: WsServer) {
     this.wsServer = wsServer;
@@ -192,8 +202,10 @@ class FomoPoller {
 
       let hadError = false;
       for (const trader of tracked) {
+        if (shouldSkipUser(this.deadUsers.get(trader.fomoUserId), Date.now())) continue;
         try {
           await this.pollUserActivity(trader, cursors.get(trader.fomoUserId));
+          this.deadUsers.delete(trader.fomoUserId);
         } catch (err) {
           hadError = true;
           this.lastPollError = (err as Error)?.message ?? String(err);
@@ -217,6 +229,18 @@ class FomoPoller {
   ): Promise<void> {
     const res = await this.client!.getUserActivity(trader.fomoUserId, USER_ACTIVITY_LIMIT);
     if (!res.status || res.status < 200 || res.status >= 300) {
+      if (isUserNotFound(res.status, res.text)) {
+        const entry = recordNotFound(this.deadUsers.get(trader.fomoUserId), Date.now(), deadUserSkipMs());
+        this.deadUsers.set(trader.fomoUserId, entry);
+        if (entry.skipUntil !== null) {
+          // We only reach here when the user is not currently skipped, so an
+          // active window here means we just (re-)entered it — warn once.
+          console.warn(
+            `[FomoPoller] ${trader.fomoHandle ?? trader.fomoUserId} has 404'd "User not found" ` +
+              `${entry.consecutiveMisses}x in a row; skipping until ${new Date(entry.skipUntil).toISOString()}.`,
+          );
+        }
+      }
       throw new Error(
         `activity ${trader.fomoUserId} upstream ${res.status ?? 0}: ${res.text?.slice?.(0, 200) ?? ''}`,
       );
