@@ -65,6 +65,8 @@ export async function tryRickEnrich(msg: {
   channel_id: string;
   embeds?: unknown;
   content?: string;
+  /** Message timestamp — anchors the global-first footer's relative age server-side. */
+  timestamp?: string;
   author?: { username?: string };
   referenced_message?: {
     id?: string;
@@ -105,6 +107,7 @@ async function sendRickEnrich(msg: Parameters<typeof tryRickEnrich>[0]): Promise
         channelId: msg.channel_id,
         embeds: msg.embeds,
         content: msg.content,
+        timestamp: msg.timestamp,
         authorUsername: msg.author?.username,
         referencedMessage: msg.referenced_message
           ? {

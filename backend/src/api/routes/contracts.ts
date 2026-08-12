@@ -115,7 +115,7 @@ export function createContractsRoutes(ctx: RouterContext): Router {
   router.post('/contracts/rick-enrich', async (req, res) => {
     try {
       const userId = getUserId(req);
-      const { channelId, embeds, content, authorUsername, referencedMessage } = req.body ?? {};
+      const { channelId, embeds, content, authorUsername, referencedMessage, timestamp } = req.body ?? {};
       if (!channelId) {
         return res.status(400).json({ error: 'channelId is required.' });
       }
@@ -127,6 +127,7 @@ export function createContractsRoutes(ctx: RouterContext): Router {
         authorUsername,
         addressOverride: rickReply.addressOverride,
         callerName: rickReply.callerName,
+        messageTimestamp: typeof timestamp === 'string' ? timestamp : undefined,
       });
       if (!enrichment?.address) {
         return res.json({ applied: false });
@@ -148,6 +149,9 @@ export function createContractsRoutes(ctx: RouterContext): Router {
         evmChain: enrichment.evmChain,
         enrichmentSource: enrichment.enrichmentSource,
         enrichedAt: new Date().toISOString(),
+        firstCallerName: enrichment.firstCallerName,
+        firstCallMcapUsd: enrichment.firstCallMcapUsd,
+        firstCallAt: enrichment.firstCallAt,
       }, { channelId, messageId: rickReply.messageId });
 
       if (updated) {
@@ -179,6 +183,9 @@ export function createContractsRoutes(ctx: RouterContext): Router {
           evmChain: enrichment.evmChain,
           enrichmentSource: enrichment.enrichmentSource,
           enrichedAt: new Date().toISOString(),
+          firstCallerName: enrichment.firstCallerName,
+          firstCallMcapUsd: enrichment.firstCallMcapUsd,
+          firstCallAt: enrichment.firstCallAt,
         },
       });
     } catch (err) {

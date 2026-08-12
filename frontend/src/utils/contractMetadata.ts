@@ -18,6 +18,9 @@ export type ContractMetadata = Pick<
   | 'enrichmentSource'
   | 'enrichedAt'
   | 'evmChain'
+  | 'firstCallerName'
+  | 'firstCallMcapUsd'
+  | 'firstCallAt'
 >;
 
 export function hasContractMetadata(entry: ContractEntry): boolean {
@@ -49,6 +52,10 @@ export function hydrateContractFromCatalog(
     enrichmentSource: entry.enrichmentSource ?? prior.enrichmentSource,
     enrichedAt: entry.enrichedAt ?? prior.enrichedAt,
     evmChain: entry.evmChain ?? prior.evmChain,
+    // Global-first is token-level, so a repeat mention inherits it.
+    firstCallerName: entry.firstCallerName ?? prior.firstCallerName,
+    firstCallMcapUsd: entry.firstCallMcapUsd ?? prior.firstCallMcapUsd,
+    firstCallAt: entry.firstCallAt ?? prior.firstCallAt,
   };
 }
 
@@ -73,5 +80,8 @@ export function mergeContractEntries(local: ContractEntry, server: ContractEntry
     enrichedAt: server.enrichedAt ?? local.enrichedAt,
     evmChain: server.evmChain ?? local.evmChain,
     firstSeen: server.firstSeen ?? local.firstSeen,
+    firstCallerName: server.firstCallerName ?? local.firstCallerName,
+    firstCallMcapUsd: server.firstCallMcapUsd ?? local.firstCallMcapUsd,
+    firstCallAt: server.firstCallAt ?? local.firstCallAt,
   };
 }

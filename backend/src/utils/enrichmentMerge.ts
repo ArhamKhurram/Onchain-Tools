@@ -38,6 +38,48 @@ function stripFdvFromPatch(patch: ContractEnrichmentPatch): ContractEnrichmentPa
   return rest;
 }
 
+type GlobalFirstFields = Pick<
+  ContractEnrichmentPatch,
+  'firstCallerName' | 'firstCallMcapUsd' | 'firstCallAt'
+>;
+
+function hasGlobalFirst(x: GlobalFirstFields): boolean {
+  return x.firstCallerName != null || x.firstCallMcapUsd != null || x.firstCallAt != null;
+}
+
+/**
+ * Global-first data (Rick's cross-server footer) is point-in-time like
+ * MC@call, so the EARLIEST known first call always wins: a reading with a
+ * timestamp beats one without, and between two timestamps the earlier one
+ * stays. Later embeds of the same token re-derive roughly the same instant
+ * (message time minus a coarser relative age), so earliest-wins also keeps the
+ * stored value stable instead of drifting with every re-scan.
+ */
+function pickGlobalFirst(existing: GlobalFirstFields, patch: GlobalFirstFields): GlobalFirstFields {
+  if (!hasGlobalFirst(patch)) return existing;
+  if (!hasGlobalFirst(existing)) return patch;
+  const exAt = existing.firstCallAt ? new Date(existing.firstCallAt).getTime() : NaN;
+  const pAt = patch.firstCallAt ? new Date(patch.firstCallAt).getTime() : NaN;
+  if (Number.isFinite(exAt) && Number.isFinite(pAt)) return pAt < exAt ? patch : existing;
+  return Number.isFinite(pAt) ? patch : existing;
+}
+
+/**
+ * Stamp the winning global-first fields onto the merged patch by explicit
+ * key: a spread would leave present-but-undefined keys behind, and the JSON
+ * store Object.assigns the merge result onto the row, where an undefined key
+ * erases a recorded value.
+ */
+function applyGlobalFirst(merged: ContractEnrichmentPatch, winner: GlobalFirstFields): ContractEnrichmentPatch {
+  if (winner.firstCallerName !== undefined) merged.firstCallerName = winner.firstCallerName;
+  else delete merged.firstCallerName;
+  if (winner.firstCallMcapUsd !== undefined) merged.firstCallMcapUsd = winner.firstCallMcapUsd;
+  else delete merged.firstCallMcapUsd;
+  if (winner.firstCallAt !== undefined) merged.firstCallAt = winner.firstCallAt;
+  else delete merged.firstCallAt;
+  return merged;
+}
+
 /**
  * Merge an enrichment patch into an existing row.
  *
@@ -53,6 +95,7 @@ export function mergeEnrichmentPatch(
   existing: ContractEnrichmentPatch & { enrichmentSource?: EnrichmentSource; fdvAtCall?: number; fdvAtCallDisplay?: string },
   patch: ContractEnrichmentPatch,
 ): ContractEnrichmentPatch {
+  const globalFirst = pickGlobalFirst(existing, patch);
   if (
     existing.enrichmentSource === 'rick'
     && patch.enrichmentSource
@@ -76,7 +119,7 @@ export function mergeEnrichmentPatch(
       merged.fdvAtCall = patch.fdvAtCall;
       if (patch.fdvAtCallDisplay) merged.fdvAtCallDisplay = patch.fdvAtCallDisplay;
     }
-    return merged;
+    return applyGlobalFirst(merged, globalFirst);
   }
 
   const merged: ContractEnrichmentPatch = {
@@ -84,6 +127,9 @@ export function mergeEnrichmentPatch(
     enrichedAt: patch.enrichedAt ?? new Date().toISOString(),
   };
 
-  if (patch.enrichmentSource === 'rick') return merged;
-  return existing.fdvAtCall != null ? stripFdvFromPatch(merged) : merged;
+  if (patch.enrichmentSource === 'rick') return applyGlobalFirst(merged, globalFirst);
+  return applyGlobalFirst(
+    existing.fdvAtCall != null ? stripFdvFromPatch(merged) : merged,
+    globalFirst,
+  );
 }

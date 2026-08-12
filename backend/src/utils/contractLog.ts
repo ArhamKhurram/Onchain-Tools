@@ -47,6 +47,9 @@ export type ContractEnrichmentPatch = Partial<
     | 'evmChain'
     | 'enrichmentSource'
     | 'enrichedAt'
+    | 'firstCallerName'
+    | 'firstCallMcapUsd'
+    | 'firstCallAt'
   >
 >;
 
@@ -196,6 +199,9 @@ class ContractLog {
         enrichedAt: best.enrichedAt,
         fdvAtCall: best.fdvAtCall,
         fdvAtCallDisplay: best.fdvAtCallDisplay,
+        firstCallerName: best.firstCallerName,
+        firstCallMcapUsd: best.firstCallMcapUsd,
+        firstCallAt: best.firstCallAt,
       },
       patch,
     );

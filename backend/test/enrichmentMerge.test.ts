@@ -103,3 +103,71 @@ describe('mergeEnrichmentPatch', () => {
     expect(overRick.fdvAtCall).toBe(2100);
   });
 });
+
+describe('mergeEnrichmentPatch — global-first (Rick cross-server footer)', () => {
+  const earlier = {
+    firstCallerName: 'espadabtw',
+    firstCallMcapUsd: 49_300,
+    firstCallAt: '2026-08-12T02:00:00.000Z',
+  };
+  const later = {
+    firstCallerName: 'someone_else',
+    firstCallMcapUsd: 120_000,
+    firstCallAt: '2026-08-12T08:00:00.000Z',
+  };
+
+  it('records the fields from a Rick patch onto a bare row', () => {
+    const merged = mergeEnrichmentPatch({}, { enrichmentSource: 'rick', ...earlier });
+    expect(merged.firstCallerName).toBe('espadabtw');
+    expect(merged.firstCallMcapUsd).toBe(49_300);
+    expect(merged.firstCallAt).toBe(earlier.firstCallAt);
+  });
+
+  it('keeps the earlier first call when a later Rick reading arrives', () => {
+    const merged = mergeEnrichmentPatch(
+      { enrichmentSource: 'rick', ...earlier },
+      { enrichmentSource: 'rick', ...later },
+    );
+    expect(merged.firstCallerName).toBe('espadabtw');
+    expect(merged.firstCallAt).toBe(earlier.firstCallAt);
+  });
+
+  it('replaces a later reading with an earlier one', () => {
+    const merged = mergeEnrichmentPatch(
+      { enrichmentSource: 'rick', ...later },
+      { enrichmentSource: 'rick', ...earlier },
+    );
+    expect(merged.firstCallerName).toBe('espadabtw');
+    expect(merged.firstCallAt).toBe(earlier.firstCallAt);
+  });
+
+  it('a Rick patch without the fields does not erase recorded ones', () => {
+    const merged = mergeEnrichmentPatch(
+      { enrichmentSource: 'rick', ...earlier },
+      { enrichmentSource: 'rick', tokenSymbol: 'puf' },
+    );
+    // The JSON store Object.assigns the merge onto the row, so the recorded
+    // values must come back out (a present-but-undefined key would erase them).
+    expect(merged.firstCallerName).toBe('espadabtw');
+    expect(merged.firstCallAt).toBe(earlier.firstCallAt);
+  });
+
+  it('a secondary-source refresh does not erase recorded fields either', () => {
+    const merged = mergeEnrichmentPatch(
+      { enrichmentSource: 'rick', fdvAtCall: 1800, ...earlier },
+      dexPatch,
+    );
+    expect(merged.firstCallerName).toBe('espadabtw');
+    expect(merged.firstCallMcapUsd).toBe(49_300);
+    expect(merged.firstCallAt).toBe(earlier.firstCallAt);
+  });
+
+  it('a timestamped reading beats an untimestamped one', () => {
+    const merged = mergeEnrichmentPatch(
+      { enrichmentSource: 'rick', firstCallerName: 'espadabtw', firstCallMcapUsd: 49_300 },
+      { enrichmentSource: 'rick', ...later },
+    );
+    expect(merged.firstCallerName).toBe('someone_else');
+    expect(merged.firstCallAt).toBe(later.firstCallAt);
+  });
+});
