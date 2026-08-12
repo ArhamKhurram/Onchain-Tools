@@ -151,6 +151,9 @@ function enrichmentToPatch(e: TokenEnrichment): ContractEnrichmentPatch {
     evmChain: e.evmChain,
     enrichmentSource: e.enrichmentSource,
     enrichedAt: new Date().toISOString(),
+    firstCallerName: e.firstCallerName,
+    firstCallMcapUsd: e.firstCallMcapUsd,
+    firstCallAt: e.firstCallAt,
   };
 }
 
@@ -310,6 +313,7 @@ function wireGatewayEvents(gw: GatewayManager, wsServer: WsServer, userId: strin
       authorUsername: rawMsg.author?.username,
       addressOverride: rickReply.addressOverride,
       callerName: rickReply.callerName,
+      messageTimestamp: rawMsg.timestamp,
     });
     if (rickEnrichment) {
       await applyTokenEnrichment(wsServer, userId, rickEnrichment, {
@@ -365,6 +369,7 @@ function wireGatewayEvents(gw: GatewayManager, wsServer: WsServer, userId: strin
       authorUsername: rawMsg.author?.username,
       addressOverride: rickReply.addressOverride,
       callerName: rickReply.callerName,
+      messageTimestamp: rawMsg.timestamp ?? rawMsg.edited_timestamp ?? undefined,
     });
     if (rickEnrichment) {
       await applyTokenEnrichment(wsServer, userId, rickEnrichment, {

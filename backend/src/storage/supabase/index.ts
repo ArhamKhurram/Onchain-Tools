@@ -8,6 +8,7 @@ import type {
   RevivalAlertEntry,
   RevivalOutcomePatch,
 } from '@oct/shared';
+import { recordNetworkScan, recordNetworkScanFdv } from '../../network/scanPool.js';
 import { createServiceClient, SupabaseContext } from './client.js';
 import { ConfigRepo } from './configRepo.js';
 import { TokensRepo } from './tokensRepo.js';
@@ -125,6 +126,18 @@ export class SupabaseStorageProvider implements StorageProvider {
   }
 
   logContract(userId: string, entry: ContractEntry): Promise<ContractEntry> {
+    // Anonymous network pool side-write. This façade is the one choke point
+    // every transport's contract logging flows through in hosted mode —
+    // Discord-on-server, Telegram-on-server, and Discord-from-browser (via
+    // POST /api/contracts) — so the pool sees them all. Deliberately passed
+    // ONLY the address, timestamp, and mcap: no user, room, caller, or guild
+    // context crosses into the pool (see network/scanPool.ts). Fire-and-forget
+    // so a pool hiccup can never delay or fail the user's own logging.
+    void recordNetworkScan({
+      address: entry.address,
+      timestamp: entry.timestamp,
+      fdvUsd: entry.fdvAtCall,
+    });
     return this.contracts.logContract(userId, entry);
   }
 
@@ -146,6 +159,14 @@ export class SupabaseStorageProvider implements StorageProvider {
     patch: ContractEnrichmentPatch,
     options?: EnrichContractOptions,
   ): Promise<ContractEntry | null> {
+    // If enrichment learned an FDV, offer it to the anonymous pool. The pool
+    // itself enforces "missing beats wrong": it accepts the value only when
+    // fdv_at_first is still null AND the reading lands within ~2 minutes of
+    // the network's first sighting. Address + number only — nothing user- or
+    // room-linked crosses this seam.
+    if (patch.fdvAtCall != null) {
+      void recordNetworkScanFdv(address, patch.fdvAtCall);
+    }
     return this.contracts.enrichContract(userId, address, patch, options);
   }
 

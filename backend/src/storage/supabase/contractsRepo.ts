@@ -17,7 +17,39 @@ function addressMatchesInsensitively(address: string): boolean {
   return isEvmAddress(address);
 }
 
+/**
+ * Migration tolerance for the global-first columns
+ * (20260812160000_network_scans.sql, applied BY HAND): until the operator runs
+ * it, `first_caller_*`/`first_call_*` don't exist and PostgREST rejects any
+ * write naming them. Detect that one failure, warn once, and retry the write
+ * without those keys so contract logging/enrichment keeps working unchanged.
+ */
+const MISSING_FIRST_CALL_COLUMN_RE =
+  /(first_call\w*|first_caller\w*).*(does not exist|schema cache)|(does not exist|schema cache).*(first_call\w*|first_caller\w*)/i;
+
+const FIRST_CALL_COLUMNS = ['first_caller_name', 'first_call_mcap_usd', 'first_call_at'] as const;
+
+function stripFirstCallColumns(row: Record<string, unknown>): Record<string, unknown> {
+  const rest = { ...row };
+  for (const col of FIRST_CALL_COLUMNS) delete rest[col];
+  return rest;
+}
+
 export class ContractsRepo extends BaseRepo {
+  private missingFirstCallColumnsWarned = false;
+
+  /** True (and warns once) when the error means the global-first migration isn't applied. */
+  private tolerateMissingFirstCallColumns(error: { message?: string } | null | undefined): boolean {
+    if (!error || !MISSING_FIRST_CALL_COLUMN_RE.test(error.message ?? '')) return false;
+    if (!this.missingFirstCallColumnsWarned) {
+      this.missingFirstCallColumnsWarned = true;
+      console.warn(
+        '[Supabase] contracts global-first columns are missing — apply migration 20260812160000_network_scans.sql. Global-first enrichment is dropped until then.',
+      );
+    }
+    return true;
+  }
+
   async getContracts(userId: string, limit = 100, since?: string): Promise<ContractEntry[]> {
     let query = this.supabase
       .from('contracts')
@@ -104,11 +136,16 @@ export class ContractsRepo extends BaseRepo {
           enrichmentSource: entry.enrichmentSource ?? prior.enrichmentSource,
           enrichedAt: entry.enrichedAt ?? prior.enrichedAt,
           evmChain: entry.evmChain ?? prior.evmChain,
+          // Global-first is token-level, not per-call, so carrying it forward
+          // onto a repeat mention is correct (unlike fdvAtCall, which is not).
+          firstCallerName: entry.firstCallerName ?? prior.firstCallerName,
+          firstCallMcapUsd: entry.firstCallMcapUsd ?? prior.firstCallMcapUsd,
+          firstCallAt: entry.firstCallAt ?? prior.firstCallAt,
         };
       }
     }
 
-    const result = await this.supabase.from('contracts').insert({
+    const insertRow: Record<string, unknown> = {
       user_id: userId,
       address: toInsert.address,
       chain: toInsert.chain,
@@ -137,7 +174,17 @@ export class ContractsRepo extends BaseRepo {
       token_age: toInsert.tokenAge ?? null,
       enrichment_source: toInsert.enrichmentSource ?? null,
       enriched_at: toInsert.enrichedAt ?? null,
-    });
+    };
+    // Name the global-first columns only when there is data for them, so rows
+    // without it never trip the pre-migration column check.
+    if (toInsert.firstCallerName != null) insertRow.first_caller_name = toInsert.firstCallerName;
+    if (toInsert.firstCallMcapUsd != null) insertRow.first_call_mcap_usd = toInsert.firstCallMcapUsd;
+    if (toInsert.firstCallAt != null) insertRow.first_call_at = toInsert.firstCallAt;
+
+    let result = await this.supabase.from('contracts').insert(insertRow);
+    if (result.error && this.tolerateMissingFirstCallColumns(result.error)) {
+      result = await this.supabase.from('contracts').insert(stripFirstCallColumns(insertRow));
+    }
     throwIfError(result, 'Failed to log contract');
     return { ...toInsert, firstSeen: isFirstSeen };
   }
@@ -238,6 +285,9 @@ export class ContractsRepo extends BaseRepo {
         enrichedAt: existing.enrichedAt,
         fdvAtCall: existing.fdvAtCall,
         fdvAtCallDisplay: existing.fdvAtCallDisplay,
+        firstCallerName: existing.firstCallerName,
+        firstCallMcapUsd: existing.firstCallMcapUsd,
+        firstCallAt: existing.firstCallAt,
       },
       patch,
     );
@@ -259,6 +309,9 @@ export class ContractsRepo extends BaseRepo {
     if (merged.tokenAge !== undefined) update.token_age = merged.tokenAge;
     if (merged.enrichmentSource !== undefined) update.enrichment_source = merged.enrichmentSource;
     if (merged.evmChain !== undefined && !row.evm_chain) update.evm_chain = merged.evmChain;
+    if (merged.firstCallerName !== undefined) update.first_caller_name = merged.firstCallerName;
+    if (merged.firstCallMcapUsd !== undefined) update.first_call_mcap_usd = merged.firstCallMcapUsd;
+    if (merged.firstCallAt !== undefined) update.first_call_at = merged.firstCallAt;
 
     if (Object.keys(update).length <= 1 && !merged.tokenName && !merged.tokenSymbol && !merged.tokenPair && !merged.evmChain) {
       return existing;
@@ -284,13 +337,25 @@ export class ContractsRepo extends BaseRepo {
     // `id` is the primary key, so exactly one row matches or none does.
     // `user_id` stays as defence in depth alongside RLS. `maybeSingle` because
     // a row deleted between lookup and update is a null, not an exception.
-    const { data: updated, error } = await this.supabase
+    let { data: updated, error } = await this.supabase
       .from('contracts')
       .update(update)
       .eq('id', row.id as string)
       .eq('user_id', userId)
       .select('*')
       .maybeSingle();
+
+    if (error && this.tolerateMissingFirstCallColumns(error)) {
+      const retry = await this.supabase
+        .from('contracts')
+        .update(stripFirstCallColumns(update))
+        .eq('id', row.id as string)
+        .eq('user_id', userId)
+        .select('*')
+        .maybeSingle();
+      updated = retry.data;
+      error = retry.error;
+    }
 
     throwIfError({ error }, 'Failed to enrich contract');
     return updated ? this.mapContractRow(updated) : null;
@@ -325,6 +390,9 @@ export class ContractsRepo extends BaseRepo {
       tokenAge: row.token_age ?? undefined,
       enrichmentSource: row.enrichment_source ?? undefined,
       enrichedAt: row.enriched_at ?? undefined,
+      firstCallerName: row.first_caller_name ?? undefined,
+      firstCallMcapUsd: row.first_call_mcap_usd != null ? Number(row.first_call_mcap_usd) : undefined,
+      firstCallAt: row.first_call_at ?? undefined,
     };
   }
 

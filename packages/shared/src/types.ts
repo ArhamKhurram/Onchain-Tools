@@ -824,6 +824,12 @@ export interface ContractEntry {
   tokenAge?: string;
   enrichmentSource?: 'rick' | 'dexscreener' | 'gmgn';
   enrichedAt?: string;
+  // Global first call (Rick's cross-server footer: "espadabtw @ 49.3K · 86x · 10h").
+  // Point-in-time like fdvAtCall: once recorded, an earlier reading always wins.
+  firstCallerName?: string;
+  firstCallMcapUsd?: number;
+  /** Absolute timestamp of the global first call (message time minus Rick's relative age). */
+  firstCallAt?: string;
 }
 
 // ---------------------------------------------------------------------------

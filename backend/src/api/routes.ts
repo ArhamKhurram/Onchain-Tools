@@ -12,6 +12,7 @@ import { createConfigRoutes } from './routes/config.js';
 import { createSoundsRoutes } from './routes/sounds.js';
 import { createMessagingRoutes } from './routes/messaging.js';
 import { createContractsRoutes } from './routes/contracts.js';
+import { createNetworkScansRoutes } from './routes/networkScans.js';
 import { createAlertsRoutes } from './routes/alerts.js';
 import { createRevivalRoutes } from './routes/revival.js';
 import { createJournalRoutes } from './routes/journal.js';
@@ -35,6 +36,7 @@ export function createRouter(wsServer: WsServer): Router {
   router.use(createSoundsRoutes(ctx));     // /sounds, /channel-sounds
   router.use(createMessagingRoutes(ctx));  // /send-message
   router.use(createContractsRoutes(ctx));  // /tokens/*/snapshot, /contracts*
+  router.use(createNetworkScansRoutes(ctx)); // /network-scans/lookup
   router.use(createAlertsRoutes(ctx));     // /alerts/missed-runner/test
   router.use(createRevivalRoutes(ctx));    // /revival/alerts
   router.use(createJournalRoutes(ctx));    // /journal/*

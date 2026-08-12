@@ -19,6 +19,7 @@ import {
   type RadarColumnId,
 } from './radarColumns';
 import { isHostedMode, getAccessToken } from '../../lib/supabase';
+import { useNetworkFirstScans, type NetworkFirstScan } from '../../hooks/useNetworkFirstScans';
 import { useCallerQuality, type CallerQuality } from '../../hooks/useCallerQuality';
 import {
   BAND_DOT_CLASS,
@@ -70,6 +71,11 @@ interface RadarRow {
   bestRank: number;
   /** Every caller on this token is muted — the row is pure slop by your own rules. */
   allMuted: boolean;
+  // Rick's cross-server first-caller footer, earliest reading across this
+  // token's rows ("espadabtw @ 49.3K · 86x · 10h" → name, mcap, absolute ms).
+  rickFirstCallerName?: string;
+  rickFirstCallMcapUsd?: number;
+  rickFirstCallAtMs?: number;
 }
 
 interface LiveMc {
@@ -166,6 +172,24 @@ function buildRadar(
       row.allMuted = false;
     }
 
+    // Rick's global-first footer is token-level; keep the earliest reading.
+    // A timestamped reading beats an untimestamped one, an earlier timestamp
+    // beats a later one, and the first untimestamped reading otherwise sticks.
+    if (c.firstCallerName != null || c.firstCallMcapUsd != null || c.firstCallAt != null) {
+      const atMs = c.firstCallAt ? new Date(c.firstCallAt).getTime() : NaN;
+      const hasAt = Number.isFinite(atMs);
+      const rowHasAt = row.rickFirstCallAtMs != null;
+      const rowHasAny =
+        row.rickFirstCallerName != null || row.rickFirstCallMcapUsd != null || rowHasAt;
+      const wins =
+        !rowHasAny || (hasAt && (!rowHasAt || atMs < (row.rickFirstCallAtMs as number)));
+      if (wins) {
+        row.rickFirstCallerName = c.firstCallerName;
+        row.rickFirstCallMcapUsd = c.firstCallMcapUsd;
+        row.rickFirstCallAtMs = hasAt ? atMs : undefined;
+      }
+    }
+
     row.mentions += 1;
     row.timestamps.push(ts);
     row.callers.add(c.authorId);
@@ -214,6 +238,48 @@ function buildRadar(
 // later row's live market cap.
 const MC_AT_CALL_MAX_LAG_MS = 900_000; // 15 min
 
+interface GlobalFirstPick {
+  /** Who saw it first — a Rick-named caller, or the anonymous pool. */
+  label: string;
+  mcapUsd?: number;
+  atMs?: number;
+}
+
+/**
+ * Best available global-first info, most-informative first: Rick's
+ * cross-server footer (names the caller), else the anonymous network pool.
+ * When both exist the EARLIER sighting wins; a Rick reading without a
+ * timestamp can't be compared, so Rick's richer data is preferred.
+ */
+function pickGlobalFirst(r: RadarRow, net?: NetworkFirstScan): GlobalFirstPick | null {
+  const rickHas =
+    r.rickFirstCallerName != null || r.rickFirstCallMcapUsd != null || r.rickFirstCallAtMs != null;
+  const rick: GlobalFirstPick | null = rickHas
+    ? {
+        label: r.rickFirstCallerName ?? 'rick',
+        mcapUsd: r.rickFirstCallMcapUsd,
+        atMs: r.rickFirstCallAtMs,
+      }
+    : null;
+
+  const netAtMs = net ? new Date(net.firstSeenAt).getTime() : NaN;
+  const network: GlobalFirstPick | null =
+    net && Number.isFinite(netAtMs)
+      ? { label: 'network', mcapUsd: net.fdvAtFirst ?? undefined, atMs: netAtMs }
+      : null;
+
+  if (rick && network) {
+    if (rick.atMs != null && network.atMs != null) {
+      return network.atMs < rick.atMs ? network : rick;
+    }
+    return rick;
+  }
+  return rick ?? network;
+}
+
+const GLOBAL_FIRST_TITLE =
+  "Earliest known call/scan: from Rick's cross-server data or the anonymous OCT network pool. Never reveals which group or user saw it.";
+
 type MentionWindow = '15m' | '1h' | '4h';
 
 const MENTION_WINDOW_MS: Record<MentionWindow, number> = {
@@ -230,6 +296,7 @@ type SortKey =
   | 'groups'
   | 'windowMentions'
   | 'firstCaller'
+  | 'globalFirst'
   | 'mcAtCall'
   | 'mcNow'
   | 'mult'
@@ -373,6 +440,15 @@ export default function RadarTable({ embedded: _embedded = false }: { embedded?:
     [contracts, qualityForContractGlobal],
   );
 
+  // Anonymous network pool first-seen for the tokens on the radar — one
+  // debounced, batched call; inert outside hosted mode (the hook self-gates).
+  // Sorted so a mere reorder of the table never changes the request set.
+  const radarAddresses = useMemo(
+    () => [...new Set(radarRows.map((r) => r.address))].sort().slice(0, 100),
+    [radarRows],
+  );
+  const networkScans = useNetworkFirstScans(radarAddresses);
+
   // Counted off the unfiltered set so the toggle still shows a number once the
   // rows it refers to have been filtered out.
   const mutedOnlyCount = useMemo(
@@ -462,6 +538,12 @@ export default function RadarTable({ embedded: _embedded = false }: { embedded?:
         case 'firstCaller':
           result = cmpStr(a.firstCaller, b.firstCaller);
           break;
+        case 'globalFirst':
+          result = cmpNum(
+            pickGlobalFirst(a, networkScans[a.address])?.atMs,
+            pickGlobalFirst(b, networkScans[b.address])?.atMs,
+          );
+          break;
         case 'mcAtCall':
           result = cmpNum(a.mcAtCall, b.mcAtCall);
           break;
@@ -482,7 +564,7 @@ export default function RadarTable({ embedded: _embedded = false }: { embedded?:
     });
   }, [
     radarRows, windowFilter, mentionWindow, sortKey, sortDir, liveMc, overlaps,
-    showMuted, revealMuted,
+    showMuted, revealMuted, networkScans,
   ]);
 
   const refreshOne = async (address: string, evmChain?: string) => {
@@ -623,7 +705,7 @@ export default function RadarTable({ embedded: _embedded = false }: { embedded?:
                     activeKey={sortKey}
                     dir={sortDir}
                     onSort={handleSort}
-                    align={col === 'firstCaller' ? 'left' : 'right'}
+                    align={col === 'firstCaller' || col === 'globalFirst' ? 'left' : 'right'}
                   />
                 ),
               )}
@@ -781,6 +863,32 @@ export default function RadarTable({ embedded: _embedded = false }: { embedded?:
                             {r.mcAtCallDisplay ?? '—'}
                           </td>
                         );
+                      case 'globalFirst': {
+                        const gf = pickGlobalFirst(r, networkScans[r.address]);
+                        return (
+                          <td
+                            key={col}
+                            className="px-3 py-2 font-mono text-xs whitespace-nowrap max-w-[200px] truncate"
+                            title={GLOBAL_FIRST_TITLE}
+                          >
+                            {gf ? (
+                              <>
+                                <span className={gf.label === 'network' ? 'text-oct-muted' : 'text-oct-text'}>
+                                  {gf.label}
+                                </span>
+                                {gf.mcapUsd != null && gf.mcapUsd > 0 && (
+                                  <span className="text-oct-muted"> @ {formatCompact(gf.mcapUsd)}</span>
+                                )}
+                                {gf.atMs != null && (
+                                  <span className="text-oct-muted tabular-nums"> · {timeAgoShort(gf.atMs)}</span>
+                                )}
+                              </>
+                            ) : (
+                              <span className="text-oct-muted">—</span>
+                            )}
+                          </td>
+                        );
+                      }
                       case 'mcNow':
                         return (
                           <td key={col} className="px-3 py-2 text-right font-mono text-sm text-oct-live tabular-nums whitespace-nowrap">

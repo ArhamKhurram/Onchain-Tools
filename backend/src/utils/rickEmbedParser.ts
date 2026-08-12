@@ -23,6 +23,11 @@ export interface TokenEnrichment {
   tokenAge?: string;
   evmChain?: string;
   enrichmentSource: 'rick' | 'dexscreener' | 'gmgn';
+  // Global first call — Rick's cross-server footer ("espadabtw @ 49.3K · 86x · 10h").
+  firstCallerName?: string;
+  firstCallMcapUsd?: number;
+  /** ISO timestamp: message time minus the footer's relative age. */
+  firstCallAt?: string;
 }
 
 export interface RickReplyContext {
@@ -109,6 +114,77 @@ function callerNamesMatch(footerUser: string, callerName: string): boolean {
   return a.includes(b) || b.includes(a);
 }
 
+/** "47s" / "10h" / "3d" / "2w" / "1mo" → milliseconds. */
+export function parseRelativeAgeMs(raw: string): number | undefined {
+  const m = raw.trim().match(/^(\d+(?:\.\d+)?)\s*(mo|[smhdw])$/i);
+  if (!m) return undefined;
+  const n = Number(m[1]);
+  if (!Number.isFinite(n)) return undefined;
+  const unit = m[2].toLowerCase();
+  const ms: Record<string, number> = {
+    s: 1_000,
+    m: 60_000,
+    h: 3_600_000,
+    d: 86_400_000,
+    w: 604_800_000,
+    mo: 2_592_000_000, // 30d
+  };
+  const unitMs = ms[unit];
+  return unitMs !== undefined ? n * unitMs : undefined;
+}
+
+export interface GlobalFirstCall {
+  firstCallerName: string;
+  firstCallMcapUsd?: number;
+  firstCallMcapDisplay?: string;
+  /** ISO timestamp of the first call, when the line carried a relative age. */
+  firstCallAt?: string;
+}
+
+/**
+ * Rick's global first-caller line — the footer naming who called the token
+ * first ACROSS servers, at what market cap, and how long ago:
+ *   "espadabtw @ 49.3K · 86x · 10h"
+ *   "jace444444 @ 341.3K 📈 2x - 47s 👀 41"
+ * Tolerant by design: a line must at least carry `<name> @ <mcap>` plus either
+ * a multiple ("86x") or a relative age to count — a bare "name @ mcap" is the
+ * per-caller entry line `parseFooterCallMc` already handles, not a global
+ * first-call claim. Absent or malformed → null, never throws.
+ */
+export function parseGlobalFirstCall(
+  blob: string,
+  messageTimestamp?: string,
+): GlobalFirstCall | null {
+  for (const line of blob.split('\n')) {
+    const head = line.match(/^\s*([A-Za-z0-9_.]{2,})\s*@\s*\$?\s*([\d.]+[KMBTkmbt]?)\b/);
+    if (!head) continue;
+
+    const rest = line.slice((head.index ?? 0) + head[0].length);
+    const mult = rest.match(/(?:^|[\s·•|[(-])([\d.]+)\s*x\b/i);
+    const age = rest.match(/(?:^|[\s·•|[(-])(\d+(?:\.\d+)?\s*(?:mo|[smhdw]))\b/i);
+    if (!mult && !age) continue;
+
+    const mcap = parseCompactUsd(head[2]);
+    const result: GlobalFirstCall = {
+      firstCallerName: head[1],
+      firstCallMcapUsd: mcap,
+      firstCallMcapDisplay: head[2],
+    };
+
+    if (age?.[1]) {
+      const ageMs = parseRelativeAgeMs(age[1]);
+      if (ageMs !== undefined) {
+        const baseMs = messageTimestamp ? new Date(messageTimestamp).getTime() : Date.now();
+        if (Number.isFinite(baseMs)) {
+          result.firstCallAt = new Date(baseMs - ageMs).toISOString();
+        }
+      }
+    }
+    return result;
+  }
+  return null;
+}
+
 /** Rick footer lines like "jace444444 @ 341.3K" — caller entry MC. */
 export function parseFooterCallMc(blob: string): { username?: string; display: string; value?: number } | null {
   const m = blob.match(/(?:^|[\n|])\s*([A-Za-z0-9_]+)?\s*@\s*\$?\s*([\d.]+[KMBTkmbt]?)/);
@@ -174,7 +250,7 @@ function pickFdvAtCall(blob: string, callerName?: string): { display?: string; v
 export function parseRickEmbeds(
   embeds: EmbedLike[] | undefined,
   authorUsername?: string,
-  replyContext?: Pick<RickReplyContext, 'addressOverride' | 'callerName'>,
+  replyContext?: Pick<RickReplyContext, 'addressOverride' | 'callerName'> & { messageTimestamp?: string },
 ): TokenEnrichment | null {
   if (!embeds || embeds.length === 0) return null;
   if (!looksLikeRick(embeds, authorUsername)) return null;
@@ -200,6 +276,8 @@ export function parseRickEmbeds(
     /\$\s*([\d.]+(?:e-?\d+)?)/i,
   ]);
 
+  const globalFirst = parseGlobalFirstCall(blob, replyContext?.messageTimestamp);
+
   const ageMatch = blob.match(/(?:Age|🕐|⏱)[^\n\d]*(\d+[smhdw])/i);
   const chainMatch = blob.match(/\u{1F310}\s*(\w+)/u)
     ?? blob.match(/\b(Base|ETH|Ethereum|BSC|BNB|Arbitrum|ARB|Solana|SOL|Robinhood)\b/i);
@@ -223,6 +301,9 @@ export function parseRickEmbeds(
     volumeDisplay: vol.display,
     priceUsd: price.value,
     tokenAge: ageMatch?.[1],
+    firstCallerName: globalFirst?.firstCallerName,
+    firstCallMcapUsd: globalFirst?.firstCallMcapUsd,
+    firstCallAt: globalFirst?.firstCallAt,
     evmChain: chainMatch?.[1]?.toLowerCase() === 'ethereum' ? 'eth'
       : chainMatch?.[1]?.toLowerCase() === 'bnb' ? 'bsc'
       : chainMatch?.[1]?.toLowerCase() === 'solana' ? 'sol'
@@ -240,10 +321,13 @@ export function tryParseTokenEnrichment(opts: {
   authorUsername?: string;
   addressOverride?: string;
   callerName?: string;
+  /** Timestamp of the embed's message — anchors the global-first relative age. Defaults to now. */
+  messageTimestamp?: string;
 }): TokenEnrichment | null {
   const fromEmbeds = parseRickEmbeds(opts.embeds, opts.authorUsername, {
     addressOverride: opts.addressOverride,
     callerName: opts.callerName,
+    messageTimestamp: opts.messageTimestamp,
   });
   if (fromEmbeds) return fromEmbeds;
   return null;

@@ -9,7 +9,8 @@ export type RadarColumnId =
   | 'mcNow'
   | 'mult'
   | 'quality'
-  | 'firstCaller';
+  | 'firstCaller'
+  | 'globalFirst';
 
 export const RADAR_COLUMN_ORDER: RadarColumnId[] = [
   'mentions',
@@ -19,6 +20,7 @@ export const RADAR_COLUMN_ORDER: RadarColumnId[] = [
   'windowMentions',
   'recent',
   'mcAtCall',
+  'globalFirst',
   'mcNow',
   'mult',
   'quality',
@@ -37,6 +39,7 @@ export const RADAR_COLUMN_LABELS: Record<RadarColumnId, string> = {
   mult: '×',
   quality: 'Caller',
   firstCaller: 'First caller',
+  globalFirst: 'Global first',
 };
 
 const STORAGE_KEY = 'oct.radar.visibleColumns';
@@ -49,6 +52,7 @@ export const DEFAULT_VISIBLE_COLUMNS: RadarColumnId[] = [
   'windowMentions',
   'recent',
   'mcAtCall',
+  'globalFirst',
   'mcNow',
   'mult',
 ];
