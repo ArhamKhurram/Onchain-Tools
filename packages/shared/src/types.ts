@@ -571,6 +571,84 @@ export interface JournalSummary {
 }
 
 // ---------------------------------------------------------------------------
+// Price alerts (operator-set levels; WS frame `price_alert`)
+// ---------------------------------------------------------------------------
+
+/** Which side of the target counts as a crossing. */
+export type PriceAlertDirection = 'above' | 'below';
+
+/**
+ * What the target is measured in. `mcap` is the default because the operator
+ * thinks in market caps ("buy FTR at 100-150K"); `price` is the per-token USD
+ * price for anyone who prefers it.
+ */
+export type PriceAlertMetric = 'mcap' | 'price';
+
+/**
+ * `armed` — watching. `fired` — the crossing happened, one-shot, done.
+ * `disabled` — reserved: parked without deleting (no v1 UI writes it, but the
+ * poller already skips it, so a future toggle needs no migration).
+ */
+export type PriceAlertStatus = 'armed' | 'fired' | 'disabled';
+
+/**
+ * One operator-declared level on one token.
+ *
+ * This is the deliberate INVERSE of revival/breakout: no detection, no
+ * scoring, no discovery. The operator names the token and the number; the
+ * poller only reports the crossing. It stays its own independent signal and is
+ * never fused with revival, breakout, convergence, FOMO or missed-runner.
+ */
+export interface PriceAlert {
+  id: string;
+  /** Solana only in v1 — the column exists so other chains need no migration. */
+  chain: string;
+  /** Token address (Solana mint in v1). */
+  mint: string;
+  /** Symbol as last observed upstream, or whatever the operator typed. */
+  symbol: string | null;
+  direction: PriceAlertDirection;
+  /** The level, in USD, measured in `metric`. */
+  targetUsd: number;
+  metric: PriceAlertMetric;
+  status: PriceAlertStatus;
+  /** Why this level matters — free text, echoed back in the alert. */
+  note: string | null;
+  /**
+   * Last value observed by the poller, in `metric`'s units. NULL means never
+   * observed: the FIRST observation only records (see crossing.ts), so an
+   * alert created on a token already past its target cannot fire instantly.
+   */
+  lastSeenUsd: number | null;
+  lastSeenAt: string | null;
+  firedAt: string | null;
+  /** Value at the moment of firing (what the toast/Pushover reported). */
+  firedValueUsd: number | null;
+  createdAt: string;
+}
+
+/**
+ * Payload of the `price_alert` WS frame — an operator-set level was crossed.
+ * Normal loudness (toast + notification history); the emergency tier stays
+ * revival-only.
+ */
+export interface PriceAlertData {
+  alertId: string;
+  mint: string;
+  chain: string;
+  symbol: string | null;
+  direction: PriceAlertDirection;
+  metric: PriceAlertMetric;
+  targetUsd: number;
+  /** Observed value that crossed the target, same units as `targetUsd`. */
+  valueUsd: number;
+  /** Previous observation — the value the crossing came FROM. */
+  previousUsd: number | null;
+  note: string | null;
+  triggeredAt: string;
+}
+
+// ---------------------------------------------------------------------------
 // Workspace layout (persisted per user)
 // ---------------------------------------------------------------------------
 

@@ -2,14 +2,22 @@ import { configStore } from '../config/store.js';
 import { contractLog } from '../utils/contractLog.js';
 import { revivalAlertLog } from '../utils/revivalAlertLog.js';
 import { journalLog } from '../journal/journalLog.js';
+import { priceAlertLog } from '../priceAlerts/priceAlertLog.js';
 import { pumpSessionStore } from '../pumpfun/pumpSessionStore.js';
-import type { PumpSession, StorageProvider } from './interface.js';
+import type {
+  PriceAlertInput,
+  PriceAlertObservationPatch,
+  PumpSession,
+  StorageProvider,
+} from './interface.js';
 import type { AppConfig, Room } from '../discord/types.js';
 import type { ContractEntry, ContractEnrichmentPatch, EnrichContractOptions } from '../utils/contractLog.js';
 import type {
   JournalPosition,
   JournalTrade,
   JournalWallet,
+  PriceAlert,
+  PriceAlertStatus,
   RevivalAlertEntry,
   RevivalOutcomePatch,
 } from '@oct/shared';
@@ -172,5 +180,27 @@ export class JsonStorageProvider implements StorageProvider {
 
   async updateJournalPositionPrice(_userId: string, positionId: string, priceUsd: number, at: string): Promise<void> {
     journalLog.updatePositionPrice(positionId, priceUsd, at);
+  }
+
+  // ---- Price alerts ----
+
+  async listPriceAlerts(_userId: string, status?: PriceAlertStatus): Promise<PriceAlert[]> {
+    return priceAlertLog.list(status);
+  }
+
+  async createPriceAlert(_userId: string, input: PriceAlertInput): Promise<PriceAlert> {
+    return priceAlertLog.create(input);
+  }
+
+  async deletePriceAlert(_userId: string, alertId: string): Promise<boolean> {
+    return priceAlertLog.remove(alertId);
+  }
+
+  async updatePriceAlertObservation(
+    _userId: string,
+    alertId: string,
+    patch: PriceAlertObservationPatch,
+  ): Promise<void> {
+    priceAlertLog.applyObservation(alertId, patch);
   }
 }

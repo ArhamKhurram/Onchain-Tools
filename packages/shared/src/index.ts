@@ -138,6 +138,12 @@ export type {
   JournalDayRow,
   JournalCurvePoint,
   JournalSummary,
+  // price alerts (operator-set levels)
+  PriceAlert,
+  PriceAlertDirection,
+  PriceAlertMetric,
+  PriceAlertStatus,
+  PriceAlertData,
   CallerTier,
   CallerTierEntry,
   AppConfig,

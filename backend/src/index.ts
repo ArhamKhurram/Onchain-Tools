@@ -48,6 +48,7 @@ import { startMissedRunnerPoller } from './alerts/missedRunnerPoller.js';
 import { startRevivalPoller } from './revival/poller.js';
 import { startJournalPoller } from './journal/poller.js';
 import { startJournalVolumeDeathPoller } from './journal/volumeDeathPoller.js';
+import { startPriceAlertPoller } from './priceAlerts/poller.js';
 import { startTokenPeakSampler } from './alerts/tokenPeakSampler.js';
 import type { DiscordMessage, PushoverConfig, FrontendMessage, ContractLinkTemplates } from './discord/types.js';
 import type { ContractEnrichmentPatch } from './utils/contractLog.js';
@@ -736,6 +737,11 @@ httpServer.listen(PORT, HOST, async () => {
   // "Meta dying" volume-collapse alerts for OPEN journal positions. Keyless
   // DexScreener upstream; an independent signal, never fused with revival.
   startJournalVolumeDeathPoller(wsServer);
+  // Operator-set price/mcap levels → alert on CROSSING. Runs in BOTH modes,
+  // keyless DexScreener upstream, and self-gates on there being at least one
+  // armed alert (zero armed = zero requests). Its own independent signal:
+  // no detection, no scoring, never fused with revival/breakout/missed-runner.
+  startPriceAlertPoller(wsServer);
   // Global pump.fun KOL-callout fan-out poller. Self-gates on Supabase (idle in
   // local mode), keyless upstream, so it never crashes the server.
   startPumpCalloutPoller(wsServer);
