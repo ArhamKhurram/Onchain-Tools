@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { pumpGet } from '../lib/pumpfunApi';
 import type { PumpCallout, PumpCommunity } from '../types/pumpfun';
 
@@ -7,6 +7,13 @@ import type { PumpCallout, PumpCommunity } from '../types/pumpfun';
 // into a clean "not configured" state rather than an error — `disabled` carries
 // that. The two fetches keep separate error state anyway, so a vendor 502 on one
 // does not blank the other.
+//
+// The pair is still fired together: they are two reads of the same view and the
+// backend now queues keyed requests behind a concurrency cap, so `Promise.all`
+// no longer bursts the shared rate limit (see backend/src/pumpfun/keyedLimiter.ts).
+// What it does need is an ORDERING guard — clicking through mints fast can land
+// an older pair after a newer one and paint the wrong token — hence the request
+// sequence below: only the newest load may write state.
 
 interface TokenState<T> {
   data: T;
@@ -29,13 +36,19 @@ export function usePumpToken(mint: string | null) {
     retryable: false,
   });
   const [loading, setLoading] = useState(false);
+  // Monotonic id of the newest in-flight load. A response whose id is stale is
+  // dropped whole (both halves), so a slow earlier mint can never overwrite the
+  // mint the user is actually looking at, nor clear its loading flag early.
+  const requestId = useRef(0);
 
   const load = useCallback(async (m: string) => {
+    const id = (requestId.current += 1);
     setLoading(true);
     const [calloutRes, communityRes] = await Promise.all([
       pumpGet<PumpCallout[]>(`/token/${m}/callouts`),
       pumpGet<PumpCommunity>(`/token/${m}/community`),
     ]);
+    if (id !== requestId.current) return;
 
     setCallouts(
       calloutRes.ok
@@ -52,6 +65,9 @@ export function usePumpToken(mint: string | null) {
 
   useEffect(() => {
     if (!mint) {
+      // Invalidate any in-flight load too, so it cannot repopulate a cleared view.
+      requestId.current += 1;
+      setLoading(false);
       setCallouts({ data: [], error: null, disabled: false, retryable: false });
       setCommunity({ data: null, error: null, disabled: false, retryable: false });
       return;

@@ -7,6 +7,7 @@ import {
   PumpfunContractError,
   PumpfunRequestError,
   resolvePumpfunApiKey,
+  resolveKeyedReadRetries,
   isPumpfunConfigured,
   isTransientPumpfunError,
 } from '../src/pumpfun/client';
@@ -26,6 +27,11 @@ beforeEach(() => {
   process.env.PUMPFUN_API_KEY = KEY;
   delete process.env.OCT_PUMPFUN_API_KEY;
   delete process.env.TRENCHCORD_PUMPFUN_API_KEY;
+  // The specs below pin narrowing and the error taxonomy, one response per case,
+  // so the keyed retry budget is pinned OFF here to keep call counts exact and
+  // the suite free of real backoff sleeps. The budget itself — including that it
+  // defaults to ON — has its own describe block further down.
+  process.env.PUMPFUN_READ_RETRIES = '0';
 });
 
 afterEach(() => {
@@ -34,6 +40,9 @@ afterEach(() => {
   delete process.env.PUMPFUN_API_KEY;
   delete process.env.OCT_PUMPFUN_API_KEY;
   delete process.env.TRENCHCORD_PUMPFUN_API_KEY;
+  delete process.env.PUMPFUN_READ_RETRIES;
+  delete process.env.OCT_PUMPFUN_READ_RETRIES;
+  delete process.env.TRENCHCORD_PUMPFUN_READ_RETRIES;
 });
 
 const api = () => new PumpfunClient();
@@ -461,6 +470,129 @@ describe('isTransientPumpfunError', () => {
     expect(isTransientPumpfunError(new PumpfunContractError('/p', 'bad shape'))).toBe(false);
     expect(isTransientPumpfunError(new Error('boom'))).toBe(false);
     expect(isTransientPumpfunError(null)).toBe(false);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// KEYED-host retry (coin-communities). Unlike the profile-api budget above this
+// one is ON by default: the shared x-api-key has one rate-limit budget across
+// every reader, so a 429 is an ordinary contended moment, not an outage. These
+// specs set the env budget explicitly (the client reads it late, per call).
+// ---------------------------------------------------------------------------
+
+describe('keyed read retry (429 and friends)', () => {
+  function mockFetchSequence(...responses: Array<{ status: number; body: string } | { throw: Error }>) {
+    let i = 0;
+    const spy = vi.fn(async () => {
+      const r = responses[Math.min(i, responses.length - 1)]!;
+      i += 1;
+      if ('throw' in r) throw r.throw;
+      return new Response(r.body, { status: r.status });
+    });
+    vi.stubGlobal('fetch', spy);
+    return spy;
+  }
+
+  const MINT = 'So11111111111111111111111111111111111111112';
+  const OK_CALLOUTS = { status: 200, body: JSON.stringify({ callouts: [GOOD_CALLOUT] }) };
+  const RATE_LIMITED = { status: 429, body: 'Too Many Requests' };
+
+  it('retries a 429 on the token callouts read and succeeds — the reported bug', async () => {
+    process.env.PUMPFUN_READ_RETRIES = '2';
+    const spy = mockFetchSequence(RATE_LIMITED, OK_CALLOUTS);
+    const out = await api().getTokenCallouts(MINT);
+    expect(out).toHaveLength(1);
+    expect(spy).toHaveBeenCalledTimes(2);
+  });
+
+  it('retries a 429 on the community read too (the other half of the pair)', async () => {
+    process.env.PUMPFUN_READ_RETRIES = '2';
+    const spy = mockFetchSequence(RATE_LIMITED, { status: 200, body: JSON.stringify({ tokenSymbol: 'WSOL' }) });
+    const c = await api().getCommunity(MINT);
+    expect(c.tokenSymbol).toBe('WSOL');
+    expect(spy).toHaveBeenCalledTimes(2);
+  });
+
+  it('does NOT retry a non-transient failure (404) — one attempt, budget untouched', async () => {
+    process.env.PUMPFUN_READ_RETRIES = '3';
+    const spy = mockFetchSequence({ status: 404, body: 'no such community' }, OK_CALLOUTS);
+    await expect(api().getTokenCallouts(MINT)).rejects.toMatchObject({ kind: 'request-failed', status: 404 });
+    expect(spy).toHaveBeenCalledTimes(1);
+  });
+
+  it('does NOT retry an auth refusal or a shape break', async () => {
+    process.env.PUMPFUN_READ_RETRIES = '3';
+    const authSpy = mockFetchSequence({ status: 401, body: 'nope' }, OK_CALLOUTS);
+    await expect(api().getTopCommunities()).rejects.toMatchObject({ kind: 'auth-rejected' });
+    expect(authSpy).toHaveBeenCalledTimes(1);
+
+    const shapeSpy = mockFetchSequence({ status: 200, body: JSON.stringify({ nope: true }) }, OK_CALLOUTS);
+    await expect(api().getTokenCallouts(MINT)).rejects.toMatchObject({ kind: 'unexpected-shape' });
+    expect(shapeSpy).toHaveBeenCalledTimes(1);
+  });
+
+  it('respects the budget: gives up after the configured extra attempts', async () => {
+    process.env.PUMPFUN_READ_RETRIES = '1';
+    const spy = mockFetchSequence(RATE_LIMITED);
+    await expect(api().getTokenCallouts(MINT)).rejects.toMatchObject({ kind: 'request-failed', status: 429 });
+    // Initial attempt + exactly 1 retry.
+    expect(spy).toHaveBeenCalledTimes(2);
+  });
+
+  it('makes a single attempt when the budget is explicitly 0', async () => {
+    process.env.PUMPFUN_READ_RETRIES = '0';
+    const spy = mockFetchSequence(RATE_LIMITED);
+    await expect(api().getWalletCallouts('9xQeWvG816bUx9EPjHmaT23yvVM2ZWbrrpZb9PusVFin')).rejects.toMatchObject({
+      status: 429,
+    });
+    expect(spy).toHaveBeenCalledTimes(1);
+  });
+
+  it('retries by DEFAULT (no env set): three attempts on a persistent 429', async () => {
+    delete process.env.PUMPFUN_READ_RETRIES;
+    const spy = mockFetchSequence(RATE_LIMITED);
+    await expect(api().getTokenCallouts(MINT)).rejects.toMatchObject({ status: 429 });
+    // 1 initial + 2 default extra attempts.
+    expect(spy).toHaveBeenCalledTimes(3);
+  });
+
+  it('never leaks the key when every retry fails', async () => {
+    process.env.PUMPFUN_READ_RETRIES = '1';
+    mockFetchSequence({ throw: new Error(`connect failed with header x-api-key: ${KEY}`) });
+    try {
+      await api().getTokenCallouts(MINT);
+      throw new Error('expected the call to reject');
+    } catch (err) {
+      expect(err).toBeInstanceOf(PumpfunError);
+      expect((err as Error).message).not.toContain(KEY);
+    }
+  });
+});
+
+describe('resolveKeyedReadRetries', () => {
+  it('defaults to two extra attempts when unset', () => {
+    delete process.env.PUMPFUN_READ_RETRIES;
+    expect(resolveKeyedReadRetries()).toBe(2);
+  });
+
+  it('reads the primary var, then the dual-brand fallbacks', () => {
+    process.env.PUMPFUN_READ_RETRIES = '5';
+    expect(resolveKeyedReadRetries()).toBe(5);
+    delete process.env.PUMPFUN_READ_RETRIES;
+    process.env.OCT_PUMPFUN_READ_RETRIES = '4';
+    expect(resolveKeyedReadRetries()).toBe(4);
+    delete process.env.OCT_PUMPFUN_READ_RETRIES;
+    process.env.TRENCHCORD_PUMPFUN_READ_RETRIES = '3';
+    expect(resolveKeyedReadRetries()).toBe(3);
+  });
+
+  it('honours an explicit 0 (opt out) but falls back on junk or a negative', () => {
+    process.env.PUMPFUN_READ_RETRIES = '0';
+    expect(resolveKeyedReadRetries()).toBe(0);
+    for (const bad of ['', 'many', '-1']) {
+      process.env.PUMPFUN_READ_RETRIES = bad;
+      expect(resolveKeyedReadRetries()).toBe(2);
+    }
   });
 });
 
