@@ -1,8 +1,10 @@
 import { describe, expect, it } from 'vitest';
 import {
+  DEFAULT_MIN_POSITION_VALUE_USD,
   DEFAULT_VOLUME_DEATH_CONFIG,
   evaluateVolumeDeath,
   extractTokenVolumeSnapshot,
+  isPositionWorthAlerting,
   shouldAlertVolumeDeath,
   type DexTokenPair,
 } from '../src/journal/volumeDeath.js';
@@ -80,6 +82,74 @@ describe('shouldAlertVolumeDeath (cooldown)', () => {
 
   it('re-arms exactly at the cooldown boundary', () => {
     expect(shouldAlertVolumeDeath(NOW - COOLDOWN, NOW, COOLDOWN)).toBe(true);
+  });
+});
+
+describe('isPositionWorthAlerting (dust gate)', () => {
+  const MIN = 10;
+
+  it('ships a $10 default floor', () => {
+    expect(DEFAULT_MIN_POSITION_VALUE_USD).toBe(10);
+    expect(isPositionWorthAlerting(9.99)).toBe(false);
+    expect(isPositionWorthAlerting(10)).toBe(true);
+  });
+
+  it('skips a position below the threshold', () => {
+    expect(isPositionWorthAlerting(0, MIN)).toBe(false);
+    expect(isPositionWorthAlerting(0.004, MIN)).toBe(false); // the real $BOT bag
+    expect(isPositionWorthAlerting(9.999999, MIN)).toBe(false);
+  });
+
+  it('alerts at and above the threshold', () => {
+    expect(isPositionWorthAlerting(MIN, MIN)).toBe(true);
+    expect(isPositionWorthAlerting(10.01, MIN)).toBe(true);
+    expect(isPositionWorthAlerting(25_000, MIN)).toBe(true);
+  });
+
+  it('still alerts when the value is UNKNOWN — a data gap is not dust', () => {
+    expect(isPositionWorthAlerting(null, MIN)).toBe(true);
+    expect(isPositionWorthAlerting(undefined, MIN)).toBe(true);
+    expect(isPositionWorthAlerting(Number.NaN, MIN)).toBe(true);
+  });
+
+  it('a threshold of 0 disables the gate', () => {
+    expect(isPositionWorthAlerting(0, 0)).toBe(true);
+  });
+});
+
+describe('dust gate ordering vs the cooldown', () => {
+  const COOLDOWN = 1_800_000;
+  const MIN = 10;
+
+  /** The poller's per-holder decision, in the order volumeDeathPoller.ts uses. */
+  function tryAlert(
+    lastAlertAt: Map<string, number>,
+    id: string,
+    positionValueUsd: number | null,
+    now: number,
+  ): boolean {
+    if (!isPositionWorthAlerting(positionValueUsd, MIN)) return false;
+    if (!shouldAlertVolumeDeath(lastAlertAt.get(id), now, COOLDOWN)) return false;
+    lastAlertAt.set(id, now);
+    return true;
+  }
+
+  it('does not burn the cooldown slot on a dust-skipped position', () => {
+    const lastAlertAt = new Map<string, number>();
+    // Cycle 1: dust — skipped, and must NOT stamp the cooldown.
+    expect(tryAlert(lastAlertAt, 'pos-1', 0.004, 1_000)).toBe(false);
+    expect(lastAlertAt.has('pos-1')).toBe(false);
+    // Cycle 2, three minutes later: the bag has real value again. Well inside
+    // the 30-min window, so a burnt slot would have wrongly suppressed this.
+    expect(tryAlert(lastAlertAt, 'pos-1', 250, 181_000)).toBe(true);
+    expect(lastAlertAt.get('pos-1')).toBe(181_000);
+  });
+
+  it('still applies the cooldown to a real alert', () => {
+    const lastAlertAt = new Map<string, number>();
+    expect(tryAlert(lastAlertAt, 'pos-2', 250, 1_000)).toBe(true);
+    expect(tryAlert(lastAlertAt, 'pos-2', 250, 1_000 + COOLDOWN - 1)).toBe(false);
+    expect(tryAlert(lastAlertAt, 'pos-2', 250, 1_000 + COOLDOWN)).toBe(true);
   });
 });
 

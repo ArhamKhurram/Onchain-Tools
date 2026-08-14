@@ -8,9 +8,11 @@
  *    DexScreener token endpoint, spaced REQUEST_SPACING_MS (500ms ≈ 120
  *    req/min worst case, well under the ~300/min documented ceiling).
  * 3. Run the pure volume-death detector; on a `dying` verdict fan out to every
- *    user holding the token: `journal_alert` WS frame (toast + notification
- *    history client-side), Pushover at NORMAL priority (0, explicit — the
- *    emergency tier stays revival-only), one alert per position per
+ *    user holding the token, EXCEPT holders whose position is dust
+ *    (OCT_JOURNAL_VOLDEATH_MIN_POSITION_USD, default $10 — you cannot act on a
+ *    ~$0 bag): `journal_alert` WS frame (toast + notification history
+ *    client-side), Pushover at NORMAL priority (0, explicit — the emergency
+ *    tier stays revival-only), one alert per position per
  *    OCT_JOURNAL_VOLDEATH_COOLDOWN_MS (default 30 min; in-memory v1, resets
  *    on reboot like revival's suppression).
  * 4. Side-write the observed price onto the position rows so the Journal tab
@@ -34,9 +36,11 @@ import { sendPushover } from '../utils/pushover.js';
 import { formatCompact } from '../wallets/balanceChecker.js';
 import { isJournalEnabled } from './poller.js';
 import {
+  DEFAULT_MIN_POSITION_VALUE_USD,
   DEFAULT_VOLUME_DEATH_CONFIG,
   evaluateVolumeDeath,
   extractTokenVolumeSnapshot,
+  isPositionWorthAlerting,
   shouldAlertVolumeDeath,
   type DexTokenPair,
   type VolumeDeathConfig,
@@ -60,6 +64,15 @@ function resolvePollMs(): number {
 function resolveCooldownMs(): number {
   const parsed = Number.parseInt(envFlag('JOURNAL_VOLDEATH_COOLDOWN_MS') ?? '', 10);
   return Number.isFinite(parsed) && parsed >= 60_000 ? parsed : DEFAULT_VOLDEATH_COOLDOWN_MS;
+}
+
+/**
+ * Dust floor for the POSITION side, in USD. 0 disables the gate; junk falls
+ * back to the default, like every other knob here.
+ */
+function resolveMinPositionUsd(): number {
+  const parsed = Number.parseFloat(envFlag('JOURNAL_VOLDEATH_MIN_POSITION_USD') ?? '');
+  return Number.isFinite(parsed) && parsed >= 0 ? parsed : DEFAULT_MIN_POSITION_VALUE_USD;
 }
 
 function resolveDetectorConfig(): VolumeDeathConfig {
@@ -107,7 +120,8 @@ class JournalVolumeDeathPoller {
     const interval = resolvePollMs();
     const cfg = resolveDetectorConfig();
     console.log(
-      `[JournalVolDeath] Started (interval ${interval}ms, ratio ${cfg.ratio}, cooldown ${resolveCooldownMs()}ms).`,
+      `[JournalVolDeath] Started (interval ${interval}ms, ratio ${cfg.ratio}, ` +
+        `cooldown ${resolveCooldownMs()}ms, min position $${resolveMinPositionUsd()}).`,
     );
     // No immediate poll: positions only exist after the ingestion poller has
     // run at least once, so the first useful cycle is one interval in.
@@ -197,6 +211,7 @@ class JournalVolumeDeathPoller {
 
       const cfg = resolveDetectorConfig();
       const cooldownMs = resolveCooldownMs();
+      const minPositionUsd = resolveMinPositionUsd();
       let first = true;
 
       for (const [mint, holders] of byMint) {
@@ -231,12 +246,21 @@ class JournalVolumeDeathPoller {
 
         for (const p of holders) {
           const now = Date.now();
+          const positionValueUsd =
+            snapshot.priceUsd != null ? p.remainingToken * snapshot.priceUsd : null;
+
+          // Dust gate FIRST, and deliberately BEFORE the cooldown stamp below:
+          // a position skipped as dust must not burn its cooldown slot, or one
+          // that later grows back into real money would be suppressed by a
+          // cooldown it never actually spent an alert on. Gating here also
+          // covers both delivery paths at once — the WS frame and Pushover are
+          // the same alert, so they are gated once, together.
+          if (!isPositionWorthAlerting(positionValueUsd, minPositionUsd)) continue;
+
           if (!shouldAlertVolumeDeath(this.lastAlertAt.get(p.id), now, cooldownMs)) continue;
           this.lastAlertAt.set(p.id, now);
 
           const symbol = p.symbol ?? snapshot.symbol;
-          const positionValueUsd =
-            snapshot.priceUsd != null ? p.remainingToken * snapshot.priceUsd : null;
           const data: JournalAlertData = {
             kind: 'volume_dying',
             mint,
