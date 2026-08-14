@@ -15,6 +15,7 @@ they're left as the record of what shipped.
 
 ### Fixed
 - **The Pump.fun token tab stops erroring out** — opening a token sometimes showed a "failed (429)" card instead of its callouts. The tab was asking pump.fun for two things at the same instant and tripping their rate limit on itself; requests now queue, a rate-limited read retries quietly, and a token's callouts are remembered for longer, so reopening one is instant.
+- **No more "meta dying" pings on worthless bags** — the alert was firing on rugged positions worth about a dollar, over and over, because a dead bag stays open in the journal forever. It now stays quiet unless the position is actually worth something (default $10, tunable). If we can't price the token at all we still ping you — a missing price isn't proof the bag is empty.
 
 ## 2026-08-08
 

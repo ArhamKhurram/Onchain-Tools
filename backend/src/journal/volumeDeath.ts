@@ -78,6 +78,32 @@ export function shouldAlertVolumeDeath(
   return nowMs - lastAlertAtMs >= cooldownMs;
 }
 
+/**
+ * Dust floor, in USD of position value
+ * (OCT_JOURNAL_VOLDEATH_MIN_POSITION_USD). The detector's minH6VolumeUsd is a
+ * TOKEN-side gate; this is the POSITION-side one. A rugged bag stays "open" in
+ * the journal indefinitely (positions only close under a 2% remainder), so
+ * without this floor a worthless holding re-alerts every cooldown window with
+ * a signal nobody can act on — you cannot meaningfully exit ~$0.
+ */
+export const DEFAULT_MIN_POSITION_VALUE_USD = 10;
+
+/**
+ * Position-side dust gate: true when the position is worth alerting about.
+ *
+ * A NULL value means the price is UNKNOWN (DexScreener returned no price), not
+ * that the position is worthless — a data gap is not evidence of dust, and
+ * suppressing on unknown would silently hide a real signal. So unknown alerts.
+ * We never invent a price to fill the gap.
+ */
+export function isPositionWorthAlerting(
+  positionValueUsd: number | null | undefined,
+  minPositionValueUsd: number = DEFAULT_MIN_POSITION_VALUE_USD,
+): boolean {
+  if (positionValueUsd == null || !Number.isFinite(positionValueUsd)) return true;
+  return positionValueUsd >= minPositionValueUsd;
+}
+
 // --- DexScreener payload extraction ----------------------------------------
 
 /** The subset of a `/latest/dex/tokens/{mint}` pair we read. */
