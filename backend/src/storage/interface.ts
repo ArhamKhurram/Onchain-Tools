@@ -4,6 +4,10 @@ import type {
   JournalPosition,
   JournalTrade,
   JournalWallet,
+  PriceAlert,
+  PriceAlertDirection,
+  PriceAlertMetric,
+  PriceAlertStatus,
   RevivalAlertEntry,
   RevivalOutcomePatch,
 } from '@oct/shared';
@@ -20,6 +24,33 @@ import type {
 export interface PumpSession {
   token: string;
   updatedAt: string;
+}
+
+/** What a caller supplies to create a price alert; the store owns the rest. */
+export interface PriceAlertInput {
+  mint: string;
+  chain: string;
+  symbol: string | null;
+  direction: PriceAlertDirection;
+  targetUsd: number;
+  metric: PriceAlertMetric;
+  note: string | null;
+}
+
+/**
+ * One poll observation. `lastSeenUsd`/`lastSeenAt` are written every time a
+ * real value is observed; the remaining fields appear together, exactly once,
+ * on the crossing that fires the alert.
+ */
+export interface PriceAlertObservationPatch {
+  lastSeenUsd: number;
+  lastSeenAt: string;
+  /** Present only on a firing observation. */
+  status?: PriceAlertStatus;
+  firedAt?: string;
+  firedValueUsd?: number;
+  /** Learned upstream; only ever set, never cleared. */
+  symbol?: string | null;
 }
 
 export interface StorageProvider {
@@ -94,4 +125,21 @@ export interface StorageProvider {
   listJournalPositions(userId: string, status?: 'open' | 'closed'): Promise<JournalPosition[]>;
   /** Side-write from the volume poller: last observed DexScreener price. */
   updateJournalPositionPrice(userId: string, positionId: string, priceUsd: number, at: string): Promise<void>;
+
+  // ---- Price alerts (operator-set levels; see backend/src/priceAlerts/) ----
+
+  /** Newest-first. `status` narrows to one state ('armed' for the poller). */
+  listPriceAlerts(userId: string, status?: PriceAlertStatus): Promise<PriceAlert[]>;
+  /** Create one armed alert. Server owns id/status/createdAt. */
+  createPriceAlert(userId: string, input: PriceAlertInput): Promise<PriceAlert>;
+  deletePriceAlert(userId: string, alertId: string): Promise<boolean>;
+  /**
+   * Persist one poll observation. `lastSeenUsd` is always written; the fired
+   * fields are written together, and only on a genuine crossing (one-shot).
+   */
+  updatePriceAlertObservation(
+    userId: string,
+    alertId: string,
+    patch: PriceAlertObservationPatch,
+  ): Promise<void>;
 }

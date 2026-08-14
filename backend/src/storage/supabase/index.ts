@@ -1,10 +1,17 @@
-import type { PumpSession, StorageProvider } from '../interface.js';
+import type {
+  PriceAlertInput,
+  PriceAlertObservationPatch,
+  PumpSession,
+  StorageProvider,
+} from '../interface.js';
 import type { AppConfig, Room } from '../../discord/types.js';
 import type { ContractEntry, ContractEnrichmentPatch, EnrichContractOptions } from '../../utils/contractLog.js';
 import type {
   JournalPosition,
   JournalTrade,
   JournalWallet,
+  PriceAlert,
+  PriceAlertStatus,
   RevivalAlertEntry,
   RevivalOutcomePatch,
 } from '@oct/shared';
@@ -19,6 +26,7 @@ import { TelegramRepo } from './telegramRepo.js';
 import { UserCacheRepo } from './userCacheRepo.js';
 import { RevivalAlertsRepo } from './revivalAlertsRepo.js';
 import { JournalRepo } from './journalRepo.js';
+import { PriceAlertsRepo } from './priceAlertsRepo.js';
 
 export class SupabaseStorageProvider implements StorageProvider {
   private config: ConfigRepo;
@@ -30,6 +38,7 @@ export class SupabaseStorageProvider implements StorageProvider {
   private userCache: UserCacheRepo;
   private revivalAlerts: RevivalAlertsRepo;
   private journal: JournalRepo;
+  private priceAlerts: PriceAlertsRepo;
 
   constructor() {
     const ctx = new SupabaseContext(createServiceClient());
@@ -43,6 +52,7 @@ export class SupabaseStorageProvider implements StorageProvider {
     this.userCache = new UserCacheRepo(ctx);
     this.revivalAlerts = new RevivalAlertsRepo(ctx);
     this.journal = new JournalRepo(ctx);
+    this.priceAlerts = new PriceAlertsRepo(ctx);
 
     // Wire cross-repo dependencies (rooms ↔ config ↔ highlights/keywords seam).
     this.config.rooms = this.rooms;
@@ -235,5 +245,27 @@ export class SupabaseStorageProvider implements StorageProvider {
 
   updateJournalPositionPrice(userId: string, positionId: string, priceUsd: number, at: string): Promise<void> {
     return this.journal.updateJournalPositionPrice(userId, positionId, priceUsd, at);
+  }
+
+  // ---- Price alerts ----
+
+  listPriceAlerts(userId: string, status?: PriceAlertStatus): Promise<PriceAlert[]> {
+    return this.priceAlerts.listPriceAlerts(userId, status);
+  }
+
+  createPriceAlert(userId: string, input: PriceAlertInput): Promise<PriceAlert> {
+    return this.priceAlerts.createPriceAlert(userId, input);
+  }
+
+  deletePriceAlert(userId: string, alertId: string): Promise<boolean> {
+    return this.priceAlerts.deletePriceAlert(userId, alertId);
+  }
+
+  updatePriceAlertObservation(
+    userId: string,
+    alertId: string,
+    patch: PriceAlertObservationPatch,
+  ): Promise<void> {
+    return this.priceAlerts.updatePriceAlertObservation(userId, alertId, patch);
   }
 }

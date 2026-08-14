@@ -10,6 +10,7 @@ import { createSourcesSlice, type SourcesSlice } from './slices/sourcesSlice';
 import { createFomoSlice, type FomoSlice } from './slices/fomoSlice';
 import { createRevivalSlice, type RevivalSlice } from './slices/revivalSlice';
 import { createJournalSlice, type JournalSlice } from './slices/journalSlice';
+import { createPriceAlertsSlice, type PriceAlertsSlice } from './slices/priceAlertsSlice';
 
 export { IS_POPOUT } from './appStore.helpers';
 
@@ -23,7 +24,8 @@ export type AppState = AuthSlice &
   SourcesSlice &
   FomoSlice &
   RevivalSlice &
-  JournalSlice;
+  JournalSlice &
+  PriceAlertsSlice;
 
 export const useAppStore = create<AppState>()((...a) => ({
   ...createAuthSlice(...a),
@@ -37,4 +39,5 @@ export const useAppStore = create<AppState>()((...a) => ({
   ...createFomoSlice(...a),
   ...createRevivalSlice(...a),
   ...createJournalSlice(...a),
+  ...createPriceAlertsSlice(...a),
 }));
