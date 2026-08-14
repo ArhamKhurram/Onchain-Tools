@@ -1,6 +1,7 @@
 import { Router } from 'express';
 import type { RouterContext } from '../context.js';
 import { getUserId, safeError } from '../shared.js';
+import { abandonedMapFromPositions } from '../../journal/abandoned.js';
 import { buildPositions } from '../../journal/positions.js';
 import { buildJournalSummary } from '../../journal/stats.js';
 import { getHeliusApiKey } from '../../journal/helius.js';
@@ -91,7 +92,13 @@ export function createJournalRoutes(ctx: RouterContext): Router {
     try {
       const userId = getUserId(req);
       const trades = await storage.listJournalTrades(userId, SUMMARY_TRADE_LIMIT);
-      const { positions, events } = buildPositions(trades);
+      // Auto-closed dead bags are recorded on the stored rows, not derivable
+      // from trades — feed them back so the curve books their zero-proceeds
+      // loss instead of showing them as still open.
+      const closedRows = await storage.listJournalPositions(userId, 'closed');
+      const { positions, events } = buildPositions(trades, {
+        abandoned: abandonedMapFromPositions(closedRows),
+      });
       res.json({ summary: buildJournalSummary(events, positions, trades.length) });
     } catch (err) {
       res.status(500).json({ error: safeError(err, 'Failed to build journal summary') });

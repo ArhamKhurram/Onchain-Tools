@@ -16,6 +16,7 @@ they're left as the record of what shipped.
 ### Fixed
 - **The Pump.fun token tab stops erroring out** — opening a token sometimes showed a "failed (429)" card instead of its callouts. The tab was asking pump.fun for two things at the same instant and tripping their rate limit on itself; requests now queue, a rate-limited read retries quietly, and a token's callouts are remembered for longer, so reopening one is instant.
 - **No more "meta dying" pings on worthless bags** — the alert was firing on rugged positions worth about a dollar, over and over, because a dead bag stays open in the journal forever. It now stays quiet unless the position is actually worth something (default $10, tunable). If we can't price the token at all we still ping you — a missing price isn't proof the bag is empty.
+- **Dead bags stop sitting in "open" forever** — a coin that went to zero in value while you still hold every token never tripped the journal's 98%-sold close rule, so it cluttered your open positions and got checked on every cycle for the rest of time. Journal now retires them: no LP at all, or under $100 of it, or worth under a dollar, and untouched for a week. The write-off is honest — the money you never got back is booked as a real loss, so your realized PnL will drop by the cost of every dead bag the first time this runs. That number was always true; it just wasn't being counted. Closed positions have their own tab in the journal, tagged `abandoned`, and nothing is closed on missing data — an unpriceable token is left alone.
 
 ## 2026-08-08
 

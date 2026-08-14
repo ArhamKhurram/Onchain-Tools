@@ -133,6 +133,7 @@ export type {
   JournalTradeSide,
   JournalPosition,
   JournalPositionStatus,
+  JournalCloseReason,
   JournalAlertData,
   JournalDayRow,
   JournalCurvePoint,

@@ -460,6 +460,15 @@ export interface JournalTrade {
 export type JournalPositionStatus = 'open' | 'closed';
 
 /**
+ * Why an episode closed.
+ * - `sold`      — the normal FIFO dust close (≤2% of acquired remains).
+ * - `abandoned` — auto-closed as a dead bag: unsellable and untouched for
+ *   days, booked as a sale at ZERO proceeds (backend/src/journal/abandoned.ts).
+ * Null on open episodes and on rows written before the close_reason column.
+ */
+export type JournalCloseReason = 'sold' | 'abandoned';
+
+/**
  * A FIFO trade episode per (wallet, token): opens on the first buy from flat,
  * closes when the remaining balance falls under the dust threshold (2% of
  * total acquired). Realized PnL accrues on each sell against FIFO lots.
@@ -489,6 +498,8 @@ export interface JournalPosition {
   pnlIncomplete: boolean;
   openedAt: string;
   closedAt: string | null;
+  /** Null while open; null on pre-migration rows (the column is optional). */
+  closeReason: JournalCloseReason | null;
   lastTradeAt: string;
   /** Last DexScreener price observed for the mint (volume poller side-writes). */
   lastPriceUsd: number | null;
