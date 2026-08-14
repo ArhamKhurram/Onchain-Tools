@@ -104,10 +104,18 @@ export function topCallersCacheKey(window: string, metric: string, minCalls: num
   return `top-callers:${window}:${metric}:${minCalls}`;
 }
 
-// TTLs. Callouts move fast (new calls, live multipliers) so they are short-lived;
-// the top board and trending slice turn over slowly and can sit longer. All
+// TTLs. The top board and trending slice turn over slowly and can sit longer. All
 // overridable by env for tuning without a redeploy.
-export const TOKEN_CALLOUTS_TTL_MS = Number.parseInt(process.env.PUMPFUN_TOKEN_CALLOUTS_CACHE_MS ?? '', 10) || 60 * 1000;
+//
+// A token's callout LIST is an append-only historical record — a call that was
+// made stays made — and the shared-key rate limit is the scarce resource, not
+// freshness. 60s made the token tab re-hit coin-communities on every reopen and
+// on every mint the user clicked back to, which is what made the 429s easy to
+// provoke; 5 minutes cuts that fan-out ~5x. The live-multiplier fields do drift
+// within the window, which is the accepted trade (the panel has a manual
+// refresh). PUMPFUN_TOKEN_CALLOUTS_CACHE_MS still overrides.
+export const TOKEN_CALLOUTS_TTL_MS =
+  Number.parseInt(process.env.PUMPFUN_TOKEN_CALLOUTS_CACHE_MS ?? '', 10) || 5 * 60 * 1000;
 export const WALLET_CALLOUTS_TTL_MS = Number.parseInt(process.env.PUMPFUN_WALLET_CALLOUTS_CACHE_MS ?? '', 10) || 120 * 1000;
 export const WALLET_PROFILE_TTL_MS = Number.parseInt(process.env.PUMPFUN_WALLET_PROFILE_CACHE_MS ?? '', 10) || 5 * 60 * 1000;
 export const COMMUNITY_TTL_MS = Number.parseInt(process.env.PUMPFUN_COMMUNITY_CACHE_MS ?? '', 10) || 5 * 60 * 1000;

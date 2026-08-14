@@ -13,6 +13,9 @@ they're left as the record of what shipped.
 - **Daily digest DM** — opt in and the Outpost bot DMs you once a day with your revival and breakout alerts and how they played out, the day's top callouts, and who moved on the caller board. Settings → Discord Bot → Daily digest.
 - **"Global first" on the radar** — MC@call shows when *your* rooms first saw a token; the new Global first column shows the earliest call anyone is known to have made. It reads Rick's cross-server first-caller data (`espadabtw @ 49.3K · 10h`) and, on hosted, an anonymous OCT network pool of first sightings — so everyone's coverage helps everyone. The pool stores only the token, when the network first saw it, and the market cap at that moment: never who saw it, or in which group.
 
+### Fixed
+- **The Pump.fun token tab stops erroring out** — opening a token sometimes showed a "failed (429)" card instead of its callouts. The tab was asking pump.fun for two things at the same instant and tripping their rate limit on itself; requests now queue, a rate-limited read retries quietly, and a token's callouts are remembered for longer, so reopening one is instant.
+
 ## 2026-08-08
 
 ### Added

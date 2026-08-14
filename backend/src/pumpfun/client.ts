@@ -19,7 +19,16 @@
 // returned in a response, NEVER interpolated into an error message. Every error
 // string in this file is constructed from a fixed path + a vendor-authored body,
 // never from anything carrying the key.
+//
+// RATE LIMITING: coin-communities budgets per API key, and there is exactly ONE
+// key for the whole deployment, so every reader shares one budget. Two defences,
+// both on the keyed path only: a process-wide concurrency cap (keyedLimiter.ts)
+// so parallel readers queue instead of bursting, and a transient-only retry with
+// backoff (`getWithRetry`) so a 429 that still slips through is absorbed rather
+// than shown to the user. The keyless hosts have their own budgets and are
+// deliberately NOT queued behind this one.
 
+import { runOnKeyedHost } from './keyedLimiter.js';
 import type {
   PumpCallout,
   PumpFeedItem,
@@ -61,6 +70,15 @@ const TIMEOUT_MS = 10_000;
 // thundering-herd re-hit of an already-overloaded origin.
 const RETRY_BASE_MS = 500;
 const RETRY_JITTER_MS = 250;
+
+// Extra attempts granted to the KEYED reads that back the console. Unlike the
+// profile-api path — where retry is opt-in per call because only a scheduled
+// poller wanted it — the coin-communities host is rate-limited per SHARED key,
+// so a 429 there is an ordinary, self-inflicted, recoverable event rather than an
+// upstream outage. Two extra attempts (≈0.5s then ≈1s of backoff) cover a
+// contended moment without letting a genuinely-down origin hold a request open
+// for long. `get()` itself still defaults to a single attempt.
+const KEYED_READ_RETRIES_DEFAULT = 2;
 
 // Bound how much vendor error text rides out on a PumpfunRequestError. Enough to
 // carry an actionable message, capped so an HTML error page from a proxy cannot
@@ -186,6 +204,23 @@ export function resolvePumpfunApiKey(): string | null {
 /** True when a key is present. Routes call this to fail closed with a clean 503. */
 export function isPumpfunConfigured(): boolean {
   return resolvePumpfunApiKey() !== null;
+}
+
+/**
+ * Extra attempts for a keyed read, from env, with the same OCT_/TRENCHCORD_
+ * dual-brand fallback chain as the key. Read late (per call) so the budget can be
+ * retuned by env without a redeploy. `0` is a legitimate value — it restores the
+ * pre-fix single-attempt behavior — so only a missing/non-numeric/negative value
+ * falls back to the default.
+ */
+export function resolveKeyedReadRetries(): number {
+  const raw =
+    process.env.PUMPFUN_READ_RETRIES ||
+    process.env.OCT_PUMPFUN_READ_RETRIES ||
+    process.env.TRENCHCORD_PUMPFUN_READ_RETRIES ||
+    '';
+  const parsed = Number.parseInt(raw, 10);
+  return Number.isFinite(parsed) && parsed >= 0 ? parsed : KEYED_READ_RETRIES_DEFAULT;
 }
 
 function isRecord(v: unknown): v is Record<string, unknown> {
@@ -464,51 +499,87 @@ export class PumpfunClient {
    *
    * Returns parsed JSON as `unknown`; the per-endpoint methods narrow it. Throws
    * the typed taxonomy, never a raw error that could carry the key.
+   *
+   * ONE ATTEMPT. Retry is `getWithRetry` below, exactly as `profileFetch` /
+   * `profileFetchWithRetry` split on the keyless host.
+   *
+   * Every call runs inside `runOnKeyedHost`, the process-wide concurrency cap for
+   * this host — the shared key has one rate-limit budget, so parallel callers
+   * queue rather than burst. The per-request timeout is created INSIDE that
+   * critical section, so a queued request spends its budget on the network and
+   * not on the queue (see keyedLimiter.ts).
    */
   private async get(path: string): Promise<unknown> {
     const key = resolvePumpfunApiKey();
     if (!key) throw new PumpfunConfigError();
 
-    let res: Response;
-    try {
-      res = await fetch(`${BASE}${path}`, {
-        method: 'GET',
-        headers: { 'x-api-key': key, accept: 'application/json' },
-        credentials: 'omit',
-        signal: AbortSignal.timeout(TIMEOUT_MS),
-      });
-    } catch (err) {
-      // Construct the detail rather than forwarding the caught error: this is the
-      // one path where the key is on the request object, and an error that echoed
-      // the request could plausibly carry it. undici does not do that today, but
-      // the discipline does not depend on that staying true.
-      const detail = err instanceof Error && err.name === 'TimeoutError' ? 'timed out' : 'network error';
-      throw new PumpfunRequestError(path, 0, detail);
-    }
+    return runOnKeyedHost(async () => {
+      let res: Response;
+      try {
+        res = await fetch(`${BASE}${path}`, {
+          method: 'GET',
+          headers: { 'x-api-key': key, accept: 'application/json' },
+          credentials: 'omit',
+          signal: AbortSignal.timeout(TIMEOUT_MS),
+        });
+      } catch (err) {
+        // Construct the detail rather than forwarding the caught error: this is the
+        // one path where the key is on the request object, and an error that echoed
+        // the request could plausibly carry it. undici does not do that today, but
+        // the discipline does not depend on that staying true.
+        const detail = err instanceof Error && err.name === 'TimeoutError' ? 'timed out' : 'network error';
+        throw new PumpfunRequestError(path, 0, detail);
+      }
 
-    if (res.status === 401 || res.status === 403) throw new PumpfunAuthError(path);
+      if (res.status === 401 || res.status === 403) throw new PumpfunAuthError(path);
 
-    const text = await res.text();
-    if (!res.ok) {
-      // Vendor-authored body, capped. Contains no credential (the key travels in
-      // a request header, never echoed in a response).
-      throw new PumpfunRequestError(path, res.status, text.slice(0, VENDOR_ERROR_TEXT_LIMIT));
-    }
+      const text = await res.text();
+      if (!res.ok) {
+        // Vendor-authored body, capped. Contains no credential (the key travels in
+        // a request header, never echoed in a response).
+        throw new PumpfunRequestError(path, res.status, text.slice(0, VENDOR_ERROR_TEXT_LIMIT));
+      }
 
-    if (text.length === 0) throw new PumpfunContractError(path, 'empty body');
-    try {
-      return JSON.parse(text) as unknown;
-    } catch {
-      // A 200 that is not JSON is almost always an HTML interstitial or error
-      // page — an API change or an infra hiccup, not data.
-      throw new PumpfunContractError(path, 'body was not JSON');
+      if (text.length === 0) throw new PumpfunContractError(path, 'empty body');
+      try {
+        return JSON.parse(text) as unknown;
+      } catch {
+        // A 200 that is not JSON is almost always an HTML interstitial or error
+        // page — an API change or an infra hiccup, not data.
+        throw new PumpfunContractError(path, 'body was not JSON');
+      }
+    });
+  }
+
+  /**
+   * `get` with retry on TRANSIENT failures only (see isTransientPumpfunError) —
+   * the keyed twin of `profileFetchWithRetry`. `retries` is the number of EXTRA
+   * attempts after the first, so `retries: 0` is exactly one call and behaves like
+   * `get` alone. A non-transient error (genuine 4xx, shape, auth, missing config)
+   * throws on the first attempt without burning the budget.
+   *
+   * Each attempt re-enters the concurrency queue rather than holding its slot
+   * through the backoff — a request that is sleeping is not a request the origin
+   * is serving, and holding the slot would idle the whole budget.
+   */
+  private async getWithRetry(path: string, retries: number): Promise<unknown> {
+    let attempt = 0;
+    for (;;) {
+      try {
+        return await this.get(path);
+      } catch (err) {
+        if (attempt >= retries || !isTransientPumpfunError(err)) throw err;
+        const backoff = RETRY_BASE_MS * 2 ** attempt + Math.floor(Math.random() * RETRY_JITTER_MS);
+        await sleep(backoff);
+        attempt += 1;
+      }
     }
   }
 
   /** A token's public callouts. Response envelope: `{ callouts: [...] }`. */
   async getTokenCallouts(mint: string): Promise<PumpCallout[]> {
     const path = `/communities/${encodeURIComponent(mint)}/callouts/public`;
-    const raw = await this.get(path);
+    const raw = await this.getWithRetry(path, resolveKeyedReadRetries());
     if (!isRecord(raw) || !Array.isArray(raw.callouts)) {
       throw new PumpfunContractError(path, 'expected { callouts: [...] }');
     }
@@ -518,7 +589,7 @@ export class PumpfunClient {
   /** A specific caller's callout history. THE per-trader tracking route. */
   async getWalletCallouts(address: string): Promise<PumpCallout[]> {
     const path = `/users/by-wallet/${encodeURIComponent(address)}/callouts`;
-    const raw = await this.get(path);
+    const raw = await this.getWithRetry(path, resolveKeyedReadRetries());
     if (!isRecord(raw) || !Array.isArray(raw.callouts)) {
       throw new PumpfunContractError(path, 'expected { callouts: [...] }');
     }
@@ -528,7 +599,7 @@ export class PumpfunClient {
   /** A caller's public profile, resolved from a wallet address. */
   async getWalletProfile(address: string): Promise<PumpUser> {
     const path = `/users/by-wallet/${encodeURIComponent(address)}`;
-    const raw = await this.get(path);
+    const raw = await this.getWithRetry(path, resolveKeyedReadRetries());
     // A bare non-object (e.g. `null` for an unknown wallet) is a contract break —
     // the endpoint 404s a genuinely-missing wallet, so a 200 must be an object.
     if (!isRecord(raw)) throw new PumpfunContractError(path, 'expected a user object');
@@ -538,7 +609,7 @@ export class PumpfunClient {
   /** The top communities board. Response envelope: `{ communities: [...] }`. */
   async getTopCommunities(): Promise<PumpCommunity[]> {
     const path = '/communities/top';
-    const raw = await this.get(path);
+    const raw = await this.getWithRetry(path, resolveKeyedReadRetries());
     if (!isRecord(raw) || !Array.isArray(raw.communities)) {
       throw new PumpfunContractError(path, 'expected { communities: [...] }');
     }
@@ -551,7 +622,7 @@ export class PumpfunClient {
    */
   async getCommunity(mint: string): Promise<PumpCommunity> {
     const path = `/communities/${encodeURIComponent(mint)}`;
-    const raw = await this.get(path);
+    const raw = await this.getWithRetry(path, resolveKeyedReadRetries());
     const parsed = parseCommunity(raw, mint);
     if (!parsed) throw new PumpfunContractError(path, 'expected a community object');
     return parsed;
@@ -560,7 +631,7 @@ export class PumpfunClient {
   /** The public trending feed slice. Response envelope: `{ items: [...] }`. */
   async getTrendingFeed(): Promise<PumpFeedItem[]> {
     const path = '/feed/public';
-    const raw = await this.get(path);
+    const raw = await this.getWithRetry(path, resolveKeyedReadRetries());
     if (!isRecord(raw) || !Array.isArray(raw.items)) {
       throw new PumpfunContractError(path, 'expected { items: [...] }');
     }
