@@ -35,6 +35,7 @@ import { getStorageProvider, isHostedMode } from '../storage/index.js';
 import { getFomoServiceClient } from '../fomo/store.js';
 import { getHeliusApiKey, fetchNewTransactions, resolveTokenSymbols } from './helius.js';
 import { normalizeWalletTransactions } from './normalize.js';
+import { abandonedMapFromPositions } from './abandoned.js';
 import { buildPositions } from './positions.js';
 import { dayOf, ensureDailySolPrices, getCurrentSolPrice, solPriceForDay } from './solPrice.js';
 
@@ -265,10 +266,15 @@ class JournalPoller {
     const added = await storage.addJournalTrades(wallet.userId, trades);
 
     // Rebuild the wallet's positions from its FULL trade history (pure,
-    // deterministic ids → the repo upserts in place).
+    // deterministic ids → the repo upserts in place). Positions already
+    // auto-closed as ABANDONED are fed back in so the rebuild re-applies the
+    // same zero-proceeds close instead of re-opening a dead bag.
     if (added > 0 || isBackfill) {
       const all = await storage.listJournalTrades(wallet.userId, 20_000, wallet.id);
-      const { positions } = buildPositions(all);
+      const closedRows = await storage.listJournalPositions(wallet.userId, 'closed');
+      const { positions } = buildPositions(all, {
+        abandoned: abandonedMapFromPositions(closedRows),
+      });
       await storage.replaceJournalPositions(wallet.userId, wallet.id, positions);
     }
 

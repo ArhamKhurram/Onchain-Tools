@@ -10,6 +10,14 @@
  *   of everything acquired in the episode — memecoin sells rarely go to
  *   exactly zero (dust from slippage/rounding), and a 98%-out position is
  *   closed in every sense that matters. A later buy opens a NEW episode.
+ *   These closes carry `closeReason: 'sold'`.
+ * - An episode can ALSO be closed from outside as ABANDONED (a dead bag: no
+ *   LP or worth ~$0 and untouched for days — see abandoned.ts). Caller passes
+ *   `opts.abandoned` (episode id → closedAt); the episode is then booked as a
+ *   sale of the whole remainder at ZERO proceeds, so the unrecovered cost
+ *   lands in realized PnL exactly as a 0-proceeds sell would. No price is
+ *   invented and `remainingToken` stays factual — the operator still holds
+ *   the tokens, they are just worth nothing.
  * - Sells with no open lots (transfer-in-derived tokens) realize nothing:
  *   transfer-ins are excluded from PnL by design, so their proceeds are
  *   ignored rather than booked as pure profit.
@@ -18,7 +26,7 @@
  *   `pnlIncomplete` instead of fabricating a number.
  */
 
-import type { JournalPosition, JournalTrade } from '@oct/shared';
+import type { JournalCloseReason, JournalPosition, JournalTrade } from '@oct/shared';
 
 /** Episode closes when remaining < this fraction of total acquired. */
 export const DUST_RATIO = 0.02;
@@ -69,11 +77,23 @@ export function episodeId(walletId: string, mint: string, openedAt: string): str
  * arrive in any order; they are sorted by (ts, buy-before-sell) so a same-tx
  * buy+sell pair (token-to-token) buys first.
  */
+export interface BuildPositionsOptions {
+  dustRatio?: number;
+  /**
+   * Episode id → closedAt ISO. Episodes still open at the end of the walk and
+   * listed here close as ABANDONED at zero proceeds. Sourced from the
+   * persisted `close_reason` column (see abandoned.ts
+   * `abandonedMapFromPositions`) so the close survives every rebuild.
+   */
+  abandoned?: ReadonlyMap<string, string>;
+}
+
 export function buildPositions(
   trades: JournalTrade[],
-  opts: { dustRatio?: number } = {},
+  opts: BuildPositionsOptions = {},
 ): PairingResult {
   const dustRatio = opts.dustRatio ?? DUST_RATIO;
+  const abandoned = opts.abandoned;
   const ordered = [...trades].sort((a, b) => {
     const dt = new Date(a.ts).getTime() - new Date(b.ts).getTime();
     if (dt !== 0) return dt;
@@ -93,6 +113,7 @@ export function buildPositions(
     ep: OpenEpisode,
     status: 'open' | 'closed',
     closedAt: string | null,
+    closeReason: JournalCloseReason | null = null,
   ): void => {
     const [walletId, mint] = splitKey(key);
     const walletAddress = walletAddressByWalletId.get(walletId) ?? '';
@@ -112,6 +133,7 @@ export function buildPositions(
       pnlIncomplete: ep.pnlIncomplete,
       openedAt: ep.openedAt,
       closedAt,
+      closeReason,
       lastTradeAt: ep.lastTradeAt,
       lastPriceUsd: null,
       lastPriceAt: null,
@@ -219,13 +241,52 @@ export function buildPositions(
 
     // Dust close: episode is over once ≤ dustRatio of acquired remains.
     if (ep.acquired > 0 && ep.remaining <= dustRatio * ep.acquired) {
-      finalize(key, ep, 'closed', t.ts);
+      finalize(key, ep, 'closed', t.ts, 'sold');
       open.delete(key);
     }
   }
 
   for (const [key, ep] of open) {
-    finalize(key, ep, 'open', null);
+    const [walletId, mint] = splitKey(key);
+    const closedAt = abandoned?.get(episodeId(walletId, mint, ep.openedAt));
+    if (closedAt == null) {
+      finalize(key, ep, 'open', null);
+      continue;
+    }
+
+    // ABANDONED: sell the whole remainder for ZERO proceeds. Same lot walk as
+    // a real sell with sellPerToken = 0, so the unrecovered cost books as the
+    // loss it is. Nothing is invented; a lot with no priced leg marks the
+    // episode incomplete exactly as an unpriced sell would.
+    let lossSol = 0;
+    let lossUsd = 0;
+    let matched = 0;
+    let eventUsdKnown = true;
+    for (const lot of ep.lots) {
+      matched += lot.qty;
+      if (lot.solPerToken != null) lossSol += lot.solPerToken * lot.qty;
+      else ep.pnlIncomplete = true;
+      if (lot.usdPerToken != null) lossUsd += lot.usdPerToken * lot.qty;
+      else eventUsdKnown = false;
+    }
+    ep.lots = [];
+    ep.realizedSol -= lossSol;
+    ep.realizedUsd -= lossUsd;
+    if (!eventUsdKnown) ep.realizedUsdKnown = false;
+
+    if (matched > 0) {
+      events.push({
+        ts: closedAt,
+        mint,
+        symbol: ep.symbol,
+        walletId,
+        pnlSol: -lossSol,
+        pnlUsd: eventUsdKnown ? -lossUsd : null,
+      });
+    }
+
+    // remaining is left FACTUAL — the tokens are still held, just worthless.
+    finalize(key, ep, 'closed', closedAt, 'abandoned');
   }
 
   // Oldest-opened first, stable ordering for persistence.

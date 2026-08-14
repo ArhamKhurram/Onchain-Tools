@@ -17,6 +17,11 @@
  *    on reboot like revival's suppression).
  * 4. Side-write the observed price onto the position rows so the Journal tab
  *    shows current value without any extra requests.
+ * 5. Run the ABANDONED-POSITION detector (abandoned.ts) over the same fetched
+ *    pairs — ZERO extra upstream requests — and auto-close dead bags (no LP /
+ *    worth ~$0 / untouched for days) as a sale at zero proceeds. A closed
+ *    position leaves this sweep, so the request budget shrinks over time
+ *    instead of growing forever.
  *
  * REQUEST BUDGET (DexScreener): 1 request per unique open-position mint per
  * cycle. A trader holding 10 tokens costs 10 requests / 3 min ≈ 3.3 req/min.
@@ -35,6 +40,14 @@ import { getFomoServiceClient } from '../fomo/store.js';
 import { sendPushover } from '../utils/pushover.js';
 import { formatCompact } from '../wallets/balanceChecker.js';
 import { isJournalEnabled } from './poller.js';
+import { buildPositions } from './positions.js';
+import {
+  DEFAULT_ABANDON_CONFIG,
+  abandonedMapFromPositions,
+  evaluateAbandoned,
+  type AbandonConfig,
+  type AbandonFireReason,
+} from './abandoned.js';
 import {
   DEFAULT_MIN_POSITION_VALUE_USD,
   DEFAULT_VOLUME_DEATH_CONFIG,
@@ -75,6 +88,29 @@ function resolveMinPositionUsd(): number {
   return Number.isFinite(parsed) && parsed >= 0 ? parsed : DEFAULT_MIN_POSITION_VALUE_USD;
 }
 
+/** Trades pulled for the rebuild that follows an auto-close. */
+const REBUILD_TRADE_LIMIT = 20_000;
+
+function envNumber(name: string, fallback: number, min = 0): number {
+  const parsed = Number.parseFloat(envFlag(name) ?? '');
+  return Number.isFinite(parsed) && parsed >= min ? parsed : fallback;
+}
+
+/** Abandonment knobs. Only an explicit falsy value disables (journal style). */
+export function resolveAbandonConfig(): AbandonConfig {
+  const raw = (envFlag('JOURNAL_ABANDON_ENABLED') ?? '').trim().toLowerCase();
+  return {
+    enabled: !(raw === 'false' || raw === '0' || raw === 'off'),
+    minAgeDays: envNumber('JOURNAL_ABANDON_MIN_AGE_DAYS', DEFAULT_ABANDON_CONFIG.minAgeDays, 0),
+    maxValueUsd: envNumber('JOURNAL_ABANDON_MAX_VALUE_USD', DEFAULT_ABANDON_CONFIG.maxValueUsd, 0),
+    minLiquidityUsd: envNumber(
+      'JOURNAL_ABANDON_MIN_LIQUIDITY_USD',
+      DEFAULT_ABANDON_CONFIG.minLiquidityUsd,
+      0,
+    ),
+  };
+}
+
 function resolveDetectorConfig(): VolumeDeathConfig {
   const parsed = Number.parseFloat(envFlag('JOURNAL_VOLDEATH_RATIO') ?? '');
   const ratio =
@@ -96,6 +132,13 @@ class JournalVolumeDeathPoller {
   private polling = false;
   /** position id → last alert epoch ms (in-memory v1, resets on reboot). */
   private lastAlertAt = new Map<string, number>();
+  /**
+   * Positions already auto-closed this process. The durable record is the
+   * persisted `close_reason`; this only stops the work and the log line from
+   * repeating every cycle if that column is missing (migration pending) and
+   * the ingestion rebuild keeps re-opening the bag.
+   */
+  private abandonedThisProcess = new Set<string>();
 
   constructor(wsServer: WsServer) {
     this.wsServer = wsServer;
@@ -170,6 +213,7 @@ class JournalVolumeDeathPoller {
       pnlIncomplete: !!row.pnl_incomplete,
       openedAt: row.opened_at,
       closedAt: null,
+      closeReason: null,
       lastTradeAt: row.last_trade_at,
       lastPriceUsd: row.last_price_usd != null ? Number(row.last_price_usd) : null,
       lastPriceAt: row.last_price_at ?? null,
@@ -212,6 +256,7 @@ class JournalVolumeDeathPoller {
       const cfg = resolveDetectorConfig();
       const cooldownMs = resolveCooldownMs();
       const minPositionUsd = resolveMinPositionUsd();
+      const abandonCfg = resolveAbandonConfig();
       let first = true;
 
       for (const [mint, holders] of byMint) {
@@ -219,15 +264,40 @@ class JournalVolumeDeathPoller {
         first = false;
 
         const pairs = await this.fetchTokenPairs(mint);
+        // A failed/rate-limited request is a data gap, not a verdict — abstain
+        // from BOTH detectors rather than closing a position on silence.
         if (pairs === null) continue;
         const snapshot = extractTokenVolumeSnapshot(pairs, mint);
-        if (!snapshot) continue;
 
         const nowIso = new Date().toISOString();
+
+        // --- Abandonment sweep (zero extra requests: same `pairs` payload) ---
+        // Runs before the volume-death gate so an auto-closed bag never also
+        // fires a "meta dying" alert it can no longer act on.
+        const live: PositionWithUser[] = [];
+        for (const p of holders) {
+          const verdict = evaluateAbandoned(
+            p,
+            {
+              pairFound: snapshot != null,
+              liquidityUsd: snapshot?.liquidityUsd ?? null,
+              priceUsd: snapshot?.priceUsd ?? null,
+            },
+            Date.now(),
+            abandonCfg,
+          );
+          if (!verdict.abandoned) {
+            live.push(p);
+            continue;
+          }
+          await this.closeAbandoned(p, verdict.reason, verdict.positionValueUsd, nowIso);
+        }
+        if (!snapshot || live.length === 0) continue;
+
         // Price side-write (free — same response), so the Journal tab can show
         // current value without its own market-data calls.
         if (snapshot.priceUsd != null) {
-          for (const p of holders) {
+          for (const p of live) {
             try {
               await getStorageProvider().updateJournalPositionPrice(
                 p.userId,
@@ -244,7 +314,7 @@ class JournalVolumeDeathPoller {
         const verdict = evaluateVolumeDeath(snapshot.windows, cfg);
         if (!verdict.dying || verdict.m5RateVsH1 == null || verdict.h1RateVsH6 == null) continue;
 
-        for (const p of holders) {
+        for (const p of live) {
           const now = Date.now();
           const positionValueUsd =
             snapshot.priceUsd != null ? p.remainingToken * snapshot.priceUsd : null;
@@ -288,6 +358,54 @@ class JournalVolumeDeathPoller {
       }
     } finally {
       this.polling = false;
+    }
+  }
+
+  /**
+   * Auto-close one dead bag as a sale at ZERO proceeds.
+   *
+   * The close is applied by REBUILDING the wallet's episodes with the position
+   * added to the abandoned map, not by patching the row: the FIFO engine owns
+   * realized-PnL arithmetic, so the unrecovered cost is booked by the same lot
+   * walk a real sell uses. `replaceJournalPositions` then persists
+   * `close_reason='abandoned'`, which is what makes the close survive every
+   * later rebuild (the ingestion poller and the summary route read it back).
+   *
+   * Logged ONCE at info: this is a state change that moves money in the
+   * operator's realized numbers, unlike the silent dust-gate skip above.
+   */
+  private async closeAbandoned(
+    p: PositionWithUser,
+    reason: AbandonFireReason,
+    positionValueUsd: number | null,
+    nowIso: string,
+  ): Promise<void> {
+    if (this.abandonedThisProcess.has(p.id)) return;
+    const storage = getStorageProvider();
+    try {
+      const closedRows = await storage.listJournalPositions(p.userId, 'closed');
+      const abandoned = abandonedMapFromPositions(closedRows);
+      if (abandoned.has(p.id)) return; // already recorded; nothing to do
+      abandoned.set(p.id, nowIso);
+      this.abandonedThisProcess.add(p.id);
+
+      const trades = await storage.listJournalTrades(p.userId, REBUILD_TRADE_LIMIT, p.walletId);
+      const { positions } = buildPositions(trades, { abandoned });
+      await storage.replaceJournalPositions(p.userId, p.walletId, positions);
+
+      const closed = positions.find((x) => x.id === p.id);
+      const sym = p.symbol ? `$${p.symbol}` : `${p.mint.slice(0, 6)}…`;
+      const value = positionValueUsd != null ? `~$${positionValueUsd.toFixed(2)}` : 'unknown value';
+      console.log(
+        `[JournalVolDeath] ABANDONED ${sym} (${p.mint.slice(0, 8)}…) reason=${reason} ` +
+          `held ${p.walletAddress.slice(0, 6)}… ${value}, no trade since ${p.lastTradeAt} — ` +
+          `closed at 0 proceeds, realized ${closed ? closed.realizedPnlSol.toFixed(3) : '?'} SOL ` +
+          `(cost ${p.costSol.toFixed(3)} SOL) → user ${p.userId === LOCAL_USER_ID ? 'local' : p.userId.slice(0, 8)}`,
+      );
+
+      this.wsServer.sendToUser(p.userId, { type: 'journal_update', data: { walletId: p.walletId } });
+    } catch (err) {
+      console.warn('[JournalVolDeath] abandon close failed:', (err as Error)?.message);
     }
   }
 

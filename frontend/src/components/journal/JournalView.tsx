@@ -54,6 +54,9 @@ export default function JournalView() {
   const [heliusConfigured, setHeliusConfigured] = useState(true);
   const [summary, setSummary] = useState<JournalSummary | null>(null);
   const [positions, setPositions] = useState<JournalPosition[]>([]);
+  // Same panel, same table — just which side of the ledger it lists. Closed is
+  // where auto-closed dead bags land (see backend/src/journal/abandoned.ts).
+  const [positionTab, setPositionTab] = useState<'open' | 'closed'>('open');
   const [error, setError] = useState<string | null>(null);
   const [refreshing, setRefreshing] = useState(false);
 
@@ -69,7 +72,7 @@ export default function JournalView() {
       const [walletsRes, summaryRes, positionsRes] = await Promise.all([
         apiFetch(`${API_BASE}/journal/wallets`),
         apiFetch(`${API_BASE}/journal/summary`),
-        apiFetch(`${API_BASE}/journal/positions?status=open`),
+        apiFetch(`${API_BASE}/journal/positions?status=${positionTab}`),
       ]);
       if (!walletsRes.ok || !summaryRes.ok || !positionsRes.ok) {
         throw new Error('journal fetch failed');
@@ -88,7 +91,7 @@ export default function JournalView() {
     } finally {
       setRefreshing(false);
     }
-  }, []);
+  }, [positionTab]);
 
   useEffect(() => {
     void load();
@@ -133,7 +136,7 @@ export default function JournalView() {
     }
   };
 
-  const openPositions = useMemo(
+  const listedPositions = useMemo(
     () => [...positions].sort((a, b) => new Date(b.lastTradeAt).getTime() - new Date(a.lastTradeAt).getTime()),
     [positions],
   );
@@ -338,11 +341,26 @@ export default function JournalView() {
                 </div>
               </div>
 
-              {/* Open positions */}
+              {/* Positions — open by default, closed for history */}
               <div className="rounded-oct border border-oct-border bg-oct-panel overflow-hidden">
-                <p className="font-mono text-[10px] uppercase tracking-wider text-oct-muted px-3 pt-3 pb-1">
-                  Open positions
-                </p>
+                <div className="flex items-center gap-2 px-3 pt-3 pb-1">
+                  <p className="font-mono text-[10px] uppercase tracking-wider text-oct-muted">Positions</p>
+                  <div className="flex-1" />
+                  {(['open', 'closed'] as const).map((tab) => (
+                    <button
+                      key={tab}
+                      type="button"
+                      onClick={() => setPositionTab(tab)}
+                      className={`font-mono text-[10px] uppercase tracking-wider px-1.5 py-0.5 rounded-oct-sm transition-colors ${
+                        positionTab === tab
+                          ? 'text-oct-text bg-oct-border/60'
+                          : 'text-oct-muted hover:text-oct-text'
+                      }`}
+                    >
+                      {tab}
+                    </button>
+                  ))}
+                </div>
                 <div className="max-h-80 overflow-auto">
                   <table className="w-full text-left border-collapse min-w-[420px]">
                     <thead className="oct-thead sticky top-0 z-10">
@@ -354,7 +372,7 @@ export default function JournalView() {
                       </tr>
                     </thead>
                     <tbody>
-                      {openPositions.map((p) => {
+                      {listedPositions.map((p) => {
                         const valueNow = p.lastPriceUsd != null ? p.remainingToken * p.lastPriceUsd : null;
                         const sym = p.symbol ? `$${p.symbol}` : `${p.mint.slice(0, 6)}…`;
                         return (
@@ -376,6 +394,14 @@ export default function JournalView() {
                                   ~
                                 </span>
                               )}
+                              {p.closeReason === 'abandoned' && (
+                                <span
+                                  className="ml-1.5 px-1 py-px rounded-oct-sm border border-oct-flame/50 text-[9px] font-mono uppercase text-oct-flame"
+                                  title="Auto-closed as a dead bag (no LP, or worth ~$0, untouched for days). Booked as a sale at zero proceeds — the unrecovered cost is a real realized loss. Tokens are still held."
+                                >
+                                  abandoned
+                                </span>
+                              )}
                             </td>
                             <td className="px-3 py-1.5 font-mono text-xs text-oct-muted text-right tabular-nums">
                               {p.remainingToken >= 1_000_000
@@ -393,10 +419,10 @@ export default function JournalView() {
                           </tr>
                         );
                       })}
-                      {openPositions.length === 0 && (
+                      {listedPositions.length === 0 && (
                         <tr>
                           <td colSpan={4} className="px-3 py-4 font-mono text-xs text-oct-muted text-center">
-                            Flat — no open positions.
+                            {positionTab === 'open' ? 'Flat — no open positions.' : 'No closed episodes yet.'}
                           </td>
                         </tr>
                       )}

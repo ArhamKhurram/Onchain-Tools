@@ -119,6 +119,12 @@ export interface TokenVolumeSnapshot {
   /** From the deepest-liquidity matching pair. */
   priceUsd: number | null;
   symbol: string | null;
+  /**
+   * Pooled liquidity summed across matching pairs; null when NO matching pair
+   * reported a liquidity figure (unknown ≠ zero — the abandonment detector
+   * declines on unknown rather than declaring "no LP").
+   */
+  liquidityUsd: number | null;
 }
 
 /**
@@ -134,10 +140,17 @@ export function extractTokenVolumeSnapshot(
   if (matching.length === 0) return null;
 
   const windows: VolumeWindows = { m5: 0, h1: 0, h6: 0 };
+  let liquiditySum = 0;
+  let sawLiquidity = false;
   for (const p of matching) {
     windows.m5 += p.volume?.m5 ?? 0;
     windows.h1 += p.volume?.h1 ?? 0;
     windows.h6 += p.volume?.h6 ?? 0;
+    const liq = p.liquidity?.usd;
+    if (typeof liq === 'number' && Number.isFinite(liq)) {
+      liquiditySum += liq;
+      sawLiquidity = true;
+    }
   }
 
   const best = [...matching].sort(
@@ -149,5 +162,6 @@ export function extractTokenVolumeSnapshot(
     windows,
     priceUsd: Number.isFinite(price) ? price : null,
     symbol: best.baseToken?.symbol ?? null,
+    liquidityUsd: sawLiquidity ? liquiditySum : null,
   };
 }

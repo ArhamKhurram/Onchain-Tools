@@ -22,8 +22,42 @@ import type { JournalPosition, JournalTrade, JournalWallet } from '@oct/shared';
 const MISSING_TABLE_RE =
   /relation .*journal_\w+.* does not exist|Could not find the table .*journal_\w+|schema cache/i;
 
+/**
+ * Column-level tolerance for `journal_positions.close_reason`
+ * (20260812170000_journal_close_reason.sql, applied BY HAND). PostgREST
+ * reports a missing COLUMN with the same "schema cache" wording it uses for a
+ * missing TABLE, so this pattern is checked FIRST and is deliberately narrow:
+ * without it the broader MISSING_TABLE_RE would swallow the error and silently
+ * no-op every position write until the operator ran the migration.
+ *
+ * The contractsRepo global-first pattern: warn once, retry the write with the
+ * column stripped. Abandonment then degrades to "closes are not durable" —
+ * the next rebuild re-opens the bag — rather than breaking the journal.
+ */
+const MISSING_CLOSE_REASON_RE = /close_reason/i;
+
+function stripCloseReason<T extends Record<string, unknown>>(row: T): Record<string, unknown> {
+  const rest: Record<string, unknown> = { ...row };
+  delete rest.close_reason;
+  return rest;
+}
+
 export class JournalRepo extends BaseRepo {
   private missingTableWarned = false;
+  private missingCloseReasonWarned = false;
+
+  /** True (and warns once) when the error means the close_reason column is absent. */
+  private tolerateMissingCloseReason(error: { message?: string } | null | undefined): boolean {
+    if (!error || !MISSING_CLOSE_REASON_RE.test(error.message ?? '')) return false;
+    if (!this.missingCloseReasonWarned) {
+      this.missingCloseReasonWarned = true;
+      console.warn(
+        '[Supabase] journal_positions.close_reason is missing — apply migration ' +
+          '20260812170000_journal_close_reason.sql. Abandoned auto-closes are not persisted until then.',
+      );
+    }
+    return true;
+  }
 
   /** True (and warns once) when the error means the migration isn't applied. */
   private tolerateMissingTable(error: { message?: string } | null | undefined): boolean {
@@ -85,6 +119,10 @@ export class JournalRepo extends BaseRepo {
       pnlIncomplete: !!row.pnl_incomplete,
       openedAt: row.opened_at,
       closedAt: row.closed_at ?? null,
+      // Absent pre-migration; 'sold' is only written going forward, so older
+      // closed rows read back as null rather than being relabelled.
+      closeReason:
+        row.close_reason === 'abandoned' ? 'abandoned' : row.close_reason === 'sold' ? 'sold' : null,
       lastTradeAt: row.last_trade_at,
       lastPriceUsd: row.last_price_usd != null ? Number(row.last_price_usd) : null,
       lastPriceAt: row.last_price_at ?? null,
@@ -221,14 +259,21 @@ export class JournalRepo extends BaseRepo {
       pnl_incomplete: p.pnlIncomplete,
       opened_at: p.openedAt,
       closed_at: p.closedAt,
+      close_reason: p.closeReason,
       last_trade_at: p.lastTradeAt,
       updated_at: new Date().toISOString(),
     }));
 
     if (rows.length > 0) {
-      const upsert = await this.supabase
+      let upsert = await this.supabase
         .from('journal_positions')
         .upsert(rows, { onConflict: 'id' });
+      // Column check BEFORE the table check — see MISSING_CLOSE_REASON_RE.
+      if (upsert.error && this.tolerateMissingCloseReason(upsert.error)) {
+        upsert = await this.supabase
+          .from('journal_positions')
+          .upsert(rows.map(stripCloseReason), { onConflict: 'id' });
+      }
       if (this.tolerateMissingTable(upsert.error)) return;
       throwIfError(upsert, 'Failed to upsert journal positions');
     }

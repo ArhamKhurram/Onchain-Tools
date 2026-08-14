@@ -42,7 +42,11 @@ class JournalLog {
         this.doc = {
           wallets: Array.isArray(parsed.wallets) ? parsed.wallets : [],
           trades: Array.isArray(parsed.trades) ? parsed.trades : [],
-          positions: Array.isArray(parsed.positions) ? parsed.positions : [],
+          // closeReason landed after v1: normalize legacy rows to null rather
+          // than relabelling their closes as 'sold'.
+          positions: Array.isArray(parsed.positions)
+            ? parsed.positions.map((p) => ({ ...p, closeReason: p.closeReason ?? null }))
+            : [],
         };
       }
     } catch (err) {
