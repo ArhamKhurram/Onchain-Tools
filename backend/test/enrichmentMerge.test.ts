@@ -12,10 +12,21 @@ const dexPatch = {
 };
 
 describe('needsMetadataFallback', () => {
-  it('is true only while the symbol is missing', () => {
+  it('is true while the symbol is missing', () => {
     expect(needsMetadataFallback({})).toBe(true);
     expect(needsMetadataFallback({ tokenName: 'sillypufcat' })).toBe(true);
-    expect(needsMetadataFallback({ tokenSymbol: 'puf' })).toBe(false);
+  });
+
+  // logContract carries a known symbol forward onto a repeat mention but never
+  // the FDV (MC@call is point-in-time). Gating on the symbol alone therefore
+  // skipped the fallback on every repeat mention and left MC@call null forever.
+  it('is true when a repeat mention carries a symbol but no MC@call', () => {
+    expect(needsMetadataFallback({ tokenSymbol: 'puf' })).toBe(true);
+    expect(needsMetadataFallback({ tokenName: 'sillypufcat', tokenSymbol: 'puf' })).toBe(true);
+  });
+
+  it('is false once the row has both', () => {
+    expect(needsMetadataFallback({ tokenSymbol: 'puf', fdvAtCall: 2100 })).toBe(false);
   });
 });
 
@@ -66,10 +77,97 @@ describe('mergeEnrichmentPatch', () => {
     expect(merged.liquidityDisplay).toBeUndefined(); // Rick's metrics stand
   });
 
+  // The counterpart to the test above: Rick owns the row, but recorded no FDV.
+  // Rows land there routinely — `looksLikeRick` accepts an embed on its pair
+  // title alone, and logContract copies enrichmentSource forward onto a repeat
+  // mention while leaving fdvAtCall behind — so dropping the patch's FDV here
+  // was the second way MC@call ended up permanently blank.
+  it('fills an MC@call that Rick never printed', () => {
+    const merged = mergeEnrichmentPatch(
+      { tokenSymbol: 'puf', tokenPair: 'PUF/SOL', enrichmentSource: 'rick' },
+      dexPatch,
+    );
+    expect(merged.fdvAtCall).toBe(2100);
+    expect(merged.fdvAtCallDisplay).toBe('2.1K');
+    // Rick's metadata authority is untouched.
+    expect(merged.tokenSymbol).toBeUndefined();
+    expect(merged.tokenPair).toBeUndefined();
+    expect(merged.liquidityDisplay).toBeUndefined();
+  });
+
   it('always stamps enrichedAt', () => {
     expect(mergeEnrichmentPatch({}, dexPatch).enrichedAt).toBeTruthy();
-    expect(
-      mergeEnrichmentPatch({ enrichmentSource: 'rick' }, dexPatch).enrichedAt,
-    ).toBeTruthy();
+    const overRick = mergeEnrichmentPatch({ enrichmentSource: 'rick' }, dexPatch);
+    expect(overRick.enrichedAt).toBeTruthy();
+    // A Rick row with no FDV of its own takes the fallback's.
+    expect(overRick.fdvAtCall).toBe(2100);
+  });
+});
+
+describe('mergeEnrichmentPatch — global-first (Rick cross-server footer)', () => {
+  const earlier = {
+    firstCallerName: 'espadabtw',
+    firstCallMcapUsd: 49_300,
+    firstCallAt: '2026-08-12T02:00:00.000Z',
+  };
+  const later = {
+    firstCallerName: 'someone_else',
+    firstCallMcapUsd: 120_000,
+    firstCallAt: '2026-08-12T08:00:00.000Z',
+  };
+
+  it('records the fields from a Rick patch onto a bare row', () => {
+    const merged = mergeEnrichmentPatch({}, { enrichmentSource: 'rick', ...earlier });
+    expect(merged.firstCallerName).toBe('espadabtw');
+    expect(merged.firstCallMcapUsd).toBe(49_300);
+    expect(merged.firstCallAt).toBe(earlier.firstCallAt);
+  });
+
+  it('keeps the earlier first call when a later Rick reading arrives', () => {
+    const merged = mergeEnrichmentPatch(
+      { enrichmentSource: 'rick', ...earlier },
+      { enrichmentSource: 'rick', ...later },
+    );
+    expect(merged.firstCallerName).toBe('espadabtw');
+    expect(merged.firstCallAt).toBe(earlier.firstCallAt);
+  });
+
+  it('replaces a later reading with an earlier one', () => {
+    const merged = mergeEnrichmentPatch(
+      { enrichmentSource: 'rick', ...later },
+      { enrichmentSource: 'rick', ...earlier },
+    );
+    expect(merged.firstCallerName).toBe('espadabtw');
+    expect(merged.firstCallAt).toBe(earlier.firstCallAt);
+  });
+
+  it('a Rick patch without the fields does not erase recorded ones', () => {
+    const merged = mergeEnrichmentPatch(
+      { enrichmentSource: 'rick', ...earlier },
+      { enrichmentSource: 'rick', tokenSymbol: 'puf' },
+    );
+    // The JSON store Object.assigns the merge onto the row, so the recorded
+    // values must come back out (a present-but-undefined key would erase them).
+    expect(merged.firstCallerName).toBe('espadabtw');
+    expect(merged.firstCallAt).toBe(earlier.firstCallAt);
+  });
+
+  it('a secondary-source refresh does not erase recorded fields either', () => {
+    const merged = mergeEnrichmentPatch(
+      { enrichmentSource: 'rick', fdvAtCall: 1800, ...earlier },
+      dexPatch,
+    );
+    expect(merged.firstCallerName).toBe('espadabtw');
+    expect(merged.firstCallMcapUsd).toBe(49_300);
+    expect(merged.firstCallAt).toBe(earlier.firstCallAt);
+  });
+
+  it('a timestamped reading beats an untimestamped one', () => {
+    const merged = mergeEnrichmentPatch(
+      { enrichmentSource: 'rick', firstCallerName: 'espadabtw', firstCallMcapUsd: 49_300 },
+      { enrichmentSource: 'rick', ...later },
+    );
+    expect(merged.firstCallerName).toBe('someone_else');
+    expect(merged.firstCallAt).toBe(later.firstCallAt);
   });
 });

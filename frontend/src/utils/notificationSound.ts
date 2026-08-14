@@ -91,6 +91,30 @@ const BUILT_IN_SOUNDS: Record<SoundType, { tones: [number, number, number][]; ty
     type: 'sawtooth',
     baseVolume: 0.16,
   },
+  pumpCallout: {
+    // A brighter three-note rise — a "callout" fanfare distinct from the others.
+    tones: [[784, 0, 0.08], [1047, 0.09, 0.1], [1319, 0.19, 0.16]],
+    type: 'triangle',
+    baseVolume: 0.17,
+  },
+  revival: {
+    // The loudest alert in the app: a two-pass klaxon sweep (low→high, twice)
+    // that cuts through anything else playing. Repeats are driven by the
+    // revival slice, not here.
+    tones: [
+      [523, 0, 0.14], [880, 0.15, 0.14], [1245, 0.3, 0.2],
+      [523, 0.55, 0.14], [880, 0.7, 0.14], [1245, 0.85, 0.28],
+    ],
+    type: 'square',
+    baseVolume: 0.22,
+  },
+  breakout: {
+    // One tier quieter than revival: a single ascending three-note "lift-off"
+    // (no second klaxon pass, no repeat loop — it plays exactly once).
+    tones: [[659, 0, 0.1], [988, 0.11, 0.1], [1319, 0.22, 0.2]],
+    type: 'triangle',
+    baseVolume: 0.16,
+  },
 };
 
 export function playSound(soundType: SoundType, soundConfig?: SoundConfig) {
@@ -129,6 +153,18 @@ export function playKeywordAlertSound(soundConfig?: SoundConfig) {
 
 export function playFomoTradeSound(soundConfig?: SoundConfig) {
   playSound('fomoTrade', soundConfig);
+}
+
+export function playPumpCalloutSound(soundConfig?: SoundConfig) {
+  playSound('pumpCallout', soundConfig);
+}
+
+export function playRevivalSound(soundConfig?: SoundConfig) {
+  playSound('revival', soundConfig);
+}
+
+export function playBreakoutSound(soundConfig?: SoundConfig) {
+  playSound('breakout', soundConfig);
 }
 
 export function previewSound(soundType: SoundType, soundConfig: SoundConfig) {

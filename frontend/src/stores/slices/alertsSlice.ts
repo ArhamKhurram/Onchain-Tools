@@ -28,6 +28,8 @@ export interface AlertsSlice {
   /** False when the alert was dropped as a duplicate contract scan. */
   addAlert: (alert: Alert) => boolean;
   dismissAlert: (alertId: string) => void;
+  /** Clear every live toast at once. Notification history (the bell) is untouched. */
+  dismissAllAlerts: () => void;
   markNotificationsRead: () => void;
   clearNotificationHistory: () => void;
 }
@@ -67,6 +69,10 @@ export const createAlertsSlice: StateCreator<AppState, [], [], AlertsSlice> = (s
     set((state) => ({
       alerts: state.alerts.filter((a) => a.id !== alertId),
     }));
+  },
+
+  dismissAllAlerts: () => {
+    set({ alerts: [] });
   },
 
   markNotificationsRead: () => {

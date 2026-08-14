@@ -25,7 +25,7 @@ import {
   networkIdFromContract,
   type FomoTrackedUserRow,
 } from './store.js';
-import { getBotHolders, getBotWallet, resolveNetworkId } from '../bot/service.js';
+import { getBotHolders, getBotTheses, getBotWallet, resolveNetworkId } from '../bot/service.js';
 import { sendServiceError } from '../bot/errors.js';
 import type { FomoClientLike } from './types.js';
 import type { WsServer } from '../ws/server.js';
@@ -282,6 +282,30 @@ export function createFomoRouter(wsServer: WsServer): Router {
       res.json(await getBotHolders(address, networkId));
     } catch (err) {
       sendServiceError(res, err, 'Failed to fetch holders');
+    }
+  });
+
+  // GET /api/fomo/token/:address/theses?network=…
+  // The console's read of the same theses the fomo.family token page shows:
+  // per-trader position + PnL + written thesis. Like /hodlers/top, `network` is
+  // optional — omit it and getBotTheses infers the chain from the address shape.
+  // Runs on the shared FOMO service account, so no per-user state is needed.
+  router.get('/token/:address/theses', async (req, res) => {
+    const address = typeof req.params.address === 'string' ? req.params.address.trim() : '';
+    if (!address || address.length < 8) {
+      return res.status(400).json({ error: 'A token address is required.' });
+    }
+
+    const networkRaw = typeof req.query.network === 'string' ? req.query.network.trim() : '';
+    const networkId = networkRaw ? resolveNetworkId(networkRaw) : null;
+    if (networkRaw && !networkId) {
+      return res.status(400).json({ error: `Unsupported network "${networkRaw}".` });
+    }
+
+    try {
+      res.json(await getBotTheses(address, networkId));
+    } catch (err) {
+      sendServiceError(res, err, 'Failed to fetch theses');
     }
   });
 

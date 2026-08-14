@@ -62,19 +62,21 @@ export default function FeedPage() {
   if (!discordConnected) {
     return (
       <div className="h-full overflow-y-auto bg-oct-bg">
-        <div className="bg-oct-flame text-black px-6 sm:px-10 py-8 border-b-2 border-black">
-          <p className="font-mono text-xs tracking-[0.2em] mb-3">[ FEED ]</p>
+        <div className="relative overflow-hidden bg-gradient-to-br from-oct-flame to-oct-accent text-black px-6 sm:px-10 py-8 border-b border-oct-border shadow-oct-soft">
+          <p className="font-mono text-[11px] font-semibold uppercase tracking-[0.24em] mb-3 opacity-80">[ Feed ]</p>
           <h2 className="font-display text-3xl sm:text-4xl tracking-tight">Connect Discord</h2>
           <p className="font-mono text-xs sm:text-sm mt-3 max-w-lg text-black/90 leading-relaxed">
             Paste your token below to start streaming. Connection happens here in your browser — not at login.
           </p>
         </div>
         <div className="max-w-md mx-auto px-6 py-10">
-          <div className="flex items-center gap-2 mb-6">
-            <KeyRound size={18} className="text-oct-accent" />
-            <span className="font-mono text-xs uppercase tracking-[0.15em] text-oct-muted">Token setup</span>
+          <div className="oct-card p-6">
+            <div className="flex items-center gap-2 mb-6">
+              <KeyRound size={18} className="text-oct-accent-2" />
+              <span className="oct-eyebrow">Token setup</span>
+            </div>
+            <TokenSetup embedded />
           </div>
-          <TokenSetup embedded />
         </div>
       </div>
     );

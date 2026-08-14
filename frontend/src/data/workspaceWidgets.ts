@@ -25,6 +25,9 @@ export const WORKSPACE_WIDGETS: WorkspaceWidgetDef[] = [
   { type: 'fomo-feed', label: 'FOMO live', description: 'Live buys and sells from tracked traders' },
   { type: 'fomo-leaderboard', label: 'FOMO leaderboard', description: 'Top traders on fomo.family' },
   { type: 'token-lookup', label: 'Token lookup', description: 'Top FOMO holders for any token address' },
+  { type: 'pump-following', label: 'Pump callouts', description: 'Followed pump.fun callers & their live callouts' },
+  { type: 'pump-top-callers', label: 'Top callers', description: 'Best pump.fun callers by calls & multiple' },
+  { type: 'pump-leaderboard', label: 'Pump leaderboard', description: 'Top pump.fun traders by PnL' },
 ];
 
 export function widgetLabel(type: WorkspacePanelType): string {

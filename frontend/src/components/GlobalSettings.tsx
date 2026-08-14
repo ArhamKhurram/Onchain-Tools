@@ -25,12 +25,12 @@ export default function GlobalSettings() {
   return (
     <div className="flex-1 flex flex-col md:flex-row h-full w-full min-w-0 bg-oct-bg">
       {/* Mobile header + horizontal nav */}
-      <div className="md:hidden shrink-0 border-b-2 border-oct-border bg-oct-surface">
+      <div className="md:hidden shrink-0 oct-headerbar">
         <div className="px-3 pt-3 pb-2 flex items-center gap-2">
           {sidebarCollapsed && (
             <button
               onClick={toggleSidebar}
-              className="p-1 text-oct-muted hover:text-oct-text transition-colors"
+              className="oct-icon-btn p-1.5"
               title="Show sidebar"
             >
               <PanelLeftOpen size={16} />
@@ -38,23 +38,20 @@ export default function GlobalSettings() {
           )}
           <button
             onClick={() => guardNavigation(() => navigate(routes.feed))}
-            className="p-1 text-oct-muted hover:text-oct-text transition-colors"
+            className="oct-icon-btn p-1.5"
             title="Back to feed"
           >
             <ArrowLeft size={16} />
           </button>
-          <h2 className="font-mono text-xs uppercase tracking-[0.15em] text-oct-text">Settings</h2>
+          <h2 className="oct-eyebrow text-oct-text">Settings</h2>
         </div>
         <nav className="flex overflow-x-auto px-2 pb-2 gap-1 scrollbar-none">
           {SECTIONS.map(({ id, label, icon: Icon }) => (
             <button
               key={id}
               onClick={() => { if (id !== section) setSection(id); }}
-              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-cockpit font-mono text-[10px] font-bold uppercase tracking-[0.1em] whitespace-nowrap shrink-0 transition-colors duration-100 border-2 ${
-                section === id
-                  ? 'border-oct-accent text-oct-accent bg-oct-accent-dim'
-                  : 'border-transparent text-oct-muted hover:text-oct-text hover:bg-oct-surface-raised'
-              }`}
+              data-active={section === id}
+              className="oct-subnav-tab flex items-center gap-1.5 px-3 py-1.5 font-mono text-[11px] font-bold uppercase tracking-[0.1em] whitespace-nowrap shrink-0"
             >
               <Icon size={13} className="shrink-0" />
               {label}
@@ -64,12 +61,12 @@ export default function GlobalSettings() {
       </div>
 
       {/* Desktop sidebar nav */}
-      <div className="hidden md:flex w-60 bg-oct-surface border-r-2 border-oct-border flex-col shrink-0">
-        <div className="px-4 pt-5 pb-3 flex items-center gap-2 border-b-2 border-oct-border">
+      <div className="hidden md:flex w-60 bg-oct-panel border-r border-oct-border flex-col shrink-0">
+        <div className="px-4 pt-5 pb-3 flex items-center gap-2 oct-headerbar">
           {sidebarCollapsed && (
             <button
               onClick={toggleSidebar}
-              className="p-1 text-oct-muted hover:text-oct-text transition-colors"
+              className="oct-icon-btn p-1.5"
               title="Show sidebar"
             >
               <PanelLeftOpen size={16} />
@@ -77,23 +74,20 @@ export default function GlobalSettings() {
           )}
           <button
             onClick={() => guardNavigation(() => navigate(routes.feed))}
-            className="p-1 text-oct-muted hover:text-oct-text transition-colors"
+            className="oct-icon-btn p-1.5"
             title="Back to feed"
           >
             <ArrowLeft size={16} />
           </button>
-          <h2 className="font-mono text-xs uppercase tracking-[0.15em] text-oct-text">Settings</h2>
+          <h2 className="oct-eyebrow text-oct-text">Settings</h2>
         </div>
         <nav className="flex-1 px-2 py-3 space-y-0.5">
           {SECTIONS.map(({ id, label, icon: Icon }) => (
             <button
               key={id}
               onClick={() => { if (id !== section) setSection(id); }}
-              className={`w-full flex items-center gap-2.5 px-3 py-2 rounded-cockpit font-mono text-xs text-left uppercase tracking-[0.08em] transition-colors duration-100 border-l-2 ${
-                section === id
-                  ? 'border-oct-accent text-oct-accent bg-oct-accent-dim font-bold'
-                  : 'border-transparent text-oct-muted hover:text-oct-text hover:bg-oct-surface-raised'
-              }`}
+              data-active={section === id}
+              className="oct-subnav-tab w-full flex items-center gap-2.5 px-3 py-2 font-mono text-xs text-left uppercase tracking-[0.08em] font-semibold"
             >
               <Icon size={16} className="shrink-0" />
               <span className="truncate">{label}</span>
@@ -123,18 +117,18 @@ export default function GlobalSettings() {
         </div>
 
         {/* Save bar */}
-        <div className={`border-t-2 px-3 sm:px-8 py-2.5 sm:py-3 flex items-center justify-between gap-2 sm:gap-3 shrink-0 transition-colors duration-100 ${
-          hasUnsavedChanges ? 'border-oct-yellow bg-oct-yellow/15' : 'border-oct-border bg-oct-bg'
+        <div className={`border-t px-3 sm:px-8 py-2.5 sm:py-3 flex items-center justify-between gap-2 sm:gap-3 shrink-0 transition-colors duration-150 ${
+          hasUnsavedChanges ? 'border-oct-yellow/60 bg-oct-yellow/10' : 'border-oct-border bg-oct-panel'
         }`}>
           <div className="flex items-center gap-2 sm:gap-3 min-w-0">
             <span className="font-mono text-[11px] uppercase tracking-wide text-oct-muted select-text whitespace-nowrap">
               OCT v{__APP_VERSION__}
             </span>
-            <span className={`font-mono text-[11px] sm:text-sm uppercase tracking-wide transition-opacity ${hasUnsavedChanges ? 'opacity-100 text-oct-yellow' : 'opacity-0'}`}>
+            <span className={`font-mono text-[11px] sm:text-xs uppercase tracking-wide transition-opacity ${hasUnsavedChanges ? 'opacity-100 text-oct-yellow' : 'opacity-0'}`}>
               Unsaved changes
             </span>
             {saveError && (
-              <span className="font-mono text-[11px] sm:text-sm text-oct-flame truncate" title={saveError}>
+              <span className="font-mono text-[11px] sm:text-xs text-oct-flame truncate" title={saveError}>
                 {saveError}
               </span>
             )}
@@ -143,7 +137,7 @@ export default function GlobalSettings() {
             {hasUnsavedChanges && (
               <button
                 onClick={() => { if (config) fetchConfig(); }}
-                className="brutal-btn-ghost px-3 sm:px-4 py-1.5 sm:py-2 text-xs sm:text-sm"
+                className="oct-icon-btn px-3 sm:px-4 py-1.5 sm:py-2 text-xs sm:text-sm"
               >
                 Reset
               </button>
@@ -151,9 +145,7 @@ export default function GlobalSettings() {
             <button
               onClick={handleSave}
               disabled={saving || !hasUnsavedChanges}
-              className={`brutal-btn px-4 sm:px-5 py-1.5 sm:py-2 text-xs sm:text-sm ${
-                hasUnsavedChanges ? 'bg-oct-green' : ''
-              }`}
+              className="oct-btn-primary px-4 sm:px-5 py-1.5 sm:py-2 text-xs sm:text-sm"
             >
               {saving ? 'Saving...' : 'Save'}
             </button>

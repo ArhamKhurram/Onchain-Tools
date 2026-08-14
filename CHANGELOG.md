@@ -1,6 +1,28 @@
 # Changelog
 
-All notable changes to Trenchcord are documented here.
+All notable changes to Onchain Tools are documented here. Entries before the
+rename still say "Trenchcord" — that was the product's name at the time, and
+they're left as the record of what shipped.
+
+## 2026-08-12
+
+### Added
+- **FOMO new-join alerts** — when a notable account joins fomo.family, OCT tells you in real time. Joining is the signal: by the time a famous name's first buys hit the feed, the easy entry is gone. The console pings you (notification history + sound), and if you get Pushover alerts for FOMO trades you'll get these too. fomo's own "new traders with smart followers" feed drives it, so it's the same joins the app surfaces — just without you having to be looking. Bursts are capped at five pings a cycle with a "+N more" summary, so a signup wave can't flood you.
+- **Breakout alerts** — revival's sibling signal. Revival only fires on tokens that died first; a token consolidating quietly near its highs and then igniting is a different, real setup — and now it gets its own amber alert with its own sound, at normal loudness (the emergency klaxon stays revival-only). Breakouts land in the same Revival log with a kind chip, and get the same 24-hour outcome tracking.
+- **Revival receipts** — the Revival tab now opens with the scoreboard: alerts this week, how many tracked to close, median peak multiple, the ≥2× hit rate, and your best catch. No numbers until there's evidence — empty states stay honest.
+- **Daily digest DM** — opt in and the Outpost bot DMs you once a day with your revival and breakout alerts and how they played out, the day's top callouts, and who moved on the caller board. Settings → Discord Bot → Daily digest.
+- **"Global first" on the radar** — MC@call shows when *your* rooms first saw a token; the new Global first column shows the earliest call anyone is known to have made. It reads Rick's cross-server first-caller data (`espadabtw @ 49.3K · 10h`) and, on hosted, an anonymous OCT network pool of first sightings — so everyone's coverage helps everyone. The pool stores only the token, when the network first saw it, and the market cap at that moment: never who saw it, or in which group.
+
+### Fixed
+- **The Pump.fun token tab stops erroring out** — opening a token sometimes showed a "failed (429)" card instead of its callouts. The tab was asking pump.fun for two things at the same instant and tripping their rate limit on itself; requests now queue, a rate-limited read retries quietly, and a token's callouts are remembered for longer, so reopening one is instant.
+- **No more "meta dying" pings on worthless bags** — the alert was firing on rugged positions worth about a dollar, over and over, because a dead bag stays open in the journal forever. It now stays quiet unless the position is actually worth something (default $10, tunable). If we can't price the token at all we still ping you — a missing price isn't proof the bag is empty.
+- **Dead bags stop sitting in "open" forever** — a coin that went to zero in value while you still hold every token never tripped the journal's 98%-sold close rule, so it cluttered your open positions and got checked on every cycle for the rest of time. Journal now retires them: no LP at all, or under $100 of it, or worth under a dollar, and untouched for a week. The write-off is honest — the money you never got back is booked as a real loss, so your realized PnL will drop by the cost of every dead bag the first time this runs. That number was always true; it just wasn't being counted. Closed positions have their own tab in the journal, tagged `abandoned`, and nothing is closed on missing data — an unpriceable token is left alone.
+
+## 2026-08-08
+
+### Added
+- **Track any pump.fun trader** — a new Pump.fun tab. Paste a wallet and watch their live buys and sells — which coin, how much SOL, and when — plus their realized and unrealized PnL per token, right in the console.
+- **Follow the callouts** — read what a trader is calling and the thesis behind it, or paste a token address to see everyone who called it and the market cap they called it at. The top and trending pump.fun communities are there too.
 
 ## 2026-08-07
 

@@ -153,25 +153,25 @@ export default function ContractDashboard({ embedded = false }: ContractDashboar
   return (
     <div className="h-full flex flex-col min-h-0 bg-oct-bg overflow-hidden">
       {/* Header */}
-      <div className="border-b-2 border-black bg-oct-surface shrink-0">
+      <div className="oct-headerbar shrink-0">
         {!embedded && (
         <div className="flex items-center gap-2 sm:gap-3 px-3 sm:px-4 py-3">
           {sidebarCollapsed && (
             <button
               onClick={toggleSidebar}
-              className="p-1.5 rounded-cockpit text-oct-muted hover:text-oct-text hover:bg-oct-surface-raised transition-colors shrink-0"
+              className="oct-icon-btn p-1.5 shrink-0"
               title="Show sidebar"
             >
               <PanelLeftOpen size={18} />
             </button>
           )}
-          <h2 className="text-oct-text font-extrabold uppercase text-base sm:text-lg">Contract Feed</h2>
-          <span className="text-oct-muted text-xs sm:text-sm font-mono">{filteredEntries.length}</span>
+          <h2 className="oct-section-title uppercase tracking-wide text-base sm:text-lg">Contract Feed</h2>
+          <span className="text-oct-muted text-[13px] font-mono font-semibold tabular-nums">{filteredEntries.length}</span>
           <div className="flex-1" />
           {contracts.length > 0 && (
             <button
               onClick={handleDeleteAll}
-              className="flex items-center gap-1 px-2 py-1 rounded-cockpit text-xs font-bold uppercase text-oct-accent hover:bg-oct-accent hover:text-white transition-colors border-2 border-oct-accent shrink-0"
+              className="flex items-center gap-1 px-2.5 py-1 rounded-oct-sm text-[11px] font-mono font-bold uppercase text-oct-accent hover:bg-oct-accent hover:text-white hover:shadow-oct-glow-accent transition-all border border-oct-accent/60 shrink-0"
               title="Delete all contracts"
             >
               <Trash2 size={12} />
@@ -181,7 +181,7 @@ export default function ContractDashboard({ embedded = false }: ContractDashboar
         </div>
         )}
         <div className="flex items-center gap-2 px-3 sm:px-4 pb-3 overflow-x-auto scrollbar-none">
-          <div className="flex rounded-cockpit overflow-hidden border-2 border-black text-xs shrink-0">
+          <div className="flex rounded-oct-sm overflow-hidden border border-oct-border text-xs shrink-0">
             <button
               onClick={() => setViewMode('table')}
               className={`px-2 py-1 transition-colors ${
@@ -206,12 +206,12 @@ export default function ContractDashboard({ embedded = false }: ContractDashboar
             </button>
           </div>
 
-          <div className="flex rounded-cockpit overflow-hidden border-2 border-black text-xs shrink-0">
+          <div className="flex rounded-oct-sm overflow-hidden border border-oct-border text-xs shrink-0">
             {(['all', 'evm', 'sol'] as const).map((f) => (
               <button
                 key={f}
                 onClick={() => setChainFilter(f)}
-                className={`px-2.5 py-1 font-bold uppercase transition-colors ${
+                className={`px-2.5 py-1 font-mono font-bold uppercase transition-colors ${
                   chainFilter === f
                     ? 'bg-oct-accent text-white'
                     : 'bg-oct-surface text-oct-muted hover:text-oct-text'
@@ -223,23 +223,23 @@ export default function ContractDashboard({ embedded = false }: ContractDashboar
           </div>
 
           <div className="relative flex-1 min-w-[120px]">
-            <Search size={14} className="absolute left-2 top-1/2 -translate-y-1/2 text-oct-muted" />
+            <Search size={14} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-oct-muted" />
             <input
               type="text"
               placeholder="Search..."
               value={search}
               onChange={(e) => setSearch(e.target.value)}
-              className="bg-oct-surface border-2 border-oct-border rounded-cockpit pl-7 pr-3 py-1 text-sm text-oct-text placeholder-oct-muted w-full focus:outline-none focus:border-oct-accent"
+              className="oct-input pl-8 pr-3 py-1.5 text-sm w-full"
             />
           </div>
 
           {showMuted && mutedCount > 0 && (
             <button
               onClick={() => setRevealMuted((v) => !v)}
-              className={`flex items-center gap-1 px-2 py-1 rounded-cockpit text-xs font-bold uppercase border-2 transition-colors shrink-0 ${
+              className={`flex items-center gap-1 px-2.5 py-1 rounded-oct-sm text-[11px] font-mono font-bold uppercase border transition-all shrink-0 ${
                 revealMuted
-                  ? 'border-oct-accent bg-oct-accent text-white'
-                  : 'border-oct-border text-oct-muted hover:text-oct-text'
+                  ? 'border-oct-accent/50 bg-oct-accent text-white shadow-oct-glow-accent'
+                  : 'border-oct-border text-oct-muted hover:text-oct-text hover:border-oct-border-bright'
               }`}
               title={revealMuted ? 'Hide muted callers again' : 'Show contracts from muted callers'}
             >
@@ -256,12 +256,15 @@ export default function ContractDashboard({ embedded = false }: ContractDashboar
         style={{ overflowAnchor: 'none' }}
       >
         {filteredEntries.length === 0 ? (
-          <div className="flex items-center justify-center h-full text-oct-muted text-sm">
-            {contracts.length === 0
-              ? 'No contracts detected yet'
-              : mutedCount > 0
-                ? 'Every match is from a muted caller'
-                : 'No contracts match your filters'}
+          <div className="flex flex-col items-center justify-center h-full text-center px-6">
+            <p className="oct-eyebrow mb-2">Contracts</p>
+            <p className="text-sm text-oct-muted">
+              {contracts.length === 0
+                ? 'No contracts detected yet'
+                : mutedCount > 0
+                  ? 'Every match is from a muted caller'
+                  : 'No contracts match your filters'}
+            </p>
           </div>
         ) : viewMode === 'table' ? (
           <div className="divide-y divide-oct-border/50">
@@ -358,7 +361,7 @@ function ContractRow({
 
   return (
     <div
-      className={`flex flex-col gap-1 px-3 sm:px-4 py-2.5 hover:bg-oct-surface-raised/40 transition-colors group border-b border-oct-border/60 ${
+      className={`flex flex-col gap-1 px-3 sm:px-4 py-2.5 oct-row-hover group border-b border-oct-border/60 ${
         isMuted ? 'opacity-45 hover:opacity-100' : ''
       }`}
     >
@@ -370,16 +373,16 @@ function ContractRow({
           />
         )}
         <span
-          className="text-[10px] font-bold px-1.5 py-0.5 rounded-cockpit shrink-0 uppercase font-mono"
+          className="text-[10px] font-bold px-1.5 py-0.5 rounded-full shrink-0 uppercase font-mono"
           style={{ backgroundColor: colorWithExtraAlpha(color, 0.125), color }}
         >
           {chainLabel}
         </span>
 
         <span
-          className={`text-[9px] font-bold px-1.5 py-0.5 rounded-cockpit shrink-0 uppercase hidden sm:inline font-mono ${
+          className={`text-[10px] font-bold px-1.5 py-0.5 rounded-full shrink-0 uppercase hidden sm:inline font-mono ${
             isNew
-              ? 'bg-green-500/15 text-green-400'
+              ? 'bg-oct-green/15 text-oct-green'
               : 'bg-orange-500/15 text-orange-400'
           }`}
         >
@@ -405,7 +408,7 @@ function ContractRow({
               className="p-1 rounded hover:bg-oct-surface text-oct-muted hover:text-oct-text transition-colors"
               title="Copy address"
             >
-              {isCopied ? <Check size={13} className="text-green-400" /> : <Copy size={13} />}
+              {isCopied ? <Check size={13} className="text-oct-green" /> : <Copy size={13} />}
             </button>
             <button
               onClick={() => onOpen(entry.address, entry.evmChain)}
@@ -424,7 +427,7 @@ function ContractRow({
             <button
               onClick={() => onShowHolders(entry)}
               className="p-1 rounded hover:bg-oct-surface text-oct-muted hover:text-oct-text transition-colors"
-              title="Top FOMO holders"
+              title="Top holders"
             >
               <Users size={13} />
             </button>
@@ -501,7 +504,7 @@ function ContractCard({
   const { trade: convergenceTrade, windowMinutes } = useConvergenceForContract(entry);
 
   return (
-    <div className="bg-oct-surface rounded-cockpit border border-oct-border p-3 flex flex-col gap-2.5 hover:border-oct-muted/40 transition-colors group relative">
+    <div className="oct-card p-3 flex flex-col gap-2.5 transition-all hover:-translate-y-0.5 hover:shadow-oct-soft-lg hover:border-oct-border-bright group relative">
       <button
         onClick={() => onDelete(entry)}
         className="absolute top-2 right-2 p-1 rounded opacity-0 group-hover:opacity-100 hover:bg-oct-accent/20 text-oct-muted hover:text-oct-accent transition-all"
@@ -512,15 +515,15 @@ function ContractCard({
 
       <div className="flex items-center gap-2">
         <span
-          className="text-[10px] font-bold px-1.5 py-0.5 rounded-cockpit uppercase font-mono"
+          className="text-[10px] font-bold px-1.5 py-0.5 rounded-full uppercase font-mono"
           style={{ backgroundColor: colorWithExtraAlpha(color, 0.125), color }}
         >
           {chainLabel}
         </span>
         <span
-          className={`text-[9px] font-bold px-1.5 py-0.5 rounded-cockpit uppercase font-mono ${
+          className={`text-[10px] font-bold px-1.5 py-0.5 rounded-full uppercase font-mono ${
             isNew
-              ? 'bg-green-500/20 text-green-400'
+              ? 'bg-oct-green/20 text-oct-green'
               : 'bg-orange-500/20 text-orange-400'
           }`}
         >
@@ -559,7 +562,7 @@ function ContractCard({
       <div className="flex items-center gap-1.5">
         <button
           onClick={() => onCopy(entry.address)}
-          className="flex items-center gap-1 px-2 py-1 rounded-cockpit text-xs bg-oct-bg hover:bg-oct-surface-raised transition-colors text-oct-muted hover:text-oct-text border border-oct-border"
+          className="flex items-center gap-1 px-2 py-1 rounded-oct-sm text-xs bg-oct-bg hover:bg-oct-surface-raised transition-colors text-oct-muted hover:text-oct-text border border-oct-border"
           title="Copy address"
         >
           {isCopied ? <Check size={11} className="text-green-400" /> : <Copy size={11} />}
@@ -567,7 +570,7 @@ function ContractCard({
         </button>
         <button
           onClick={() => onOpen(entry.address, entry.evmChain)}
-          className="flex items-center gap-1 px-2 py-1 rounded-cockpit text-xs bg-oct-bg hover:bg-oct-surface-raised transition-colors text-oct-muted hover:text-oct-text border border-oct-border"
+          className="flex items-center gap-1 px-2 py-1 rounded-oct-sm text-xs bg-oct-bg hover:bg-oct-surface-raised transition-colors text-oct-muted hover:text-oct-text border border-oct-border"
           title="Open chart"
         >
           <ExternalLink size={11} />
@@ -575,7 +578,7 @@ function ContractCard({
         </button>
         <button
           onClick={() => onOpenDiscord(entry)}
-          className="flex items-center gap-1 px-2 py-1 rounded-cockpit text-xs bg-oct-bg hover:bg-oct-surface-raised transition-colors text-oct-muted hover:text-oct-text border border-oct-border"
+          className="flex items-center gap-1 px-2 py-1 rounded-oct-sm text-xs bg-oct-bg hover:bg-oct-surface-raised transition-colors text-oct-muted hover:text-oct-text border border-oct-border"
           title={isTelegramContract(entry) ? 'Open in Telegram' : 'Open in Discord'}
         >
           {isTelegramContract(entry) ? <Send size={11} className="text-[#2AABEE]" /> : <MessageSquare size={11} />}
@@ -583,8 +586,8 @@ function ContractCard({
         </button>
         <button
           onClick={() => onShowHolders(entry)}
-          className="flex items-center gap-1 px-2 py-1 rounded-cockpit text-xs bg-oct-bg hover:bg-oct-surface-raised transition-colors text-oct-muted hover:text-oct-text border border-oct-border"
-          title="Top FOMO holders"
+          className="flex items-center gap-1 px-2 py-1 rounded-oct-sm text-xs bg-oct-bg hover:bg-oct-surface-raised transition-colors text-oct-muted hover:text-oct-text border border-oct-border"
+          title="Top holders"
         >
           <Users size={11} />
           <span>Holders</span>

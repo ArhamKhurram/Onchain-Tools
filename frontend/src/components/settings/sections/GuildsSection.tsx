@@ -62,11 +62,11 @@ export default function GuildsSection({ form }: { form: SettingsForm }) {
   return (
               <>
                 <div>
-                  <h3 className="font-display text-3xl sm:text-4xl tracking-tight text-oct-text mb-4">Guilds</h3>
+                  <h3 className="font-display text-2xl sm:text-3xl tracking-tight text-oct-text mb-4">Guilds</h3>
 
                   <div className="space-y-5">
-                    <div className="brutal-card p-3 sm:p-4">
-                      <h4 className="font-mono text-xs font-bold uppercase tracking-[0.15em] text-oct-text mb-2">[ Enabled Guilds ]</h4>
+                    <div className="oct-card p-4 sm:p-5">
+                      <h4 className="oct-eyebrow mb-2">[ Enabled Guilds ]</h4>
                       <p className="text-xs sm:text-sm text-oct-muted mb-3">
                         Only enabled guilds will appear in the channel picker when creating rooms. All guilds are off by default.
                       </p>
@@ -77,7 +77,7 @@ export default function GuildsSection({ form }: { form: SettingsForm }) {
                           value={guildSearch}
                           onChange={(e) => setGuildSearch(e.target.value)}
                           placeholder="Search guilds..."
-                          className="w-full px-3 py-2 pl-9 rounded-cockpit bg-oct-bg border-2 border-oct-border text-sm text-oct-text placeholder:text-oct-muted/60 focus:outline-none focus:border-oct-accent"
+                          className="w-full oct-input px-3 py-2 pl-9 text-sm"
                         />
                       </div>
                       <div className="text-[11px] font-mono uppercase tracking-wide text-oct-muted mb-2">
@@ -108,14 +108,14 @@ export default function GuildsSection({ form }: { form: SettingsForm }) {
                                     enabled ? prev.filter((id) => id !== guild.id) : [...prev, guild.id]
                                   );
                                 }}
-                                className={`w-full flex items-center gap-2 sm:gap-3 px-2 sm:px-3 py-2 rounded-cockpit border-2 text-xs sm:text-sm text-left transition-colors duration-100 ${
+                                className={`w-full flex items-center gap-2 sm:gap-3 px-2 sm:px-3 py-2 rounded-oct border text-xs sm:text-sm text-left transition-all duration-150 ${
                                   enabled
-                                    ? 'border-oct-green bg-oct-green/15 text-oct-text'
-                                    : 'border-oct-border bg-oct-bg text-oct-muted'
+                                    ? 'border-oct-green/60 bg-oct-green/15 text-oct-text'
+                                    : 'border-oct-border bg-oct-surface-raised/40 text-oct-muted hover:border-oct-border-bright'
                                 }`}
                               >
                                 <div
-                                  className={`w-4 h-4 rounded-cockpit border-2 flex items-center justify-center shrink-0 transition-colors duration-100 ${
+                                  className={`w-4 h-4 rounded-oct-sm border flex items-center justify-center shrink-0 transition-colors duration-100 ${
                                     enabled
                                       ? 'bg-oct-green border-oct-green'
                                       : 'border-oct-border-bright bg-transparent'
@@ -144,14 +144,14 @@ export default function GuildsSection({ form }: { form: SettingsForm }) {
                       </div>
                     </div>
 
-                    <div className="brutal-card p-3 sm:p-4">
-                      <h4 className="font-mono text-xs font-bold uppercase tracking-[0.15em] text-oct-text mb-2">[ Guild Message Colors ]</h4>
+                    <div className="oct-card p-4 sm:p-5">
+                      <h4 className="oct-eyebrow mb-2">[ Guild Message Colors ]</h4>
                       <p className="text-xs sm:text-sm text-oct-muted mb-3">
                         Set a background color for messages from each enabled guild to visually distinguish them in mixed rooms.
                       </p>
                       <div className="space-y-2">
                         {guilds.filter((g) => enabledGuilds.includes(g.id)).map((guild) => (
-                          <div key={guild.id} className="flex items-center gap-2 sm:gap-3 px-2 sm:px-3 py-2 rounded-cockpit border-2 border-oct-border bg-oct-surface-raised">
+                          <div key={guild.id} className="flex items-center gap-2 sm:gap-3 px-2 sm:px-3 py-2 rounded-oct border border-oct-border bg-oct-surface-raised">
                             <ColorPickerWithAlpha
                               value={guildColors[guild.id] || '#0B0E1A'}
                               onChange={(c) => setGuildColors((prev) => ({ ...prev, [guild.id]: c }))}
@@ -180,8 +180,8 @@ export default function GuildsSection({ form }: { form: SettingsForm }) {
                       )];
                       if (dmChannelIdsInRooms.length === 0) return null;
                       return (
-                        <div className="brutal-card p-3 sm:p-4">
-                          <h4 className="font-mono text-xs font-bold uppercase tracking-[0.15em] text-oct-text mb-2">[ DM Message Colors ]</h4>
+                        <div className="oct-card p-4 sm:p-5">
+                          <h4 className="oct-eyebrow mb-2">[ DM Message Colors ]</h4>
                           <p className="text-xs sm:text-sm text-oct-muted mb-3">
                             Set a background color for messages from each DM that is added to a room.
                           </p>
@@ -192,7 +192,7 @@ export default function GuildsSection({ form }: { form: SettingsForm }) {
                                 ? dm.recipients.map((r) => r.global_name || r.username).join(', ')
                                 : channelId;
                               return (
-                                <div key={channelId} className="flex items-center gap-2 sm:gap-3 px-2 sm:px-3 py-2 rounded-cockpit border-2 border-oct-border bg-oct-surface-raised">
+                                <div key={channelId} className="flex items-center gap-2 sm:gap-3 px-2 sm:px-3 py-2 rounded-oct border border-oct-border bg-oct-surface-raised">
                                   <ColorPickerWithAlpha
                                     value={dmColors[channelId] || '#0B0E1A'}
                                     onChange={(c) => setDmColors((prev) => ({ ...prev, [channelId]: c }))}
@@ -221,8 +221,8 @@ export default function GuildsSection({ form }: { form: SettingsForm }) {
                       )];
                       if (tgChannelIdsInRooms.length === 0) return null;
                       return (
-                        <div className="brutal-card p-3 sm:p-4">
-                          <h4 className="font-mono text-xs font-bold uppercase tracking-[0.15em] text-oct-text mb-2 flex items-center gap-1.5">
+                        <div className="oct-card p-4 sm:p-5">
+                          <h4 className="oct-eyebrow mb-2 flex items-center gap-1.5">
                             <Send size={14} className="text-oct-telegram" />
                             [ Telegram Chat Colors ]
                           </h4>
@@ -234,7 +234,7 @@ export default function GuildsSection({ form }: { form: SettingsForm }) {
                               const channelRef = rooms.flatMap((r) => r.channels).find((c) => c.channelId === channelId && c.source === 'telegram');
                               const chatName = channelRef?.channelName ?? channelId;
                               return (
-                                <div key={channelId} className="flex items-center gap-2 sm:gap-3 px-2 sm:px-3 py-2 rounded-cockpit border-2 border-oct-border bg-oct-surface-raised">
+                                <div key={channelId} className="flex items-center gap-2 sm:gap-3 px-2 sm:px-3 py-2 rounded-oct border border-oct-border bg-oct-surface-raised">
                                   <ColorPickerWithAlpha
                                     value={telegramColors[channelId] || '#0B0E1A'}
                                     onChange={(c) => setTelegramColors((prev) => ({ ...prev, [channelId]: c }))}

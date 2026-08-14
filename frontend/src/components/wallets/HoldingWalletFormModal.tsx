@@ -92,18 +92,18 @@ export default function HoldingWalletFormModal({
   return (
     <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/75 p-4" onClick={() => !submitting && onClose()}>
       <div
-        className="w-full max-w-lg rounded-cockpit border-2 border-black bg-oct-surface shadow-oct-hard-lg overflow-hidden"
+        className="w-full max-w-lg oct-card oct-card-flush shadow-oct-soft-lg overflow-hidden"
         onClick={(e) => e.stopPropagation()}
       >
-        <div className="flex items-center justify-between px-5 py-4 border-b-2 border-black">
-          <h3 className="text-base font-extrabold uppercase text-oct-text">
+        <div className="oct-headerbar flex items-center justify-between px-5 py-4">
+          <h3 className="oct-section-title text-base uppercase">
             {mode === 'add' ? 'Add my wallet' : 'Edit wallet'}
           </h3>
           <button
             type="button"
             onClick={onClose}
             disabled={submitting}
-            className="p-1.5 rounded-md text-oct-muted hover:text-oct-text hover:bg-oct-surface-raised transition-colors disabled:opacity-50"
+            className="oct-icon-btn p-1.5 disabled:opacity-50"
           >
             <X size={18} />
           </button>
@@ -115,16 +115,16 @@ export default function HoldingWalletFormModal({
           </p>
 
           <div>
-            <label className="block text-xs font-medium text-oct-muted mb-1.5 uppercase tracking-wide">Chain</label>
+            <label className="block oct-label text-oct-muted mb-1.5 uppercase tracking-wide">Chain</label>
             <div className="flex flex-wrap gap-2">
               {CHAIN_OPTIONS.map(({ value, label }) => (
                 <button
                   key={value}
                   type="button"
                   onClick={() => set('chain', value)}
-                  className={`px-3 py-2 rounded-cockpit text-xs font-bold uppercase border-2 transition-colors ${
+                  className={`px-3 py-2 rounded-oct-sm text-xs font-bold uppercase border transition-all ${
                     values.chain === value
-                      ? 'border-black bg-oct-accent text-white'
+                      ? 'border-oct-accent/50 bg-oct-accent text-white shadow-oct-glow-accent'
                       : 'border-oct-border text-oct-muted hover:border-oct-border-bright hover:text-oct-text'
                   }`}
                 >
@@ -135,7 +135,7 @@ export default function HoldingWalletFormModal({
           </div>
 
           <div>
-            <label htmlFor="holding-wallet-address" className="block text-xs font-medium text-oct-muted mb-1.5 uppercase tracking-wide">
+            <label htmlFor="holding-wallet-address" className="block oct-label text-oct-muted mb-1.5 uppercase tracking-wide">
               Address
             </label>
             <input
@@ -146,12 +146,12 @@ export default function HoldingWalletFormModal({
               onChange={(e) => set('address', e.target.value)}
               placeholder={values.chain === 'solana' ? 'Base58 address…' : '0x…'}
               disabled={mode === 'edit'}
-              className="w-full px-3 py-2 rounded-cockpit bg-oct-bg border-2 border-oct-border text-sm font-mono text-oct-text placeholder:text-oct-muted/60 focus:outline-none focus:border-oct-accent disabled:opacity-60 disabled:cursor-not-allowed"
+              className="oct-input w-full px-3 py-2 text-sm font-mono disabled:opacity-60 disabled:cursor-not-allowed"
             />
           </div>
 
           <div>
-            <label htmlFor="holding-wallet-label" className="block text-xs font-medium text-oct-muted mb-1.5 uppercase tracking-wide">
+            <label htmlFor="holding-wallet-label" className="block oct-label text-oct-muted mb-1.5 uppercase tracking-wide">
               Label <span className="normal-case text-oct-muted/70">(optional)</span>
             </label>
             <input
@@ -160,21 +160,21 @@ export default function HoldingWalletFormModal({
               value={values.label}
               onChange={(e) => set('label', e.target.value)}
               placeholder="Main SOL wallet"
-              className="w-full px-3 py-2 rounded-cockpit bg-oct-bg border-2 border-oct-border text-sm text-oct-text placeholder:text-oct-muted/60 focus:outline-none focus:border-oct-accent"
+              className="oct-input w-full px-3 py-2 text-sm"
             />
           </div>
 
           {fieldError && (
-            <p className="text-sm text-oct-accent bg-oct-accent-dim border-2 border-oct-accent rounded-cockpit px-3 py-2">
+            <p className="text-sm text-oct-flame bg-oct-flame/10 border border-oct-flame/50 rounded-oct px-3 py-2">
               {fieldError}
             </p>
           )}
 
           <div className="flex justify-end gap-2 pt-1">
-            <button type="button" onClick={onClose} disabled={submitting} className="brutal-btn-ghost px-4 py-2 text-sm">
+            <button type="button" onClick={onClose} disabled={submitting} className="oct-icon-btn px-4 py-2 text-sm">
               Cancel
             </button>
-            <button type="submit" disabled={submitting} className="brutal-btn px-4 py-2 text-sm">
+            <button type="submit" disabled={submitting} className="oct-btn-primary px-4 py-2 text-sm">
               {submitting ? 'Saving…' : mode === 'add' ? 'Add wallet' : 'Save changes'}
             </button>
           </div>

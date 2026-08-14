@@ -64,6 +64,23 @@ rather than crashing.
 | `DISCORD_ANNOUNCE_CHANNEL_ID` | Target for `POST /api/v1/bot/announce` (unset ⇒ 503). |
 | `OCT_BOT_API_KEY` | Machine secret for the `/api/v1/bot` HTTP surface (unset ⇒ 503). |
 
+## pump.fun callouts → Discord channel
+
+Public reposting of tracked pump.fun callouts through the same in-process bot.
+**Default OFF** — it posts to a public channel, so both headline vars must be
+set or the feature no-ops silently. All of these also honour the
+`TRENCHCORD_CALLOUT_DISCORD_*` fallback branding.
+
+| Variable | Purpose |
+| --- | --- |
+| `OCT_CALLOUT_DISCORD_ENABLED` | Master switch (`true`/`1`/`yes`/`on`). Default `false`. |
+| `OCT_CALLOUT_DISCORD_CHANNEL_ID` | Target channel. Unset ⇒ nothing is posted. |
+| `OCT_CALLOUT_DISCORD_CALLERS` | Optional comma-separated caller **wallet** allowlist. Unset ⇒ the global Top Callers board. Users' private follow lists are never a source. |
+| `OCT_CALLOUT_DISCORD_MAX_PER_WINDOW` | Burst cap per rolling window (default 5). |
+| `OCT_CALLOUT_DISCORD_WINDOW_MS` | The rolling window (default 60 000). |
+| `OCT_CALLOUT_DISCORD_TOP_LIMIT` / `_MIN_CALLS` / `_BOARD_WINDOW_MS` | Top Callers board slice (defaults 25 / 3 / 7 days). |
+| `OCT_CALLOUT_DISCORD_SOURCE_TTL_MS` | How long the resolved caller set is cached (default 600 000). |
+
 ## Frontend (Vite, build-time)
 
 | Variable | Purpose |

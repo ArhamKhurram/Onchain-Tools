@@ -25,14 +25,14 @@ export default function RoomPickerModal({ open, selectedRoomId, onSelect, onClos
 
   return (
     <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/70">
-      <div className="w-full max-w-md border-2 border-black bg-oct-bg shadow-oct-hard">
-        <div className="flex items-center justify-between px-4 py-3 border-b-2 border-black bg-oct-surface">
-          <h3 className="text-sm font-extrabold uppercase tracking-wide text-oct-text">Choose room</h3>
-          <button type="button" onClick={onClose} className="p-1 text-oct-muted hover:text-oct-text">
+      <div className="w-full max-w-md oct-card oct-card-flush shadow-oct-soft-lg overflow-hidden">
+        <div className="oct-headerbar flex items-center justify-between px-4 py-3">
+          <h3 className="oct-section-title uppercase tracking-wide">Choose room</h3>
+          <button type="button" onClick={onClose} className="oct-icon-btn p-1.5">
             <X size={16} />
           </button>
         </div>
-        <ul className="max-h-[50vh] overflow-y-auto divide-y divide-oct-border">
+        <ul className="max-h-[50vh] overflow-y-auto divide-y divide-oct-border/60">
           {options.length === 0 ? (
             <li className="px-4 py-6 text-center text-sm text-oct-muted font-mono">
               No rooms configured — add rooms in Settings first
@@ -46,7 +46,7 @@ export default function RoomPickerModal({ open, selectedRoomId, onSelect, onClos
                     onSelect(opt.id);
                     onClose();
                   }}
-                  className={`w-full text-left px-4 py-2.5 text-sm hover:bg-oct-surface-raised transition-colors ${
+                  className={`w-full text-left px-4 py-2.5 text-sm oct-row-hover ${
                     selectedRoomId === opt.id ? 'text-oct-accent font-bold' : 'text-oct-text'
                   }`}
                 >

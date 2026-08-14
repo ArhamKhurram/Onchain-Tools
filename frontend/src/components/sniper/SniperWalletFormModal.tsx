@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { X } from 'lucide-react';
 import { isSolAddress, type SniperWallet } from '../../types/sniper';
 import type { SniperWalletDraft } from '../../hooks/useSniperWallets';
+import { useVenueWallets } from '../../hooks/useVenueWallets';
 
 const DEFAULTS: SniperWalletDraft = {
   label: '',
@@ -15,8 +16,8 @@ const DEFAULTS: SniperWalletDraft = {
 };
 
 const FIELD =
-  'w-full px-3 py-2 rounded-cockpit bg-oct-bg border-2 border-oct-border text-sm font-mono text-oct-text placeholder:text-oct-muted/60 focus:outline-none focus:border-oct-accent disabled:opacity-60 disabled:cursor-not-allowed';
-const LABEL = 'block text-xs font-medium text-oct-muted mb-1.5 uppercase tracking-wide';
+  'oct-input w-full px-3 py-2 text-sm font-mono disabled:opacity-60 disabled:cursor-not-allowed';
+const LABEL = 'block oct-label text-oct-muted mb-1.5 uppercase tracking-wide';
 
 interface SniperWalletFormModalProps {
   open: boolean;
@@ -30,7 +31,29 @@ export default function SniperWalletFormModal({ open, mode, wallet, onClose, onS
   const [values, setValues] = useState<SniperWalletDraft>(DEFAULTS);
   const [fieldError, setFieldError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
+  const [picking, setPicking] = useState(false);
   const labelRef = useRef<HTMLInputElement>(null);
+  const venueWallets = useVenueWallets();
+
+  /**
+   * Task accounts are a pool of concurrent in-flight transactions — one per
+   * transaction, released on confirmation (confirmed with the venue
+   * 2026-08-08). Sells draw from the same pool, so `maxOpen` at or above the
+   * count leaves an exit nothing to run on at the exact moment several
+   * positions want out together.
+   *
+   * Warned at two thresholds because the two failures differ in cost: at or
+   * over the count OCT can authorize a buy the venue cannot execute (it times
+   * out, records `unknown`, and holds its reservation); below that but without
+   * headroom, entries are fine and it is the exits that get starved.
+   *
+   * A warning, not a block: the count changes whenever the operator deploys
+   * more, and this value is only as fresh as the last import.
+   */
+  const picked = venueWallets.wallets.find((w) => w.pubkey === values.address.trim());
+  const capacity = picked && picked.nonceCount >= 0 ? picked.nonceCount : null;
+  const overCapacity = capacity !== null && values.maxOpen >= capacity;
+  const thinHeadroom = capacity !== null && !overCapacity && values.maxOpen * 2 > capacity;
 
   useEffect(() => {
     if (!open) return;
@@ -50,6 +73,7 @@ export default function SniperWalletFormModal({ open, mode, wallet, onClose, onS
     );
     setFieldError(null);
     setSubmitting(false);
+    setPicking(false);
     setTimeout(() => labelRef.current?.focus(), 50);
   }, [open, mode, wallet]);
 
@@ -101,18 +125,18 @@ export default function SniperWalletFormModal({ open, mode, wallet, onClose, onS
       onClick={() => !submitting && onClose()}
     >
       <div
-        className="w-full max-w-lg rounded-cockpit border-2 border-black bg-oct-surface shadow-oct-hard-lg overflow-hidden"
+        className="w-full max-w-lg oct-card oct-card-flush shadow-oct-soft-lg overflow-hidden"
         onClick={(e) => e.stopPropagation()}
       >
-        <div className="flex items-center justify-between px-5 py-4 border-b-2 border-black">
-          <h3 className="text-base font-extrabold uppercase text-oct-text">
+        <div className="oct-headerbar flex items-center justify-between px-5 py-4">
+          <h3 className="oct-section-title text-base uppercase">
             {mode === 'add' ? 'Add sniper wallet' : 'Edit sniper wallet'}
           </h3>
           <button
             type="button"
             onClick={onClose}
             disabled={submitting}
-            className="p-1.5 rounded-md text-oct-muted hover:text-oct-text hover:bg-oct-surface-raised transition-colors disabled:opacity-50"
+            className="oct-icon-btn p-1.5 disabled:opacity-50"
           >
             <X size={18} />
           </button>
@@ -140,9 +164,57 @@ export default function SniperWalletFormModal({ open, mode, wallet, onClose, onS
           </div>
 
           <div>
-            <label htmlFor="sniper-wallet-address" className={LABEL}>
-              Venue wallet address
-            </label>
+            <div className="flex items-baseline justify-between mb-1.5">
+              <label htmlFor="sniper-wallet-address" className={`${LABEL} mb-0`}>
+                Venue wallet address
+              </label>
+              {mode === 'add' && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setPicking((p) => !p);
+                    if (venueWallets.wallets.length === 0) void venueWallets.load(values.venue);
+                  }}
+                  className="text-xs font-mono uppercase tracking-wide text-oct-accent hover:underline disabled:opacity-50"
+                  disabled={submitting}
+                >
+                  {picking ? 'Cancel' : 'Import from Slotshark'}
+                </button>
+              )}
+            </div>
+
+            {picking && (
+              <div className="mb-2 border border-oct-border rounded-oct bg-oct-bg divide-y divide-oct-border overflow-hidden">
+                {venueWallets.loading && <p className="px-3 py-2 text-xs text-oct-muted">Loading…</p>}
+                {venueWallets.error && <p className="px-3 py-2 text-xs text-oct-flame">{venueWallets.error}</p>}
+                {!venueWallets.loading && !venueWallets.error && venueWallets.wallets.length === 0 && (
+                  <p className="px-3 py-2 text-xs text-oct-muted">No wallets on the venue.</p>
+                )}
+                {venueWallets.wallets.map((w) => (
+                  <button
+                    key={w.pubkey}
+                    type="button"
+                    disabled={w.imported}
+                    onClick={() => {
+                      setValues((v) => ({ ...v, address: w.pubkey, label: v.label || w.label }));
+                      setPicking(false);
+                    }}
+                    className="w-full text-left px-3 py-2 hover:bg-oct-surface-raised disabled:opacity-50 disabled:cursor-not-allowed"
+                  >
+                    <span className="font-mono text-sm text-oct-text">{w.label || 'Unlabelled'}</span>
+                    <span className="block font-mono text-[11px] text-oct-muted truncate">{w.pubkey}</span>
+                    <span className="block font-mono text-[11px] text-oct-muted">
+                      {w.balanceSol === null ? 'balance unavailable' : `${w.balanceSol} SOL`}
+                      {' · '}
+                      {w.nonceCount < 0 ? 'task accounts unknown' : `${w.nonceCount} task accounts`}
+                      {!w.enabled && ' · DISABLED AT VENUE'}
+                      {w.imported && ' · already added'}
+                    </span>
+                  </button>
+                ))}
+              </div>
+            )}
+
             <input
               id="sniper-wallet-address"
               type="text"
@@ -232,6 +304,31 @@ export default function SniperWalletFormModal({ open, mode, wallet, onClose, onS
             </div>
           </div>
 
+          {capacity !== null && (overCapacity || thinHeadroom) && (
+            <p className="text-xs text-oct-yellow leading-relaxed">
+              This wallet has <span className="font-mono">{capacity}</span> task accounts at Slotshark — a pool of{' '}
+              {capacity} transactions in flight at once, and{' '}
+              <span className="font-semibold">sells draw from it too</span>.
+              {overCapacity ? (
+                <>
+                  {' '}
+                  A max open of <span className="font-mono">{values.maxOpen}</span> can consume the whole pool, leaving
+                  an exit nothing to run on — and letting OCT authorize a buy the venue cannot execute, which times
+                  out, records as <span className="font-mono">unknown</span> and holds its reservation until you
+                  resolve it.
+                </>
+              ) : (
+                <>
+                  {' '}
+                  With <span className="font-mono">{values.maxOpen}</span> open, a moment where they all want out at
+                  once needs {values.maxOpen} more than the entries already used.
+                </>
+              )}{' '}
+              Failing to enter costs an opportunity; failing to exit costs the position. Lower this, or deploy more
+              task accounts at Slotshark.
+            </p>
+          )}
+
           {/* The two directions are NOT symmetric, and saying so is the point:
               a raise is deferred so it cannot re-authorise a fire today's budget
               already refused, while a reduction binds immediately because it can
@@ -243,16 +340,16 @@ export default function SniperWalletFormModal({ open, mode, wallet, onClose, onS
           </p>
 
           {fieldError && (
-            <p className="text-sm text-oct-accent bg-oct-accent-dim border-2 border-oct-accent rounded-cockpit px-3 py-2 font-mono">
+            <p className="text-sm text-oct-flame bg-oct-flame/10 border border-oct-flame/50 rounded-oct px-3 py-2 font-mono">
               {fieldError}
             </p>
           )}
 
           <div className="flex justify-end gap-2 pt-1">
-            <button type="button" onClick={onClose} disabled={submitting} className="brutal-btn-ghost px-4 py-2 text-sm">
+            <button type="button" onClick={onClose} disabled={submitting} className="oct-icon-btn px-4 py-2 text-sm">
               Cancel
             </button>
-            <button type="submit" disabled={submitting} className="brutal-btn px-4 py-2 text-sm">
+            <button type="submit" disabled={submitting} className="oct-btn-primary px-4 py-2 text-sm">
               {submitting ? 'Saving…' : mode === 'add' ? 'Add wallet' : 'Save changes'}
             </button>
           </div>

@@ -24,6 +24,7 @@ import { createBotRouter } from './api/routes/bot.js';
 import { createSniperRouter } from './api/sniper/router.js';
 import { requireBotAuth } from './auth/botAuth.js';
 import { startBot } from './bot/index.js';
+import { startDailyDigestScheduler } from './bot/dailyDigest.js';
 import { getStorageProvider, isHostedMode } from './storage/index.js';
 import { authMiddleware } from './auth/middleware.js';
 import { getGateway, setGateway } from './gateway/state.js';
@@ -31,7 +32,7 @@ import { UserGatewayPool } from './gateway/userGatewayPool.js';
 import { buildContractUrl, detectEvmChainFromContent, extractEvmChainFromGmgnLinks, resolveEvmChainFromApi } from './utils/contract.js';
 import { tryParseTokenEnrichment, buildRickReplyContext } from './utils/rickEmbedParser.js';
 import { enrichToken, persistEnrichment } from './utils/tokenSnapshot.js';
-import { needsMetadataFallback } from './utils/enrichmentMerge.js';
+import { resolveFallbackTarget, recordFallbackFdv } from './utils/dexFallback.js';
 import { cacheDiscordMessage } from './utils/messageReplyCache.js';
 import type { TokenEnrichment } from './utils/rickEmbedParser.js';
 import { processDiscordMessage } from './utils/messageProcessor.js';
@@ -39,8 +40,14 @@ import type { MessageProcessorContext } from './utils/messageProcessor.js';
 import { sendPushover } from './utils/pushover.js';
 import { broadcastFrontendAlerts } from './utils/frontendAlerts.js';
 import { startFomoPoller } from './fomo/poller.js';
+import { startFomoJoinWatcher } from './fomo/joinWatcher.js';
+import { startPumpCalloutPoller } from './pumpfun/calloutPoller.js';
+import { startWalletMovementPoller } from './wallets/movementPoller.js';
 import { startFomoRetentionSweeper } from './fomo/retention.js';
 import { startMissedRunnerPoller } from './alerts/missedRunnerPoller.js';
+import { startRevivalPoller } from './revival/poller.js';
+import { startJournalPoller } from './journal/poller.js';
+import { startJournalVolumeDeathPoller } from './journal/volumeDeathPoller.js';
 import { startTokenPeakSampler } from './alerts/tokenPeakSampler.js';
 import type { DiscordMessage, PushoverConfig, FrontendMessage, ContractLinkTemplates } from './discord/types.js';
 import type { ContractEnrichmentPatch } from './utils/contractLog.js';
@@ -144,6 +151,9 @@ function enrichmentToPatch(e: TokenEnrichment): ContractEnrichmentPatch {
     evmChain: e.evmChain,
     enrichmentSource: e.enrichmentSource,
     enrichedAt: new Date().toISOString(),
+    firstCallerName: e.firstCallerName,
+    firstCallMcapUsd: e.firstCallMcapUsd,
+    firstCallAt: e.firstCallAt,
   };
 }
 
@@ -187,15 +197,12 @@ function scheduleDexFallback(
   setTimeout(async () => {
     try {
       const storage = getStorageProvider();
-      const recent = await storage.getContracts(userId, 20);
-      const hit = recent.find(
-        (c) =>
-          c.messageId === messageId
-          && c.address.toLowerCase() === address.toLowerCase()
-          && needsMetadataFallback(c),
-      );
+      const hit = await resolveFallbackTarget(storage, userId, address, messageId);
       if (!hit) return;
       const enrichment = await enrichToken(address, hit.evmChain);
+      // Report the outcome either way: a fetch that comes back without an MC is
+      // what stops the next mention of an unpriceable address re-asking.
+      recordFallbackFdv(address, enrichment?.fdvAtCall);
       if (!enrichment) return;
       await applyTokenEnrichment(wsServer, userId, enrichment, { channelId, messageId });
     } catch (err) {
@@ -306,6 +313,7 @@ function wireGatewayEvents(gw: GatewayManager, wsServer: WsServer, userId: strin
       authorUsername: rawMsg.author?.username,
       addressOverride: rickReply.addressOverride,
       callerName: rickReply.callerName,
+      messageTimestamp: rawMsg.timestamp,
     });
     if (rickEnrichment) {
       await applyTokenEnrichment(wsServer, userId, rickEnrichment, {
@@ -361,6 +369,7 @@ function wireGatewayEvents(gw: GatewayManager, wsServer: WsServer, userId: strin
       authorUsername: rawMsg.author?.username,
       addressOverride: rickReply.addressOverride,
       callerName: rickReply.callerName,
+      messageTimestamp: rawMsg.timestamp ?? rawMsg.edited_timestamp ?? undefined,
     });
     if (rickEnrichment) {
       await applyTokenEnrichment(wsServer, userId, rickEnrichment, {
@@ -709,10 +718,31 @@ httpServer.listen(PORT, HOST, async () => {
   // Global FOMO fan-out poller. Self-gates: idle without a shared FOMO service
   // account (FOMO_REFRESH_TOKEN) or Supabase, so this never crashes the server.
   startFomoPoller(wsServer);
+  // Global FOMO new-join watcher (notable accounts joining fomo.family IS the
+  // signal). Self-gates exactly like the poller above: idle without Supabase
+  // or the shared FOMO refresh token.
+  startFomoJoinWatcher(wsServer);
   // Keeps the FOMO trade log from growing without bound; the console only ever
   // replays the last day of it.
   startFomoRetentionSweeper();
   startMissedRunnerPoller(wsServer);
+  // Revival ignition alerts (ATR-gate detector over GeckoTerminal candles).
+  // Runs in BOTH modes: local reads the JSON contract log, hosted the contracts
+  // table. Keyless upstream, in-memory cooldowns, gated by OCT_REVIVAL_ENABLED.
+  startRevivalPoller(wsServer);
+  // Trade journal: own-wallet swap ingestion (Helius) + FIFO position pairing.
+  // Runs in BOTH modes; self-gates on HELIUS_API_KEY (idle without it).
+  startJournalPoller(wsServer);
+  // "Meta dying" volume-collapse alerts for OPEN journal positions. Keyless
+  // DexScreener upstream; an independent signal, never fused with revival.
+  startJournalVolumeDeathPoller(wsServer);
+  // Global pump.fun KOL-callout fan-out poller. Self-gates on Supabase (idle in
+  // local mode), keyless upstream, so it never crashes the server.
+  startPumpCalloutPoller(wsServer);
+  // On-chain buy/sell alerter for Directory (user_tracked_wallets) SOLANA wallets.
+  // Self-gates on Supabase (idle in local mode), keyless upstream (profile-api),
+  // so it never crashes the server.
+  startWalletMovementPoller(wsServer);
 
   // Records token high-water market caps, which caller quality scores read.
   // Runs in both modes — local keeps peaks in a JSON file so the desktop app
@@ -722,6 +752,11 @@ httpServer.listen(PORT, HOST, async () => {
   // In-process OCT Discord bot. Self-gates on DISCORD_BOT_TOKEN and swallows
   // its own failures, so it can never take the backend down.
   startBot(wsServer);
+
+  // Once-a-day signal digest DMs (opt-in). Self-gates on Supabase + the bot
+  // token; if the process was down at the scheduled hour it waits for the next
+  // one rather than sending a stale digest on boot.
+  startDailyDigestScheduler();
 
   if (!isHostedMode()) {
     const storage = getStorageProvider();

@@ -2,6 +2,7 @@ import { describe, it, expect } from 'vitest';
 import {
   computeLegsPreview,
   describeAbortReason,
+  describeValidationReason,
   estimateFeesPreview,
   isSolAddress,
   parseLadderSplit,
@@ -168,5 +169,44 @@ describe('describeAbortReason', () => {
     // destroys the one string an operator could search the docs for. A money log
     // must stay greppable even when the UI has not caught up with the backend.
     expect(describeAbortReason('some_future_reason')).toBe('some_future_reason');
+  });
+});
+
+describe('describeValidationReason', () => {
+  // Every reason `validateRule` can return, copied from the backend's
+  // ValidationReason union. Kept as a literal list rather than imported so the
+  // two drift loudly: adding a reason on the backend and forgetting the copy
+  // here is the mistake, and an import would hide it.
+  const REASONS = [
+    'no_mint', 'phase_unsupported', 'no_wallets', 'unknown_wallet',
+    'unit_mismatch', 'wallet_chain_mismatch', 'venue_chain_mismatch',
+    'exec_kind_mismatch', 'matcher_too_deep', 'matcher_too_many_nodes',
+    'matcher_regex_invalid', 'ladder_split_empty', 'ladder_split_negative',
+    'ladder_split_not_normalized', 'ladder_split_too_many',
+    'slippage_out_of_range', 'max_attempts_out_of_range',
+    'fire_window_out_of_range', 'max_tweet_age_out_of_range',
+    'mcap_ceiling_out_of_range', 'caps_inconsistent', 'size_over_trigger_cap',
+  ];
+
+  it('explains every reason arming can refuse with', () => {
+    // The bug this guards, and it shipped: arm failures were run through
+    // describeAbortReason, which covers RUNTIME aborts. Only 2 of these 22
+    // overlapped, so the other 20 fell through to `default` and rendered as a
+    // raw enum. A rule saved without a wallet showed `no_wallets` in a
+    // truncated header label, and arm read as a button that did nothing.
+    for (const reason of REASONS) {
+      expect(describeValidationReason(reason), reason).not.toBe(reason);
+    }
+  });
+
+  it('names the field to change, not just the fact of failure', () => {
+    expect(describeValidationReason('no_wallets')).toMatch(/wallet/i);
+    expect(describeValidationReason('size_over_trigger_cap')).toMatch(/size|cap/i);
+  });
+
+  it('still falls through to the raw reason for anything unmapped', () => {
+    // Same principle as the abort reasons: a money log stays greppable even
+    // when the UI has not caught up with the backend.
+    expect(describeValidationReason('some_future_reason')).toBe('some_future_reason');
   });
 });

@@ -14,12 +14,16 @@ export default {
           panel: 'rgb(var(--oct-panel) / <alpha-value>)',
           surface: 'rgb(var(--oct-surface) / <alpha-value>)',
           'surface-raised': 'rgb(var(--oct-surface-raised) / <alpha-value>)',
+          elevated: 'rgb(var(--oct-elevated) / <alpha-value>)',
           border: 'rgb(var(--oct-border) / <alpha-value>)',
           'border-bright': 'rgb(var(--oct-border-bright) / <alpha-value>)',
           text: 'rgb(var(--oct-text) / <alpha-value>)',
           muted: 'rgb(var(--oct-muted) / <alpha-value>)',
           accent: 'rgb(var(--oct-accent) / <alpha-value>)',
           'accent-hover': 'rgb(var(--oct-accent-hover) / <alpha-value>)',
+          'accent-2': 'rgb(var(--oct-accent-2) / <alpha-value>)',
+          'accent-2-hover': 'rgb(var(--oct-accent-2-hover) / <alpha-value>)',
+          'accent-2-dim': 'rgb(var(--oct-accent-2-dim))',
           flame: 'rgb(var(--oct-flame) / <alpha-value>)',
           'accent-dim': 'rgb(var(--oct-accent-dim))',
           live: 'rgb(var(--oct-live) / <alpha-value>)',
@@ -65,6 +69,10 @@ export default {
       },
       borderRadius: {
         cockpit: '0px',
+        // Premium terminal radii — refined, not fully rounded.
+        oct: '10px',
+        'oct-sm': '6px',
+        'oct-lg': '14px',
       },
       borderWidth: {
         3: '3px',
@@ -76,6 +84,10 @@ export default {
         'oct-hard-lg': '6px 6px 0 0 rgb(var(--oct-shadow))',
         'oct-hard-red': '4px 4px 0 0 rgb(var(--oct-accent))',
         'oct-hard-red-sm': '2px 2px 0 0 rgb(var(--oct-accent))',
+        // Soft premium elevation + accent glow.
+        'oct-soft': '0 1px 2px 0 rgb(var(--oct-shadow-soft)), 0 10px 26px -16px rgb(var(--oct-shadow-soft))',
+        'oct-soft-lg': '0 2px 4px 0 rgb(var(--oct-shadow-soft)), 0 24px 48px -24px rgb(var(--oct-shadow-soft))',
+        'oct-glow-accent': '0 0 24px -6px rgb(var(--oct-glow-accent))',
       },
       keyframes: {
         'pulse-live': {

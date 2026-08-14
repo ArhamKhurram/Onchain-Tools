@@ -12,14 +12,14 @@ export default function DiscordBotSection({ form }: { form: SettingsForm }) {
 
   return (
     <div>
-      <h3 className="font-display text-xl sm:text-2xl tracking-tight text-oct-text mb-4">Discord Bot</h3>
+      <h3 className="font-display text-2xl sm:text-3xl tracking-tight text-oct-text mb-4">Discord Bot</h3>
 
       <div className="space-y-5">
-        <div className="brutal-card p-3 sm:p-4">
+        <div className="oct-card p-3 sm:p-4">
           <div className="flex items-start gap-2 mb-2">
             <Bot size={16} className="text-oct-accent mt-0.5 shrink-0" />
             <div>
-              <h4 className="font-mono text-xs font-bold uppercase tracking-[0.15em] text-oct-text">Alert DMs</h4>
+              <h4 className="oct-eyebrow">Alert DMs</h4>
               <p className="text-sm text-oct-muted mt-1">
                 The OCT bot sends alerts straight to your Discord DMs. It messages the Discord
                 account you signed into OCT with — nothing is posted to any server.
@@ -33,7 +33,7 @@ export default function DiscordBotSection({ form }: { form: SettingsForm }) {
             label="Send me alerts on Discord"
           />
 
-          <div className="mt-3 text-xs text-oct-muted rounded-cockpit border-2 border-oct-border bg-oct-surface-raised px-3 py-2 space-y-1">
+          <div className="mt-3 text-xs text-oct-muted rounded-oct border border-oct-border bg-oct-surface-raised px-3 py-2 space-y-1">
             <p>
               <strong className="text-oct-text">Requirements:</strong> sign in to OCT with
               Discord (or link Discord to your account), and share a server with the bot — Discord
@@ -43,8 +43,8 @@ export default function DiscordBotSection({ form }: { form: SettingsForm }) {
           </div>
         </div>
 
-        <div className={`brutal-card p-3 sm:p-4 ${discordBotDm.enabled ? '' : 'opacity-50 pointer-events-none'}`}>
-          <h4 className="font-mono text-xs font-bold uppercase tracking-[0.15em] text-oct-text mb-2">What to DM me</h4>
+        <div className={`oct-card p-3 sm:p-4 ${discordBotDm.enabled ? '' : 'opacity-50 pointer-events-none'}`}>
+          <h4 className="oct-eyebrow mb-2">What to DM me</h4>
           <div className="space-y-2">
             <Toggle
               value={discordBotDm.triggers.highlightedUserContract}
@@ -73,7 +73,7 @@ export default function DiscordBotSection({ form }: { form: SettingsForm }) {
             />
           </div>
 
-          <div className="mt-4 pt-4 border-t-2 border-oct-border">
+          <div className="mt-4 pt-4 border-t border-oct-border">
             <Toggle
               value={discordBotDm.triggers.releaseNotes}
               onChange={(v) => setTrigger('releaseNotes', v)}
@@ -82,6 +82,19 @@ export default function DiscordBotSection({ form }: { form: SettingsForm }) {
             <p className="text-xs text-oct-muted mt-1.5">
               Get a DM when OCT ships an update. This one isn't a market signal, so it's
               separate from the alerts above — leaving it off doesn't affect them.
+            </p>
+          </div>
+
+          <div className="mt-4 pt-4 border-t border-oct-border">
+            <Toggle
+              value={discordBotDm.triggers.dailyDigest}
+              onChange={(v) => setTrigger('dailyDigest', v)}
+              label="Daily digest"
+            />
+            <p className="text-xs text-oct-muted mt-1.5">
+              One DM a day summarizing your last 24h: revival alerts and their peak
+              multiples, the day's top pump.fun callouts, and the caller-board movers.
+              Not a live signal, so it's a separate opt-in like release notes.
             </p>
           </div>
 

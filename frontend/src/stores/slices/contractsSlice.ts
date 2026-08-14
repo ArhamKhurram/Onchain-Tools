@@ -83,6 +83,25 @@ export const createContractsSlice: StateCreator<AppState, [], [], ContractsSlice
       // A Rick embed is the call itself, so it may replace an MC@call that a
       // Dex/GMGN fallback recorded first. Every other source only fills a gap.
       const rickWins = entry.enrichmentSource === 'rick';
+      // Global-first (Rick's cross-server footer) is token-level and
+      // point-in-time: the EARLIEST known first call wins, and it applies to
+      // every row of the address, not just the enriched message's row.
+      const globalFirst = (c: ContractEntry): Partial<ContractEntry> => {
+        const cHas = c.firstCallerName != null || c.firstCallMcapUsd != null || c.firstCallAt != null;
+        const eHas = entry.firstCallerName != null || entry.firstCallMcapUsd != null || entry.firstCallAt != null;
+        let useEntry = eHas;
+        if (cHas && eHas) {
+          const cAt = c.firstCallAt ? new Date(c.firstCallAt).getTime() : NaN;
+          const eAt = entry.firstCallAt ? new Date(entry.firstCallAt).getTime() : NaN;
+          useEntry = Number.isFinite(eAt) && (!Number.isFinite(cAt) || eAt < cAt);
+        }
+        const winner = useEntry ? entry : c;
+        return {
+          firstCallerName: winner.firstCallerName,
+          firstCallMcapUsd: winner.firstCallMcapUsd,
+          firstCallAt: winner.firstCallAt,
+        };
+      };
       const metadataOnly = (c: ContractEntry): Partial<ContractEntry> => ({
         tokenName: c.tokenName ?? entry.tokenName,
         tokenSymbol: c.tokenSymbol ?? entry.tokenSymbol,
@@ -91,6 +110,7 @@ export const createContractsSlice: StateCreator<AppState, [], [], ContractsSlice
         evmChain: c.evmChain ?? entry.evmChain,
         enrichmentSource: c.enrichmentSource ?? entry.enrichmentSource,
         enrichedAt: entry.enrichedAt ?? c.enrichedAt,
+        ...globalFirst(c),
       });
 
       set((state) => ({
@@ -118,6 +138,7 @@ export const createContractsSlice: StateCreator<AppState, [], [], ContractsSlice
             enrichmentSource: entry.enrichmentSource ?? c.enrichmentSource,
             enrichedAt: entry.enrichedAt ?? c.enrichedAt,
             evmChain: entry.evmChain ?? c.evmChain,
+            ...globalFirst(c),
           };
         }),
         addressChains: entry.evmChain

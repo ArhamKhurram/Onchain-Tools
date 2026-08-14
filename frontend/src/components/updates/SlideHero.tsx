@@ -1,4 +1,4 @@
-import { Trophy, Radio, Zap, LayoutGrid, Rocket, Wifi, PieChart } from 'lucide-react';
+import { Trophy, Radio, Zap, LayoutGrid, Rocket, Wifi, PieChart, Flame, Heart, MessageCircle } from 'lucide-react';
 import type { UpdateSlide, UpdateSlideVariant } from '../../data/updates';
 
 function RadarMock() {
@@ -40,6 +40,29 @@ function FomoMock() {
           </span>
         </div>
       ))}
+    </div>
+  );
+}
+
+function PumpMock() {
+  return (
+    <div className="w-full max-w-[280px] mx-auto px-3 py-2.5 rounded border border-oct-border/50 bg-oct-surface/60 space-y-2">
+      <div className="flex items-center gap-2">
+        <span className="h-5 w-5 rounded-full bg-oct-accent/20 border border-oct-accent/40 shrink-0" />
+        <span className="font-mono text-[10px] text-oct-text font-bold">@slingoor</span>
+        <span className="ml-auto font-mono text-[9px] text-oct-live">$TOAD</span>
+      </div>
+      <div className="text-[9px] font-mono text-oct-muted leading-snug">“I will not run this coin.”</div>
+      <div className="flex items-center gap-3 text-[8px] font-mono text-oct-muted">
+        <span>MC@call $25.6K</span>
+        <span className="text-green-400">700×</span>
+        <span className="ml-auto inline-flex items-center gap-0.5">
+          <Heart size={8} /> 214
+        </span>
+        <span className="inline-flex items-center gap-0.5">
+          <MessageCircle size={8} /> 37
+        </span>
+      </div>
     </div>
   );
 }
@@ -98,6 +121,7 @@ function FeedMock() {
 const VARIANT_ICON: Record<UpdateSlideVariant, typeof Rocket> = {
   radar: LayoutGrid,
   fomo: Trophy,
+  pump: Flame,
   convergence: Zap,
   feed: Radio,
   landing: Rocket,
@@ -131,6 +155,7 @@ export function SlideHero({ slide }: { slide: UpdateSlide }) {
       <div className="relative z-10 w-full">
         {slide.variant === 'radar' && <RadarMock />}
         {slide.variant === 'fomo' && <FomoMock />}
+        {slide.variant === 'pump' && <PumpMock />}
         {slide.variant === 'convergence' && <ConvergenceMock />}
         {slide.variant === 'feed' && <FeedMock />}
         {slide.variant === 'portfolio' && <PortfolioMock />}

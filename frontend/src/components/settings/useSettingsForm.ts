@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { useAppStore } from '../../stores/appStore';
 import type { SolPlatform, EvmPlatform, ContractClickAction, BadgeClickAction, KeywordPattern, KeywordMatchMode, SoundSettings, SoundType, SoundConfig, PushoverPriority, PushoverSound, PushoverTriggers, PushoverFilters, MessageDisplay, FeedChromePreset, SplitLayout, MissedRunnerConfig, MissedRunnerNotifyVia, ToastPosition, DiscordBotDmConfig, CallerTierEntry } from '../../types';
 import type { Section } from './constants';
-import { defaultSoundConfig, defaultTriggers, defaultFilters, defaultMissedRunner, defaultDiscordBotDm } from './constants';
+import { defaultSoundConfig, defaultRevivalSoundConfig, defaultTriggers, defaultFilters, defaultMissedRunner, defaultDiscordBotDm } from './constants';
 import { apiBase, authedFetch } from './fields';
 
 const FEED_CHROME_PRESETS: FeedChromePreset[] = ['terminal', 'masthead', 'rail'];
@@ -67,6 +67,9 @@ export function useSettingsForm() {
     contractAlert: { ...defaultSoundConfig },
     keywordAlert: { ...defaultSoundConfig },
     fomoTrade: { ...defaultSoundConfig },
+    pumpCallout: { ...defaultSoundConfig },
+    revival: { ...defaultRevivalSoundConfig },
+    breakout: { ...defaultSoundConfig },
   });
   const [channelSounds, setChannelSounds] = useState<Record<string, SoundConfig>>({});
   const [uploadingSoundType, setUploadingSoundType] = useState<SoundType | null>(null);
@@ -172,6 +175,9 @@ export function useSettingsForm() {
           contractAlert: { ...defaultSoundConfig, ...config.soundSettings.contractAlert },
           keywordAlert: { ...defaultSoundConfig, ...config.soundSettings.keywordAlert },
           fomoTrade: { ...defaultSoundConfig, ...config.soundSettings.fomoTrade },
+          pumpCallout: { ...defaultSoundConfig, ...config.soundSettings.pumpCallout },
+          revival: { ...defaultRevivalSoundConfig, ...config.soundSettings.revival },
+          breakout: { ...defaultSoundConfig, ...config.soundSettings.breakout },
         });
       }
       setChannelSounds(config.channelSounds ?? {});
@@ -261,7 +267,10 @@ export function useSettingsForm() {
         contractAlert: { ...defaultSoundConfig, ...config.soundSettings.contractAlert },
         keywordAlert: { ...defaultSoundConfig, ...config.soundSettings.keywordAlert },
         fomoTrade: { ...defaultSoundConfig, ...config.soundSettings.fomoTrade },
-      } : { highlight: defaultSoundConfig, contractAlert: defaultSoundConfig, keywordAlert: defaultSoundConfig, fomoTrade: defaultSoundConfig }) ||
+        pumpCallout: { ...defaultSoundConfig, ...config.soundSettings.pumpCallout },
+        revival: { ...defaultRevivalSoundConfig, ...config.soundSettings.revival },
+        breakout: { ...defaultSoundConfig, ...config.soundSettings.breakout },
+      } : { highlight: defaultSoundConfig, contractAlert: defaultSoundConfig, keywordAlert: defaultSoundConfig, fomoTrade: defaultSoundConfig, pumpCallout: defaultSoundConfig, revival: defaultRevivalSoundConfig, breakout: defaultSoundConfig }) ||
       JSON.stringify(channelSounds) !== JSON.stringify(config.channelSounds ?? {}) ||
       pushoverEnabled !== (config.pushover?.enabled ?? false) ||
       pushoverAppToken !== (config.pushover?.appToken ?? '') ||

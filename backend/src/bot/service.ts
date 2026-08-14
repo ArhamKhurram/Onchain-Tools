@@ -10,6 +10,8 @@ import type {
   BotLeaderboardResponse,
   BotNetworkId,
   BotSnapshotResponse,
+  BotThesesResponse,
+  BotThesisEntry,
   BotTokenInfo,
   BotTrackedResponse,
   BotWalletProfile,
@@ -24,8 +26,10 @@ import {
   setCached,
   leaderboardCacheKey,
   hodlersCacheKey,
+  thesesCacheKey,
   LEADERBOARD_TTL_MS,
   HODLERS_TTL_MS,
+  THESES_TTL_MS,
 } from '../fomo/cache.js';
 import { getTokenSnapshot } from '../utils/tokenSnapshot.js';
 
@@ -175,6 +179,106 @@ export function mapTokenInfo(filterJson: any, tokenAddress: string, networkId: n
   };
 }
 
+/**
+ * Pull the array of raw thesis entries out of a FOMO /feed/token/thesis body.
+ * The envelope is unverified against a live response, so try the conventions the
+ * rest of the client uses (responseObject) plus a bare-array/common fallbacks.
+ */
+function extractThesesArray(json: any): any[] {
+  if (Array.isArray(json)) return json;
+  if (!json || typeof json !== 'object') return [];
+  const obj = json.responseObject;
+  if (Array.isArray(obj)) return obj;
+  if (obj && typeof obj === 'object') {
+    if (Array.isArray(obj.theses)) return obj.theses;
+    if (Array.isArray(obj.entries)) return obj.entries;
+    if (Array.isArray(obj.items)) return obj.items;
+  }
+  for (const c of [json.theses, json.data, json.entries, json.items, json.results]) {
+    if (Array.isArray(c)) return c;
+  }
+  return [];
+}
+
+// fomo.family logins are X-based, so a bare handle usually IS the X handle. Some
+// payloads may also carry an explicit twitter field/URL — prefer those.
+// TODO(verify): confirm the real user field aliases against a live thesis response.
+function pickXHandle(user: any): string | null {
+  const raw = firstString(
+    user.twitterHandle,
+    user.twitterUsername,
+    user.xHandle,
+    user.twitter,
+    user.userHandle,
+    user.handle,
+    user.username,
+  );
+  return raw ? raw.replace(/^@/, '') : null;
+}
+
+function buildXUrl(user: any, xHandle: string | null): string | null {
+  const explicit = firstString(user.userTwitterUrl, user.twitterUrl, user.xUrl);
+  if (explicit) return explicit;
+  return xHandle ? `https://x.com/${xHandle}` : null;
+}
+
+/**
+ * Parse a FOMO /feed/token/thesis payload into BotThesisEntry rows. Best-effort
+ * and defensive: reads several field aliases, coerces numeric strings, narrows
+ * away the raw `[k]: any` junk, and drops entries that carry no user (per the
+ * feature contract) instead of throwing. thesis = comment > text.
+ */
+export function mapTheses(thesisJson: any): BotThesisEntry[] {
+  const rows = extractThesesArray(thesisJson);
+  const out: BotThesisEntry[] = [];
+  for (const row of rows) {
+    if (!row || typeof row !== 'object') continue;
+
+    // Identity is TOP-LEVEL on the real /feed/token/thesis item (userHandle /
+    // displayName), NOT nested under row.user — the original guess required a
+    // row.user object and so dropped every real row. Support the nested shape
+    // as a fallback, prefer the real top-level fields.
+    const user = (row.user ?? row.trader ?? row.profile ?? row) as any;
+    const handle = firstString(
+      row.userHandle,
+      row.displayName,
+      user.displayName,
+      user.userHandle,
+      user.username,
+      user.name,
+      user.handle,
+    );
+    if (!handle) continue; // no identity → drop
+
+    // `comment` is an OBJECT ({ comment: "text", ... }) on the real feed, not a
+    // bare string. Read the nested text first, then the guessed-shape fallbacks.
+    const thesis =
+      (row.comment && typeof row.comment === 'object'
+        ? firstString(row.comment.comment, row.comment.text)
+        : firstString(row.comment)) ?? firstString(row.text);
+
+    // Position value and PnL live under authorTrade on the real feed.
+    const trade = (row.authorTrade ?? null) as any;
+    const valueUsd = asNumber(trade?.usdValue) ?? asNumber(row.value) ?? 0;
+    const pnlUsd =
+      asNumber(trade?.unrealizedPnlUsd) != null || asNumber(trade?.realizedPnlUsd) != null
+        ? (asNumber(trade?.unrealizedPnlUsd) ?? 0) + (asNumber(trade?.realizedPnlUsd) ?? 0)
+        : asNumber(row.pnl) ?? 0;
+
+    const xHandle = pickXHandle(user);
+    out.push({
+      handle,
+      xHandle,
+      xUrl: buildXUrl(user, xHandle),
+      avatar: firstString(row.profilePictureLink, user.profilePictureLink, user.avatar, user.pfp, user.image),
+      valueUsd,
+      pnlUsd,
+      thesis: (thesis ?? '').trim(),
+    });
+  }
+  return out;
+}
+
 // --- Fetchers --------------------------------------------------------------
 
 async function requireFomoClient(): Promise<FomoClientLike> {
@@ -263,6 +367,60 @@ export async function getBotHolders(
     networkId: resolved,
     explorerBase: EXPLORER_BASE[resolved] ?? EXPLORER_BASE[DEFAULT_NETWORK_ID],
     holders,
+  };
+}
+
+/**
+ * Written theses for a token: each row is a FOMO trader's position, PnL and
+ * text. Pass `networkId: null` to let the address decide the chain — the thesis
+ * endpoint is single-network (unlike the batched holders call), so an `0x…`
+ * address probes each EVM chain in turn and stops at the first that has theses.
+ * Empty is a normal result (nobody wrote one), so this never throws not_found;
+ * it only throws upstream when *every* probed network failed to respond 2xx.
+ */
+export async function getBotTheses(
+  tokenAddress: string,
+  networkId: BotNetworkId | null,
+): Promise<BotThesesResponse> {
+  const client = await requireFomoClient();
+  const candidates = networkId != null ? [networkId] : candidateNetworkIds(tokenAddress);
+
+  let resolved: BotNetworkId = candidates[0]!;
+  let theses: BotThesisEntry[] = [];
+  let sawOk = false;
+  let lastStatus: number | undefined;
+
+  for (const id of candidates) {
+    const cacheKey = thesesCacheKey(id, tokenAddress);
+    let entries = getCached<BotThesisEntry[]>(cacheKey);
+    if (!entries) {
+      // threshold 0 = no minimum position filter, so we surface EVERY thesis.
+      // The client default (1000) silently hid theses from smaller positions —
+      // there's no reason to limit; the point of the view is to read them all.
+      const result = await client.getTokenTheses(tokenAddress, id, 0);
+      lastStatus = result.status;
+      if (!result.status || result.status < 200 || result.status >= 300) {
+        continue; // this chain failed — try the next candidate
+      }
+      entries = mapTheses(result.json);
+      setCached(cacheKey, entries, THESES_TTL_MS);
+    }
+    sawOk = true;
+    // Whichever candidate actually has theses is the chain the token lives on.
+    if (entries.length > theses.length) {
+      theses = entries;
+      resolved = id;
+    }
+    if (theses.length > 0) break;
+  }
+
+  // Never got a 2xx from any candidate → surface as an upstream failure (502).
+  if (!sawOk) assertUpstreamOk(lastStatus, 'theses');
+
+  return {
+    networkId: resolved,
+    explorerBase: EXPLORER_BASE[resolved] ?? EXPLORER_BASE[DEFAULT_NETWORK_ID],
+    theses,
   };
 }
 

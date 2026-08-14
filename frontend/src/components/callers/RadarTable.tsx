@@ -1,6 +1,9 @@
 import { useEffect, useMemo, useState } from 'react';
-import { RefreshCw, Copy, Check, Users, ChevronUp, ChevronDown, Eye, EyeOff } from 'lucide-react';
+import { RefreshCw, Copy, Check, Users, Eye, EyeOff } from 'lucide-react';
 import { useAppStore } from '../../stores/appStore';
+import { SortHeader } from '../common/SortHeader';
+import { useSort } from '../../hooks/useSort';
+import { compareNumeric, compareText, type SortDir } from '../../lib/sort';
 import { useFomoHolderOverlap } from '../../hooks/useFomoHolderOverlap';
 import SignalConvergenceBadge from '../SignalConvergenceBadge';
 import {
@@ -16,6 +19,7 @@ import {
   type RadarColumnId,
 } from './radarColumns';
 import { isHostedMode, getAccessToken } from '../../lib/supabase';
+import { useNetworkFirstScans, type NetworkFirstScan } from '../../hooks/useNetworkFirstScans';
 import { useCallerQuality, type CallerQuality } from '../../hooks/useCallerQuality';
 import {
   BAND_DOT_CLASS,
@@ -67,6 +71,11 @@ interface RadarRow {
   bestRank: number;
   /** Every caller on this token is muted — the row is pure slop by your own rules. */
   allMuted: boolean;
+  // Rick's cross-server first-caller footer, earliest reading across this
+  // token's rows ("espadabtw @ 49.3K · 86x · 10h" → name, mcap, absolute ms).
+  rickFirstCallerName?: string;
+  rickFirstCallMcapUsd?: number;
+  rickFirstCallAtMs?: number;
 }
 
 interface LiveMc {
@@ -163,6 +172,24 @@ function buildRadar(
       row.allMuted = false;
     }
 
+    // Rick's global-first footer is token-level; keep the earliest reading.
+    // A timestamped reading beats an untimestamped one, an earlier timestamp
+    // beats a later one, and the first untimestamped reading otherwise sticks.
+    if (c.firstCallerName != null || c.firstCallMcapUsd != null || c.firstCallAt != null) {
+      const atMs = c.firstCallAt ? new Date(c.firstCallAt).getTime() : NaN;
+      const hasAt = Number.isFinite(atMs);
+      const rowHasAt = row.rickFirstCallAtMs != null;
+      const rowHasAny =
+        row.rickFirstCallerName != null || row.rickFirstCallMcapUsd != null || rowHasAt;
+      const wins =
+        !rowHasAny || (hasAt && (!rowHasAt || atMs < (row.rickFirstCallAtMs as number)));
+      if (wins) {
+        row.rickFirstCallerName = c.firstCallerName;
+        row.rickFirstCallMcapUsd = c.firstCallMcapUsd;
+        row.rickFirstCallAtMs = hasAt ? atMs : undefined;
+      }
+    }
+
     row.mentions += 1;
     row.timestamps.push(ts);
     row.callers.add(c.authorId);
@@ -184,7 +211,18 @@ function buildRadar(
     const sorted = [...group].sort(
       (a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime(),
     );
-    const withMc = sorted.find((c) => c.fdvAtCall != null && c.fdvAtCall > 0);
+    // MC@call is the FIRST call's market cap. Take the earliest row that has an
+    // FDV, but only if it was captured close to first-seen — otherwise a repeat
+    // mention hours later (which now gets its own FDV) would have its live MC
+    // stamped onto the original call, turning an honest blank into a wrong
+    // denominator in the multiple. Missing beats wrong.
+    const firstMs = new Date(sorted[0].timestamp).getTime();
+    const withMc = sorted.find(
+      (c) =>
+        c.fdvAtCall != null &&
+        c.fdvAtCall > 0 &&
+        new Date(c.timestamp).getTime() - firstMs <= MC_AT_CALL_MAX_LAG_MS,
+    );
     if (withMc) {
       row.mcAtCall = withMc.fdvAtCall;
       row.mcAtCallDisplay = withMc.fdvAtCallDisplay;
@@ -193,6 +231,54 @@ function buildRadar(
 
   return [...map.values()];
 }
+
+// An FDV counts as the group's MC@call only if captured within this of the
+// first mention — the arrival burst of one call event, not a re-mention hours
+// later. Beyond it, the group's MC@call stays blank rather than borrowing a
+// later row's live market cap.
+const MC_AT_CALL_MAX_LAG_MS = 900_000; // 15 min
+
+interface GlobalFirstPick {
+  /** Who saw it first — a Rick-named caller, or the anonymous pool. */
+  label: string;
+  mcapUsd?: number;
+  atMs?: number;
+}
+
+/**
+ * Best available global-first info, most-informative first: Rick's
+ * cross-server footer (names the caller), else the anonymous network pool.
+ * When both exist the EARLIER sighting wins; a Rick reading without a
+ * timestamp can't be compared, so Rick's richer data is preferred.
+ */
+function pickGlobalFirst(r: RadarRow, net?: NetworkFirstScan): GlobalFirstPick | null {
+  const rickHas =
+    r.rickFirstCallerName != null || r.rickFirstCallMcapUsd != null || r.rickFirstCallAtMs != null;
+  const rick: GlobalFirstPick | null = rickHas
+    ? {
+        label: r.rickFirstCallerName ?? 'rick',
+        mcapUsd: r.rickFirstCallMcapUsd,
+        atMs: r.rickFirstCallAtMs,
+      }
+    : null;
+
+  const netAtMs = net ? new Date(net.firstSeenAt).getTime() : NaN;
+  const network: GlobalFirstPick | null =
+    net && Number.isFinite(netAtMs)
+      ? { label: 'network', mcapUsd: net.fdvAtFirst ?? undefined, atMs: netAtMs }
+      : null;
+
+  if (rick && network) {
+    if (rick.atMs != null && network.atMs != null) {
+      return network.atMs < rick.atMs ? network : rick;
+    }
+    return rick;
+  }
+  return rick ?? network;
+}
+
+const GLOBAL_FIRST_TITLE =
+  "Earliest known call/scan: from Rick's cross-server data or the anonymous OCT network pool. Never reveals which group or user saw it.";
 
 type MentionWindow = '15m' | '1h' | '4h';
 
@@ -210,13 +296,16 @@ type SortKey =
   | 'groups'
   | 'windowMentions'
   | 'firstCaller'
+  | 'globalFirst'
   | 'mcAtCall'
   | 'mcNow'
   | 'mult'
   | 'quality'
   | 'recent';
 
-type SortDir = 'asc' | 'desc';
+// Text columns read better opened A→Z; every numeric column opens descending
+// (biggest on top). Module-level so useSort's memoised handler stays stable.
+const RADAR_ASC_FIRST: readonly SortKey[] = ['token', 'firstCaller'];
 
 function WindowMentionsHeader({
   window: mentionWindow,
@@ -230,7 +319,7 @@ function WindowMentionsHeader({
   onSort: (key: SortKey) => void;
 }) {
   return (
-    <SortHeader
+    <SortHeader<SortKey>
       label={mentionWindow}
       sortKey="windowMentions"
       activeKey={sortKey}
@@ -238,49 +327,6 @@ function WindowMentionsHeader({
       onSort={onSort}
       align="right"
     />
-  );
-}
-
-function SortHeader({
-  label,
-  sortKey,
-  activeKey,
-  dir,
-  onSort,
-  align = 'left',
-}: {
-  label: string;
-  sortKey: SortKey;
-  activeKey: SortKey;
-  dir: SortDir;
-  onSort: (key: SortKey) => void;
-  align?: 'left' | 'right';
-}) {
-  const active = activeKey === sortKey;
-  return (
-    <th className={`px-3 py-2 font-medium ${align === 'right' ? 'text-right' : ''}`}>
-      <button
-        type="button"
-        onClick={() => onSort(sortKey)}
-        className={`inline-flex items-center gap-1 uppercase tracking-wider transition-colors ${
-          align === 'right' ? 'flex-row-reverse ml-auto' : ''
-        } ${active ? 'text-oct-accent' : 'text-oct-muted hover:text-oct-text'}`}
-      >
-        <span>{label}</span>
-        <span className={`inline-flex flex-col -space-y-1 shrink-0 ${active ? 'text-oct-accent' : 'text-oct-muted/60'}`}>
-          <ChevronUp
-            size={10}
-            strokeWidth={2.5}
-            className={active && dir === 'asc' ? 'opacity-100' : 'opacity-35'}
-          />
-          <ChevronDown
-            size={10}
-            strokeWidth={2.5}
-            className={active && dir === 'desc' ? 'opacity-100' : 'opacity-35'}
-          />
-        </span>
-      </button>
-    </th>
   );
 }
 
@@ -379,8 +425,7 @@ export default function RadarTable({ embedded: _embedded = false }: { embedded?:
   const [refreshingRow, setRefreshingRow] = useState<string | null>(null);
   const [windowFilter, setWindowFilter] = useState<'1h' | '4h' | '24h' | 'all'>('24h');
   const [mentionWindow, setMentionWindow] = useState<MentionWindow>('15m');
-  const [sortKey, setSortKey] = useState<SortKey>('recent');
-  const [sortDir, setSortDir] = useState<SortDir>('desc');
+  const { sortKey, sortDir, onSort: handleSort } = useSort<SortKey>('recent', 'desc', RADAR_ASC_FIRST);
   const [copiedAddr, setCopiedAddr] = useState<string | null>(null);
   const [visibleColumns, setVisibleColumns] = useState<Set<RadarColumnId>>(() => loadVisibleRadarColumns());
   const [revealMuted, setRevealMuted] = useState(false);
@@ -394,6 +439,15 @@ export default function RadarTable({ embedded: _embedded = false }: { embedded?:
     () => buildRadar(contracts, qualityForContractGlobal),
     [contracts, qualityForContractGlobal],
   );
+
+  // Anonymous network pool first-seen for the tokens on the radar — one
+  // debounced, batched call; inert outside hosted mode (the hook self-gates).
+  // Sorted so a mere reorder of the table never changes the request set.
+  const radarAddresses = useMemo(
+    () => [...new Set(radarRows.map((r) => r.address))].sort().slice(0, 100),
+    [radarRows],
+  );
+  const networkScans = useNetworkFirstScans(radarAddresses);
 
   // Counted off the unfiltered set so the toggle still shows a number once the
   // rows it refers to have been filtered out.
@@ -410,16 +464,6 @@ export default function RadarTable({ embedded: _embedded = false }: { embedded?:
   const handleVisibleColumnsChange = (cols: Set<RadarColumnId>) => {
     setVisibleColumns(cols);
     saveVisibleRadarColumns(cols);
-  };
-
-  const handleSort = (key: SortKey) => {
-    if (sortKey === key) {
-      setSortDir((d) => (d === 'asc' ? 'desc' : 'asc'));
-    } else {
-      setSortKey(key);
-      const ascFirst: SortKey[] = ['token', 'firstCaller'];
-      setSortDir(ascFirst.includes(key) ? 'asc' : 'desc');
-    }
   };
 
   const handleCopy = (address: string) => {
@@ -450,19 +494,10 @@ export default function RadarTable({ embedded: _embedded = false }: { embedded?:
             return r.lastMentionAt >= cutoff;
           });
 
-    const dir = sortDir === 'asc' ? 1 : -1;
-    const cmpNum = (a: number | undefined | null, b: number | undefined | null) => {
-      const av = a ?? -Infinity;
-      const bv = b ?? -Infinity;
-      if (av === bv) return 0;
-      return av < bv ? -dir : dir;
-    };
-    const cmpStr = (a: string | undefined, b: string | undefined) => {
-      const av = (a ?? '').toLowerCase();
-      const bv = (b ?? '').toLowerCase();
-      if (av === bv) return 0;
-      return av < bv ? -dir : dir;
-    };
+    const cmpNum = (a: number | undefined | null, b: number | undefined | null) =>
+      compareNumeric(a, b, sortDir);
+    const cmpStr = (a: string | undefined, b: string | undefined) =>
+      compareText(a, b, sortDir);
 
     return [...filtered].sort((a, b) => {
       const fomoA = overlaps[a.address.toLowerCase()]?.trackedCount ?? 0;
@@ -503,6 +538,12 @@ export default function RadarTable({ embedded: _embedded = false }: { embedded?:
         case 'firstCaller':
           result = cmpStr(a.firstCaller, b.firstCaller);
           break;
+        case 'globalFirst':
+          result = cmpNum(
+            pickGlobalFirst(a, networkScans[a.address])?.atMs,
+            pickGlobalFirst(b, networkScans[b.address])?.atMs,
+          );
+          break;
         case 'mcAtCall':
           result = cmpNum(a.mcAtCall, b.mcAtCall);
           break;
@@ -523,7 +564,7 @@ export default function RadarTable({ embedded: _embedded = false }: { embedded?:
     });
   }, [
     radarRows, windowFilter, mentionWindow, sortKey, sortDir, liveMc, overlaps,
-    showMuted, revealMuted,
+    showMuted, revealMuted, networkScans,
   ]);
 
   const refreshOne = async (address: string, evmChain?: string) => {
@@ -588,22 +629,24 @@ export default function RadarTable({ embedded: _embedded = false }: { embedded?:
 
   return (
     <div className="h-full flex flex-col min-h-0 bg-oct-bg overflow-hidden">
-      <div className="shrink-0 flex items-center gap-2 px-4 py-2.5 border-b-2 border-black bg-oct-surface">
-        <span className="font-mono text-[10px] font-bold uppercase tracking-widest text-oct-muted">view: tokens</span>
-        {(['1h', '4h', '24h', 'all'] as const).map((w) => (
-          <button
-            key={w}
-            type="button"
-            onClick={() => setWindowFilter(w)}
-            className={`px-2 py-1 rounded-cockpit text-xs font-mono font-bold border-2 transition-all duration-100 ${
-              windowFilter === w
-                ? 'bg-oct-accent text-white border-black shadow-oct-hard-sm'
-                : 'text-oct-muted border-transparent hover:text-oct-text hover:border-oct-border-bright'
-            }`}
-          >
-            {w}
-          </button>
-        ))}
+      <div className="oct-headerbar shrink-0 flex items-center gap-2 px-4 py-2.5">
+        <span className="oct-eyebrow">view: tokens</span>
+        <div className="flex gap-1">
+          {(['1h', '4h', '24h', 'all'] as const).map((w) => (
+            <button
+              key={w}
+              type="button"
+              onClick={() => setWindowFilter(w)}
+              className={`px-2.5 py-1 rounded-oct-sm text-[11px] font-mono font-bold border transition-all ${
+                windowFilter === w
+                  ? 'bg-oct-accent text-white border-oct-accent/50 shadow-oct-glow-accent'
+                  : 'text-oct-muted border-transparent hover:text-oct-text hover:border-oct-border-bright'
+              }`}
+            >
+              {w}
+            </button>
+          ))}
+        </div>
         <RadarSettings
           mentionWindow={mentionWindow}
           onMentionWindowChange={setMentionWindow}
@@ -615,9 +658,9 @@ export default function RadarTable({ embedded: _embedded = false }: { embedded?:
           <button
             type="button"
             onClick={() => setRevealMuted((v) => !v)}
-            className={`flex items-center gap-1.5 px-2 py-1 rounded-cockpit text-xs font-bold uppercase border-2 transition-colors ${
+            className={`flex items-center gap-1.5 px-2.5 py-1 rounded-oct-sm text-[11px] font-mono font-bold uppercase border transition-all ${
               revealMuted
-                ? 'bg-oct-accent text-white border-black'
+                ? 'bg-oct-accent text-white border-oct-accent/50 shadow-oct-glow-accent'
                 : 'text-oct-muted border-oct-border-bright hover:text-oct-text hover:border-oct-text'
             }`}
             title="Tokens only muted callers have posted"
@@ -626,14 +669,14 @@ export default function RadarTable({ embedded: _embedded = false }: { embedded?:
             {mutedOnlyCount} muted
           </button>
         )}
-        <span className="font-mono text-[11px] text-oct-muted">
+        <span className="font-mono text-[11px] font-semibold text-oct-muted tabular-nums">
           {rows.length} tokens
         </span>
         <button
           type="button"
           onClick={refreshAll}
           disabled={refreshing}
-          className="flex items-center gap-1.5 px-2 py-1 rounded-cockpit text-xs font-bold uppercase text-oct-muted hover:text-oct-text border-2 border-oct-border-bright hover:border-oct-text transition-colors"
+          className="oct-icon-btn px-2.5 py-1.5 text-[11px] font-mono font-bold uppercase"
         >
           <RefreshCw size={12} className={refreshing ? 'animate-spin' : ''} />
           refresh
@@ -642,9 +685,9 @@ export default function RadarTable({ embedded: _embedded = false }: { embedded?:
 
       <div className="flex-1 min-h-0 overflow-auto overscroll-contain" style={{ overflowAnchor: 'none' }}>
         <table className="w-full text-left border-collapse min-w-[900px]">
-          <thead className="sticky top-0 bg-oct-surface border-b-2 border-black z-10">
-            <tr className="font-mono text-[10px] font-bold uppercase tracking-wider text-oct-muted">
-              <SortHeader label="Token" sortKey="token" activeKey={sortKey} dir={sortDir} onSort={handleSort} />
+          <thead className="oct-thead sticky top-0 z-10">
+            <tr className="font-mono text-[11px] font-bold uppercase tracking-[0.1em] text-oct-muted">
+              <SortHeader<SortKey> label="Token" sortKey="token" activeKey={sortKey} dir={sortDir} onSort={handleSort} />
               {activeColumns.map((col) =>
                 col === 'windowMentions' ? (
                   <WindowMentionsHeader
@@ -655,14 +698,14 @@ export default function RadarTable({ embedded: _embedded = false }: { embedded?:
                     onSort={handleSort}
                   />
                 ) : (
-                  <SortHeader
+                  <SortHeader<SortKey>
                     key={col}
                     label={RADAR_COLUMN_LABELS[col]}
                     sortKey={col}
                     activeKey={sortKey}
                     dir={sortDir}
                     onSort={handleSort}
-                    align={col === 'firstCaller' ? 'left' : 'right'}
+                    align={col === 'firstCaller' || col === 'globalFirst' ? 'left' : 'right'}
                   />
                 ),
               )}
@@ -695,7 +738,7 @@ export default function RadarTable({ embedded: _embedded = false }: { embedded?:
               return (
                 <tr
                   key={r.address}
-                  className="border-b border-oct-border/50 hover:bg-oct-surface-raised/50 transition-colors"
+                  className="border-b border-oct-border/50 oct-row-hover"
                 >
                   <td className="px-3 py-2">
                     <div className="flex items-center gap-2 min-w-0 max-w-[260px]">
@@ -714,12 +757,12 @@ export default function RadarTable({ embedded: _embedded = false }: { embedded?:
                             {ticker}
                           </span>
                           {tag === 'crowded' && (
-                            <span className="shrink-0 text-[9px] font-mono uppercase px-1.5 py-0.5 rounded-cockpit bg-oct-accent/15 text-oct-accent">
+                            <span className="shrink-0 text-[10px] font-mono font-semibold uppercase px-1.5 py-0.5 rounded-full bg-oct-accent/15 text-oct-accent">
                               crowded
                             </span>
                           )}
                           {tag === 'early' && (
-                            <span className="shrink-0 text-[9px] font-mono uppercase px-1.5 py-0.5 rounded-cockpit bg-green-500/15 text-green-400">
+                            <span className="shrink-0 text-[10px] font-mono font-semibold uppercase px-1.5 py-0.5 rounded-full bg-oct-green/15 text-oct-green">
                               early
                             </span>
                           )}
@@ -740,7 +783,7 @@ export default function RadarTable({ embedded: _embedded = false }: { embedded?:
                         className="shrink-0 p-1 rounded hover:bg-oct-surface text-oct-muted hover:text-oct-text transition-colors"
                         title="Copy address"
                       >
-                        {isCopied ? <Check size={13} className="text-green-400" /> : <Copy size={13} />}
+                        {isCopied ? <Check size={13} className="text-oct-green" /> : <Copy size={13} />}
                       </button>
                     </div>
                   </td>
@@ -800,7 +843,7 @@ export default function RadarTable({ embedded: _embedded = false }: { embedded?:
                                 the radar was the one place that withheld that. */}
                             {r.firstCallerBand && bandIsNotable(r.firstCallerBand) && (
                               <span
-                                className={`text-[9px] font-bold uppercase px-1 py-0.5 rounded-cockpit mr-1 align-middle ${BAND_BADGE_CLASS[r.firstCallerBand]}`}
+                                className={`text-[10px] font-bold uppercase px-1.5 py-0.5 rounded-full mr-1 align-middle ${BAND_BADGE_CLASS[r.firstCallerBand]}`}
                                 title={BAND_TITLE[r.firstCallerBand]}
                               >
                                 {BAND_LABELS[r.firstCallerBand]}
@@ -820,6 +863,32 @@ export default function RadarTable({ embedded: _embedded = false }: { embedded?:
                             {r.mcAtCallDisplay ?? '—'}
                           </td>
                         );
+                      case 'globalFirst': {
+                        const gf = pickGlobalFirst(r, networkScans[r.address]);
+                        return (
+                          <td
+                            key={col}
+                            className="px-3 py-2 font-mono text-xs whitespace-nowrap max-w-[200px] truncate"
+                            title={GLOBAL_FIRST_TITLE}
+                          >
+                            {gf ? (
+                              <>
+                                <span className={gf.label === 'network' ? 'text-oct-muted' : 'text-oct-text'}>
+                                  {gf.label}
+                                </span>
+                                {gf.mcapUsd != null && gf.mcapUsd > 0 && (
+                                  <span className="text-oct-muted"> @ {formatCompact(gf.mcapUsd)}</span>
+                                )}
+                                {gf.atMs != null && (
+                                  <span className="text-oct-muted tabular-nums"> · {timeAgoShort(gf.atMs)}</span>
+                                )}
+                              </>
+                            ) : (
+                              <span className="text-oct-muted">—</span>
+                            )}
+                          </td>
+                        );
+                      }
                       case 'mcNow':
                         return (
                           <td key={col} className="px-3 py-2 text-right font-mono text-sm text-oct-live tabular-nums whitespace-nowrap">
@@ -833,7 +902,7 @@ export default function RadarTable({ embedded: _embedded = false }: { embedded?:
                         return (
                           <td key={col} className="px-3 py-2 text-right font-mono text-sm tabular-nums">
                             {mult != null ? (
-                              <span className={mult >= 1 ? 'text-green-400' : 'text-oct-accent'}>
+                              <span className={mult >= 1 ? 'text-oct-green' : 'text-oct-accent'}>
                                 {mult.toFixed(1)}x
                               </span>
                             ) : (
@@ -877,8 +946,9 @@ export default function RadarTable({ embedded: _embedded = false }: { embedded?:
             })}
             {rows.length === 0 && (
               <tr>
-                <td colSpan={2 + activeColumns.length} className="px-4 py-16 text-center text-sm text-oct-muted">
-                  No tokens in this window. Contracts from Feed will aggregate here.
+                <td colSpan={2 + activeColumns.length} className="px-4 py-20 text-center">
+                  <p className="oct-eyebrow mb-2">Radar</p>
+                  <p className="text-sm text-oct-muted">No tokens in this window. Contracts from Feed will aggregate here.</p>
                 </td>
               </tr>
             )}

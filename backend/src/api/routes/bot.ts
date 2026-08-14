@@ -9,6 +9,7 @@ import {
 } from '../../bot/service.js';
 import { sendServiceError } from '../../bot/errors.js';
 import { AnnounceError, postAnnouncement, type AnnounceKind } from '../../bot/announce.js';
+import { PostError, postToChannel } from '../../bot/post.js';
 import { deliverReleaseNotes } from '../../bot/releaseNotes.js';
 import { getBotClient } from '../../bot/index.js';
 
@@ -129,6 +130,36 @@ export function createBotRouter(): Router {
     }
   });
 
+  // POST /api/v1/bot/post — internal-only, like /announce but caller-addressed:
+  // posts one plain message ({ content and/or embed }) to any channel the bot
+  // can see. Intended callers are machine agents (e.g. the launch tracker)
+  // authenticated by the same OCT_BOT_API_KEY. Unknown channel → 404.
+  router.post('/post', async (req, res) => {
+    const { channelId, content, embed } = req.body ?? {};
+    if (typeof channelId !== 'string' || !channelId.trim()) {
+      return res.status(400).json({ error: 'channelId is required.' });
+    }
+    if (content !== undefined && typeof content !== 'string') {
+      return res.status(400).json({ error: 'content must be a string.' });
+    }
+
+    try {
+      const result = await postToChannel(getBotClient(), { channelId, content, embed });
+      res.json({ posted: true, channelId: result.channelId, messageId: result.messageId });
+    } catch (err) {
+      if (err instanceof PostError) {
+        const status =
+          err.code === 'bot_disabled' ? 503 :
+          err.code === 'invalid' ? 400 :
+          err.code === 'channel_unknown' ? 404 :
+          err.code === 'forbidden' ? 403 :
+          502;
+        return res.status(status).json({ error: err.message });
+      }
+      handleError(res, err, 'Failed to post message');
+    }
+  });
+
   // Health/identity probe for bot consumers (auth check + version discovery).
   router.get('/status', (_req, res) => {
     res.json({
@@ -141,6 +172,7 @@ export function createBotRouter(): Router {
         'GET /tokens/:chain/:address/snapshot',
         'GET /fomo/tracked  (requires X-Discord-User-Id)',
         'POST /announce  { title, description, kind?, imageUrl?, linkUrl? }',
+        'POST /post  { channelId, content?, embed? }',
       ],
     });
   });

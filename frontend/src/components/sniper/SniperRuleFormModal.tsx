@@ -12,9 +12,9 @@ import {
 import type { SnipeRuleDraft } from '../../hooks/useSniperRules';
 
 const FIELD =
-  'w-full px-3 py-2 rounded-cockpit bg-oct-bg border-2 border-oct-border text-sm font-mono text-oct-text placeholder:text-oct-muted/60 focus:outline-none focus:border-oct-accent disabled:opacity-60 disabled:cursor-not-allowed';
-const LABEL = 'block text-xs font-medium text-oct-muted mb-1.5 uppercase tracking-wide';
-const SECTION = 'font-mono text-[10px] font-bold uppercase tracking-widest text-oct-muted border-b-2 border-oct-border pb-1';
+  'oct-input w-full px-3 py-2 text-sm font-mono disabled:opacity-60 disabled:cursor-not-allowed';
+const LABEL = 'block oct-label text-oct-muted mb-1.5 uppercase tracking-wide';
+const SECTION = 'oct-eyebrow border-b border-oct-border pb-1.5';
 
 interface FormState {
   name: string;
@@ -257,18 +257,18 @@ export default function SniperRuleFormModal({
       onClick={() => !submitting && onClose()}
     >
       <div
-        className="w-full max-w-2xl rounded-cockpit border-2 border-black bg-oct-surface shadow-oct-hard-lg overflow-hidden"
+        className="w-full max-w-2xl oct-card oct-card-flush shadow-oct-soft-lg overflow-hidden"
         onClick={(e) => e.stopPropagation()}
       >
-        <div className="flex items-center justify-between px-5 py-4 border-b-2 border-black">
-          <h3 className="text-base font-extrabold uppercase text-oct-text">
+        <div className="oct-headerbar flex items-center justify-between px-5 py-4">
+          <h3 className="oct-section-title text-base uppercase">
             {mode === 'add' ? 'New snipe rule' : 'Edit snipe rule'}
           </h3>
           <button
             type="button"
             onClick={onClose}
             disabled={submitting}
-            className="p-1.5 rounded-md text-oct-muted hover:text-oct-text hover:bg-oct-surface-raised transition-colors disabled:opacity-50"
+            className="oct-icon-btn p-1.5 disabled:opacity-50"
           >
             <X size={18} />
           </button>
@@ -384,7 +384,7 @@ export default function SniperRuleFormModal({
               including fees.
             </p>
             {overTriggerCap && (
-              <p className="text-[11px] font-mono text-oct-accent bg-oct-accent-dim border-2 border-oct-accent rounded-cockpit px-3 py-2">
+              <p className="text-[11px] font-mono text-oct-accent bg-oct-accent-dim border border-oct-accent/50 rounded-oct px-3 py-2">
                 This rule can never fire: the trigger total exceeds its own per-trigger cap ({draft.perTriggerCap}). Arming
                 will be refused with size_over_trigger_cap.
               </p>
@@ -406,9 +406,9 @@ export default function SniperRuleFormModal({
                     key={w.walletId}
                     type="button"
                     onClick={() => toggleWallet(w.walletId)}
-                    className={`px-3 py-2 rounded-cockpit text-xs font-mono font-bold uppercase border-2 transition-colors ${
+                    className={`px-3 py-2 rounded-oct-sm text-xs font-mono font-bold uppercase border transition-all ${
                       values.walletIds.includes(w.walletId)
-                        ? 'border-black bg-oct-accent text-white'
+                        ? 'border-oct-accent/50 bg-oct-accent text-white shadow-oct-glow-accent'
                         : 'border-oct-border text-oct-muted hover:border-oct-border-bright hover:text-oct-text'
                     }`}
                   >
@@ -416,6 +416,17 @@ export default function SniperRuleFormModal({
                   </button>
                 ))}
               </div>
+            )}
+            {/*
+              Saving with no wallet is allowed on purpose — you can draft a rule
+              before the wallets exist. But arming then refuses with
+              `no_wallets`, and nothing here said so, which made the arm button
+              look broken rather than the rule look incomplete.
+            */}
+            {wallets.length > 0 && values.walletIds.length === 0 && (
+              <p className="mt-2 text-xs text-oct-yellow leading-relaxed">
+                No wallet selected. The rule will save as a draft, but it cannot be armed or fired until you pick one.
+              </p>
             )}
           </div>
 
@@ -491,6 +502,15 @@ export default function SniperRuleFormModal({
                   onChange={(e) => set('slippageBps', Number(e.target.value))}
                   className={FIELD}
                 />
+                {/*
+                  Slotshark's own dashboard labels this field "SLIPPAGE (%)" and
+                  wants 50 where we want 5000. Someone reading across the two
+                  UIs will type the other one's number, so show the percent this
+                  actually means rather than making them divide by 100.
+                */}
+                <p className="text-xs text-oct-muted mt-1">
+                  = {+(values.slippageBps / 100).toFixed(2)}% tolerance
+                </p>
               </div>
               <div>
                 <label htmlFor="sniper-rule-tip" className={LABEL}>
@@ -570,7 +590,7 @@ export default function SniperRuleFormModal({
           {/* Trigger — stored, not wired ------------------------------------- */}
           <fieldset
             disabled
-            className="space-y-3 rounded-cockpit border-2 border-oct-border bg-oct-bg/60 p-3 opacity-70"
+            className="space-y-3 rounded-oct border border-oct-border bg-oct-bg/60 p-3 opacity-70"
           >
             <legend className="px-1 font-mono text-[10px] font-bold uppercase tracking-widest text-oct-yellow">
               Trigger — stored, not wired (M2)
@@ -608,16 +628,16 @@ export default function SniperRuleFormModal({
           </fieldset>
 
           {fieldError && (
-            <p className="text-sm text-oct-accent bg-oct-accent-dim border-2 border-oct-accent rounded-cockpit px-3 py-2 font-mono">
+            <p className="text-sm text-oct-flame bg-oct-flame/10 border border-oct-flame/50 rounded-oct px-3 py-2 font-mono">
               {fieldError}
             </p>
           )}
 
           <div className="flex justify-end gap-2 pt-1">
-            <button type="button" onClick={onClose} disabled={submitting} className="brutal-btn-ghost px-4 py-2 text-sm">
+            <button type="button" onClick={onClose} disabled={submitting} className="oct-icon-btn px-4 py-2 text-sm">
               Cancel
             </button>
-            <button type="submit" disabled={submitting} className="brutal-btn px-4 py-2 text-sm">
+            <button type="submit" disabled={submitting} className="oct-btn-primary px-4 py-2 text-sm">
               {submitting ? 'Saving…' : mode === 'add' ? 'Save draft' : 'Save changes'}
             </button>
           </div>

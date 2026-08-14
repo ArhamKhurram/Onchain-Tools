@@ -1,15 +1,16 @@
 import { useEffect, useRef } from 'react';
 import { useAppStore, IS_POPOUT } from '../stores/appStore';
-import { playHighlightSound, playContractAlertSound, playKeywordAlertSound, playFomoTradeSound, playSound } from '../utils/notificationSound';
-import { buildContractUrl } from '../utils/contractUrl';
+import { playHighlightSound, playContractAlertSound, playKeywordAlertSound, playFomoTradeSound, playPumpCalloutSound, playBreakoutSound, playSound } from '../utils/notificationSound';
+import { buildContractUrl, buildRevivalContractUrl, revivalNetworkLabel } from '../utils/contractUrl';
 import { showDesktopNotification } from '../utils/desktopNotification';
 import { fomoTradeDisplay, buildFomoTradeAlertMessage } from '../utils/fomoTradeDisplay';
+import { formatMcap } from '../types/pumpfun';
 import { isDemoMode } from '../demo/demoStore';
 import { isHostedMode, getSupabase } from '../lib/supabase';
 import { isClientGatewayMode } from '../discord/clientGateway';
 import { hasLocalDiscordTokens } from '../discord/tokenStore';
 import { buildStreamMessage, STREAM_POOL } from '../demo/demoData';
-import type { WsIncoming, Alert, FrontendMessage, ContractEntry } from '../types';
+import type { WsIncoming, Alert, FrontendMessage, ContractEntry, RevivalAlertData, BreakoutAlertData, JournalAlertData } from '../types';
 import type { FomoTradeEvent } from '../types/fomo';
 
 let idCounter = 0;
@@ -52,6 +53,8 @@ export function useWebSocket() {
   const setGatewayAuthError = useAppStore((s) => s.setGatewayAuthError);
   const fetchMaskedTokens = useAppStore((s) => s.fetchMaskedTokens);
   const addFomoTrade = useAppStore((s) => s.addFomoTrade);
+  const addRevival = useAppStore((s) => s.addRevival);
+  const bumpJournalRefresh = useAppStore((s) => s.bumpJournalRefresh);
 
   useDemoStream();
 
@@ -236,6 +239,285 @@ export function useWebSocket() {
               addAlert(alert);
               if (cfg?.messageSounds) playFomoTradeSound(cfg.soundSettings?.fomoTrade);
             }
+          } else if (incoming.type === 'pump_callout') {
+            // A followed pump.fun caller posted a callout. `notify` gates the
+            // toast/sound the same way it does for FOMO; the ping always lands
+            // in notification history via addAlert.
+            const d = incoming.data as {
+              calloutId: string;
+              callerAddress: string;
+              username: string | null;
+              avatar: string | null;
+              coinMint: string;
+              symbol: string | null;
+              marketCapUsd: number | null;
+              thesis: string | null;
+              notify?: boolean;
+            };
+            if (!IS_POPOUT) {
+              const who = d.username ? `@${d.username}` : 'A tracked caller';
+              const coin = d.symbol ? `$${d.symbol}` : d.coinMint ? `${d.coinMint.slice(0, 4)}…pump` : 'a coin';
+              const mc = typeof d.marketCapUsd === 'number' ? ` · MC ${formatMcap(d.marketCapUsd)}` : '';
+              const alert: Alert = {
+                id: `pump-callout-${d.calloutId}`,
+                type: 'pump_callout',
+                reason: `${who} called ${coin}`,
+                message: {
+                  id: `pump-callout-${d.calloutId}`,
+                  channelId: 'pump-callout',
+                  guildId: null,
+                  channelName: 'PUMP',
+                  guildName: null,
+                  author: { id: 'oct-pump', username: 'OCT', displayName: 'Pump Callout', avatar: d.avatar ?? null },
+                  content: `${d.thesis ? `${d.thesis} · ` : ''}${coin}${mc}`,
+                  timestamp: new Date().toISOString(),
+                  attachments: [],
+                  embeds: [],
+                  isHighlighted: false,
+                  hasContractAddress: !!d.coinMint,
+                  contractAddresses: d.coinMint ? [d.coinMint] : [],
+                  mentions: {},
+                  platformUrl: d.coinMint ? `https://pump.fun/coin/${d.coinMint}` : undefined,
+                },
+                timestamp: Date.now(),
+              };
+              addAlert(alert);
+              const cfg = useAppStore.getState().config;
+              if (cfg?.messageSounds) playPumpCalloutSound(cfg.soundSettings?.pumpCallout);
+            }
+          } else if (incoming.type === 'fomo_join') {
+            // A notable account just joined fomo.family — their joining IS the
+            // signal (early awareness = free entry). Global broadcast, NORMAL
+            // loudness: notification history + one sound, never the revival
+            // klaxon. Stays independent from FOMO trades / convergence.
+            const d = incoming.data as {
+              feedId: string;
+              fomoUserId: string;
+              fomoHandle: string | null;
+              displayName: string | null;
+              imageUrl: string | null;
+              smartFollowerCount: number;
+              followerCount: number | null;
+              profileUrl: string | null;
+              suppressed?: number;
+            };
+            if (!IS_POPOUT) {
+              const who = d.displayName || (d.fomoHandle ? `@${d.fomoHandle}` : 'A notable account');
+              const more = d.suppressed && d.suppressed > 0 ? ` · +${d.suppressed} more new joins` : '';
+              const smart = d.smartFollowerCount > 0 ? ` · ${d.smartFollowerCount} smart followers already` : '';
+              const alert: Alert = {
+                id: `fomo-join-${d.feedId}`,
+                type: 'fomo_join',
+                reason: `NEW JOIN: ${who} just joined fomo${more}`,
+                message: {
+                  id: `fomo-join-${d.feedId}`,
+                  channelId: 'fomo-join',
+                  guildId: null,
+                  channelName: 'FOMO',
+                  guildName: null,
+                  author: { id: 'oct-fomo', username: 'OCT', displayName: 'FOMO Join', avatar: d.imageUrl ?? null },
+                  content: `${who} just joined fomo.family${smart}${more}`,
+                  timestamp: new Date().toISOString(),
+                  attachments: [],
+                  embeds: [],
+                  isHighlighted: false,
+                  hasContractAddress: false,
+                  contractAddresses: [],
+                  mentions: {},
+                  platformUrl: d.profileUrl ?? undefined,
+                },
+                timestamp: Date.now(),
+              };
+              addAlert(alert);
+              const cfg = useAppStore.getState().config;
+              if (cfg?.messageSounds) playFomoTradeSound(cfg.soundSettings?.fomoTrade);
+            }
+          } else if (incoming.type === 'revival_alert') {
+            // A dormant token on the user's radar just ignited — the loudest
+            // alert class in the app. The banner (with its repeating sound
+            // loop) persists until explicitly dismissed; the ping also lands
+            // in notification history via addAlert. Revival is its own signal:
+            // never fused with convergence / missed-runner / FOMO.
+            const d = incoming.data as RevivalAlertData;
+            if (!IS_POPOUT) {
+              addRevival(d);
+
+              const cfg = useAppStore.getState().config;
+              const sym = d.symbol ? `$${d.symbol}` : `${d.mint.slice(0, 6)}…`;
+              const mc = typeof d.mcapUsd === 'number' ? formatMcap(d.mcapUsd) : '—';
+              const chain = revivalNetworkLabel(d.network);
+              // The alert's own chain decides the link — a Robinhood revival
+              // opened on the EVM template's default chain is a dead page.
+              const url = cfg
+                ? buildRevivalContractUrl(d.mint, d.network, cfg.contractLinkTemplates)
+                : undefined;
+              const alert: Alert = {
+                id: `revival-${d.mint}-${d.triggeredAt}`,
+                type: 'revival',
+                reason: `REVIVAL: ${sym} igniting on ${chain}`,
+                message: {
+                  id: `revival-${d.mint}-${d.triggeredAt}`,
+                  channelId: 'revival',
+                  guildId: null,
+                  channelName: 'REVIVAL',
+                  guildName: null,
+                  author: { id: 'oct-revival', username: 'OCT', displayName: 'Revival', avatar: null },
+                  content: `${sym} igniting on ${chain} — mcap ${mc}, RVOL ${d.rvol.toFixed(1)}x, ATR z ${d.atrZ.toFixed(1)}`,
+                  timestamp: d.triggeredAt,
+                  attachments: [],
+                  embeds: [],
+                  isHighlighted: false,
+                  hasContractAddress: true,
+                  contractAddresses: [d.mint],
+                  mentions: {},
+                  platformUrl: url,
+                },
+                timestamp: Date.now(),
+              };
+              addAlert(alert);
+            }
+          } else if (incoming.type === 'breakout_alert') {
+            // Revival's quieter sibling: a token that consolidated near its
+            // highs just ignited. One presentation tier BELOW revival by
+            // design — a standard auto-dismissing toast + notification-history
+            // entry (amber, via alertDisplay) and a single sound, never the
+            // persistent banner or the repeating klaxon. Breakout is its own
+            // signal: never fused with revival or anything else.
+            const d = incoming.data as BreakoutAlertData;
+            if (!IS_POPOUT) {
+              const cfg = useAppStore.getState().config;
+              const sym = d.symbol ? `$${d.symbol}` : `${d.mint.slice(0, 6)}…`;
+              const mc = typeof d.mcapUsd === 'number' ? formatMcap(d.mcapUsd) : '—';
+              const chain = revivalNetworkLabel(d.network);
+              const dd = typeof d.drawdownFromPeak === 'number' ? `${(d.drawdownFromPeak * 100).toFixed(0)}%` : '?';
+              // Chain-aware link, same rule as revival.
+              const url = cfg
+                ? buildRevivalContractUrl(d.mint, d.network, cfg.contractLinkTemplates)
+                : undefined;
+              const alert: Alert = {
+                id: `breakout-${d.mint}-${d.triggeredAt}`,
+                type: 'breakout',
+                reason: `BREAKOUT: ${sym} igniting at highs on ${chain}`,
+                message: {
+                  id: `breakout-${d.mint}-${d.triggeredAt}`,
+                  channelId: 'breakout',
+                  guildId: null,
+                  channelName: 'BREAKOUT',
+                  guildName: null,
+                  author: { id: 'oct-breakout', username: 'OCT', displayName: 'Breakout', avatar: null },
+                  content: `${sym} breaking out on ${chain} — mcap ${mc}, RVOL ${d.rvol.toFixed(1)}x, ATR z ${d.atrZ.toFixed(1)}, ${dd} off peak`,
+                  timestamp: d.triggeredAt,
+                  attachments: [],
+                  embeds: [],
+                  isHighlighted: false,
+                  hasContractAddress: true,
+                  contractAddresses: [d.mint],
+                  mentions: {},
+                  platformUrl: url,
+                },
+                timestamp: Date.now(),
+              };
+              addAlert(alert);
+              if (cfg?.messageSounds) playBreakoutSound(cfg.soundSettings?.breakout);
+            }
+          } else if (incoming.type === 'journal_alert') {
+            // "Meta dying": an OPEN journal position's volume is collapsing
+            // while the operator still holds. Toast + notification history at
+            // NORMAL loudness (never the revival klaxon). This is its own
+            // independent signal — never fused with revival/breakout/etc.
+            const d = incoming.data as JournalAlertData;
+            bumpJournalRefresh();
+            if (!IS_POPOUT) {
+              const sym = d.symbol ? `$${d.symbol}` : `${d.mint.slice(0, 6)}…`;
+              const held =
+                typeof d.positionValueUsd === 'number'
+                  ? ` — holding ~$${d.positionValueUsd >= 1000 ? `${(d.positionValueUsd / 1000).toFixed(1)}K` : d.positionValueUsd.toFixed(0)}`
+                  : '';
+              const alert: Alert = {
+                id: `journal-${d.mint}-${d.triggeredAt}`,
+                type: 'journal',
+                reason: `META DYING: ${sym} volume collapsing while you hold`,
+                message: {
+                  id: `journal-${d.mint}-${d.triggeredAt}`,
+                  channelId: 'journal',
+                  guildId: null,
+                  channelName: 'JOURNAL',
+                  guildName: null,
+                  author: { id: 'oct-journal', username: 'OCT', displayName: 'Journal', avatar: null },
+                  content: `${sym} volume dying${held} — m5 rate ${(d.m5RateVsH1 * 100).toFixed(0)}% of h1, h1 rate ${(d.h1RateVsH6 * 100).toFixed(0)}% of h6`,
+                  timestamp: d.triggeredAt,
+                  attachments: [],
+                  embeds: [],
+                  isHighlighted: false,
+                  hasContractAddress: true,
+                  contractAddresses: [d.mint],
+                  mentions: {},
+                  platformUrl: `https://dexscreener.com/solana/${d.mint}`,
+                },
+                timestamp: Date.now(),
+              };
+              addAlert(alert);
+            }
+          } else if (incoming.type === 'journal_update') {
+            // New journal trades landed server-side — refresh signal only.
+            bumpJournalRefresh();
+          } else if (incoming.type === 'wallet_movement') {
+            // A tracked Directory (user_tracked_wallets) SOLANA wallet made an
+            // on-chain buy/sell. `notify` gates the toast/sound (mirrors FOMO);
+            // the ping always lands in notification history via addAlert.
+            const d = incoming.data as {
+              txHash: string;
+              walletAddress: string;
+              side: 'buy' | 'sell' | null;
+              tokenMint: string | null;
+              tokenSymbol: string | null;
+              amount: number | null;
+              solValue: number | null;
+              name: string;
+              emoji: string;
+              alertsOnToast: boolean;
+              notify?: boolean;
+            };
+            if (!IS_POPOUT) {
+              const who = d.name
+                ? `${d.emoji ? `${d.emoji} ` : ''}${d.name}`
+                : `${d.walletAddress.slice(0, 4)}…${d.walletAddress.slice(-4)}`;
+              const verb = d.side === 'sell' ? 'sold' : d.side === 'buy' ? 'bought' : 'traded';
+              const coin = d.tokenSymbol
+                ? `$${d.tokenSymbol}`
+                : d.tokenMint
+                  ? `${d.tokenMint.slice(0, 4)}…`
+                  : 'a token';
+              const sol = typeof d.solValue === 'number' ? ` · ${d.solValue.toFixed(2)} SOL` : '';
+              const alert: Alert = {
+                id: `wallet-movement-${d.txHash}`,
+                type: 'wallet_movement',
+                reason: `${who} ${verb} ${coin}`,
+                message: {
+                  id: `wallet-movement-${d.txHash}`,
+                  channelId: 'wallet-movement',
+                  guildId: null,
+                  channelName: 'WALLET',
+                  guildName: null,
+                  author: { id: 'oct-wallet', username: 'OCT', displayName: 'Wallet Movement', avatar: null },
+                  content: `${who} ${verb} ${coin}${sol}`,
+                  timestamp: new Date().toISOString(),
+                  attachments: [],
+                  embeds: [],
+                  isHighlighted: false,
+                  hasContractAddress: !!d.tokenMint,
+                  contractAddresses: d.tokenMint ? [d.tokenMint] : [],
+                  mentions: {},
+                  platformUrl: d.tokenMint ? `https://pump.fun/coin/${d.tokenMint}` : undefined,
+                },
+                timestamp: Date.now(),
+              };
+              addAlert(alert);
+              if (d.notify) {
+                const cfg = useAppStore.getState().config;
+                if (cfg?.messageSounds) playFomoTradeSound(cfg.soundSettings?.fomoTrade);
+              }
+            }
           } else if (incoming.type === 'gateway_auth_failed') {
             if (!skipDiscordWs) {
               setGatewayAuthError(
@@ -271,5 +553,5 @@ export function useWebSocket() {
       clearTimeout(reconnectTimer);
       wsRef.current?.close();
     };
-  }, [addMessage, updateMessage, markMessageDeleted, addAlert, setConnected, updateReaction, addContract, enrichContract, updateContractChain, fetchGuilds, fetchDMChannels, fetchHistory, fetchTelegramChats, checkAuth, setGatewayAuthError, fetchMaskedTokens, addFomoTrade]);
+  }, [addMessage, updateMessage, markMessageDeleted, addAlert, setConnected, updateReaction, addContract, enrichContract, updateContractChain, fetchGuilds, fetchDMChannels, fetchHistory, fetchTelegramChats, checkAuth, setGatewayAuthError, fetchMaskedTokens, addFomoTrade, addRevival, bumpJournalRefresh]);
 }

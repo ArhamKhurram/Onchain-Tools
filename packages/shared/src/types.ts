@@ -205,6 +205,13 @@ export interface DiscordBotTriggers {
    * changelog posts.
    */
   releaseNotes: boolean;
+  /**
+   * Once-a-day signal digest DM (revival alert outcomes, top pump.fun
+   * callouts, caller-board movers). Like releaseNotes this is not a live
+   * market signal, so it is its own opt-in — turning on alert DMs is not
+   * asking for a daily summary. Default off.
+   */
+  dailyDigest: boolean;
 }
 
 export interface DiscordBotDmConfig {
@@ -241,7 +248,7 @@ export interface ContractLinkTemplates {
   evmPlatform: EvmPlatform;
 }
 
-export type SoundType = 'highlight' | 'contractAlert' | 'keywordAlert' | 'fomoTrade';
+export type SoundType = 'highlight' | 'contractAlert' | 'keywordAlert' | 'fomoTrade' | 'pumpCallout' | 'revival' | 'breakout';
 
 export interface SoundConfig {
   enabled: boolean;
@@ -249,9 +256,319 @@ export interface SoundConfig {
   useCustom: boolean;
   customSoundUrl?: string;
   presetSound?: string;
+  /**
+   * Revival only: keep re-playing the sound every few seconds until the alert
+   * banner is dismissed (capped client-side). Ignored by every other SoundType.
+   */
+  repeatUntilDismissed?: boolean;
 }
 
 export type SoundSettings = Record<SoundType, SoundConfig>;
+
+// ---------------------------------------------------------------------------
+// Revival ignition alerts (WS frame `revival_alert`)
+// ---------------------------------------------------------------------------
+
+/**
+ * Payload of the `revival_alert` WS frame — a dormant token on the user's
+ * radar just ignited (ATR-gate detector; see backend/src/revival/detector.ts).
+ * This is its own independent signal: never fused with convergence,
+ * missed-runner, or FOMO detections.
+ */
+export interface RevivalAlertData {
+  /** Token address — a Solana mint, or an EVM contract on `network`. */
+  mint: string;
+  /**
+   * GeckoTerminal network id the detection ran on ('solana' | 'bsc' |
+   * 'robinhood'). Needed to open the token on the right chain and to re-fetch
+   * its candles for outcome tracking. See REVIVAL_NETWORKS in contract.ts.
+   */
+  network: string;
+  symbol: string | null;
+  /** Last 1m close in USD, if known. */
+  price: number | null;
+  /** Market-cap estimate in USD (implied supply × last price), if known. */
+  mcapUsd: number | null;
+  /** ATR% expansion z-score vs the token's own trailing baseline. */
+  atrZ: number;
+  /** Last-5m volume vs trailing 24h per-5m average. */
+  rvol: number;
+  /**
+   * Pre-ignition baseline price (median hourly close over the dormant window
+   * that qualified the token), USD. Null when it could not be established.
+   */
+  baselinePrice: number | null;
+  /**
+   * price / baselinePrice at the moment of the alert — how far the token had
+   * ALREADY run when it fired. Near 1x is an alert at the ignition; a large
+   * value is an alert into an exhausted move, which is what the detector's run
+   * gate now refuses. Surfaced so a late alert is diagnosable, not invisible.
+   */
+  runMultiple: number | null;
+  /** ISO timestamp of the detection. */
+  triggeredAt: string;
+}
+
+/**
+ * Payload of the `breakout_alert` WS frame — a token that consolidated
+ * QUIETLY NEAR ITS HIGHS just ignited. Same detector pass as revival; the
+ * only difference is the drawdown gate: revival requires the token to have
+ * died first (≥35% below its trailing peak), breakout requires that it did
+ * NOT (sub-35% drawdown — the TOAD-plateau shape). Breakout is its own
+ * independent signal, a sibling of revival: routed/displayed alongside it,
+ * never fused with it (or with convergence / missed-runner / FOMO).
+ */
+export interface BreakoutAlertData extends RevivalAlertData {
+  /**
+   * 1 - baselinePrice / trailingPeakPrice at fire time — how little the
+   * consolidation sat below the trailing peak. Always known for a breakout
+   * (the gate requires it); bounded above by the revival drawdown threshold.
+   */
+  drawdownFromPeak: number;
+}
+
+/**
+ * Which signal a persisted alert row came from. Rows written before breakout
+ * existed carry no kind — absent/null means 'revival'.
+ */
+export type RevivalSignalKind = 'revival' | 'breakout';
+
+/**
+ * A persisted revival alert row (JSON log in local mode, `revival_alerts` in
+ * hosted mode). Captures the numbers AT the moment of ignition plus the
+ * outcome fields the 24h tracker fills in afterwards — so a missed alert can
+ * be reviewed later ("it fired at $412K mcap and peaked at 3.1×").
+ *
+ * Breakout alerts share this table/shape (they differ only in the drawdown
+ * gate), discriminated by `kind`.
+ */
+export interface RevivalAlertEntry {
+  id: string;
+  /**
+   * Signal kind the row was fired by. Optional/null on rows written before
+   * breakout existed — treat absent as 'revival'.
+   */
+  kind?: RevivalSignalKind | null;
+  /** Token address — a Solana mint, or an EVM contract on `network`. */
+  mint: string;
+  symbol: string | null;
+  /** GeckoTerminal network id the detection ran on ('solana' | 'bsc' | 'robinhood'). */
+  network: string;
+  /** Price at the moment the alert fired (last 1m close, USD). */
+  priceUsd: number | null;
+  /** Market-cap estimate at the moment the alert fired (USD). */
+  mcapUsd: number | null;
+  atrZ: number;
+  rvol: number;
+  /** Pre-ignition baseline price the run gate measured against (USD). */
+  baselinePriceUsd: number | null;
+  /** priceUsd / baselinePriceUsd at fire time — how far it had already run. */
+  runMultiple: number | null;
+  /**
+   * 1 - baselinePriceUsd / trailing-peak price, as the detector measured it at
+   * fire time — the label the drawdown knobs are calibrated from (the
+   * detector's docs say to move `breakout.minDrawdownFloor` /
+   * `minDrawdownFromPeak` only with labeled cases in hand, and this log IS the
+   * labeled-case set). Breakout rows always carry a measured value in
+   * [breakout floor, revival threshold); revival rows carry ≥ the threshold,
+   * or null when the gate abstained (missing history). Absent on rows written
+   * before the column existed.
+   */
+  drawdownFromPeak?: number | null;
+  /** ISO timestamp of the detection. */
+  triggeredAt: string;
+  // ---- Outcome (filled by the 24h tracker; peak state lives in the row so
+  // ---- tracking survives restarts) ----
+  /** Highest price observed since the alert (USD). */
+  peakPriceUsd: number | null;
+  /** Market-cap at the peak price (USD). */
+  peakMcapUsd: number | null;
+  /** peakPriceUsd / priceUsd-at-alert. */
+  peakMultiple: number | null;
+  /** ISO timestamp of the peak observation. */
+  peakAt: string | null;
+  /** Set once the 24h outcome window ends; null while still tracking. */
+  outcomeWindowClosedAt: string | null;
+}
+
+/** Partial outcome update written by the tracker (only on improvement/close). */
+export type RevivalOutcomePatch = Partial<
+  Pick<
+    RevivalAlertEntry,
+    'peakPriceUsd' | 'peakMcapUsd' | 'peakMultiple' | 'peakAt' | 'outcomeWindowClosedAt'
+  >
+>;
+
+// ---------------------------------------------------------------------------
+// Trade journal (the operator's OWN wallets — distinct from tracked/copy
+// wallets). Solana only in v1. See backend/src/journal/.
+// ---------------------------------------------------------------------------
+
+/**
+ * A wallet the user journals their own trading from. Distinct from
+ * user_tracked_wallets (other people's wallets watched for movement) and
+ * user_holding_wallets (Portfolio's Birdeye views) — the journal ingests raw
+ * swaps via Helius and pairs them into positions itself.
+ */
+export interface JournalWallet {
+  id: string;
+  address: string;
+  label: string | null;
+  /** Solana only in v1. */
+  chain: 'solana';
+  /**
+   * Ingestion cursor: the newest tx signature already ingested. Null until the
+   * first poll completes (which triggers the capped history backfill).
+   */
+  lastSignature: string | null;
+  /** When the poller last completed a cycle for this wallet. */
+  lastPolledAt: string | null;
+  createdAt: string;
+}
+
+export type JournalTradeSide = 'buy' | 'sell';
+
+/**
+ * One normalized swap leg from a journal wallet. Derived from
+ * wallet-perspective balance deltas (NOT Helius events.swap, which is
+ * unreliable on Jupiter routes) — see backend/src/journal/normalize.ts.
+ */
+export interface JournalTrade {
+  id: string;
+  walletId: string;
+  walletAddress: string;
+  mint: string;
+  symbol: string | null;
+  side: JournalTradeSide;
+  /** Token quantity moved (always positive). */
+  amountToken: number;
+  /**
+   * SOL paid (buy) / received (sell), fee-adjusted. Null when the tx paid or
+   * received a stablecoin instead, or when the SOL split of a multi-token
+   * route could not be attributed.
+   */
+  amountSol: number | null;
+  /** USD value of the native leg (stable face value, or SOL × daily price). */
+  amountUsd: number | null;
+  txSignature: string;
+  /** Helius `source` (JUPITER, PUMP_FUN, RAYDIUM, …) when known. */
+  dex: string | null;
+  /** ISO timestamp of the transaction. */
+  ts: string;
+}
+
+export type JournalPositionStatus = 'open' | 'closed';
+
+/**
+ * Why an episode closed.
+ * - `sold`      — the normal FIFO dust close (≤2% of acquired remains).
+ * - `abandoned` — auto-closed as a dead bag: unsellable and untouched for
+ *   days, booked as a sale at ZERO proceeds (backend/src/journal/abandoned.ts).
+ * Null on open episodes and on rows written before the close_reason column.
+ */
+export type JournalCloseReason = 'sold' | 'abandoned';
+
+/**
+ * A FIFO trade episode per (wallet, token): opens on the first buy from flat,
+ * closes when the remaining balance falls under the dust threshold (2% of
+ * total acquired). Realized PnL accrues on each sell against FIFO lots.
+ */
+export interface JournalPosition {
+  /** Deterministic: `${walletId}|${mint}|${openedAt}` — recomputes stably. */
+  id: string;
+  walletId: string;
+  walletAddress: string;
+  mint: string;
+  symbol: string | null;
+  status: JournalPositionStatus;
+  /** Total tokens bought over the episode. */
+  acquiredToken: number;
+  /** Tokens still held (≤ dust threshold once closed). */
+  remainingToken: number;
+  /** Total SOL spent on buys (known legs only). */
+  costSol: number;
+  /** Total USD spent on buys (known legs only). */
+  costUsd: number | null;
+  realizedPnlSol: number;
+  realizedPnlUsd: number | null;
+  /**
+   * True when some leg lacked a SOL/USD value (stable-paid, token-to-token
+   * route, missing price) — realized PnL then under-reports that leg.
+   */
+  pnlIncomplete: boolean;
+  openedAt: string;
+  closedAt: string | null;
+  /** Null while open; null on pre-migration rows (the column is optional). */
+  closeReason: JournalCloseReason | null;
+  lastTradeAt: string;
+  /** Last DexScreener price observed for the mint (volume poller side-writes). */
+  lastPriceUsd: number | null;
+  lastPriceAt: string | null;
+}
+
+/**
+ * Payload of the `journal_alert` WS frame. v1 has one kind: `volume_dying` —
+ * an OPEN journal position whose market volume is collapsing (m5 rate < ratio
+ * × h1 rate AND h1 rate < ratio × h6 rate) while the operator still holds.
+ * This is its own independent signal: never fused with revival/breakout/
+ * convergence/missed-runner/FOMO detections.
+ */
+export interface JournalAlertData {
+  kind: 'volume_dying';
+  mint: string;
+  symbol: string | null;
+  walletAddress: string;
+  /** Rolling DexScreener volume windows (USD, summed across pairs). */
+  m5VolumeUsd: number;
+  h1VolumeUsd: number;
+  h6VolumeUsd: number;
+  /** Per-minute m5 rate ÷ per-minute h1 rate at fire time. */
+  m5RateVsH1: number;
+  /** Per-minute h1 rate ÷ per-minute h6 rate at fire time. */
+  h1RateVsH6: number;
+  /** remainingToken × last price, when a price was available. */
+  positionValueUsd: number | null;
+  triggeredAt: string;
+}
+
+/** One calendar day of realized PnL (journal day list). */
+export interface JournalDayRow {
+  /** YYYY-MM-DD (UTC). */
+  date: string;
+  trades: number;
+  realizedPnlSol: number;
+  realizedPnlUsd: number | null;
+}
+
+/** One point of the cumulative realized PnL curve (per realizing sell). */
+export interface JournalCurvePoint {
+  ts: string;
+  cumSol: number;
+  cumUsd: number | null;
+}
+
+/**
+ * Header stats + curve + day list for the Journal tab. The drawdown fields are
+ * the give-back meter: how far cumulative realized PnL sits below its
+ * all-time high — the run-up→give-back cycle made visible.
+ */
+export interface JournalSummary {
+  totalTrades: number;
+  realized7dSol: number;
+  realized7dUsd: number | null;
+  /** Closed episodes with realizedPnlSol > 0 ÷ all closed episodes (0..1). */
+  winRate: number | null;
+  closedEpisodes: number;
+  openEpisodes: number;
+  cumRealizedSol: number;
+  cumRealizedUsd: number | null;
+  peakCumRealizedSol: number;
+  /** peak − current cumulative realized PnL, ≥ 0. THE give-back meter. */
+  drawdownFromPeakSol: number;
+  drawdownFromPeakUsd: number | null;
+  curve: JournalCurvePoint[];
+  days: JournalDayRow[];
+}
 
 // ---------------------------------------------------------------------------
 // Workspace layout (persisted per user)
@@ -263,7 +580,10 @@ export type WorkspacePanelType =
   | 'radar'
   | 'fomo-feed'
   | 'fomo-leaderboard'
-  | 'token-lookup';
+  | 'token-lookup'
+  | 'pump-following'
+  | 'pump-top-callers'
+  | 'pump-leaderboard';
 
 export interface WorkspacePanelConfig {
   roomId?: string;
@@ -515,6 +835,12 @@ export interface ContractEntry {
   tokenAge?: string;
   enrichmentSource?: 'rick' | 'dexscreener' | 'gmgn';
   enrichedAt?: string;
+  // Global first call (Rick's cross-server footer: "espadabtw @ 49.3K · 86x · 10h").
+  // Point-in-time like fdvAtCall: once recorded, an earlier reading always wins.
+  firstCallerName?: string;
+  firstCallMcapUsd?: number;
+  /** Absolute timestamp of the global first call (message time minus Rick's relative age). */
+  firstCallAt?: string;
 }
 
 // ---------------------------------------------------------------------------

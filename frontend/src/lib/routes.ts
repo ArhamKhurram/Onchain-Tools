@@ -5,6 +5,7 @@ export const routes = {
   callers: '/callers',
   fomo: '/fomo',
   sniper: '/sniper',
+  pumpfun: '/pumpfun',
   // The tracked-wallet directory — formerly '/wallets', which now 301s here
   // (see App.tsx) so old bookmarks survive the rename.
   directory: '/directory',

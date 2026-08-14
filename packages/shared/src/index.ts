@@ -16,8 +16,15 @@ export {
   FOMO_NETWORK_CHAIN_SLUGS,
   chainSlugFromNetworkId,
   chainKindFromNetworkId,
+  REVIVAL_NETWORKS,
+  REVIVAL_NETWORK_CHAIN_SLUGS,
+  REVIVAL_NETWORK_LABELS,
+  isRevivalNetwork,
+  revivalNetworkForChain,
+  revivalNetworkLabel,
+  buildRevivalContractUrl,
 } from './contract.js';
-export type { ContractDetectionResult } from './contract.js';
+export type { ContractDetectionResult, RevivalNetwork } from './contract.js';
 export { processDiscordMessage } from './message.js';
 export type { MessageProcessorContext, MessageGateway } from './message.js';
 
@@ -27,6 +34,8 @@ export type {
   BotTokenInfo,
   BotHolder,
   BotHoldersResponse,
+  BotThesisEntry,
+  BotThesesResponse,
   BotLeaderboardEntry,
   BotLeaderboardResponse,
   BotSnapshotResponse,
@@ -113,6 +122,22 @@ export type {
   SoundType,
   SoundConfig,
   SoundSettings,
+  RevivalAlertData,
+  BreakoutAlertData,
+  RevivalSignalKind,
+  RevivalAlertEntry,
+  RevivalOutcomePatch,
+  // trade journal
+  JournalWallet,
+  JournalTrade,
+  JournalTradeSide,
+  JournalPosition,
+  JournalPositionStatus,
+  JournalCloseReason,
+  JournalAlertData,
+  JournalDayRow,
+  JournalCurvePoint,
+  JournalSummary,
   CallerTier,
   CallerTierEntry,
   AppConfig,

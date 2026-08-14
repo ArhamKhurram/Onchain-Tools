@@ -1,8 +1,13 @@
 import {
   AlertTriangle,
+  Flame,
+  Megaphone,
+  Rocket,
   Search,
+  TrendingDown,
   TrendingUp,
   User,
+  UserPlus,
   Zap,
   type LucideIcon,
 } from 'lucide-react';
@@ -18,6 +23,18 @@ export function alertBorderClass(type: Alert['type']): string {
       return 'border-l-oct-accent';
     case 'keyword_match':
       return 'border-l-orange-400';
+    case 'pump_callout':
+      return 'border-l-purple-400';
+    case 'fomo_join':
+      return 'border-l-teal-400';
+    case 'revival':
+      return 'border-l-red-500';
+    case 'breakout':
+      // Amber/gold — one tier quieter than revival's red by design.
+      return 'border-l-oct-accent-2';
+    case 'journal':
+      // Meta-dying: you're HOLDING this — orange, urgent but not revival-red.
+      return 'border-l-orange-500';
     default:
       return 'border-l-oct-yellow';
   }
@@ -33,6 +50,16 @@ export function alertIcon(type: Alert['type']): LucideIcon {
       return User;
     case 'keyword_match':
       return Search;
+    case 'pump_callout':
+      return Megaphone;
+    case 'fomo_join':
+      return UserPlus;
+    case 'revival':
+      return Flame;
+    case 'breakout':
+      return Rocket;
+    case 'journal':
+      return TrendingDown;
     default:
       return AlertTriangle;
   }
@@ -48,6 +75,16 @@ export function alertIconClass(type: Alert['type']): string {
       return 'text-discord-blurple';
     case 'keyword_match':
       return 'text-orange-400';
+    case 'pump_callout':
+      return 'text-purple-400';
+    case 'fomo_join':
+      return 'text-teal-400';
+    case 'revival':
+      return 'text-red-500';
+    case 'breakout':
+      return 'text-oct-accent-2';
+    case 'journal':
+      return 'text-orange-500';
     default:
       return 'text-discord-yellow';
   }

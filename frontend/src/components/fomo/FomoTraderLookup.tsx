@@ -23,7 +23,7 @@ function signedUsd(value: number): string {
 }
 
 function pnlClass(value: number): string {
-  return value >= 0 ? 'text-green-400' : 'text-oct-accent';
+  return value >= 0 ? 'text-oct-green' : 'text-oct-flame';
 }
 
 function AddressRow({ label, address }: { label: string; address: string }) {
@@ -41,19 +41,19 @@ function AddressRow({ label, address }: { label: string; address: string }) {
 
   return (
     <div className="flex items-center gap-2 min-w-0">
-      <span className="text-[10px] font-bold uppercase font-mono text-oct-muted w-8 shrink-0">
+      <span className="text-[11px] font-bold uppercase font-mono text-oct-muted w-8 shrink-0">
         {label}
       </span>
-      <span className="font-mono text-xs text-oct-text truncate" title={address}>
+      <span className="font-mono text-[13px] text-oct-text truncate" title={address}>
         {address}
       </span>
       <button
         type="button"
         onClick={copy}
-        className="shrink-0 p-1 rounded hover:bg-oct-surface text-oct-muted hover:text-oct-text transition-colors"
+        className="shrink-0 p-1 rounded-oct-sm hover:bg-oct-surface text-oct-muted hover:text-oct-text transition-colors"
         title={`Copy ${label} address`}
       >
-        {copied ? <Check size={12} className="text-green-400" /> : <Copy size={12} />}
+        {copied ? <Check size={12} className="text-oct-green" /> : <Copy size={12} />}
       </button>
     </div>
   );
@@ -72,20 +72,20 @@ export default function FomoTraderLookup() {
     <div className="flex flex-col min-h-0 h-full overflow-hidden">
       <form
         onSubmit={handleSubmit}
-        className="shrink-0 flex items-center gap-2 px-4 py-3 border-b-2 border-black bg-oct-surface"
+        className="oct-headerbar shrink-0 flex items-center gap-2 px-4 py-3"
       >
         <Wallet size={16} className="text-oct-accent shrink-0 hidden sm:block" />
         <input
           value={input}
           onChange={(e) => setInput(e.target.value)}
-          placeholder="FOMO handle or display name…"
+          placeholder="X handle or display name…"
           spellCheck={false}
-          className="flex-1 min-w-0 px-2 py-1.5 rounded-cockpit border-2 border-oct-border-bright bg-oct-bg font-mono text-xs text-oct-text placeholder:text-oct-muted focus:outline-none focus:border-oct-accent"
+          className="oct-input flex-1 min-w-0 px-2.5 py-2 font-mono text-xs"
         />
         <button
           type="submit"
           disabled={loading || input.trim().length === 0}
-          className="shrink-0 flex items-center gap-1 px-3 py-1.5 rounded-cockpit border-2 border-black bg-oct-accent text-white text-xs font-bold uppercase shadow-oct-hard-sm hover:opacity-90 transition-opacity disabled:opacity-40"
+          className="oct-btn-primary shrink-0 px-3.5 py-2 text-xs uppercase disabled:opacity-40"
         >
           {loading ? (
             <span className="w-3 h-3 border-2 border-white border-t-transparent rounded-full animate-spin" />
@@ -98,49 +98,51 @@ export default function FomoTraderLookup() {
 
       <div className="flex-1 min-h-0 overflow-auto">
         {error && (
-          <div className="m-4 px-4 py-3 rounded-cockpit border-2 border-oct-accent bg-oct-accent-dim text-sm text-oct-accent">
+          <div className="m-4 px-4 py-3 rounded-oct border border-oct-flame/40 bg-oct-flame/10 text-sm text-oct-text">
             {error}
           </div>
         )}
 
         {!data && !error && (
-          <div className="flex flex-col items-center justify-center gap-2 py-16 px-6 text-center">
-            <Search size={20} className="text-oct-muted" />
-            <p className="text-sm text-oct-muted">
-              Search any fomo.family trader to see their wallets, holdings and PnL.
+          <div className="flex flex-col items-center justify-center gap-3 py-16 px-6 text-center">
+            <div className="w-14 h-14 rounded-oct-lg border border-oct-border bg-gradient-to-b from-oct-elevated to-oct-surface shadow-oct-soft flex items-center justify-center">
+              <Search size={22} className="text-oct-muted" />
+            </div>
+            <p className="text-sm text-oct-muted max-w-xs leading-relaxed">
+              Search any fomo.family trader by their X handle or display name to see their wallets, holdings and PnL.
             </p>
           </div>
         )}
 
         {data && (
           <div className="p-4 space-y-4">
-            <div className="brutal-card p-4 space-y-3">
+            <div className="oct-card p-4 space-y-3">
               <div className="min-w-0">
-                <div className="font-extrabold text-oct-text truncate">
+                <div className="text-lg font-extrabold text-oct-text truncate">
                   {data.displayName ?? data.handle ?? 'Unknown trader'}
                 </div>
                 {data.handle && (
-                  <div className="text-xs text-oct-muted truncate">@{data.handle}</div>
+                  <div className="text-[13px] text-oct-muted truncate">@{data.handle}</div>
                 )}
               </div>
 
-              <div className="flex flex-wrap gap-x-6 gap-y-2 font-mono text-xs">
+              <div className="flex flex-wrap gap-x-8 gap-y-3 font-mono">
                 <div>
-                  <div className="text-[10px] uppercase text-oct-muted">Portfolio PnL</div>
-                  <div className={`font-bold tabular-nums ${pnlClass(data.portfolioPnlUsd)}`}>
+                  <div className="oct-stat-label">Portfolio PnL</div>
+                  <div className={`text-lg font-bold tabular-nums mt-0.5 ${pnlClass(data.portfolioPnlUsd)}`}>
                     {signedUsd(data.portfolioPnlUsd)}
                   </div>
                 </div>
                 <div>
-                  <div className="text-[10px] uppercase text-oct-muted">Live perp PnL</div>
-                  <div className={`font-bold tabular-nums ${pnlClass(data.livePerpPnlUsd)}`}>
+                  <div className="oct-stat-label">Live perp PnL</div>
+                  <div className={`text-lg font-bold tabular-nums mt-0.5 ${pnlClass(data.livePerpPnlUsd)}`}>
                     {signedUsd(data.livePerpPnlUsd)}
                   </div>
                 </div>
               </div>
 
               {(data.solAddress || data.evmAddress) && (
-                <div className="space-y-1.5 pt-1 border-t-2 border-oct-border">
+                <div className="space-y-1.5 pt-2 border-t border-oct-border">
                   {data.solAddress && <AddressRow label="SOL" address={data.solAddress} />}
                   {data.evmAddress && <AddressRow label="EVM" address={data.evmAddress} />}
                 </div>
@@ -148,22 +150,20 @@ export default function FomoTraderLookup() {
             </div>
 
             <div>
-              <h3 className="text-xs font-extrabold uppercase tracking-wide text-oct-muted mb-2">
-                Top holdings
-              </h3>
+              <h3 className="oct-eyebrow mb-2.5">Top holdings</h3>
               {data.holdings.length === 0 ? (
                 <p className="text-sm text-oct-muted">No open holdings.</p>
               ) : (
-                <ul className="brutal-card divide-y divide-oct-border overflow-hidden">
+                <ul className="oct-card oct-card-flush divide-y divide-oct-border">
                   {data.holdings.map((holding, idx) => (
                     <li
                       key={`${holding.symbol}-${idx}`}
-                      className="flex items-center gap-3 px-4 py-2.5"
+                      className="flex items-center gap-3 px-4 py-3 oct-row-hover"
                     >
-                      <span className="font-bold text-oct-text truncate flex-1 min-w-0">
+                      <span className="text-[15px] font-bold text-oct-text truncate flex-1 min-w-0">
                         {holding.symbol}
                       </span>
-                      <div className="shrink-0 text-right font-mono text-xs tabular-nums">
+                      <div className="shrink-0 text-right font-mono text-[13px] tabular-nums">
                         <div className="text-oct-text">{compactUsd(holding.valueUsd)}</div>
                         <div className={pnlClass(holding.pnlUsd)}>{signedUsd(holding.pnlUsd)}</div>
                       </div>

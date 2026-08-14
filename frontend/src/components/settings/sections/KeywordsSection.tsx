@@ -48,11 +48,11 @@ export default function KeywordsSection({ form }: { form: SettingsForm }) {
   return (
               <>
                 <div>
-                  <h3 className="font-display text-xl sm:text-2xl tracking-tight text-oct-text mb-4">Keywords</h3>
+                  <h3 className="font-display text-2xl sm:text-3xl tracking-tight text-oct-text mb-4">Keywords</h3>
 
                   <div className="space-y-5">
-                    <div className="brutal-card p-3 sm:p-4">
-                      <h4 className="font-mono text-xs font-bold uppercase tracking-[0.15em] text-oct-text mb-2">Keyword Alerts</h4>
+                    <div className="oct-card p-4 sm:p-5">
+                      <h4 className="oct-eyebrow mb-2">Keyword Alerts</h4>
                       <Toggle
                         value={keywordAlertsEnabled}
                         onChange={setKeywordAlertsEnabled}
@@ -60,8 +60,8 @@ export default function KeywordsSection({ form }: { form: SettingsForm }) {
                       />
                     </div>
 
-                    <div className="brutal-card p-3 sm:p-4">
-                      <h4 className="font-mono text-xs font-bold uppercase tracking-[0.15em] text-oct-text mb-2">Global Keyword Patterns</h4>
+                    <div className="oct-card p-4 sm:p-5">
+                      <h4 className="oct-eyebrow mb-2">Global Keyword Patterns</h4>
                       <p className="text-sm text-oct-muted mb-2">
                         Add patterns to match against messages globally. Use <strong className="text-oct-text">Contains</strong> for substring matches, <strong className="text-oct-text">Exact</strong> for whole-word matches, or <strong className="text-oct-text">Regex</strong> for advanced patterns.
                       </p>

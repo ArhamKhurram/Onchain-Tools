@@ -46,6 +46,20 @@ export class ConfigRepo extends BaseRepo {
         ...DEFAULT_SETTINGS.missedRunner,
         ...(settings.missedRunner ?? {}),
       },
+      // Per-key merge so configs saved before a SoundType existed (e.g.
+      // `revival`) still surface that type's defaults.
+      soundSettings: {
+        ...DEFAULT_SETTINGS.soundSettings,
+        ...Object.fromEntries(
+          Object.entries(settings.soundSettings ?? {}).map(([key, value]) => [
+            key,
+            {
+              ...(DEFAULT_SETTINGS.soundSettings as Record<string, unknown>)[key] as object,
+              ...(value as object),
+            },
+          ]),
+        ),
+      },
     };
 
     const tokens = await this.tokens.getTokens(userId);

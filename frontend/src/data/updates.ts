@@ -1,6 +1,7 @@
 export type UpdateSlideVariant =
   | 'radar'
   | 'fomo'
+  | 'pump'
   | 'convergence'
   | 'feed'
   | 'landing'
@@ -23,6 +24,34 @@ export interface UpdateSlide {
  * Add slides here when shipping; users only auto-see ids they haven't dismissed.
  */
 export const UPDATE_SLIDES: UpdateSlide[] = [
+  {
+    id: 'slide-2026-08-09-pump-holders',
+    title: 'Top Holders, Side by Side',
+    description:
+      'Open holders on any Solana token to see two boards at once: the FOMO traders you track, and the coin’s top on-chain holders from pump.fun — wallet, balance, % of supply, and live PnL, straight from chain.',
+    variant: 'pump',
+  },
+  {
+    id: 'slide-2026-08-08-pump-theses',
+    title: 'FOMO Theses',
+    description:
+      'See why traders are in a coin, not just that they are. The new Theses tab surfaces every fomo.family write-up per token — the author, their position and PnL, and the actual thesis text.',
+    variant: 'fomo',
+  },
+  {
+    id: 'slide-2026-08-07-pump-leaderboard',
+    title: 'Pump.fun Leaderboard',
+    description:
+      'Connect your pump.fun account to browse the PnL leaderboard right in the console — daily, weekly, or monthly — and add any trader to your tracker in one tap. Your session stays encrypted server-side.',
+    variant: 'pump',
+  },
+  {
+    id: 'slide-2026-08-06-pump-tab',
+    title: 'Pump.fun Tab',
+    description:
+      'A new Pump.fun tab pulls callouts, live buys and sells, and communities into OCT — every callout shows the caller, the thesis, MC at call, current and peak multiple, plus likes and replies. Sort any column.',
+    variant: 'pump',
+  },
   {
     id: 'slide-2026-07-29-caller-quality',
     title: 'Caller Quality',

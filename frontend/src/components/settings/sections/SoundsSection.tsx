@@ -47,15 +47,15 @@ export default function SoundsSection({ form }: { form: SettingsForm }) {
   return (
               <>
                 <div>
-                  <h3 className="font-display text-base sm:text-lg tracking-tight text-oct-text mb-4">Sounds & Notifications</h3>
+                  <h3 className="font-display text-2xl sm:text-3xl tracking-tight text-oct-text mb-4">Sounds & Notifications</h3>
 
                   <div className="space-y-5">
-                    <div className="brutal-card p-3 sm:p-4">
-                      <h4 className="font-mono text-xs font-bold uppercase tracking-[0.15em] text-oct-text mb-2">On-site toast alerts</h4>
+                    <div className="oct-card p-4 sm:p-5">
+                      <h4 className="oct-eyebrow mb-2">On-site toast alerts</h4>
                       <Toggle
                         value={toastAlertsEnabled}
                         onChange={setToastAlertsEnabled}
-                        label="Show in-app toast popups for highlighted users, contracts, keywords, and convergence"
+                        label="Show in-app toast popups for highlighted users, contracts, keywords, convergence, FOMO trades, and pump callouts"
                       />
                       {toastAlertsEnabled && (
                         <div className="mt-3">
@@ -66,10 +66,10 @@ export default function SoundsSection({ form }: { form: SettingsForm }) {
                                 key={value}
                                 type="button"
                                 onClick={() => setToastPosition(value)}
-                                className={`px-2 py-1.5 rounded-cockpit font-mono text-xs border-2 transition-colors duration-100 ${
+                                className={`px-2 py-1.5 rounded-oct-sm font-mono text-xs border transition-all duration-150 ${
                                   toastPosition === value
-                                    ? 'bg-oct-accent text-white border-oct-accent'
-                                    : 'bg-oct-bg text-oct-muted border-oct-border hover:text-oct-text hover:border-oct-border-bright'
+                                    ? 'bg-oct-accent text-white border-oct-accent/50 shadow-oct-glow-accent'
+                                    : 'bg-oct-surface-raised/40 text-oct-muted border-oct-border hover:text-oct-text hover:border-oct-border-bright'
                                 }`}
                               >
                                 {label}
@@ -80,8 +80,8 @@ export default function SoundsSection({ form }: { form: SettingsForm }) {
                       )}
                     </div>
 
-                    <div className="brutal-card p-3 sm:p-4">
-                      <h4 className="font-mono text-xs font-bold uppercase tracking-[0.15em] text-oct-text mb-2">Desktop Notifications</h4>
+                    <div className="oct-card p-4 sm:p-5">
+                      <h4 className="oct-eyebrow mb-2">Desktop Notifications</h4>
                       <Toggle
                         value={desktopNotifications}
                         onChange={async (v) => {
@@ -98,8 +98,8 @@ export default function SoundsSection({ form }: { form: SettingsForm }) {
                       />
                     </div>
 
-                    <div className="brutal-card p-3 sm:p-4">
-                      <h4 className="font-mono text-xs font-bold uppercase tracking-[0.15em] text-oct-text mb-3">Sound Settings</h4>
+                    <div className="oct-card p-4 sm:p-5">
+                      <h4 className="oct-eyebrow mb-3">Sound Settings</h4>
                       <Toggle
                         value={messageSounds}
                         onChange={setMessageSounds}
@@ -137,10 +137,13 @@ export default function SoundsSection({ form }: { form: SettingsForm }) {
                             ['contractAlert', 'Contract Alert'],
                             ['keywordAlert', 'Keyword Match'],
                             ['fomoTrade', 'FOMO Trade'],
+                            ['pumpCallout', 'Pump Callout'],
+                            ['revival', 'Revival'],
+                            ['breakout', 'Breakout'],
                           ] as [SoundType, string][]).map(([type, label]) => {
                             const sc = soundSettings[type];
                             return (
-                              <div key={type} className="rounded-cockpit border-2 border-oct-border bg-oct-surface-raised px-2 sm:px-3 py-2.5 sm:py-3 space-y-2.5">
+                              <div key={type} className="rounded-oct border border-oct-border bg-oct-surface-raised px-2 sm:px-3 py-2.5 sm:py-3 space-y-2.5">
                                 <div className="flex items-center justify-between">
                                   <div className="flex items-center gap-1.5 sm:gap-2">
                                     <Volume2 size={14} className="text-oct-muted shrink-0" />
@@ -149,7 +152,7 @@ export default function SoundsSection({ form }: { form: SettingsForm }) {
                                   <div className="flex items-center gap-2">
                                     <button
                                       onClick={() => previewSound(type, sc)}
-                                      className="p-1 rounded-cockpit text-oct-muted hover:text-oct-accent hover:bg-oct-surface transition-colors duration-100"
+                                      className="p-1 rounded-oct-sm text-oct-muted hover:text-oct-accent hover:bg-oct-surface transition-colors duration-100"
                                       title="Preview sound"
                                     >
                                       <Play size={14} />
@@ -190,6 +193,29 @@ export default function SoundsSection({ form }: { form: SettingsForm }) {
                                       <span className="font-mono text-[11px] text-oct-muted w-8 text-right">{sc.volume}%</span>
                                     </div>
 
+                                    {type === 'revival' && (
+                                      <div className="flex items-center justify-between gap-3">
+                                        <span className="text-xs text-oct-muted">
+                                          Repeat every ~5s until the revival banner is dismissed
+                                        </span>
+                                        <div
+                                          className={`w-9 h-[18px] rounded-full transition-colors duration-100 relative cursor-pointer shrink-0 ${
+                                            sc.repeatUntilDismissed !== false ? 'bg-oct-green' : 'bg-oct-border-bright'
+                                          }`}
+                                          onClick={() => setSoundSettings((prev) => ({
+                                            ...prev,
+                                            revival: { ...prev.revival, repeatUntilDismissed: !(prev.revival.repeatUntilDismissed !== false) },
+                                          }))}
+                                        >
+                                          <div
+                                            className={`absolute top-[2px] w-[14px] h-[14px] bg-oct-text rounded-full transition-transform duration-100 ${
+                                              sc.repeatUntilDismissed !== false ? 'translate-x-[18px]' : 'translate-x-[2px]'
+                                            }`}
+                                          />
+                                        </div>
+                                      </div>
+                                    )}
+
                                     <div className="space-y-2">
                                       <div className="flex flex-wrap items-center gap-1.5 sm:gap-2">
                                         <span className="font-mono text-[11px] text-oct-muted uppercase tracking-wide">Sound:</span>
@@ -198,10 +224,10 @@ export default function SoundsSection({ form }: { form: SettingsForm }) {
                                             ...prev,
                                             [type]: { ...prev[type], useCustom: false, presetSound: undefined },
                                           }))}
-                                          className={`px-2 py-1 rounded-cockpit border-2 font-mono text-[11px] font-bold uppercase tracking-wide transition-colors duration-100 ${
+                                          className={`px-2 py-1 rounded-oct-sm border font-mono text-[11px] font-bold uppercase tracking-wide transition-colors duration-100 ${
                                             !sc.useCustom && !sc.presetSound
-                                              ? 'bg-oct-accent border-oct-accent text-white'
-                                              : 'bg-oct-bg border-oct-border text-oct-muted hover:text-oct-text hover:border-oct-border-bright'
+                                              ? 'bg-oct-accent border-oct-accent/50 text-white shadow-oct-glow-accent'
+                                              : 'bg-oct-surface-raised/40 border-oct-border text-oct-muted hover:text-oct-text hover:border-oct-border-bright'
                                           }`}
                                         >
                                           Default
@@ -211,10 +237,10 @@ export default function SoundsSection({ form }: { form: SettingsForm }) {
                                             ...prev,
                                             [type]: { ...prev[type], useCustom: false, presetSound: prev[type].presetSound || 'ping' },
                                           }))}
-                                          className={`px-2 py-1 rounded-cockpit border-2 font-mono text-[11px] font-bold uppercase tracking-wide transition-colors duration-100 ${
+                                          className={`px-2 py-1 rounded-oct-sm border font-mono text-[11px] font-bold uppercase tracking-wide transition-colors duration-100 ${
                                             !sc.useCustom && sc.presetSound
-                                              ? 'bg-oct-accent border-oct-accent text-white'
-                                              : 'bg-oct-bg border-oct-border text-oct-muted hover:text-oct-text hover:border-oct-border-bright'
+                                              ? 'bg-oct-accent border-oct-accent/50 text-white shadow-oct-glow-accent'
+                                              : 'bg-oct-surface-raised/40 border-oct-border text-oct-muted hover:text-oct-text hover:border-oct-border-bright'
                                           }`}
                                         >
                                           Preset
@@ -228,10 +254,10 @@ export default function SoundsSection({ form }: { form: SettingsForm }) {
                                               fileInputRef.current?.click();
                                             }
                                           }}
-                                          className={`px-2 py-1 rounded-cockpit border-2 font-mono text-[11px] font-bold uppercase tracking-wide transition-colors duration-100 ${
+                                          className={`px-2 py-1 rounded-oct-sm border font-mono text-[11px] font-bold uppercase tracking-wide transition-colors duration-100 ${
                                             sc.useCustom
-                                              ? 'bg-oct-accent border-oct-accent text-white'
-                                              : 'bg-oct-bg border-oct-border text-oct-muted hover:text-oct-text hover:border-oct-border-bright'
+                                              ? 'bg-oct-accent border-oct-accent/50 text-white shadow-oct-glow-accent'
+                                              : 'bg-oct-surface-raised/40 border-oct-border text-oct-muted hover:text-oct-text hover:border-oct-border-bright'
                                           }`}
                                         >
                                           Custom
@@ -246,7 +272,7 @@ export default function SoundsSection({ form }: { form: SettingsForm }) {
                                                 setSoundSettings((prev) => ({ ...prev, [type]: { ...prev[type], presetSound: preset.id } }));
                                                 previewPreset(preset.id, sc.volume);
                                               }}
-                                              className={`px-2 py-1 rounded-cockpit border-2 font-mono text-[10px] transition-colors duration-100 ${sc.presetSound === preset.id ? 'bg-oct-accent border-oct-accent text-white' : 'bg-oct-bg border-oct-border text-oct-muted hover:text-oct-text hover:border-oct-border-bright'}`}
+                                              className={`px-2 py-1 rounded-oct-sm border font-mono text-[11px] transition-colors duration-100 ${sc.presetSound === preset.id ? 'bg-oct-accent border-oct-accent/50 text-white shadow-oct-glow-accent' : 'bg-oct-surface-raised/40 border-oct-border text-oct-muted hover:text-oct-text hover:border-oct-border-bright'}`}
                                             >
                                               {preset.label}
                                             </button>
@@ -256,11 +282,11 @@ export default function SoundsSection({ form }: { form: SettingsForm }) {
                                       {sc.useCustom && (
                                         <div className="flex items-center gap-2">
                                           {sc.customSoundUrl && (
-                                            <span className="font-mono text-[10px] text-oct-muted truncate">{sc.customSoundUrl.split('/').pop()}</span>
+                                            <span className="font-mono text-[11px] text-oct-muted truncate">{sc.customSoundUrl.split('/').pop()}</span>
                                           )}
                                           <button
                                             onClick={() => { setUploadingSoundType(type); fileInputRef.current?.click(); }}
-                                            className="p-1 rounded-cockpit text-oct-muted hover:text-oct-accent hover:bg-oct-surface transition-colors duration-100"
+                                            className="p-1 rounded-oct-sm text-oct-muted hover:text-oct-accent hover:bg-oct-surface transition-colors duration-100"
                                             title="Upload sound"
                                           >
                                             <Upload size={12} />
@@ -292,8 +318,8 @@ export default function SoundsSection({ form }: { form: SettingsForm }) {
                       )}
                     </div>
 
-                    <div className="brutal-card p-3 sm:p-4">
-                      <h4 className="font-mono text-xs font-bold uppercase tracking-[0.15em] text-oct-text mb-2">Channel Sounds</h4>
+                    <div className="oct-card p-4 sm:p-5">
+                      <h4 className="oct-eyebrow mb-2">Channel Sounds</h4>
                       <p className="text-xs text-oct-muted mb-3">
                         Play a notification sound for every message in specific channels, even when no highlight or keyword matches.
                       </p>
@@ -353,7 +379,7 @@ export default function SoundsSection({ form }: { form: SettingsForm }) {
                             <div className="space-y-2">
                               {Array.from(discordGrouped.entries()).map(([guildName, guildChannels]) => (
                                 <div key={guildName}>
-                                  <p className="font-mono text-[10px] text-oct-muted uppercase tracking-wider mb-1">{guildName}</p>
+                                  <p className="font-mono text-[11px] text-oct-muted uppercase tracking-wider mb-1">{guildName}</p>
                                   <div className="flex flex-wrap gap-1.5">
                                     {guildChannels.map((ch) => {
                                       const active = ch.id in channelSounds;
@@ -374,7 +400,7 @@ export default function SoundsSection({ form }: { form: SettingsForm }) {
                                               }));
                                             }
                                           }}
-                                          className={`px-2 py-1 rounded-cockpit border-2 font-mono text-xs transition-colors duration-100 ${active ? 'bg-oct-accent border-oct-accent text-white' : 'bg-oct-bg border-oct-border text-oct-muted hover:text-oct-text hover:border-oct-border-bright'}`}
+                                          className={`px-2 py-1 rounded-oct-sm border font-mono text-xs transition-colors duration-100 ${active ? 'bg-oct-accent border-oct-accent/50 text-white shadow-oct-glow-accent' : 'bg-oct-surface-raised/40 border-oct-border text-oct-muted hover:text-oct-text hover:border-oct-border-bright'}`}
                                         >
                                           #{ch.name}
                                         </button>
@@ -386,7 +412,7 @@ export default function SoundsSection({ form }: { form: SettingsForm }) {
 
                               {telegramChannels.length > 0 && (
                                 <div>
-                                  <p className="font-mono text-[10px] text-oct-accent uppercase tracking-wider mb-1 flex items-center gap-1">
+                                  <p className="font-mono text-[11px] text-oct-accent uppercase tracking-wider mb-1 flex items-center gap-1">
                                     <Send size={9} />
                                     Telegram
                                   </p>
@@ -410,7 +436,7 @@ export default function SoundsSection({ form }: { form: SettingsForm }) {
                                               }));
                                             }
                                           }}
-                                          className={`px-2 py-1 rounded-cockpit border-2 font-mono text-xs transition-colors duration-100 ${active ? 'bg-oct-accent border-oct-accent text-white' : 'bg-oct-bg border-oct-border text-oct-muted hover:text-oct-text hover:border-oct-border-bright'}`}
+                                          className={`px-2 py-1 rounded-oct-sm border font-mono text-xs transition-colors duration-100 ${active ? 'bg-oct-accent border-oct-accent/50 text-white shadow-oct-glow-accent' : 'bg-oct-surface-raised/40 border-oct-border text-oct-muted hover:text-oct-text hover:border-oct-border-bright'}`}
                                         >
                                           {ch.name}
                                         </button>
@@ -430,21 +456,21 @@ export default function SoundsSection({ form }: { form: SettingsForm }) {
                                   const isTg = chInfo?.source === 'telegram';
                                   const label = chInfo ? (isTg ? chInfo.name : `#${chInfo.name}`) : `#${chId}`;
                                   return (
-                                    <div key={chId} className="rounded-cockpit border-2 border-oct-border bg-oct-surface-raised px-2 sm:px-3 py-2.5 sm:py-3 space-y-2.5">
+                                    <div key={chId} className="rounded-oct border border-oct-border bg-oct-surface-raised px-2 sm:px-3 py-2.5 sm:py-3 space-y-2.5">
                                       <div className="flex items-center justify-between">
                                         <div className="flex items-center gap-1.5 sm:gap-2 min-w-0">
                                           <Volume2 size={14} className="text-oct-muted shrink-0" />
                                           {isTg && <Send size={12} className="text-oct-accent shrink-0" />}
                                           <span className="text-xs sm:text-sm text-oct-text font-medium truncate">{label}</span>
                                           {isTg
-                                            ? <span className="font-mono text-[10px] text-oct-accent hidden sm:inline">Telegram</span>
-                                            : chInfo?.guildName && <span className="font-mono text-[10px] text-oct-muted hidden sm:inline">{chInfo.guildName}</span>
+                                            ? <span className="font-mono text-[11px] text-oct-accent hidden sm:inline">Telegram</span>
+                                            : chInfo?.guildName && <span className="font-mono text-[11px] text-oct-muted hidden sm:inline">{chInfo.guildName}</span>
                                           }
                                         </div>
                                         <div className="flex items-center gap-2">
                                           <button
                                             onClick={() => previewSound('highlight', sc)}
-                                            className="p-1 rounded-cockpit text-oct-muted hover:text-oct-accent hover:bg-oct-surface transition-colors duration-100"
+                                            className="p-1 rounded-oct-sm text-oct-muted hover:text-oct-accent hover:bg-oct-surface transition-colors duration-100"
                                             title="Preview sound"
                                           >
                                             <Play size={14} />
@@ -483,13 +509,13 @@ export default function SoundsSection({ form }: { form: SettingsForm }) {
                                               <span className="font-mono text-[11px] text-oct-muted uppercase tracking-wide">Sound:</span>
                                               <button
                                                 onClick={() => setChannelSounds((prev) => ({ ...prev, [chId]: { ...prev[chId], useCustom: false, presetSound: undefined } }))}
-                                                className={`px-2 py-1 rounded-cockpit border-2 font-mono text-[11px] font-bold uppercase tracking-wide transition-colors duration-100 ${!sc.useCustom && !sc.presetSound ? 'bg-oct-accent border-oct-accent text-white' : 'bg-oct-bg border-oct-border text-oct-muted hover:text-oct-text hover:border-oct-border-bright'}`}
+                                                className={`px-2 py-1 rounded-oct-sm border font-mono text-[11px] font-bold uppercase tracking-wide transition-colors duration-100 ${!sc.useCustom && !sc.presetSound ? 'bg-oct-accent border-oct-accent/50 text-white shadow-oct-glow-accent' : 'bg-oct-surface-raised/40 border-oct-border text-oct-muted hover:text-oct-text hover:border-oct-border-bright'}`}
                                               >
                                                 Default
                                               </button>
                                               <button
                                                 onClick={() => setChannelSounds((prev) => ({ ...prev, [chId]: { ...prev[chId], useCustom: false, presetSound: prev[chId].presetSound || 'ping' } }))}
-                                                className={`px-2 py-1 rounded-cockpit border-2 font-mono text-[11px] font-bold uppercase tracking-wide transition-colors duration-100 ${!sc.useCustom && sc.presetSound ? 'bg-oct-accent border-oct-accent text-white' : 'bg-oct-bg border-oct-border text-oct-muted hover:text-oct-text hover:border-oct-border-bright'}`}
+                                                className={`px-2 py-1 rounded-oct-sm border font-mono text-[11px] font-bold uppercase tracking-wide transition-colors duration-100 ${!sc.useCustom && sc.presetSound ? 'bg-oct-accent border-oct-accent/50 text-white shadow-oct-glow-accent' : 'bg-oct-surface-raised/40 border-oct-border text-oct-muted hover:text-oct-text hover:border-oct-border-bright'}`}
                                               >
                                                 Preset
                                               </button>
@@ -502,7 +528,7 @@ export default function SoundsSection({ form }: { form: SettingsForm }) {
                                                     channelFileInputRef.current?.click();
                                                   }
                                                 }}
-                                                className={`px-2 py-1 rounded-cockpit border-2 font-mono text-[11px] font-bold uppercase tracking-wide transition-colors duration-100 ${sc.useCustom ? 'bg-oct-accent border-oct-accent text-white' : 'bg-oct-bg border-oct-border text-oct-muted hover:text-oct-text hover:border-oct-border-bright'}`}
+                                                className={`px-2 py-1 rounded-oct-sm border font-mono text-[11px] font-bold uppercase tracking-wide transition-colors duration-100 ${sc.useCustom ? 'bg-oct-accent border-oct-accent/50 text-white shadow-oct-glow-accent' : 'bg-oct-surface-raised/40 border-oct-border text-oct-muted hover:text-oct-text hover:border-oct-border-bright'}`}
                                               >
                                                 Custom
                                               </button>
@@ -516,7 +542,7 @@ export default function SoundsSection({ form }: { form: SettingsForm }) {
                                                       setChannelSounds((prev) => ({ ...prev, [chId]: { ...prev[chId], presetSound: preset.id } }));
                                                       previewPreset(preset.id, sc.volume);
                                                     }}
-                                                    className={`px-2 py-1 rounded-cockpit border-2 font-mono text-[10px] transition-colors duration-100 ${sc.presetSound === preset.id ? 'bg-oct-accent border-oct-accent text-white' : 'bg-oct-bg border-oct-border text-oct-muted hover:text-oct-text hover:border-oct-border-bright'}`}
+                                                    className={`px-2 py-1 rounded-oct-sm border font-mono text-[11px] transition-colors duration-100 ${sc.presetSound === preset.id ? 'bg-oct-accent border-oct-accent/50 text-white shadow-oct-glow-accent' : 'bg-oct-surface-raised/40 border-oct-border text-oct-muted hover:text-oct-text hover:border-oct-border-bright'}`}
                                                   >
                                                     {preset.label}
                                                   </button>
@@ -526,11 +552,11 @@ export default function SoundsSection({ form }: { form: SettingsForm }) {
                                             {sc.useCustom && (
                                               <div className="flex items-center gap-2">
                                                 {sc.customSoundUrl && (
-                                                  <span className="font-mono text-[10px] text-oct-muted truncate">{sc.customSoundUrl.split('/').pop()}</span>
+                                                  <span className="font-mono text-[11px] text-oct-muted truncate">{sc.customSoundUrl.split('/').pop()}</span>
                                                 )}
                                                 <button
                                                   onClick={() => { setUploadingChannelId(chId); channelFileInputRef.current?.click(); }}
-                                                  className="p-1 rounded-cockpit text-oct-muted hover:text-oct-accent hover:bg-oct-surface transition-colors duration-100"
+                                                  className="p-1 rounded-oct-sm text-oct-muted hover:text-oct-accent hover:bg-oct-surface transition-colors duration-100"
                                                   title="Upload sound"
                                                 >
                                                   <Upload size={12} />

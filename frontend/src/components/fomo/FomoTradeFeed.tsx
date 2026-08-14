@@ -24,12 +24,16 @@ export default function FomoTradeFeed({ embedded = false }: { embedded?: boolean
   const clearFomoTrades = useAppStore((s) => s.clearFomoTrades);
 
   return (
-    <div className={`flex flex-col min-h-0 overflow-hidden h-full ${embedded ? '' : 'brutal-card'}`}>
+    <div className={`flex flex-col min-h-0 overflow-hidden h-full ${embedded ? '' : 'oct-card oct-card-flush'}`}>
       {!embedded && (
-      <div className="shrink-0 flex items-center gap-2 px-4 py-3 border-b-2 border-black bg-oct-surface">
+      <div className="oct-headerbar shrink-0 flex items-center gap-2 px-4 py-3">
+        <span className="relative flex h-2 w-2 shrink-0">
+          <span className="animate-pulse-live absolute inline-flex h-full w-full rounded-full bg-oct-accent" />
+          <span className="relative inline-flex h-2 w-2 rounded-full bg-oct-accent" />
+        </span>
         <Radio size={16} className="text-oct-accent" />
-        <h2 className="text-sm font-extrabold uppercase tracking-wide text-oct-text">Live Trade Feed</h2>
-        <span className="text-xs font-mono text-oct-muted tabular-nums">{fomoTrades.length}</span>
+        <h2 className="oct-section-title uppercase tracking-wide">Live Trade Feed</h2>
+        <span className="oct-chip tabular-nums">{fomoTrades.length}</span>
         <div className="flex-1" />
         {fomoTrades.length > 0 && (
           <button
@@ -57,11 +61,11 @@ export default function FomoTradeFeed({ embedded = false }: { embedded?: boolean
       <div className="flex-1 min-h-0 overflow-auto overscroll-contain" style={{ overflowAnchor: 'none' }}>
         {fomoTrades.length === 0 ? (
           <div className="flex flex-col items-center justify-center py-16 px-6 text-center">
-            <div className="w-12 h-12 rounded-cockpit border-2 border-black bg-oct-surface-raised shadow-oct-hard flex items-center justify-center mb-4">
-              <Activity size={22} className="text-oct-muted" />
+            <div className="w-14 h-14 rounded-oct-lg border border-oct-border bg-gradient-to-b from-oct-elevated to-oct-surface shadow-oct-soft flex items-center justify-center mb-4">
+              <Activity size={24} className="text-oct-muted" />
             </div>
-            <p className="text-oct-text font-bold uppercase mb-1">Waiting for activity</p>
-            <p className="text-sm text-oct-muted max-w-xs">
+            <p className="text-oct-text font-bold uppercase tracking-wide mb-1.5">Waiting for activity</p>
+            <p className="text-sm text-oct-muted max-w-xs leading-relaxed">
               Trades from the traders you track appear here live, and the last 24 hours
               are replayed when you open the console.
             </p>
@@ -82,7 +86,7 @@ function FomoTradeRow({ trade }: { trade: FomoTrade }) {
   const config = useAppStore((s) => s.config);
   const isBuy = trade.side === 'buy';
   const isSell = trade.side === 'sell';
-  const sideColor = isBuy ? 'text-oct-green' : isSell ? 'text-oct-accent' : 'text-oct-muted';
+  const sideColor = isBuy ? 'text-oct-green' : isSell ? 'text-oct-flame' : 'text-oct-muted';
   const SideIcon = isSell ? ArrowDownRight : ArrowUpRight;
   const sideLabel = trade.side ? trade.side.toUpperCase() : 'TRADE';
 
@@ -93,13 +97,13 @@ function FomoTradeRow({ trade }: { trade: FomoTrade }) {
   const tokenTitle = [tokenName, address].filter(Boolean).join(' · ') || undefined;
 
   return (
-    <li className="flex items-center gap-3 px-4 py-2.5 hover:bg-oct-surface-raised/60 transition-colors">
-      <span className={`inline-flex items-center gap-1 shrink-0 w-16 font-extrabold uppercase text-xs ${sideColor}`}>
+    <li className="flex items-center gap-3 px-4 py-3 oct-row-hover">
+      <span className={`inline-flex items-center gap-1 shrink-0 w-16 font-extrabold uppercase text-[13px] ${sideColor}`}>
         <SideIcon size={14} strokeWidth={2.5} />
         {sideLabel}
       </span>
       <div className="min-w-0 flex-1">
-        <div className="font-bold text-oct-text truncate">{traderLabel(trade)}</div>
+        <div className="text-[15px] font-bold text-oct-text truncate">{traderLabel(trade)}</div>
         <div className="flex items-center gap-1.5 text-xs text-oct-muted min-w-0">
           {chartUrl ? (
             <a
@@ -133,7 +137,7 @@ function FomoTradeRow({ trade }: { trade: FomoTrade }) {
         </div>
       </div>
       <div className="text-right shrink-0">
-        <div className="font-mono font-bold text-oct-text tabular-nums">{formatUsd(trade.usdValue)}</div>
+        <div className="text-[15px] font-mono font-bold text-oct-text tabular-nums">{formatUsd(trade.usdValue)}</div>
         <div className="text-xs text-oct-muted font-mono tabular-nums">{formatTime(trade.occurredAt)}</div>
       </div>
     </li>

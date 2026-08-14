@@ -113,6 +113,33 @@ DMing release-notes opt-ins (`dmOptIns`, default false — a CI push can never
 DM). This is what the [changelog workflow](../../operations/announcements/)
 calls.
 
+## pump.fun callout posts (opt-in, public)
+
+`backend/src/pumpfun/calloutDiscord.ts` reposts pump.fun callouts into
+`OCT_CALLOUT_DISCORD_CHANNEL_ID` using the same connected client and the same
+Components V2 idiom — no webhook, no second login, no new secret. It hangs off
+the callout poller **after** the existing WS + Pushover delivery, so a Discord
+fault can neither delay nor break either.
+
+Three properties are structural:
+
+- **One post per callout, not per subscriber.** The poller's follower fan-out
+  loops per (callout × follower); this path is driven from the poller's `fresh`
+  list, already deduped by `calloutId` against the persisted cursor. A bounded
+  in-process `SeenCallouts` covers the one gap the cursor can't: a poll that
+  posted and then failed to write the cursor.
+- **The follow graph stays private.** `pump_tracked_callers` is never read here.
+  The channel's caller set is operator-controlled only — the
+  `OCT_CALLOUT_DISCORD_CALLERS` allowlist, else OCT's global Top Callers board
+  (itself built from the public firehose). Callout *content* is public pump.fun
+  data; who-follows-whom is not.
+- **Flood protection is a hard cap, not a queue.** `PostBudget` admits at most
+  `OCT_CALLOUT_DISCORD_MAX_PER_WINDOW` posts per rolling window; the rest are
+  dropped (a queued callout is stale by the time it lands), counted in a log
+  line, and summarised as "+N more callouts held back" on the next post through.
+
+Default **OFF** — see the [environment reference](../../operations/environments/).
+
 ## Command registration
 
 Slash commands are registered out-of-band with

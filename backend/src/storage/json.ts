@@ -1,8 +1,18 @@
 import { configStore } from '../config/store.js';
 import { contractLog } from '../utils/contractLog.js';
-import type { StorageProvider } from './interface.js';
+import { revivalAlertLog } from '../utils/revivalAlertLog.js';
+import { journalLog } from '../journal/journalLog.js';
+import { pumpSessionStore } from '../pumpfun/pumpSessionStore.js';
+import type { PumpSession, StorageProvider } from './interface.js';
 import type { AppConfig, Room } from '../discord/types.js';
 import type { ContractEntry, ContractEnrichmentPatch, EnrichContractOptions } from '../utils/contractLog.js';
+import type {
+  JournalPosition,
+  JournalTrade,
+  JournalWallet,
+  RevivalAlertEntry,
+  RevivalOutcomePatch,
+} from '@oct/shared';
 
 /**
  * JSON file-backed storage provider for local (single-user) mode.
@@ -24,6 +34,16 @@ export class JsonStorageProvider implements StorageProvider {
 
   async setTokens(_userId: string, tokens: string[]): Promise<void> {
     configStore.setTokens(tokens);
+  }
+
+  // The pump.fun bearer is kept in its own plaintext store (pumpSessionStore),
+  // isolated from AppConfig so it can never leak through a config route/export.
+  async getPumpSession(_userId: string): Promise<PumpSession | null> {
+    return pumpSessionStore.getSession();
+  }
+
+  async setPumpSession(_userId: string, token: string | null): Promise<void> {
+    pumpSessionStore.setSession(token);
   }
 
   async getRooms(_userId: string): Promise<Room[]> {
@@ -62,6 +82,10 @@ export class JsonStorageProvider implements StorageProvider {
     return contractLog.getContracts(limit, since);
   }
 
+  async getContractByMessage(_userId: string, messageId: string, address: string): Promise<ContractEntry | null> {
+    return contractLog.getContractByMessage(messageId, address);
+  }
+
   async logContract(_userId: string, entry: ContractEntry): Promise<ContractEntry> {
     return contractLog.logContract(entry);
   }
@@ -93,5 +117,60 @@ export class JsonStorageProvider implements StorageProvider {
 
   async cacheUserName(_userId: string, discordUserId: string, displayName: string): Promise<void> {
     configStore.cacheUserName(discordUserId, displayName);
+  }
+
+  async logRevivalAlert(_userId: string, alert: RevivalAlertEntry): Promise<RevivalAlertEntry> {
+    return revivalAlertLog.log(alert);
+  }
+
+  async listRevivalAlerts(_userId: string, limit?: number): Promise<RevivalAlertEntry[]> {
+    return revivalAlertLog.list(limit);
+  }
+
+  async updateRevivalAlertOutcome(_userId: string, alertId: string, outcome: RevivalOutcomePatch): Promise<void> {
+    revivalAlertLog.updateOutcome(alertId, outcome);
+  }
+
+  // ---- Trade journal ----
+
+  async listJournalWallets(_userId: string): Promise<JournalWallet[]> {
+    return journalLog.listWallets();
+  }
+
+  async addJournalWallet(_userId: string, address: string, label: string | null): Promise<JournalWallet> {
+    return journalLog.addWallet(address, label);
+  }
+
+  async removeJournalWallet(_userId: string, walletId: string): Promise<boolean> {
+    return journalLog.removeWallet(walletId);
+  }
+
+  async updateJournalWalletCursor(
+    _userId: string,
+    walletId: string,
+    lastSignature: string | null,
+    lastPolledAt: string,
+  ): Promise<void> {
+    journalLog.updateWalletCursor(walletId, lastSignature, lastPolledAt);
+  }
+
+  async addJournalTrades(_userId: string, trades: JournalTrade[]): Promise<number> {
+    return journalLog.addTrades(trades);
+  }
+
+  async listJournalTrades(_userId: string, limit?: number, walletId?: string): Promise<JournalTrade[]> {
+    return journalLog.listTrades(limit, walletId);
+  }
+
+  async replaceJournalPositions(_userId: string, walletId: string, positions: JournalPosition[]): Promise<void> {
+    journalLog.replacePositionsForWallet(walletId, positions);
+  }
+
+  async listJournalPositions(_userId: string, status?: 'open' | 'closed'): Promise<JournalPosition[]> {
+    return journalLog.listPositions(status);
+  }
+
+  async updateJournalPositionPrice(_userId: string, positionId: string, priceUsd: number, at: string): Promise<void> {
+    journalLog.updatePositionPrice(positionId, priceUsd, at);
   }
 }

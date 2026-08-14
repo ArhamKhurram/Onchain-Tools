@@ -123,10 +123,10 @@ export default function RoomPalette({ open, model, onClose }: RoomPaletteProps) 
       onMouseDown={onClose}
     >
       <div
-        className="w-full max-w-lg rounded-cockpit border-2 border-oct-border bg-oct-bg shadow-oct-hard"
+        className="w-full max-w-lg rounded-oct-lg border border-oct-border bg-oct-bg shadow-oct-soft-lg overflow-hidden"
         onMouseDown={(e) => e.stopPropagation()}
       >
-        <div className="flex items-center gap-2 h-11 px-3 border-b-2 border-oct-border bg-oct-surface">
+        <div className="oct-headerbar flex items-center gap-2 h-11 px-3.5">
           <span className="font-mono text-xs font-bold tracking-[0.16em] text-oct-accent shrink-0">&gt;</span>
           <input
             type="text"
@@ -163,10 +163,10 @@ export default function RoomPalette({ open, model, onClose }: RoomPaletteProps) 
                   onMouseMove={() => setSelected(i)}
                   onClick={() => commit(item)}
                   className={[
-                    'w-full flex items-center gap-2.5 px-3 py-2 text-left border-l-2 font-mono text-xs uppercase tracking-[0.08em] transition-colors duration-100',
+                    'w-full flex items-center gap-2.5 px-3 py-2 text-left border-l-2 font-mono text-[13px] uppercase tracking-[0.08em] transition-colors duration-100',
                     isSelected
                       ? 'border-oct-accent bg-oct-accent-dim text-oct-accent'
-                      : 'border-transparent text-oct-text hover:text-oct-accent',
+                      : 'border-transparent text-oct-text hover:text-oct-accent hover:bg-oct-surface-raised/50',
                   ].join(' ')}
                 >
                   <span className={`shrink-0 font-bold ${isSelected ? 'text-oct-accent' : 'text-oct-muted'}`}>
@@ -177,7 +177,7 @@ export default function RoomPalette({ open, model, onClose }: RoomPaletteProps) 
                     <span className="shrink-0 font-mono text-[10px] tracking-[0.16em] text-oct-muted">Open</span>
                   )}
                   {item.unread > 0 && (
-                    <span className="shrink-0 min-w-[20px] px-1 py-0.5 rounded-cockpit bg-oct-accent text-white text-center text-[10px] font-bold leading-none">
+                    <span className="shrink-0 min-w-[20px] px-1 py-0.5 rounded-full bg-oct-accent text-white text-center text-[10px] font-bold leading-none tabular-nums">
                       {item.unread > 99 ? '99+' : item.unread}
                     </span>
                   )}
@@ -187,7 +187,7 @@ export default function RoomPalette({ open, model, onClose }: RoomPaletteProps) 
           })}
         </div>
 
-        <div className="flex items-center gap-4 px-3 py-2 border-t-2 border-oct-border bg-oct-surface font-mono text-[10px] uppercase tracking-[0.16em] text-oct-muted">
+        <div className="flex items-center gap-4 px-3.5 py-2 border-t border-oct-border bg-oct-surface/60 font-mono text-[10px] uppercase tracking-[0.16em] text-oct-muted">
           <span>↑↓ Navigate</span>
           <span>⏎ Open</span>
           <span>Esc Close</span>

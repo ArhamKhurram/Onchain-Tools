@@ -1,5 +1,5 @@
 import { Router } from 'express';
-import rateLimit from 'express-rate-limit';
+import rateLimit, { ipKeyGenerator } from 'express-rate-limit';
 import { testMissedRunnerForAddress } from '../../alerts/missedRunnerTest.js';
 import type { RouterContext } from '../context.js';
 import { getUserId, safeError } from '../shared.js';
@@ -14,7 +14,10 @@ export function createAlertsRoutes(ctx: RouterContext): Router {
     max: 12,
     standardHeaders: true,
     legacyHeaders: false,
-    keyGenerator: (req) => req.userId ?? req.ip ?? 'unknown',
+    // Prefer the authenticated user id; fall back to the client IP routed
+    // through ipKeyGenerator so IPv6 addresses are normalized to a /64 subnet
+    // (see https://express-rate-limit.github.io/ERR_ERL_KEY_GEN_IPV6/).
+    keyGenerator: (req) => req.userId ?? ipKeyGenerator(req.ip ?? 'unknown'),
     message: { error: 'Too many test alerts — wait a minute and try again.' },
   });
 

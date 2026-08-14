@@ -1,5 +1,7 @@
+import { RefObject } from 'react';
 import { motion } from 'framer-motion';
 import { UPDATES, formatUpdateDate } from '../../data/updates';
+import { useSectionScroll } from '../../hooks/useSectionScroll';
 
 function renderBold(text: string) {
   const parts = text.split(/\*\*(.+?)\*\*/);
@@ -14,30 +16,35 @@ function renderBold(text: string) {
   );
 }
 
-export function UpdatesSection() {
+export function UpdatesSection({ scrollRef }: { scrollRef: RefObject<HTMLElement | null> }) {
+  const { sectionRef, headingY } = useSectionScroll(scrollRef);
+
   return (
     <section
       id="updates"
+      ref={sectionRef}
       className="relative snap-start snap-always min-h-[100dvh] flex flex-col bg-black text-white px-6 sm:px-10 pr-12 sm:pr-14 pt-24 pb-32"
     >
       <div className="max-w-3xl mx-auto w-full flex-1">
-        <motion.p
-          initial={{ opacity: 0 }}
-          whileInView={{ opacity: 1 }}
-          viewport={{ once: true }}
-          className="font-mono text-xs tracking-[0.2em] text-white/60 mb-6"
-        >
-          [ UPDATES ]
-        </motion.p>
+        <motion.div style={{ y: headingY }}>
+          <motion.p
+            initial={{ opacity: 0 }}
+            whileInView={{ opacity: 1 }}
+            viewport={{ once: true }}
+            className="font-mono text-xs tracking-[0.2em] text-white/60 mb-6"
+          >
+            [ UPDATES ]
+          </motion.p>
 
-        <motion.h2
-          initial={{ opacity: 0, y: 12 }}
-          whileInView={{ opacity: 1, y: 0 }}
-          viewport={{ once: true }}
-          className="font-display text-[clamp(2rem,7vw,4rem)] leading-[0.95] tracking-tight mb-4"
-        >
-          WHAT&apos;S NEW.
-        </motion.h2>
+          <motion.h2
+            initial={{ opacity: 0, y: 12 }}
+            whileInView={{ opacity: 1, y: 0 }}
+            viewport={{ once: true }}
+            className="font-display text-[clamp(2rem,7vw,4rem)] leading-[0.95] tracking-tight mb-4"
+          >
+            WHAT&apos;S NEW.
+          </motion.h2>
+        </motion.div>
 
         <motion.p
           initial={{ opacity: 0 }}

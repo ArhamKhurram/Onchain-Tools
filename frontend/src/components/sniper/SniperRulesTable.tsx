@@ -4,12 +4,12 @@ import ConfirmModal from '../ConfirmModal';
 import ConsoleEmptyState from '../console/ConsoleEmptyState';
 import SniperRuleFormModal from './SniperRuleFormModal';
 import SniperFireModal from './SniperFireModal';
-import { describeAbortReason, type SnipeRule, type SniperWallet } from '../../types/sniper';
+import { describeValidationReason, type SnipeRule, type SniperWallet } from '../../types/sniper';
 import type { useSniperRules } from '../../hooks/useSniperRules';
 
 const TH = 'px-3 py-2 font-medium';
 const ROW_BTN =
-  'px-2 py-0.5 rounded-cockpit text-[10px] font-mono font-bold uppercase border-2 border-oct-border text-oct-muted hover:text-oct-text hover:border-oct-border-bright transition-colors disabled:opacity-40 disabled:cursor-not-allowed';
+  'px-2 py-0.5 rounded-oct-sm text-[10px] font-mono font-bold uppercase border border-oct-border text-oct-muted hover:text-oct-text hover:border-oct-border-bright transition-colors disabled:opacity-40 disabled:cursor-not-allowed';
 
 interface SniperRulesTableProps {
   rules: ReturnType<typeof useSniperRules>;
@@ -26,7 +26,7 @@ function StateBadge({ state }: { state: SnipeRule['state'] }) {
       : state === 'disabled'
         ? 'border-oct-border text-oct-muted'
         : 'border-oct-border text-oct-muted';
-  return <span className={`text-[9px] font-mono uppercase tracking-wider px-1.5 py-0.5 rounded-cockpit border-2 ${cls}`}>{state}</span>;
+  return <span className={`text-[10px] font-mono uppercase tracking-wider px-2 py-0.5 rounded-oct-sm border ${cls}`}>{state}</span>;
 }
 
 export default function SniperRulesTable({ rules, wallets, processDryRun, killed }: SniperRulesTableProps) {
@@ -50,7 +50,12 @@ export default function SniperRulesTable({ rules, wallets, processDryRun, killed
     // Arm runs the full validateRule server-side and refuses with the exact
     // reason. Showing that reason verbatim (plus plain words) is the whole point
     // — "couldn't arm" would leave the operator guessing which field is wrong.
-    if (!res.ok) setNotice(res.detail ? `${res.reason} — ${res.detail}` : describeAbortReason(res.reason));
+    //
+    // These are VALIDATION reasons, not abort reasons. Sending them through
+    // describeAbortReason fell through to `default` for 20 of the 22 cases, so
+    // a rule saved without a wallet showed a bare `no_wallets` in a truncated
+    // header label, and arm looked like a button that did nothing.
+    if (!res.ok) setNotice(res.detail ? `${res.reason} — ${res.detail}` : describeValidationReason(res.reason));
     else setNotice(null);
   };
 
@@ -62,7 +67,7 @@ export default function SniperRulesTable({ rules, wallets, processDryRun, killed
       setNotice(
         res.reason === 'process_dry_run'
           ? 'OCT_SNIPER_DRY_RUN is set on the backend. It overrides every rule flag, so no rule can go live until it is cleared.'
-          : res.reason,
+          : describeValidationReason(res.reason),
       );
     } else setNotice(null);
   };
@@ -71,7 +76,13 @@ export default function SniperRulesTable({ rules, wallets, processDryRun, killed
     if (!deleting) return;
     const res = await rules.deleteRule(deleting.id);
     setDeleting(null);
-    if (!res.ok) setNotice(res.reason === 'rule_armed' ? 'Disarm the rule before deleting it.' : res.reason);
+    if (!res.ok) {
+      setNotice(
+        res.reason === 'rule_armed'
+          ? 'Disarm the rule before deleting it.'
+          : describeValidationReason(res.reason),
+      );
+    }
   };
 
   if (!rules.loading && rules.rules.length === 0) {
@@ -98,24 +109,41 @@ export default function SniperRulesTable({ rules, wallets, processDryRun, killed
 
   return (
     <div className="h-full flex flex-col min-h-0 bg-oct-bg overflow-hidden">
-      <div className="shrink-0 flex items-center gap-2 px-4 py-2.5 border-b-2 border-black bg-oct-surface">
-        <span className="font-mono text-[10px] font-bold uppercase tracking-widest text-oct-muted">view: rules</span>
+      <div className="oct-headerbar shrink-0 flex items-center gap-2 px-4 py-2.5">
+        <span className="oct-eyebrow">view: rules</span>
         <div className="flex-1" />
-        {notice && <span className="font-mono text-[11px] text-oct-flame max-w-[50%] truncate" title={notice}>{notice}</span>}
-        <span className="font-mono text-[11px] text-oct-muted">{rules.rules.length} rules</span>
+        <span className="font-mono text-[11px] text-oct-muted tabular-nums">{rules.rules.length} rules</span>
         <button
           type="button"
           onClick={openAdd}
-          className="flex items-center gap-1.5 px-2 py-1 rounded-cockpit text-xs font-bold uppercase text-oct-muted hover:text-oct-text border-2 border-oct-border-bright hover:border-oct-text transition-colors"
+          className="oct-icon-btn flex items-center gap-1.5 px-2.5 py-1.5 text-xs font-bold uppercase"
         >
           <Plus size={12} />
           new rule
         </button>
       </div>
 
+      {/*
+        Full width, wrapping, and dismissible. This used to be a truncated
+        11px label wedged into the toolbar above, which is how "arm" could
+        refuse three times in a row and read as a dead button.
+      */}
+      {notice && (
+        <div className="shrink-0 flex items-start gap-2 px-4 py-2 border-b border-oct-border border-l-4 border-l-oct-flame bg-oct-flame/10">
+          <span className="flex-1 font-mono text-[11px] leading-relaxed text-oct-flame">{notice}</span>
+          <button
+            type="button"
+            onClick={() => setNotice(null)}
+            className="shrink-0 font-mono text-[10px] uppercase text-oct-muted hover:text-oct-text"
+          >
+            dismiss
+          </button>
+        </div>
+      )}
+
       <div className="flex-1 min-h-0 overflow-auto overscroll-contain" style={{ overflowAnchor: 'none' }}>
         <table className="w-full text-left border-collapse min-w-[1000px]">
-          <thead className="sticky top-0 bg-oct-surface border-b-2 border-black z-10">
+          <thead className="oct-thead sticky top-0 z-10">
             <tr className="font-mono text-[10px] font-bold uppercase tracking-wider text-oct-muted">
               <th className={TH}>Name</th>
               <th className={TH}>State</th>
@@ -140,7 +168,7 @@ export default function SniperRulesTable({ rules, wallets, processDryRun, killed
                   key={r.id}
                   // "Which of these spends real money" has to be readable at a
                   // glance, not by reading two columns and combining them.
-                  className={`border-b border-oct-border/50 hover:bg-oct-surface-raised/50 transition-colors ${
+                  className={`border-b border-oct-border/50 oct-row-hover ${
                     armedLive ? 'border-l-2 border-l-oct-accent bg-oct-accent/5' : ''
                   }`}
                 >
@@ -150,7 +178,7 @@ export default function SniperRulesTable({ rules, wallets, processDryRun, killed
                   </td>
                   <td className="px-3 py-2">
                     <span
-                      className={`text-[9px] font-mono uppercase tracking-wider px-1.5 py-0.5 rounded-cockpit border-2 ${
+                      className={`text-[10px] font-mono uppercase tracking-wider px-2 py-0.5 rounded-oct-sm border ${
                         live
                           ? 'border-oct-accent bg-oct-accent text-white'
                           : 'border-oct-green/60 bg-oct-green/15 text-oct-green'
@@ -165,10 +193,10 @@ export default function SniperRulesTable({ rules, wallets, processDryRun, killed
                   <td className="px-3 py-2 font-mono text-xs text-oct-text text-right">
                     {r.sizeTotal} {r.sizeUnit}
                   </td>
-                  <td className="px-3 py-2 font-mono text-xs text-oct-muted text-right">{r.walletIds.length}</td>
-                  <td className="px-3 py-2 font-mono text-xs text-oct-text text-right">{r.perFireCap}</td>
-                  <td className="px-3 py-2 font-mono text-xs text-oct-text text-right">{r.perTriggerCap}</td>
-                  <td className="px-3 py-2 font-mono text-xs text-oct-muted text-right">{r.slippageBps}</td>
+                  <td className="px-3 py-2 font-mono text-xs text-oct-muted text-right tabular-nums">{r.walletIds.length}</td>
+                  <td className="px-3 py-2 font-mono text-xs text-oct-text text-right tabular-nums">{r.perFireCap}</td>
+                  <td className="px-3 py-2 font-mono text-xs text-oct-text text-right tabular-nums">{r.perTriggerCap}</td>
+                  <td className="px-3 py-2 font-mono text-xs text-oct-muted text-right tabular-nums">{r.slippageBps}</td>
                   <td className="px-3 py-2">
                     <div className="flex items-center justify-end gap-1.5 flex-wrap">
                       {r.state === 'armed' ? (

@@ -59,9 +59,9 @@ export default function DashboardPage() {
 
   return (
     <div className="h-full overflow-y-auto bg-oct-bg">
-      <section className="bg-oct-flame text-black px-6 sm:px-10 py-10 sm:py-14 border-b-2 border-black">
-        <div className="max-w-6xl mx-auto">
-          <p className="font-mono text-xs tracking-[0.2em] mb-4">[ CONSOLE ]</p>
+      <section className="relative overflow-hidden bg-gradient-to-br from-oct-flame to-oct-accent text-black px-6 sm:px-10 py-10 sm:py-14 border-b border-oct-border shadow-oct-soft">
+        <div className="max-w-6xl mx-auto relative">
+          <p className="font-mono text-[11px] font-semibold uppercase tracking-[0.24em] mb-4 opacity-80">[ Console ]</p>
           <h1 className="font-display text-[clamp(2.25rem,8vw,5rem)] leading-[0.92] tracking-tight">
             PICK A MODULE.
             <span className="block">GET TO WORK.</span>
@@ -74,9 +74,9 @@ export default function DashboardPage() {
 
       <section className="px-6 sm:px-10 py-10 sm:py-12">
         <div className="max-w-6xl mx-auto">
-          <p className="font-mono text-xs tracking-[0.2em] text-oct-muted mb-6">[ MODULES ]</p>
+          <p className="oct-eyebrow tracking-[0.2em] mb-6">Modules</p>
 
-          <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-8 md:gap-6">
+          <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-4 sm:gap-5">
             {modules.map((m) => {
               const Icon = m.icon;
               const isLive =
@@ -88,20 +88,22 @@ export default function DashboardPage() {
                 <Link
                   key={m.title}
                   to={m.to}
-                  className="group flex flex-col border-t-2 border-oct-accent pt-6 hover:opacity-90 transition-opacity"
+                  className="group oct-card flex flex-col p-5 transition-all duration-150 hover:-translate-y-0.5 hover:shadow-oct-soft-lg hover:border-oct-border-bright"
                 >
                   <div className="flex items-center justify-between mb-4">
-                    <span className="font-mono text-xs tracking-[0.15em] text-oct-muted">[ {m.num} ]</span>
-                    <Icon size={18} className="text-oct-muted group-hover:text-oct-accent transition-colors" />
+                    <span className="oct-eyebrow tabular-nums">{m.num}</span>
+                    <span className="flex items-center justify-center w-9 h-9 rounded-oct border border-oct-border bg-oct-surface-raised/60 text-oct-muted group-hover:text-oct-accent group-hover:border-oct-accent/50 transition-colors">
+                      <Icon size={18} />
+                    </span>
                   </div>
                   <h2 className="font-display text-3xl sm:text-4xl text-oct-text tracking-tight mb-3">{m.title}</h2>
-                  <p className="font-mono text-xs sm:text-sm text-oct-muted leading-relaxed flex-1">{m.desc}</p>
-                  <div className="flex items-center justify-between mt-6">
-                    <span className="font-mono text-xs tracking-wide text-oct-accent group-hover:translate-x-1 transition-transform inline-flex items-center gap-1">
-                      ENTER <ArrowRight size={14} />
+                  <p className="text-[13px] text-oct-muted leading-relaxed flex-1">{m.desc}</p>
+                  <div className="flex items-center justify-between mt-6 pt-4 border-t border-oct-border">
+                    <span className="font-mono text-[11px] font-semibold uppercase tracking-[0.14em] text-oct-accent group-hover:translate-x-1 transition-transform inline-flex items-center gap-1.5">
+                      Enter <ArrowRight size={14} />
                     </span>
                     {isLive && (
-                      <span className="font-mono text-[10px] text-oct-accent uppercase tracking-wide flex items-center gap-1.5">
+                      <span className="font-mono text-[10px] text-oct-accent uppercase tracking-[0.12em] flex items-center gap-1.5">
                         <span className="w-1.5 h-1.5 rounded-full bg-oct-accent animate-pulse-live" />
                         Live
                       </span>
@@ -112,33 +114,33 @@ export default function DashboardPage() {
             })}
           </div>
 
-          <div className="mt-12 grid grid-cols-1 sm:grid-cols-2 gap-4">
-            <div className="border-2 border-black bg-oct-surface p-5 shadow-oct-hard-sm">
-              <div className="flex items-center gap-2 mb-3">
-                <Radio size={16} className="text-oct-accent" />
-                <h3 className="font-mono text-xs uppercase tracking-[0.15em] text-oct-text">Session</h3>
+          <div className="mt-10 grid grid-cols-1 sm:grid-cols-2 gap-4 sm:gap-5">
+            <div className="oct-card p-5">
+              <div className="flex items-center gap-2 mb-4">
+                <Radio size={16} className="text-oct-accent-2" />
+                <h3 className="oct-section-title uppercase tracking-wide">Session</h3>
               </div>
-              <ul className="font-mono text-[11px] text-oct-muted space-y-2">
-                <li className="flex justify-between gap-4">
-                  <span>ACCOUNT</span>
-                  <span className="text-oct-text">{isAuthenticated ? 'SIGNED_IN' : 'GUEST'}</span>
+              <ul className="space-y-2.5">
+                <li className="flex items-center justify-between gap-4">
+                  <span className="oct-eyebrow">Account</span>
+                  <span className="font-mono text-[13px] font-semibold text-oct-text">{isAuthenticated ? 'SIGNED_IN' : 'GUEST'}</span>
                 </li>
-                <li className="flex justify-between gap-4">
-                  <span>DISCORD</span>
-                  <span className={discordConfigured ? 'text-oct-accent' : 'text-oct-muted'}>
+                <li className="flex items-center justify-between gap-4">
+                  <span className="oct-eyebrow">Discord</span>
+                  <span className={`font-mono text-[13px] font-semibold ${discordConfigured ? 'text-oct-accent' : 'text-oct-muted'}`}>
                     {discordConfigured ? (connected ? 'CONNECTED' : 'CONNECTING') : 'NOT_LINKED'}
                   </span>
                 </li>
-                <li className="flex justify-between gap-4">
-                  <span>TELEGRAM</span>
+                <li className="flex items-center justify-between gap-4">
+                  <span className="oct-eyebrow">Telegram</span>
                   <span
-                    className={
+                    className={`font-mono text-[13px] font-semibold ${
                       telegramConnected
-                        ? 'text-[#2AABEE]'
+                        ? 'text-oct-telegram'
                         : telegramConfigured
                           ? 'text-oct-yellow'
                           : 'text-oct-muted'
-                    }
+                    }`}
                   >
                     {telegramConfigured
                       ? telegramConnected
@@ -147,16 +149,16 @@ export default function DashboardPage() {
                       : 'NOT_LINKED'}
                   </span>
                 </li>
-                <li className="flex justify-between gap-4">
-                  <span>ROOMS</span>
-                  <span className="text-oct-text tabular-nums">{rooms.length}</span>
+                <li className="flex items-center justify-between gap-4">
+                  <span className="oct-eyebrow">Rooms</span>
+                  <span className="font-mono text-base font-bold text-oct-text tabular-nums">{rooms.length}</span>
                 </li>
               </ul>
             </div>
 
-            <div className="border-2 border-black bg-oct-surface p-5 shadow-oct-hard-sm flex flex-col justify-between">
+            <div className="oct-card p-5 flex flex-col justify-between">
               <div>
-                <p className="font-mono text-xs uppercase tracking-[0.15em] text-oct-muted mb-2">Quick start</p>
+                <p className="oct-eyebrow mb-2">Quick start</p>
                 <p className="text-sm text-oct-muted leading-relaxed">
                   {discordConfigured
                     ? 'Open Feed to stream channels, or configure rooms in Settings.'
@@ -165,9 +167,10 @@ export default function DashboardPage() {
               </div>
               <Link
                 to={discordConfigured ? routes.feed : routes.settings}
-                className="mt-4 inline-flex font-mono text-xs uppercase tracking-wide text-oct-accent hover:underline"
+                className="oct-btn-primary mt-5 self-start px-4 py-2 font-mono text-xs uppercase tracking-[0.12em]"
               >
-                {discordConfigured ? 'Open Feed →' : 'Connect Discord →'}
+                {discordConfigured ? 'Open Feed' : 'Connect Discord'}
+                <ArrowRight size={14} />
               </Link>
             </div>
           </div>

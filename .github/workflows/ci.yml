@@ -69,6 +69,8 @@ jobs:
         run: npm run test -w backend
       - name: Test frontend
         run: npm run test -w frontend
+      - name: Test fomo-worker
+        run: npm run test -w fomo-worker
 
       # --- Build the three deploy targets (backend→Railway, frontend+landing→Vercel) ---
       - name: Build backend
