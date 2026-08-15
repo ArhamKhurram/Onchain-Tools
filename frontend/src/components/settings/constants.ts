@@ -27,6 +27,12 @@ export const defaultDiscordBotDm: DiscordBotDmConfig = {
   enabled: false,
   // releaseNotes and dailyDigest default off like every other trigger — enabling
   // bot DMs is not consent to receive changelog posts or a daily summary.
-  triggers: { highlightedUser: false, highlightedUserContract: true, contract: false, keyword: false, missedRunner: true, releaseNotes: false, dailyDigest: false },
+  //
+  // pumpCallout defaults ON (like missedRunner) because it cannot fire on
+  // ambient volume: it only ever DMs about a caller the user went and followed,
+  // and each follow carries its own per-caller mute. The master `enabled` switch
+  // above still gates it, and the BACKEND reads a stored config missing this key
+  // as false — so this default only ever applies to a fresh/re-saved config.
+  triggers: { highlightedUser: false, highlightedUserContract: true, contract: false, keyword: false, missedRunner: true, releaseNotes: false, dailyDigest: false, pumpCallout: true },
 };
 export const defaultMissedRunner: MissedRunnerConfig = { enabled: false, minMultiplier: 1.5, lookbackHours: 24, cooldownHours: 24, notifyVia: 'toast' };

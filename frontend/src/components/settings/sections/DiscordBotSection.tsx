@@ -75,6 +75,20 @@ export default function DiscordBotSection({ form }: { form: SettingsForm }) {
 
           <div className="mt-4 pt-4 border-t border-oct-border">
             <Toggle
+              value={discordBotDm.triggers.pumpCallout}
+              onChange={(v) => setTrigger('pumpCallout', v)}
+              label="pump.fun callouts from callers you follow"
+            />
+            <p className="text-xs text-oct-muted mt-1.5">
+              A DM the moment a caller you follow posts a callout — their thesis, the coin, and
+              the market cap at the call. Only fires for callers you followed on{' '}
+              <span className="text-oct-text font-semibold">Pump.fun → Following</span>, where you
+              can also mute any single caller.
+            </p>
+          </div>
+
+          <div className="mt-4 pt-4 border-t border-oct-border">
+            <Toggle
               value={discordBotDm.triggers.releaseNotes}
               onChange={(v) => setTrigger('releaseNotes', v)}
               label="Release notes"

@@ -281,6 +281,44 @@ export function normalizeTrackedList(parsed: unknown): TrackedPumpWallet[] {
 }
 
 // ---------------------------------------------------------------------------
+// Live callout feed (the `pump_callout` WS frame)
+//
+// A DIFFERENT shape from PumpCallout above, and deliberately so. PumpCallout is
+// a coin-communities row — a caller's callout HISTORY, fetched on demand for a
+// wallet or a token. What follows is the real-time push the callout poller
+// sends to followers (backend/src/pumpfun/calloutPoller.ts → dispatch), which
+// comes off pump's global firehose and carries only what that feed knows.
+// ---------------------------------------------------------------------------
+
+/** The `data` payload of a `pump_callout` WS frame, one-for-one with the poller. */
+export interface PumpCalloutEvent {
+  calloutId: string;
+  callerAddress: string;
+  username: string | null;
+  avatar: string | null;
+  coinMint: string;
+  symbol: string | null;
+  name: string | null;
+  image: string | null;
+  marketCapUsd: number | null;
+  thesis: string | null;
+  multiple: number | null;
+  /** Epoch ms from pump when present. */
+  createdAt: number | null;
+  /** Per-caller Pushover opt-in, echoed by the poller to gate the toast. */
+  notify?: boolean;
+}
+
+/** A callout held in client state for the live feed. */
+export interface PumpCalloutFeedEntry extends PumpCalloutEvent {
+  /** The call's own timestamp when pump gave one, else arrival. */
+  occurredAt: number;
+  receivedAt: number;
+  /** Stable React key — calloutId is unique but this keeps ordering explicit. */
+  key: string;
+}
+
+// ---------------------------------------------------------------------------
 // Validation — mirrors backend/src/pumpfun/routes.ts so the UI rejects exactly
 // what the API would 400 on, before spending a request.
 // ---------------------------------------------------------------------------

@@ -39,6 +39,7 @@ export interface TrackedCaller {
   avatar: string | null;
   source: string;
   notifyPushover: boolean;
+  notifyDiscord: boolean;
   createdAt: string;
 }
 
@@ -46,6 +47,7 @@ export interface TrackedCaller {
 export interface CallerTrackerRow {
   userId: string;
   notifyPushover: boolean;
+  notifyDiscord: boolean;
 }
 
 export interface CalloutPollState {
@@ -61,7 +63,72 @@ interface RawTrackedRow {
   avatar: string | null;
   source: string | null;
   notify_pushover: boolean | null;
+  /** Absent entirely before the notify_discord migration is applied. */
+  notify_discord?: boolean | null;
   created_at: string;
+}
+
+// ---------------------------------------------------------------------------
+// notify_discord migration tolerance
+// ---------------------------------------------------------------------------
+//
+// 20260816120000_pump_tracked_callers_notify_discord.sql is applied BY HAND, so
+// until the operator runs it PostgREST rejects any read or write that names
+// `notify_discord`. Detect exactly that failure, warn once, and retry without
+// the column — follow/unfollow and the WS + Pushover fan-out must not break
+// over a dormant delivery leg.
+//
+// HAZARD (see storage/supabase/contractsRepo.ts, same trap): PostgREST reports
+// a missing COLUMN with the same "schema cache" wording it uses for a missing
+// TABLE. This regex therefore NAMES the column, and any future generic
+// missing-table check in this file must be ordered AFTER it — a broad
+// /schema cache/ test placed first would swallow real table-level failures and
+// silently kill every write.
+const MISSING_NOTIFY_DISCORD_RE =
+  /notify_discord.*(does not exist|schema cache)|(does not exist|schema cache).*notify_discord/i;
+
+let notifyDiscordMissingWarned = false;
+
+/**
+ * True when this PostgREST error is specifically "the notify_discord COLUMN is
+ * missing" — never a missing table, and never an unrelated failure.
+ *
+ * Exported so the discrimination is unit-tested directly: it is the whole
+ * safety property of the tolerance path, and getting it wrong turns every
+ * follow write into a silent no-op.
+ */
+export function isMissingNotifyDiscordError(error: { message?: string } | null | undefined): boolean {
+  if (!error) return false;
+  return MISSING_NOTIFY_DISCORD_RE.test(error.message ?? '');
+}
+
+/** True (and warns once) when this error means the notify_discord migration isn't applied. */
+function tolerateMissingNotifyDiscord(error: { message?: string } | null | undefined): boolean {
+  if (!isMissingNotifyDiscordError(error)) return false;
+  if (!notifyDiscordMissingWarned) {
+    notifyDiscordMissingWarned = true;
+    console.warn(
+      '[PumpCalloutStore] pump_tracked_callers.notify_discord is missing — apply migration ' +
+        '20260816120000_pump_tracked_callers_notify_discord.sql. Callout DMs are off until then; ' +
+        'WS and Pushover delivery are unaffected.',
+    );
+  }
+  return true;
+}
+
+/** Test seam: reset the once-per-process warning latch. */
+export function resetNotifyDiscordWarning(): void {
+  notifyDiscordMissingWarned = false;
+}
+
+/** Column list for per-user reads, with and without the un-migrated column. */
+const TRACKED_COLUMNS = 'user_id, caller_address, username, display_name, avatar, source, notify_pushover, notify_discord, created_at';
+const TRACKED_COLUMNS_LEGACY = 'user_id, caller_address, username, display_name, avatar, source, notify_pushover, created_at';
+
+function stripNotifyDiscord<T extends Record<string, unknown>>(row: T): Record<string, unknown> {
+  const rest = { ...row };
+  delete rest.notify_discord;
+  return rest;
 }
 
 // ---------------------------------------------------------------------------
@@ -86,15 +153,26 @@ export async function loadTrackersByAddress(): Promise<Map<string, CallerTracker
     return byAddress;
   }
 
-  const { data, error } = await db
+  let result = await db
     .from('pump_tracked_callers')
-    .select('user_id, caller_address, notify_pushover');
-  if (error) throw error;
+    .select('user_id, caller_address, notify_pushover, notify_discord');
+  if (result.error && tolerateMissingNotifyDiscord(result.error)) {
+    result = await db.from('pump_tracked_callers').select('user_id, caller_address, notify_pushover');
+  }
+  if (result.error) throw result.error;
 
-  for (const raw of (data ?? []) as Pick<RawTrackedRow, 'user_id' | 'caller_address' | 'notify_pushover'>[]) {
+  type TrackerSelect = Pick<RawTrackedRow, 'user_id' | 'caller_address' | 'notify_pushover' | 'notify_discord'>;
+  for (const raw of (result.data ?? []) as TrackerSelect[]) {
     if (!raw.caller_address || !raw.user_id) continue;
     const list = byAddress.get(raw.caller_address) ?? [];
-    list.push({ userId: raw.user_id, notifyPushover: raw.notify_pushover ?? true });
+    list.push({
+      userId: raw.user_id,
+      notifyPushover: raw.notify_pushover ?? true,
+      // Absent column (pre-migration) reads as true, matching the column
+      // default. The DM leg is still gated by the user's settings, which are
+      // off by default — see the migration header.
+      notifyDiscord: raw.notify_discord ?? true,
+    });
     byAddress.set(raw.caller_address, list);
   }
   _trackedCache = { byAddress, at: Date.now() };
@@ -142,6 +220,7 @@ function toTrackedCaller(raw: RawTrackedRow): TrackedCaller {
     avatar: raw.avatar,
     source: raw.source ?? 'follow',
     notifyPushover: raw.notify_pushover ?? true,
+    notifyDiscord: raw.notify_discord ?? true,
     createdAt: raw.created_at,
   };
 }
@@ -149,13 +228,19 @@ function toTrackedCaller(raw: RawTrackedRow): TrackedCaller {
 export async function listTrackedCallers(userId: string): Promise<TrackedCaller[]> {
   const db = getPumpServiceClient();
   if (!db) return [];
-  const { data, error } = await db
-    .from('pump_tracked_callers')
-    .select('user_id, caller_address, username, display_name, avatar, source, notify_pushover, created_at')
-    .eq('user_id', userId)
-    .order('created_at', { ascending: false });
-  if (error) throw error;
-  return ((data ?? []) as RawTrackedRow[]).map(toTrackedCaller);
+  const read = (columns: string) =>
+    db
+      .from('pump_tracked_callers')
+      .select(columns)
+      .eq('user_id', userId)
+      .order('created_at', { ascending: false });
+
+  let result = await read(TRACKED_COLUMNS);
+  if (result.error && tolerateMissingNotifyDiscord(result.error)) {
+    result = await read(TRACKED_COLUMNS_LEGACY);
+  }
+  if (result.error) throw result.error;
+  return ((result.data ?? []) as unknown as RawTrackedRow[]).map(toTrackedCaller);
 }
 
 export interface AddTrackedCallerInput {
@@ -165,30 +250,78 @@ export interface AddTrackedCallerInput {
   avatar: string | null;
   source?: string;
   notifyPushover?: boolean;
+  notifyDiscord?: boolean;
 }
 
 export async function addTrackedCaller(userId: string, input: AddTrackedCallerInput): Promise<TrackedCaller> {
   const db = getPumpServiceClient();
   if (!db) throw new Error('Supabase not configured');
-  const { data, error } = await db
-    .from('pump_tracked_callers')
-    .upsert(
-      {
-        user_id: userId,
-        caller_address: input.callerAddress,
-        username: input.username,
-        display_name: input.displayName,
-        avatar: input.avatar,
-        source: input.source ?? 'follow',
-        notify_pushover: input.notifyPushover ?? true,
-      },
-      { onConflict: 'user_id,caller_address' },
-    )
-    .select('user_id, caller_address, username, display_name, avatar, source, notify_pushover, created_at')
-    .single();
-  if (error) throw error;
+  const row = {
+    user_id: userId,
+    caller_address: input.callerAddress,
+    username: input.username,
+    display_name: input.displayName,
+    avatar: input.avatar,
+    source: input.source ?? 'follow',
+    notify_pushover: input.notifyPushover ?? true,
+    notify_discord: input.notifyDiscord ?? true,
+  };
+  const write = (payload: Record<string, unknown>, columns: string) =>
+    db
+      .from('pump_tracked_callers')
+      .upsert(payload, { onConflict: 'user_id,caller_address' })
+      .select(columns)
+      .single();
+
+  let result = await write(row, TRACKED_COLUMNS);
+  if (result.error && tolerateMissingNotifyDiscord(result.error)) {
+    result = await write(stripNotifyDiscord(row), TRACKED_COLUMNS_LEGACY);
+  }
+  if (result.error) throw result.error;
   invalidateTrackedCache();
-  return toTrackedCaller(data as RawTrackedRow);
+  return toTrackedCaller(result.data as unknown as RawTrackedRow);
+}
+
+/**
+ * Flip a follow's delivery switches (the per-caller mute). Only the keys given
+ * are written, so a Pushover toggle can't clobber the Discord one. Returns null
+ * when the user doesn't follow that caller.
+ */
+export async function updateTrackedCaller(
+  userId: string,
+  callerAddress: string,
+  patch: { notifyPushover?: boolean; notifyDiscord?: boolean },
+): Promise<TrackedCaller | null> {
+  const db = getPumpServiceClient();
+  if (!db) throw new Error('Supabase not configured');
+
+  const row: Record<string, unknown> = {};
+  if (patch.notifyPushover !== undefined) row.notify_pushover = patch.notifyPushover;
+  if (patch.notifyDiscord !== undefined) row.notify_discord = patch.notifyDiscord;
+  if (Object.keys(row).length === 0) return null;
+
+  const write = (payload: Record<string, unknown>, columns: string) =>
+    db
+      .from('pump_tracked_callers')
+      .update(payload)
+      .eq('user_id', userId)
+      .eq('caller_address', callerAddress)
+      .select(columns)
+      .maybeSingle();
+
+  let result = await write(row, TRACKED_COLUMNS);
+  if (result.error && tolerateMissingNotifyDiscord(result.error)) {
+    const legacy = stripNotifyDiscord(row);
+    // A Discord-only patch has nothing left to write pre-migration; report the
+    // row unchanged rather than pretending the toggle stuck.
+    if (Object.keys(legacy).length === 0) {
+      return (await listTrackedCallers(userId)).find((c) => c.callerAddress === callerAddress) ?? null;
+    }
+    result = await write(legacy, TRACKED_COLUMNS_LEGACY);
+  }
+  if (result.error) throw result.error;
+  invalidateTrackedCache();
+  return result.data ? toTrackedCaller(result.data as unknown as RawTrackedRow) : null;
 }
 
 /**
@@ -213,11 +346,16 @@ export async function addTrackedCallersBulk(
     avatar: input.avatar,
     source: input.source ?? 'leaderboard',
     notify_pushover: input.notifyPushover ?? true,
+    notify_discord: input.notifyDiscord ?? true,
   }));
-  const { error } = await db
-    .from('pump_tracked_callers')
-    .upsert(rows, { onConflict: 'user_id,caller_address', ignoreDuplicates: true });
-  if (error) throw error;
+  const write = (payload: Record<string, unknown>[]) =>
+    db.from('pump_tracked_callers').upsert(payload, { onConflict: 'user_id,caller_address', ignoreDuplicates: true });
+
+  let result = await write(rows);
+  if (result.error && tolerateMissingNotifyDiscord(result.error)) {
+    result = await write(rows.map(stripNotifyDiscord));
+  }
+  if (result.error) throw result.error;
   invalidateTrackedCache();
   return listTrackedCallers(userId);
 }

@@ -13,7 +13,7 @@
 // step on the pump-tab design pass): sm/base body, clear section headings.
 
 import { useMemo, useState } from 'react';
-import { ExternalLink, Megaphone, Plus, Trash2, Check, UserPlus, Trophy, Radar, Copy, Users } from 'lucide-react';
+import { Bell, BellOff, ExternalLink, Megaphone, Plus, Radio, Trash2, Check, UserPlus, Trophy, Radar, Copy, Users } from 'lucide-react';
 import { usePumpCallers } from '../../hooks/usePumpCallers';
 import { usePumpConnection } from '../../hooks/usePumpConnection';
 import { usePumpLeaderboard } from '../../hooks/usePumpLeaderboard';
@@ -70,7 +70,7 @@ function shortAddress(a: string): string {
   return a.length <= 12 ? a : `${a.slice(0, 4)}…${a.slice(-4)}`;
 }
 
-export default function PumpCallersTab() {
+export default function PumpCallersTab({ onGoToFeed }: { onGoToFeed?: () => void } = {}) {
   const {
     callers,
     followedAddresses,
@@ -83,6 +83,7 @@ export default function PumpCallersTab() {
     followMany,
     followByUsernames,
     unfollow,
+    setNotifyDiscord,
   } = usePumpCallers();
   const { summary } = usePumpConnection();
   const connected = summary.state === 'connected';
@@ -216,7 +217,19 @@ export default function PumpCallersTab() {
         </form>
         {formError && <p className="mt-2 text-sm text-oct-flame">{formError}</p>}
         <p className="mt-2 text-xs text-oct-muted">
-          When a caller you follow posts a callout, you get a toast + Pushover ping in real time.
+          When a caller you follow posts a callout it streams into the{' '}
+          {onGoToFeed ? (
+            <button
+              type="button"
+              onClick={onGoToFeed}
+              className="inline-flex items-center gap-1 text-oct-accent font-semibold hover:underline align-baseline"
+            >
+              <Radio size={11} /> Callouts feed
+            </button>
+          ) : (
+            <span className="text-oct-text font-semibold">Callouts feed</span>
+          )}
+          , plus a toast, a Pushover push, and a Discord DM — each one opt-in.
         </p>
         <p className="mt-1 text-xs text-oct-muted">
           This is the caller&apos;s <span className="text-oct-text font-semibold">pump.fun</span> username, which can
@@ -382,8 +395,10 @@ export default function PumpCallersTab() {
           )}
         </div>
         <p className="text-xs text-oct-muted mb-3">
-          Following pings you on callouts. <span className="text-oct-text font-semibold">Track on-chain</span> also adds
-          the caller&apos;s wallet to your Directory so you can watch it on-chain — a separate list from callout alerts.
+          Following pings you on callouts. The <span className="text-oct-text font-semibold">bell</span> mutes just that
+          caller&apos;s Discord DMs; DMs also need <span className="text-oct-text font-semibold">Settings → Discord Bot</span>{' '}
+          turned on. <span className="text-oct-text font-semibold">Track on-chain</span> is unrelated — it adds the
+          caller&apos;s wallet to your Directory so you can watch it on-chain.
         </p>
         {trackError && <p className="mb-2 text-sm text-oct-flame">{trackError}</p>}
         {loading ? (
@@ -397,6 +412,8 @@ export default function PumpCallersTab() {
         ) : callers.length === 0 ? (
           <p className="text-sm text-oct-muted py-6 text-center">
             You aren&apos;t following anyone yet — add a caller above to start getting callout pings.
+            <br />
+            Until you do, the Callouts feed stays empty on purpose: it streams the callers you pick, not everyone.
           </p>
         ) : (
           <ul className="divide-y divide-oct-border">
@@ -428,6 +445,22 @@ export default function PumpCallersTab() {
                     <ExternalLink size={11} />
                   </a>
                 </div>
+                <button
+                  onClick={() => setNotifyDiscord(c.callerAddress, !c.notifyDiscord)}
+                  className={`shrink-0 p-2 rounded-oct-sm border transition-colors ${
+                    c.notifyDiscord
+                      ? 'border-oct-accent/50 text-oct-accent bg-oct-accent-dim'
+                      : 'border-oct-border text-oct-muted hover:text-oct-text hover:border-oct-border-bright'
+                  }`}
+                  title={
+                    c.notifyDiscord
+                      ? 'Discord DMs on for this caller — click to mute them'
+                      : 'Discord DMs muted for this caller — click to unmute'
+                  }
+                  aria-pressed={c.notifyDiscord}
+                >
+                  {c.notifyDiscord ? <Bell size={15} /> : <BellOff size={15} />}
+                </button>
                 {trackedSolAddresses.has(c.callerAddress) ? (
                   <span
                     className="shrink-0 inline-flex items-center gap-1 px-2.5 py-1.5 rounded-oct-sm border border-oct-green/50 text-oct-green bg-oct-green/10 text-xs font-bold cursor-default"

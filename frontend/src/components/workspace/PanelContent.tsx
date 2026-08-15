@@ -5,6 +5,7 @@ import FomoTradeFeed from '../fomo/FomoTradeFeed';
 import WorkspaceFomoLeaderboard from './WorkspaceFomoLeaderboard';
 import FomoHoldersLookup from '../fomo/FomoHoldersLookup';
 import PumpCallersTab from '../pumpfun/PumpCallersTab';
+import PumpCalloutFeed from '../pumpfun/PumpCalloutFeed';
 import PumpTopCallersTab from '../pumpfun/PumpTopCallersTab';
 import WorkspacePumpLeaderboard from './WorkspacePumpLeaderboard';
 import type { WorkspacePanelSlot } from '../../types/workspace';
@@ -49,6 +50,8 @@ export default function PanelContent({ panel, onRoomChange }: PanelContentProps)
         return <FomoHoldersLookup />;
       case 'pump-following':
         return <PumpCallersTab />;
+      case 'pump-callout-feed':
+        return <PumpCalloutFeed embedded />;
       case 'pump-top-callers':
         return <PumpTopCallersTab />;
       case 'pump-leaderboard':
@@ -73,6 +76,7 @@ export function panelSubtitle(panel: WorkspacePanelSlot, roomName: string | null
   if (panel.type === 'fomo-leaderboard') return 'Top traders';
   if (panel.type === 'token-lookup') return 'FOMO holders by token';
   if (panel.type === 'pump-following') return 'Followed callers';
+  if (panel.type === 'pump-callout-feed') return 'Live callouts';
   if (panel.type === 'pump-top-callers') return 'Top pump callers';
   if (panel.type === 'pump-leaderboard') return 'Top traders';
   return null;
