@@ -58,6 +58,24 @@ export function fomoTradeDisplay(
   };
 }
 
+/** Buy/sell filter for the live trade feed. 'all' passes everything through. */
+export type FomoSideFilter = 'all' | 'buy' | 'sell';
+
+/**
+ * Client-side filter over an already-received trade list — the feed is a
+ * capped in-memory window (see fomoSlice.ts's MAX_FOMO_TRADES), not
+ * server-paginated, so filtering here doesn't drop trades the user hasn't
+ * seen yet. A trade with an unrecognized/missing `side` only shows under
+ * 'all', matching the row's existing "TRADE" fallback label for that case.
+ */
+export function filterFomoTradesBySide<T extends { side: string | null }>(
+  trades: T[],
+  filter: FomoSideFilter,
+): T[] {
+  if (filter === 'all') return trades;
+  return trades.filter((t) => t.side === filter);
+}
+
 function formatTradeUsd(value: number | null): string {
   if (value == null) return '';
   const amount = Math.abs(value) >= 1000 ? Math.round(value).toLocaleString() : value.toFixed(2);
