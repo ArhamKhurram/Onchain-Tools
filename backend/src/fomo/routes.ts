@@ -25,7 +25,13 @@ import {
   networkIdFromContract,
   type FomoTrackedUserRow,
 } from './store.js';
-import { getBotHolders, getBotTheses, getBotWallet, resolveNetworkId } from '../bot/service.js';
+import {
+  getBotHolders,
+  getBotTheses,
+  getBotTraderActivity,
+  getBotWallet,
+  resolveNetworkId,
+} from '../bot/service.js';
 import { sendServiceError } from '../bot/errors.js';
 import type { FomoClientLike } from './types.js';
 import type { WsServer } from '../ws/server.js';
@@ -318,6 +324,25 @@ export function createFomoRouter(wsServer: WsServer): Router {
       res.json(await getBotWallet(query));
     } catch (err) {
       sendServiceError(res, err, 'Failed to look up trader');
+    }
+  });
+
+  // GET /api/fomo/activity?userId=…&limit=100 — a trader's recent swaps and
+  // transfers. Takes the internal FOMO user id (as returned by /wallet's
+  // `fomoUserId`) rather than a search term, so the feed and the profile card
+  // are guaranteed to be the same trader.
+  //
+  // Capped at FOMO_ACTIVITY_MAX_LIMIT (100) — see fomo/activity.ts for the
+  // list of pagination parameters that were tried upstream and don't work.
+  router.get('/activity', async (req, res) => {
+    const fomoUserId = typeof req.query.userId === 'string' ? req.query.userId.trim() : '';
+    if (!fomoUserId) return res.status(400).json({ error: 'A FOMO user id is required.' });
+
+    const limitRaw = Number.parseInt(String(req.query.limit ?? ''), 10);
+    try {
+      res.json(await getBotTraderActivity(fomoUserId, Number.isFinite(limitRaw) ? limitRaw : undefined));
+    } catch (err) {
+      sendServiceError(res, err, 'Failed to load trader activity');
     }
   });
 
