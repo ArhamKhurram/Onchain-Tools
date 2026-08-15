@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { fomoTradeDisplay, buildFomoTradeAlertMessage } from '../src/utils/fomoTradeDisplay';
+import { fomoTradeDisplay, buildFomoTradeAlertMessage, filterFomoTradesBySide } from '../src/utils/fomoTradeDisplay';
 import type { FomoTrade } from '../src/types/fomo';
 import type { ContractLinkTemplates } from '../src/types';
 
@@ -124,5 +124,40 @@ describe('buildFomoTradeAlertMessage', () => {
     expect(msg.platformUrl).toContain(SOL_ADDR);
     expect(msg.contractAddresses).toEqual([SOL_ADDR]);
     expect(msg.hasContractAddress).toBe(true);
+  });
+});
+
+describe('filterFomoTradesBySide', () => {
+  const trades = [
+    trade({ tradeId: 't1', side: 'buy' }),
+    trade({ tradeId: 't2', side: 'sell' }),
+    trade({ tradeId: 't3', side: 'buy' }),
+    trade({ tradeId: 't4', side: null }),
+  ];
+
+  it('returns everything unfiltered for "all"', () => {
+    expect(filterFomoTradesBySide(trades, 'all')).toEqual(trades);
+  });
+
+  it('keeps only buys for "buy"', () => {
+    const result = filterFomoTradesBySide(trades, 'buy');
+    expect(result.map((t) => t.tradeId)).toEqual(['t1', 't3']);
+  });
+
+  it('keeps only sells for "sell"', () => {
+    const result = filterFomoTradesBySide(trades, 'sell');
+    expect(result.map((t) => t.tradeId)).toEqual(['t2']);
+  });
+
+  it('excludes trades with a missing/unrecognized side from buy and sell filters', () => {
+    expect(filterFomoTradesBySide(trades, 'buy').some((t) => t.tradeId === 't4')).toBe(false);
+    expect(filterFomoTradesBySide(trades, 'sell').some((t) => t.tradeId === 't4')).toBe(false);
+    expect(filterFomoTradesBySide(trades, 'all').some((t) => t.tradeId === 't4')).toBe(true);
+  });
+
+  it('does not mutate the input array', () => {
+    const copy = [...trades];
+    filterFomoTradesBySide(trades, 'buy');
+    expect(trades).toEqual(copy);
   });
 });
