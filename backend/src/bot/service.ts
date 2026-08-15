@@ -14,9 +14,17 @@ import type {
   BotThesisEntry,
   BotTokenInfo,
   BotTrackedResponse,
+  BotTraderActivityEntry,
+  BotTraderActivityResponse,
   BotWalletProfile,
 } from '@oct/shared';
 import { ensureSharedFomoClientReady } from '../fomo/client.js';
+import {
+  clampActivityLimit,
+  extractActivityEnvelope,
+  normalizeActivityEntry,
+  summarizeTraderActivity,
+} from '../fomo/activity.js';
 import { getFomoServiceClient } from '../fomo/store.js';
 import { resolveOctUserByDiscordId } from './identity.js';
 import { extractLeaderboardEntries, networkIdFromContract } from '../fomo/store.js';
@@ -563,13 +571,63 @@ export async function getBotWallet(searchTerm: string): Promise<BotWalletProfile
   const portfolioPnlUsd = holdingsPnlSum !== 0 ? holdingsPnlSum + otherPnl : otherPnl;
 
   return {
+    fomoUserId: userId,
     displayName,
     handle: userHandle ?? null,
+    // Profile-declared only. These come from the fuzzy-search record, while
+    // holdings/PnL above come from a separate balances call keyed by userId —
+    // the vendor never cross-validates the two, and the addresses themselves
+    // have no on-chain existence (fomo.family is custodial; swap records carry
+    // isCrossmint). Callers must not present them as verified wallets. See the
+    // BotWalletProfile doc comment in packages/shared/src/bot.ts.
     solAddress,
     evmAddress,
     holdings,
     portfolioPnlUsd,
     livePerpPnlUsd: livePerpPnl,
+  };
+}
+
+/**
+ * A trader's recent swaps and transfers from `/v2/users/{id}/activity`.
+ *
+ * Keyed by internal fomo.family user id (what getBotWallet now returns as
+ * `fomoUserId`) rather than a search term, so the activity always belongs to
+ * the same trader the profile card is showing — resolving the term twice could
+ * land on two different users, since getBotWallet's candidate ranking and
+ * resolveFomoUser's first-hit rule disagree.
+ *
+ * The window is capped upstream and cannot be paged; `truncated` says so.
+ */
+export async function getBotTraderActivity(
+  fomoUserId: string,
+  limit?: number,
+): Promise<BotTraderActivityResponse> {
+  const id = fomoUserId.trim();
+  if (!id) throw new BotServiceError('not_found', 'A FOMO user id is required.');
+
+  const client = await requireFomoClient();
+  const clamped = clampActivityLimit(limit);
+
+  const result = await client.getUserActivity(id, clamped);
+  if (result.status === 404) {
+    throw new BotServiceError('not_found', 'That FOMO trader has no activity feed.');
+  }
+  assertUpstreamOk(result.status, 'activity');
+
+  const { activities, hasNextPage } = extractActivityEnvelope(result.json);
+  const entries = activities
+    .map(normalizeActivityEntry)
+    .filter((e): e is BotTraderActivityEntry => e !== null);
+
+  return {
+    fomoUserId: id,
+    limit: clamped,
+    entries,
+    summary: summarizeTraderActivity(entries),
+    // hasNextPage is the vendor's own flag; we also treat a full page as
+    // truncated because the upstream gives no cursor to prove otherwise.
+    truncated: hasNextPage || activities.length >= clamped,
   };
 }
 

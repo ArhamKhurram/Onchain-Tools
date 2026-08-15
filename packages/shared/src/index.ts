@@ -43,6 +43,12 @@ export type {
   BotTrackedResponse,
   BotWalletHolding,
   BotWalletProfile,
+  BotSwapDirection,
+  BotTraderSwap,
+  BotTraderTransfer,
+  BotTraderActivityEntry,
+  BotTraderActivitySummary,
+  BotTraderActivityResponse,
 } from './bot.js';
 
 // Caller quality — slop filter + earned ranking (docs/roadmap/).
