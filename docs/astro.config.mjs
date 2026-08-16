@@ -18,6 +18,7 @@ export default defineConfig({
       description: 'Developer documentation for Onchain Tools (OCT) — real-time crypto intelligence console.',
       social: [
         { icon: 'github', label: 'GitHub', href: 'https://github.com/ArhamKhurram/Onchain-Tools' },
+        { icon: 'x.com', label: 'X', href: 'https://x.com/toolsonchain' },
       ],
       // Expressive Code would swallow ```mermaid fences before the client
       // renderer could see them; plain Shiki highlighting is enough here.
