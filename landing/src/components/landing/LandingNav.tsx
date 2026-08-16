@@ -1,4 +1,5 @@
 import { APP_CONSOLE_PATH } from '../../constants';
+import { SocialLinks } from '../SocialLinks';
 
 interface LandingNavProps {
   entered: boolean;
@@ -30,12 +31,17 @@ export function LandingNav({ entered, lightNav = false }: LandingNavProps) {
         ONCHAIN.TOOLS
       </span>
 
-      <a
-        href={APP_CONSOLE_PATH}
-        className="pointer-events-auto opacity-90 hover:opacity-100 transition-opacity border-2 border-current px-2.5 py-1 sm:px-4 sm:py-2 shrink-0 whitespace-nowrap text-[10px] sm:text-xs"
-      >
-        [ OPEN CONSOLE ]
-      </a>
+      <div className="flex items-center gap-1 sm:gap-2 shrink-0">
+        {/* tight gap on purpose: SocialLinks carries its own p-2 for tap size */}
+        <SocialLinks />
+
+        <a
+          href={APP_CONSOLE_PATH}
+          className="pointer-events-auto opacity-90 hover:opacity-100 transition-opacity border-2 border-current px-2.5 py-1 sm:px-4 sm:py-2 whitespace-nowrap text-[10px] sm:text-xs"
+        >
+          [ OPEN CONSOLE ]
+        </a>
+      </div>
     </header>
   );
 }
