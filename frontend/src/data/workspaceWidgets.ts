@@ -25,7 +25,13 @@ export const WORKSPACE_WIDGETS: WorkspaceWidgetDef[] = [
   { type: 'fomo-feed', label: 'FOMO live', description: 'Live buys and sells from tracked traders' },
   { type: 'fomo-leaderboard', label: 'FOMO leaderboard', description: 'Top traders on fomo.family' },
   { type: 'token-lookup', label: 'Token lookup', description: 'Top FOMO holders for any token address' },
-  { type: 'pump-following', label: 'Pump callouts', description: 'Followed pump.fun callers & their live callouts' },
+  // Two panels, because they were never one thing. `pump-callout-feed` is the
+  // live stream; `pump-following` manages the subscription that fills it. The
+  // old single entry was labelled "Pump callouts … & their live callouts" while
+  // rendering only the follow manager, which is precisely why the feed read as
+  // broken — there was no live surface behind the name.
+  { type: 'pump-callout-feed', label: 'Pump callouts live', description: 'Live callouts from the pump.fun callers you follow' },
+  { type: 'pump-following', label: 'Pump callers', description: 'Manage which pump.fun callers you follow' },
   { type: 'pump-top-callers', label: 'Top callers', description: 'Best pump.fun callers by calls & multiple' },
   { type: 'pump-leaderboard', label: 'Pump leaderboard', description: 'Top pump.fun traders by PnL' },
 ];

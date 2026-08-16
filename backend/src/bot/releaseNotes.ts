@@ -18,9 +18,7 @@ import type { Client } from 'discord.js';
 import { getFomoServiceClient } from '../fomo/store.js';
 import { resolveDiscordIdByOctUser } from './identity.js';
 import { buildAnnouncementComponents, type AnnouncePayload } from './announce.js';
-
-/** Discord's "cannot send messages to this user". */
-const DISCORD_CANNOT_DM = 50007;
+import { DISCORD_CANNOT_DM } from './dm.js';
 
 /** Floor gap between DMs. Well inside Discord's limits and deliberately dull. */
 export const DM_INTERVAL_MS = 600;

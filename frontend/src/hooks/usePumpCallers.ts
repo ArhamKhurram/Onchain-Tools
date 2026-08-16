@@ -17,6 +17,8 @@ export interface TrackedCaller {
   avatar: string | null;
   source: string;
   notifyPushover: boolean;
+  /** Per-caller Discord-DM mute. True unless the user turned this caller off. */
+  notifyDiscord: boolean;
   createdAt: string;
 }
 
@@ -213,6 +215,35 @@ export function usePumpCallers() {
     [callers],
   );
 
+  /**
+   * Mute/unmute one caller's Discord DMs. Optimistic — the row flips instantly
+   * and reverts if the write fails, matching the unfollow flow. This is the ONLY
+   * per-caller switch the UI exposes; the two settings-level gates
+   * (discordBotDm.enabled + triggers.pumpCallout) live in Settings.
+   */
+  const setNotifyDiscord = useCallback(
+    async (callerAddress: string, notifyDiscord: boolean): Promise<void> => {
+      const prev = callers;
+      setCallers((list) =>
+        list.map((c) => (c.callerAddress === callerAddress ? { ...c, notifyDiscord } : c)),
+      );
+      try {
+        const res = await pumpFetch(`/pumpfun/callers/${encodeURIComponent(callerAddress)}`, {
+          method: 'PATCH',
+          body: JSON.stringify({ notifyDiscord }),
+        });
+        if (!res.ok) setCallers(prev);
+        else {
+          const updated = (await res.json()) as TrackedCaller;
+          setCallers((list) => list.map((c) => (c.callerAddress === callerAddress ? updated : c)));
+        }
+      } catch {
+        setCallers(prev);
+      }
+    },
+    [callers],
+  );
+
   const unfollow = useCallback(async (callerAddress: string): Promise<void> => {
     // Optimistic remove; restore on failure.
     const prev = callers;
@@ -238,6 +269,7 @@ export function usePumpCallers() {
     followByAddress,
     followMany,
     followByUsernames,
+    setNotifyDiscord,
     unfollow,
     refresh,
   };

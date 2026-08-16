@@ -6,7 +6,7 @@
 // renders PUMP_TABS and routes on parsePumpView, so the test that asserts
 // 'leaderboard' is present guards against a tab that renders but never resolves.
 
-export type PumpView = 'traders' | 'token' | 'trending' | 'leaderboard' | 'top-callers' | 'following';
+export type PumpView = 'traders' | 'token' | 'trending' | 'leaderboard' | 'top-callers' | 'following' | 'callouts';
 
 export interface PumpTab {
   id: PumpView;
@@ -20,6 +20,7 @@ export const PUMP_TABS: readonly PumpTab[] = [
   { id: 'leaderboard', label: 'Leaderboard' },
   { id: 'top-callers', label: 'Top Callers' },
   { id: 'following', label: 'Following' },
+  { id: 'callouts', label: 'Callouts' },
 ] as const;
 
 /** The default view when ?view= is absent or unrecognized. */
@@ -36,7 +37,8 @@ export function parsePumpView(raw: string | null): PumpView {
     raw === 'trending' ||
     raw === 'leaderboard' ||
     raw === 'top-callers' ||
-    raw === 'following'
+    raw === 'following' ||
+    raw === 'callouts'
   ) {
     return raw;
   }

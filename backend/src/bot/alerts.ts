@@ -16,9 +16,8 @@ import type { DiscordBotTriggers } from '@oct/shared';
 import type { FrontendMessage } from '../discord/types.js';
 import { getStorageProvider } from '../storage/index.js';
 import { resolveDiscordIdByOctUser } from './identity.js';
+import { sendBotDm } from './dm.js';
 import { BRAND, botFooter, makeContainer, makeSeparator, makeText, shortAddress } from './layout.js';
-
-const DISCORD_CANNOT_DM = 50007; // "Cannot send messages to this user"
 
 export interface AlertLike {
   type: string;
@@ -117,19 +116,17 @@ export function createAlertDmListener(getClient: () => Client | null) {
       const discordId = await resolveDiscordIdByOctUser(userId);
       if (!discordId) return; // account has no linked Discord identity
 
-      const user = await client.users.fetch(discordId);
-      await user.send({
-        flags: 1 << 15, // MessageFlags.IsComponentsV2
-        components: buildAlertDm(alert),
-      } as any);
-    } catch (err: any) {
-      if (err?.code === DISCORD_CANNOT_DM) {
+      const { outcome, error } = await sendBotDm(client, discordId, buildAlertDm(alert));
+      if (outcome === 'blocked') {
         console.warn(
           '[BotAlerts] Cannot DM this user — Discord requires that they share a server with the bot ' +
             '(or have DMs open). Ask them to join the OCT server.',
         );
-        return;
+      } else if (outcome !== 'delivered') {
+        console.error('[BotAlerts] DM delivery failed:', (error as Error)?.message ?? error);
       }
+    } catch (err: any) {
+      // Only the pref/identity lookups can land here — sendBotDm never rejects.
       console.error('[BotAlerts] DM delivery failed:', err?.message ?? err);
     }
   };

@@ -4,7 +4,7 @@ import { playHighlightSound, playContractAlertSound, playKeywordAlertSound, play
 import { buildContractUrl, buildRevivalContractUrl, revivalNetworkLabel } from '../utils/contractUrl';
 import { showDesktopNotification } from '../utils/desktopNotification';
 import { fomoTradeDisplay, buildFomoTradeAlertMessage } from '../utils/fomoTradeDisplay';
-import { formatMcap } from '../types/pumpfun';
+import { formatMcap, type PumpCalloutEvent } from '../types/pumpfun';
 import { isDemoMode } from '../demo/demoStore';
 import { isHostedMode, getSupabase } from '../lib/supabase';
 import { isClientGatewayMode } from '../discord/clientGateway';
@@ -53,6 +53,7 @@ export function useWebSocket() {
   const setGatewayAuthError = useAppStore((s) => s.setGatewayAuthError);
   const fetchMaskedTokens = useAppStore((s) => s.fetchMaskedTokens);
   const addFomoTrade = useAppStore((s) => s.addFomoTrade);
+  const addPumpCallout = useAppStore((s) => s.addPumpCallout);
   const addRevival = useAppStore((s) => s.addRevival);
   const bumpJournalRefresh = useAppStore((s) => s.bumpJournalRefresh);
   const bumpPriceAlertRefresh = useAppStore((s) => s.bumpPriceAlertRefresh);
@@ -244,17 +245,12 @@ export function useWebSocket() {
             // A followed pump.fun caller posted a callout. `notify` gates the
             // toast/sound the same way it does for FOMO; the ping always lands
             // in notification history via addAlert.
-            const d = incoming.data as {
-              calloutId: string;
-              callerAddress: string;
-              username: string | null;
-              avatar: string | null;
-              coinMint: string;
-              symbol: string | null;
-              marketCapUsd: number | null;
-              thesis: string | null;
-              notify?: boolean;
-            };
+            const { notify: _pumpNotify, ...calloutData } = incoming.data as PumpCalloutEvent;
+            const d = calloutData;
+            // The live callout feed (Pump.fun → Callouts) is fed here, before the
+            // alert: the feed is the durable surface for the session, the alert
+            // is the transient ping. Both come off the one frame.
+            addPumpCallout(calloutData);
             if (!IS_POPOUT) {
               const who = d.username ? `@${d.username}` : 'A tracked caller';
               const coin = d.symbol ? `$${d.symbol}` : d.coinMint ? `${d.coinMint.slice(0, 4)}…pump` : 'a coin';
@@ -596,5 +592,5 @@ export function useWebSocket() {
       clearTimeout(reconnectTimer);
       wsRef.current?.close();
     };
-  }, [addMessage, updateMessage, markMessageDeleted, addAlert, setConnected, updateReaction, addContract, enrichContract, updateContractChain, fetchGuilds, fetchDMChannels, fetchHistory, fetchTelegramChats, checkAuth, setGatewayAuthError, fetchMaskedTokens, addFomoTrade, addRevival, bumpJournalRefresh, bumpPriceAlertRefresh]);
+  }, [addMessage, updateMessage, markMessageDeleted, addAlert, setConnected, updateReaction, addContract, enrichContract, updateContractChain, fetchGuilds, fetchDMChannels, fetchHistory, fetchTelegramChats, checkAuth, setGatewayAuthError, fetchMaskedTokens, addFomoTrade, addPumpCallout, addRevival, bumpJournalRefresh, bumpPriceAlertRefresh]);
 }

@@ -9,6 +9,7 @@ import PumpTrendingPanel from '../components/pumpfun/PumpTrendingPanel';
 import PumpLeaderboardTab from '../components/pumpfun/PumpLeaderboardTab';
 import PumpTopCallersTab from '../components/pumpfun/PumpTopCallersTab';
 import PumpCallersTab from '../components/pumpfun/PumpCallersTab';
+import PumpCalloutFeed from '../components/pumpfun/PumpCalloutFeed';
 import { DEFAULT_PUMP_VIEW, PUMP_TABS, parsePumpView, type PumpView } from '../lib/pumpViews';
 
 // The pump.fun tab: read-only windows onto a THIRD PARTY's data (coin-communities
@@ -48,7 +49,12 @@ export default function PumpfunPage() {
         ) : view === 'top-callers' ? (
           <PumpTopCallersTab />
         ) : view === 'following' ? (
-          <PumpCallersTab />
+          <PumpCallersTab onGoToFeed={() => setView('callouts')} />
+        ) : view === 'callouts' ? (
+          // Callouts and Following are two halves of one subscription: the feed
+          // hands an empty state straight to the follow UI, and the follow UI
+          // hands a fresh follower straight back to the feed.
+          <PumpCalloutFeed onGoToFollowing={() => setView('following')} />
         ) : (
           <PumpLeaderboardTab tracking={tracking} />
         )}

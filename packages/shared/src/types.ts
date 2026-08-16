@@ -212,6 +212,17 @@ export interface DiscordBotTriggers {
    * asking for a daily summary. Default off.
    */
   dailyDigest: boolean;
+  /**
+   * Live pump.fun callout DMs for the callers this user follows.
+   *
+   * Unlike the feed triggers above, this one never fires on ambient volume:
+   * a DM only happens for a caller the user explicitly followed, and the
+   * follow row carries its own `notifyDiscord` mute. So it defaults ON in the
+   * shipped defaults (like missedRunner) — but the master `enabled` switch
+   * still gates it, and a STORED config missing this key reads as false,
+   * so no existing account starts getting DMs without opting in.
+   */
+  pumpCallout: boolean;
 }
 
 export interface DiscordBotDmConfig {
@@ -660,6 +671,7 @@ export type WorkspacePanelType =
   | 'fomo-leaderboard'
   | 'token-lookup'
   | 'pump-following'
+  | 'pump-callout-feed'
   | 'pump-top-callers'
   | 'pump-leaderboard';
 
