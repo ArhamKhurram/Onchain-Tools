@@ -20,6 +20,7 @@ import {
   listTrackedCallers,
   addTrackedCaller,
   addTrackedCallersBulk,
+  updateTrackedCaller,
   removeTrackedCaller,
 } from './calloutStore.js';
 import {
@@ -688,6 +689,32 @@ export function createPumpfunRouter(): Router {
     } catch (err) {
       console.error('[PumpfunAPI] Failed to bulk-follow callers:', err instanceof Error ? err.message : err);
       res.status(500).json({ error: 'Failed to follow callers.' });
+    }
+  });
+
+  // PATCH /api/pumpfun/callers/:address — flip a follow's delivery switches.
+  // Body { notifyPushover?, notifyDiscord? }; only the keys present are written,
+  // so muting Discord can't clobber the Pushover setting. 404 when not followed.
+  router.patch('/callers/:address', async (req, res) => {
+    if (requireCalloutStore(res)) return;
+    const { address } = req.params;
+    if (!isValidAddress(address)) {
+      return res.status(400).json({ error: 'Invalid wallet address.' });
+    }
+    const body = isRecord(req.body) ? (req.body as Record<string, unknown>) : {};
+    const patch: { notifyPushover?: boolean; notifyDiscord?: boolean } = {};
+    if (typeof body.notifyPushover === 'boolean') patch.notifyPushover = body.notifyPushover;
+    if (typeof body.notifyDiscord === 'boolean') patch.notifyDiscord = body.notifyDiscord;
+    if (Object.keys(patch).length === 0) {
+      return res.status(400).json({ error: 'Provide a boolean "notifyPushover" or "notifyDiscord".' });
+    }
+    try {
+      const updated = await updateTrackedCaller(getUserId(req), address, patch);
+      if (!updated) return res.status(404).json({ error: 'You are not following that caller.' });
+      res.json(updated);
+    } catch (err) {
+      console.error('[PumpfunAPI] Failed to update tracked caller:', err instanceof Error ? err.message : err);
+      res.status(500).json({ error: 'Failed to update caller notification settings.' });
     }
   });
 

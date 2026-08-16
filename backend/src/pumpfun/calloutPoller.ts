@@ -30,6 +30,7 @@ import {
   type CalloutObservation,
 } from './callerBoardStore.js';
 import { postCalloutsToDiscord } from './calloutDiscord.js';
+import { deliverCalloutDms, type CalloutDmJob } from './calloutDm.js';
 
 const DEFAULT_INTERVAL_MS = Number.parseInt(process.env.PUMP_CALLOUT_POLL_INTERVAL_MS ?? '', 10) || 12_000;
 const IDLE_INTERVAL_MS = Number.parseInt(process.env.PUMP_CALLOUT_IDLE_INTERVAL_MS ?? '', 10) || 60_000;
@@ -263,6 +264,12 @@ class PumpCalloutPoller {
       client.resolveCoins(mints).catch(() => new Map()),
     ]);
 
+    // Discord DMs are COLLECTED here and sent after the loop, never inside it.
+    // A DM is paced (Discord restricts bots that burst DMs) and can involve two
+    // network lookups per user; doing that inline would delay the WS frame and
+    // the Pushover push that already work.
+    const dmJobs: CalloutDmJob[] = [];
+
     // Oldest-first so the newest callout lands last (top of the stack).
     for (const c of matched.reverse()) {
       const followers = trackers.get(c.callerAddress);
@@ -293,8 +300,31 @@ class PumpCalloutPoller {
       for (const f of followers) {
         this.wsServer.sendToUser(f.userId, { ...payload, data: { ...payload.data, notify: f.notifyPushover } });
         if (f.notifyPushover) await this.notifyPushover(f.userId, username, symbol, c);
+        if (f.notifyDiscord) {
+          dmJobs.push({
+            userId: f.userId,
+            notifyDiscord: true,
+            callout: {
+              callerAddress: c.callerAddress,
+              callerName: username,
+              callerAvatar: user?.avatar ?? null,
+              mint: c.coinMint,
+              symbol,
+              coinName: coin?.name ?? null,
+              thesis: c.thesis,
+              marketCapUsd: c.marketCapUsd,
+              multiple: c.multiple,
+            },
+          });
+        }
       }
     }
+
+    // LAST, and fully guarded: deliverCalloutDms resolves rather than rejects,
+    // so nothing here can undo the delivery above. The remaining settings gates
+    // (discordBotDm.enabled + triggers.pumpCallout) are checked in there, per
+    // user, memoised for this dispatch.
+    if (dmJobs.length > 0) await deliverCalloutDms(dmJobs);
   }
 
   private async notifyPushover(

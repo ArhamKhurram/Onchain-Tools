@@ -4,13 +4,13 @@ import { playHighlightSound, playContractAlertSound, playKeywordAlertSound, play
 import { buildContractUrl, buildRevivalContractUrl, revivalNetworkLabel } from '../utils/contractUrl';
 import { showDesktopNotification } from '../utils/desktopNotification';
 import { fomoTradeDisplay, buildFomoTradeAlertMessage } from '../utils/fomoTradeDisplay';
-import { formatMcap } from '../types/pumpfun';
+import { formatMcap, type PumpCalloutEvent } from '../types/pumpfun';
 import { isDemoMode } from '../demo/demoStore';
 import { isHostedMode, getSupabase } from '../lib/supabase';
 import { isClientGatewayMode } from '../discord/clientGateway';
 import { hasLocalDiscordTokens } from '../discord/tokenStore';
 import { buildStreamMessage, STREAM_POOL } from '../demo/demoData';
-import type { WsIncoming, Alert, FrontendMessage, ContractEntry, RevivalAlertData, BreakoutAlertData, JournalAlertData } from '../types';
+import type { WsIncoming, Alert, FrontendMessage, ContractEntry, RevivalAlertData, BreakoutAlertData, JournalAlertData, PriceAlertData } from '../types';
 import type { FomoTradeEvent } from '../types/fomo';
 
 let idCounter = 0;
@@ -53,8 +53,10 @@ export function useWebSocket() {
   const setGatewayAuthError = useAppStore((s) => s.setGatewayAuthError);
   const fetchMaskedTokens = useAppStore((s) => s.fetchMaskedTokens);
   const addFomoTrade = useAppStore((s) => s.addFomoTrade);
+  const addPumpCallout = useAppStore((s) => s.addPumpCallout);
   const addRevival = useAppStore((s) => s.addRevival);
   const bumpJournalRefresh = useAppStore((s) => s.bumpJournalRefresh);
+  const bumpPriceAlertRefresh = useAppStore((s) => s.bumpPriceAlertRefresh);
 
   useDemoStream();
 
@@ -243,17 +245,12 @@ export function useWebSocket() {
             // A followed pump.fun caller posted a callout. `notify` gates the
             // toast/sound the same way it does for FOMO; the ping always lands
             // in notification history via addAlert.
-            const d = incoming.data as {
-              calloutId: string;
-              callerAddress: string;
-              username: string | null;
-              avatar: string | null;
-              coinMint: string;
-              symbol: string | null;
-              marketCapUsd: number | null;
-              thesis: string | null;
-              notify?: boolean;
-            };
+            const { notify: _pumpNotify, ...calloutData } = incoming.data as PumpCalloutEvent;
+            const d = calloutData;
+            // The live callout feed (Pump.fun → Callouts) is fed here, before the
+            // alert: the feed is the durable surface for the session, the alert
+            // is the transient ping. Both come off the one frame.
+            addPumpCallout(calloutData);
             if (!IS_POPOUT) {
               const who = d.username ? `@${d.username}` : 'A tracked caller';
               const coin = d.symbol ? `$${d.symbol}` : d.coinMint ? `${d.coinMint.slice(0, 4)}…pump` : 'a coin';
@@ -461,6 +458,48 @@ export function useWebSocket() {
           } else if (incoming.type === 'journal_update') {
             // New journal trades landed server-side — refresh signal only.
             bumpJournalRefresh();
+          } else if (incoming.type === 'price_alert') {
+            // An operator-SET level was crossed (Callers → Alerts). Toast +
+            // notification history at NORMAL loudness — never the revival
+            // klaxon. Its own independent signal: no detection, no scoring,
+            // never fused with revival/breakout/convergence/FOMO.
+            const d = incoming.data as PriceAlertData;
+            bumpPriceAlertRefresh();
+            if (!IS_POPOUT) {
+              const sym = d.symbol ? `$${d.symbol}` : `${d.mint.slice(0, 6)}…`;
+              const unit = d.metric === 'mcap' ? 'mcap' : 'price';
+              const fmt = (n: number) =>
+                n >= 1_000_000
+                  ? `$${(n / 1_000_000).toFixed(2)}M`
+                  : n >= 1_000
+                    ? `$${(n / 1_000).toFixed(1)}K`
+                    : `$${n < 1 ? n.toPrecision(3) : n.toFixed(2)}`;
+              const note = d.note ? ` — "${d.note}"` : '';
+              const alert: Alert = {
+                id: `price-alert-${d.alertId}-${d.triggeredAt}`,
+                type: 'price_alert',
+                reason: `${sym} crossed ${d.direction} ${fmt(d.targetUsd)} ${unit}`,
+                message: {
+                  id: `price-alert-${d.alertId}-${d.triggeredAt}`,
+                  channelId: 'price-alert',
+                  guildId: null,
+                  channelName: 'PRICE ALERT',
+                  guildName: null,
+                  author: { id: 'oct-price-alert', username: 'OCT', displayName: 'Price Alert', avatar: null },
+                  content: `${sym} ${unit} is now ${fmt(d.valueUsd)}, ${d.direction} your ${fmt(d.targetUsd)} level${note}`,
+                  timestamp: d.triggeredAt,
+                  attachments: [],
+                  embeds: [],
+                  isHighlighted: false,
+                  hasContractAddress: true,
+                  contractAddresses: [d.mint],
+                  mentions: {},
+                  platformUrl: `https://dexscreener.com/${d.chain}/${d.mint}`,
+                },
+                timestamp: Date.now(),
+              };
+              addAlert(alert);
+            }
           } else if (incoming.type === 'wallet_movement') {
             // A tracked Directory (user_tracked_wallets) SOLANA wallet made an
             // on-chain buy/sell. `notify` gates the toast/sound (mirrors FOMO);
@@ -553,5 +592,5 @@ export function useWebSocket() {
       clearTimeout(reconnectTimer);
       wsRef.current?.close();
     };
-  }, [addMessage, updateMessage, markMessageDeleted, addAlert, setConnected, updateReaction, addContract, enrichContract, updateContractChain, fetchGuilds, fetchDMChannels, fetchHistory, fetchTelegramChats, checkAuth, setGatewayAuthError, fetchMaskedTokens, addFomoTrade, addRevival, bumpJournalRefresh]);
+  }, [addMessage, updateMessage, markMessageDeleted, addAlert, setConnected, updateReaction, addContract, enrichContract, updateContractChain, fetchGuilds, fetchDMChannels, fetchHistory, fetchTelegramChats, checkAuth, setGatewayAuthError, fetchMaskedTokens, addFomoTrade, addPumpCallout, addRevival, bumpJournalRefresh, bumpPriceAlertRefresh]);
 }

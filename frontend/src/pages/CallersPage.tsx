@@ -5,16 +5,21 @@ import { useAuthSession } from '../hooks/useAuthSession';
 import ContractDashboard from '../components/ContractDashboard';
 import RadarTable from '../components/callers/RadarTable';
 import RevivalLog from '../components/callers/RevivalLog';
+import PriceAlerts from '../components/callers/PriceAlerts';
 import ConsoleEmptyState from '../components/console/ConsoleEmptyState';
 import ConsoleSubnav from '../components/console/ConsoleSubnav';
 import { routes } from '../lib/routes';
 
-type CallersView = 'feed' | 'radar' | 'revival';
+type CallersView = 'feed' | 'radar' | 'revival' | 'alerts';
 
 const CALLERS_TABS = [
   { id: 'feed' as const, label: 'Contracts' },
   { id: 'radar' as const, label: 'Radar' },
   { id: 'revival' as const, label: 'Revival' },
+  // Operator-SET levels. Deliberately its own tab next to Revival, not part of
+  // it: revival detects, this one only reports the crossing of a number the
+  // operator typed. Signals stay independent (CLAUDE.md).
+  { id: 'alerts' as const, label: 'Alerts' },
 ];
 
 export default function CallersPage() {
@@ -22,7 +27,7 @@ export default function CallersPage() {
   const [searchParams, setSearchParams] = useSearchParams();
   const view = useMemo<CallersView>(() => {
     const q = searchParams.get('view');
-    return q === 'radar' || q === 'revival' ? q : 'feed';
+    return q === 'radar' || q === 'revival' || q === 'alerts' ? q : 'feed';
   }, [searchParams]);
 
   const setView = (next: CallersView) => {
@@ -55,7 +60,15 @@ export default function CallersPage() {
   return (
     <div className="h-full min-h-0 flex flex-col bg-oct-bg">
       <ConsoleSubnav tabs={CALLERS_TABS} active={view} onChange={setView} />
-      {view === 'radar' ? <RadarTable /> : view === 'revival' ? <RevivalLog /> : <ContractDashboard />}
+      {view === 'radar' ? (
+        <RadarTable />
+      ) : view === 'revival' ? (
+        <RevivalLog />
+      ) : view === 'alerts' ? (
+        <PriceAlerts />
+      ) : (
+        <ContractDashboard />
+      )}
     </div>
   );
 }

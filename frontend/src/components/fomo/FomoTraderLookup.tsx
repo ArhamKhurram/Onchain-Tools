@@ -1,13 +1,15 @@
-// Look up any FOMO trader by handle or display name and show their public
-// wallets, holdings and PnL — the console's read of the Discord /wallet command.
+// Look up any FOMO trader by handle or display name and show their profile,
+// holdings, PnL and recent trading activity — the console's read of the
+// Discord /wallet command, plus the activity feed that command never had.
 //
 // Distinct from the Tracking tab (FomoTrackedList): that manages *your* tracked
 // traders (a Supabase write). This is a read-only probe of anyone on
 // fomo.family, so nothing here persists.
 
 import { useState, type FormEvent } from 'react';
-import { Check, Copy, Search, Wallet } from 'lucide-react';
+import { Check, Copy, Search, ShieldAlert, Wallet } from 'lucide-react';
 import { useFomoTraderLookup } from '../../hooks/useFomoLookup';
+import FomoTraderActivity from './FomoTraderActivity';
 
 function compactUsd(value: number | null | undefined): string {
   if (value == null) return '—';
@@ -26,6 +28,22 @@ function pnlClass(value: number): string {
   return value >= 0 ? 'text-oct-green' : 'text-oct-flame';
 }
 
+/**
+ * One platform-declared address from the trader's fomo.family profile.
+ *
+ * Deliberately NOT called a wallet. These strings come from the profile record
+ * (`address` / `evmAddress` on the fuzzy-search result), while the holdings and
+ * PnL above come from a separate balances call keyed by internal user id — the
+ * vendor never reconciles the two. Probing them directly found no on-chain
+ * existence at all: Solana accounts that were never created, EVM addresses with
+ * nonce 0 and no balance across independent RPCs. fomo.family's own swap records
+ * carry an `isCrossmint` flag, i.e. embedded/custodial wallet infrastructure, so
+ * the honest reading is that these are platform-internal identifiers and there
+ * is no user-controlled wallet to show.
+ *
+ * They are still worth displaying — they are how fomo.family labels the account
+ * — but the label has to say what they are.
+ */
 function AddressRow({ label, address }: { label: string; address: string }) {
   const [copied, setCopied] = useState(false);
 
@@ -51,7 +69,7 @@ function AddressRow({ label, address }: { label: string; address: string }) {
         type="button"
         onClick={copy}
         className="shrink-0 p-1 rounded-oct-sm hover:bg-oct-surface text-oct-muted hover:text-oct-text transition-colors"
-        title={`Copy ${label} address`}
+        title={`Copy ${label} profile address`}
       >
         {copied ? <Check size={12} className="text-oct-green" /> : <Copy size={12} />}
       </button>
@@ -109,7 +127,8 @@ export default function FomoTraderLookup() {
               <Search size={22} className="text-oct-muted" />
             </div>
             <p className="text-sm text-oct-muted max-w-xs leading-relaxed">
-              Search any fomo.family trader by their X handle or display name to see their wallets, holdings and PnL.
+              Search any fomo.family trader by their X handle or display name to see their
+              holdings, PnL and recent trades.
             </p>
           </div>
         )}
@@ -143,6 +162,14 @@ export default function FomoTraderLookup() {
 
               {(data.solAddress || data.evmAddress) && (
                 <div className="space-y-1.5 pt-2 border-t border-oct-border">
+                  <div className="flex items-center gap-1.5 text-[11px] text-oct-muted leading-snug">
+                    <ShieldAlert size={12} className="shrink-0 text-oct-muted" />
+                    <span>
+                      Linked addresses — declared on the fomo.family profile, not verified
+                      on-chain. fomo.family is custodial, so these are usually platform
+                      identifiers rather than the trader's own wallet.
+                    </span>
+                  </div>
                   {data.solAddress && <AddressRow label="SOL" address={data.solAddress} />}
                   {data.evmAddress && <AddressRow label="EVM" address={data.evmAddress} />}
                 </div>
@@ -172,6 +199,8 @@ export default function FomoTraderLookup() {
                 </ul>
               )}
             </div>
+
+            <FomoTraderActivity fomoUserId={data.fomoUserId} />
           </div>
         )}
       </div>

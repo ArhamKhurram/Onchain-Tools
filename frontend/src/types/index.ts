@@ -70,6 +70,11 @@ export type {
   JournalDayRow,
   JournalCurvePoint,
   JournalSummary,
+  PriceAlert,
+  PriceAlertDirection,
+  PriceAlertMetric,
+  PriceAlertStatus,
+  PriceAlertData,
 } from '@oct/shared';
 
 // Shared runtime value.
@@ -124,14 +129,14 @@ export interface ReactionUser {
 
 export interface Alert {
   id: string;
-  type: 'highlighted_user' | 'contract_address' | 'keyword_match' | 'signal_convergence' | 'missed_runner' | 'fomo_trade' | 'fomo_join' | 'pump_callout' | 'wallet_movement' | 'revival' | 'breakout' | 'journal';
+  type: 'highlighted_user' | 'contract_address' | 'keyword_match' | 'signal_convergence' | 'missed_runner' | 'fomo_trade' | 'fomo_join' | 'pump_callout' | 'wallet_movement' | 'revival' | 'breakout' | 'journal' | 'price_alert';
   message: FrontendMessage;
   reason: string;
   timestamp: number;
 }
 
 export interface WsIncoming {
-  type: 'message' | 'message_update' | 'message_delete' | 'alert' | 'reaction_update' | 'contract' | 'contract_enrichment' | 'chain_update' | 'gateway_ready' | 'telegram_ready' | 'gateway_auth_failed' | 'fomo_trade' | 'fomo_join' | 'pump_callout' | 'wallet_movement' | 'revival_alert' | 'breakout_alert' | 'journal_alert' | 'journal_update';
+  type: 'message' | 'message_update' | 'message_delete' | 'alert' | 'reaction_update' | 'contract' | 'contract_enrichment' | 'chain_update' | 'gateway_ready' | 'telegram_ready' | 'gateway_auth_failed' | 'fomo_trade' | 'fomo_join' | 'pump_callout' | 'wallet_movement' | 'revival_alert' | 'breakout_alert' | 'journal_alert' | 'journal_update' | 'price_alert';
   data: any;
   error?: string;
   tokenIndex?: number;

@@ -46,6 +46,7 @@ import {
   shortAddress,
 } from './layout.js';
 import { DM_INTERVAL_MS, MAX_RECIPIENTS, retryDelayMs } from './releaseNotes.js';
+import { DISCORD_CANNOT_DM } from './dm.js';
 import {
   getPumpCalloutFeedClient,
   type CalloutCoin,
@@ -58,9 +59,6 @@ import {
   type BoardCaller,
 } from '../pumpfun/callerBoardStore.js';
 import { resolveCalloutDiscordConfig } from '../pumpfun/calloutDiscord.js';
-
-/** Discord's "cannot send messages to this user". */
-const DISCORD_CANNOT_DM = 50007;
 
 /**
  * Digest accent: a neutral dark slate. Digests are their own message class —

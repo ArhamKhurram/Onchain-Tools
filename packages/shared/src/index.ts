@@ -43,6 +43,12 @@ export type {
   BotTrackedResponse,
   BotWalletHolding,
   BotWalletProfile,
+  BotSwapDirection,
+  BotTraderSwap,
+  BotTraderTransfer,
+  BotTraderActivityEntry,
+  BotTraderActivitySummary,
+  BotTraderActivityResponse,
 } from './bot.js';
 
 // Caller quality — slop filter + earned ranking (docs/roadmap/).
@@ -138,6 +144,12 @@ export type {
   JournalDayRow,
   JournalCurvePoint,
   JournalSummary,
+  // price alerts (operator-set levels)
+  PriceAlert,
+  PriceAlertDirection,
+  PriceAlertMetric,
+  PriceAlertStatus,
+  PriceAlertData,
   CallerTier,
   CallerTierEntry,
   AppConfig,

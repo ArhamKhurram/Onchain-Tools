@@ -128,7 +128,12 @@ function normalizeTokenAddress(address: string): string {
   return trimmed;
 }
 
-function isQuoteToken(address: string | null | undefined): boolean {
+/**
+ * True when an address is a quote/settlement token on any supported chain.
+ * THE one place that judgement lives — the live-feed normalizer below and the
+ * trader-activity feed (fomo/activity.ts) both derive buy vs sell from it.
+ */
+export function isQuoteToken(address: string | null | undefined): boolean {
   if (!address) return false;
   return QUOTE_TOKEN_ADDRESSES.has(normalizeTokenAddress(address));
 }

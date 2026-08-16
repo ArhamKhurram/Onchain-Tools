@@ -133,6 +133,7 @@ export function createConfigRoutes(ctx: RouterContext): Router {
             missedRunner: Boolean(discordBotDm.triggers?.missedRunner),
             releaseNotes: Boolean(discordBotDm.triggers?.releaseNotes),
             dailyDigest: Boolean(discordBotDm.triggers?.dailyDigest),
+            pumpCallout: Boolean(discordBotDm.triggers?.pumpCallout),
           },
         },
       }),

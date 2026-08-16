@@ -7,7 +7,12 @@
 // backend's TTL cache (hodlers 15 min) absorbs repeat lookups of the same token.
 
 import { useCallback, useEffect, useRef, useState } from 'react';
-import type { BotHoldersResponse, BotThesesResponse, BotWalletProfile } from '@oct/shared';
+import type {
+  BotHoldersResponse,
+  BotThesesResponse,
+  BotTraderActivityResponse,
+  BotWalletProfile,
+} from '@oct/shared';
 import { getAccessToken } from '../lib/supabase';
 
 const API_BASE = import.meta.env.VITE_API_URL
@@ -177,4 +182,59 @@ export function useFomoTraderLookup() {
   }, []);
 
   return { data, loading, error, lookup, reset };
+}
+
+/**
+ * A FOMO trader's recent swaps and transfers, keyed by the internal
+ * `fomoUserId` the profile lookup returns.
+ *
+ * Same demand-driven contract as useFomoHolders — a null id idles the hook, so
+ * the Traders tab fetches nothing until a lookup has resolved a trader. Fires
+ * separately from the profile call rather than being folded into it: the card
+ * should paint as soon as the profile lands instead of waiting on a second
+ * round-trip to the Chromium worker.
+ */
+export function useFomoTraderActivity(fomoUserId: string | null) {
+  const [data, setData] = useState<BotTraderActivityResponse | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  // Guards against a slow first request overwriting a newer trader's result.
+  const requestSeq = useRef(0);
+
+  const load = useCallback(async () => {
+    if (!fomoUserId) {
+      setData(null);
+      setError(null);
+      return;
+    }
+
+    const seq = ++requestSeq.current;
+    setLoading(true);
+    setError(null);
+    try {
+      const res = await fomoFetch(
+        `${API_BASE}/fomo/activity?userId=${encodeURIComponent(fomoUserId)}`,
+      );
+      if (seq !== requestSeq.current) return;
+
+      if (!res.ok) {
+        setData(null);
+        setError(await readError(res, `Failed to load activity (${res.status}).`));
+        return;
+      }
+      setData((await res.json()) as BotTraderActivityResponse);
+    } catch (err) {
+      if (seq !== requestSeq.current) return;
+      setData(null);
+      setError((err as Error)?.message ?? 'Failed to load activity.');
+    } finally {
+      if (seq === requestSeq.current) setLoading(false);
+    }
+  }, [fomoUserId]);
+
+  useEffect(() => {
+    void load();
+  }, [load]);
+
+  return { data, loading, error, refresh: load };
 }

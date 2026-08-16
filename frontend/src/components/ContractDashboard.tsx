@@ -1,5 +1,5 @@
-import { useEffect, useState, useMemo } from 'react';
-import { Search, ExternalLink, Copy, Check, Trash2, LayoutGrid, List, X, MessageSquare, PanelLeftOpen, Send, Eye, EyeOff, Users } from 'lucide-react';
+import { useEffect, useState, useMemo, Fragment } from 'react';
+import { Search, ExternalLink, Copy, Check, Trash2, LayoutGrid, List, X, MessageSquare, PanelLeftOpen, Send, Eye, EyeOff, Users, ChevronDown, ChevronRight } from 'lucide-react';
 import { useAppStore } from '../stores/appStore';
 import { useCallerQuality, type CallerQuality } from '../hooks/useCallerQuality';
 import { BAND_DOT_CLASS, BAND_TITLE, bandIsNotable } from '../utils/callerBandStyle';
@@ -11,6 +11,7 @@ import TokenHoldersDrawer, { type HoldersTarget } from './fomo/TokenHoldersDrawe
 import { useConvergenceForContract } from '../hooks/useSignalConvergence';
 import type { ContractEntry } from '../types';
 import { colorWithExtraAlpha } from './ColorPickerWithAlpha';
+import { groupContractFeedByAddress, type ContractScanGroup } from '../utils/contractFeedGrouping';
 
 // Chains FOMO indexes. A detection on any other EVM chain still opens the
 // drawer — we just omit the hint and let the backend probe.
@@ -73,6 +74,7 @@ export default function ContractDashboard({ embedded = false }: ContractDashboar
   const [showDeleteAll, setShowDeleteAll] = useState(false);
   const [holdersTarget, setHoldersTarget] = useState<HoldersTarget | null>(null);
   const [revealMuted, setRevealMuted] = useState(false);
+  const [expandedGroups, setExpandedGroups] = useState<Set<string>>(new Set());
   const { qualityForContract, rankingEnabled, showMuted } = useCallerQuality();
 
   useEffect(() => {
@@ -121,6 +123,21 @@ export default function ContractDashboard({ embedded = false }: ContractDashboar
   }, [filtered, qualityForContract, rankingEnabled, showMuted, revealMuted]);
 
   const filteredEntries = useMemo(() => visible.map((r) => r.entry), [visible]);
+
+  // Same-address rescans flood the feed (scheduleDexFallback re-broadcasts
+  // every ~15s), so collapse consecutive scans of one address into a single
+  // group. `visible` is already newest-first, which is what the grouping
+  // function expects. See contractFeedGrouping.ts for the window rationale.
+  const groupedRows = useMemo(() => groupContractFeedByAddress(visible), [visible]);
+
+  const toggleGroupExpanded = (address: string) => {
+    setExpandedGroups((prev) => {
+      const next = new Set(prev);
+      if (next.has(address)) next.delete(address);
+      else next.add(address);
+      return next;
+    });
+  };
 
   const handleCopy = (addr: string) => {
     navigator.clipboard.writeText(addr);
@@ -268,39 +285,79 @@ export default function ContractDashboard({ embedded = false }: ContractDashboar
           </div>
         ) : viewMode === 'table' ? (
           <div className="divide-y divide-oct-border/50">
-            {visible.map(({ entry, quality }, i) => (
-              <ContractRow
-                key={`${entry.messageId}-${entry.address}-${i}`}
-                entry={entry}
-                quality={quality}
-                evmColor={evmColor}
-                solColor={solColor}
-                showFull={showFull}
-                isCopied={copiedAddr === entry.address}
-                onCopy={handleCopy}
-                onOpen={handleOpen}
-                onOpenDiscord={handleOpenDiscord}
-                onDelete={handleDelete}
-                onShowHolders={(e) => setHoldersTarget(holdersTargetFor(e))}
-              />
-            ))}
+            {groupedRows.map((group) => {
+              const head = group.items[0];
+              const scanCount = group.items.length;
+              const isExpanded = scanCount > 1 && expandedGroups.has(group.address);
+              // Chronological (oldest-first) history of everything folded into
+              // this group, excluding the head row already shown above it.
+              const history = scanCount > 1 ? [...group.items].slice(1).reverse() : [];
+              return (
+                <Fragment key={`group-${group.address}-${head.entry.messageId}`}>
+                  <ContractRow
+                    entry={head.entry}
+                    quality={head.quality}
+                    evmColor={evmColor}
+                    solColor={solColor}
+                    showFull={showFull}
+                    isCopied={copiedAddr === head.entry.address}
+                    onCopy={handleCopy}
+                    onOpen={handleOpen}
+                    onOpenDiscord={handleOpenDiscord}
+                    onDelete={handleDelete}
+                    onShowHolders={(e) => setHoldersTarget(holdersTargetFor(e))}
+                    forceIsNew={group.hasNew}
+                    scanCount={scanCount}
+                    isExpanded={isExpanded}
+                    onToggleExpand={scanCount > 1 ? () => toggleGroupExpanded(group.address) : undefined}
+                  />
+                  {isExpanded && (
+                    <div className="pl-3 sm:pl-6 border-l-2 border-oct-border/60 ml-3 sm:ml-6">
+                      {history.map(({ entry, quality }) => (
+                        <ContractRow
+                          key={`${entry.messageId}-${entry.address}`}
+                          entry={entry}
+                          quality={quality}
+                          evmColor={evmColor}
+                          solColor={solColor}
+                          showFull={showFull}
+                          isCopied={copiedAddr === entry.address}
+                          onCopy={handleCopy}
+                          onOpen={handleOpen}
+                          onOpenDiscord={handleOpenDiscord}
+                          onDelete={handleDelete}
+                          onShowHolders={(e) => setHoldersTarget(holdersTargetFor(e))}
+                          isSubRow
+                        />
+                      ))}
+                    </div>
+                  )}
+                </Fragment>
+              );
+            })}
           </div>
         ) : (
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-2 sm:gap-3 p-3 sm:p-4">
-            {visible.map(({ entry }, i) => (
+            {groupedRows.map((group) => {
+              const head = group.items[0];
+              const scanCount = group.items.length;
+              return (
               <ContractCard
-                key={`${entry.messageId}-${entry.address}-${i}`}
-                entry={entry}
+                key={`group-${group.address}-${head.entry.messageId}`}
+                entry={head.entry}
                 evmColor={evmColor}
                 solColor={solColor}
-                isCopied={copiedAddr === entry.address}
+                isCopied={copiedAddr === head.entry.address}
                 onCopy={handleCopy}
                 onOpen={handleOpen}
                 onOpenDiscord={handleOpenDiscord}
                 onDelete={handleDelete}
                 onShowHolders={(e) => setHoldersTarget(holdersTargetFor(e))}
+                forceIsNew={group.hasNew}
+                scanCount={scanCount}
               />
-            ))}
+              );
+            })}
           </div>
         )}
       </div>
@@ -334,6 +391,20 @@ interface ContractItemProps {
   onOpenDiscord: (entry: ContractEntry) => void;
   onDelete: (entry: ContractEntry) => void;
   onShowHolders: (entry: ContractEntry) => void;
+  /**
+   * Overrides the NEW/RESCAN badge computed from `entry.firstSeen`. Used
+   * when this row is the head of a collapsed rescan group: the group should
+   * keep showing NEW if any scan folded into it was the original
+   * detection, even though the head item itself (the latest scan) is a
+   * rescan.
+   */
+  forceIsNew?: boolean;
+  /** Total scans collapsed into this row, when it's a group head (>1). */
+  scanCount?: number;
+  isExpanded?: boolean;
+  onToggleExpand?: () => void;
+  /** Renders as a condensed history row nested under a group's head. */
+  isSubRow?: boolean;
 }
 
 function ContractRow({
@@ -348,6 +419,11 @@ function ContractRow({
   onOpenDiscord,
   onDelete,
   onShowHolders,
+  forceIsNew,
+  scanCount,
+  isExpanded,
+  onToggleExpand,
+  isSubRow = false,
 }: ContractItemProps) {
   const color = entry.chain === 'evm' ? evmColor : solColor;
   const isMuted = quality?.tier === 'muted';
@@ -355,17 +431,26 @@ function ContractRow({
     ? (EVM_CHAIN_LABELS[entry.evmChain] ?? entry.evmChain.toUpperCase())
     : entry.chain.toUpperCase();
 
-  const isNew = entry.firstSeen !== false;
+  const isNew = forceIsNew ?? (entry.firstSeen !== false);
   const { ticker, subtitle } = contractDisplay(entry, showFull);
   const { trade: convergenceTrade, windowMinutes } = useConvergenceForContract(entry);
 
   return (
     <div
-      className={`flex flex-col gap-1 px-3 sm:px-4 py-2.5 oct-row-hover group border-b border-oct-border/60 ${
-        isMuted ? 'opacity-45 hover:opacity-100' : ''
-      }`}
+      className={`flex flex-col gap-1 px-3 sm:px-4 oct-row-hover group border-b border-oct-border/60 ${
+        isSubRow ? 'py-1.5 opacity-90' : 'py-2.5'
+      } ${isMuted ? 'opacity-45 hover:opacity-100' : ''}`}
     >
       <div className="flex items-center gap-2 sm:gap-3 min-w-0">
+        {onToggleExpand && (
+          <button
+            onClick={onToggleExpand}
+            className="p-0.5 rounded hover:bg-oct-surface text-oct-muted hover:text-oct-text transition-colors shrink-0"
+            title={isExpanded ? 'Collapse scan history' : 'Show scan history'}
+          >
+            {isExpanded ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
+          </button>
+        )}
         {quality && bandIsNotable(quality.band) && (
           <span
             className={`w-1.5 h-1.5 rounded-full shrink-0 ${BAND_DOT_CLASS[quality.band]}`}
@@ -388,6 +473,15 @@ function ContractRow({
         >
           {isNew ? 'NEW' : 'RESCAN'}
         </span>
+
+        {scanCount != null && scanCount > 1 && (
+          <span
+            className="text-[10px] font-bold px-1.5 py-0.5 rounded-full shrink-0 uppercase font-mono bg-oct-accent/15 text-oct-accent"
+            title={`${scanCount} scans of this address, latest ${timeAgo(entry.timestamp)}`}
+          >
+            ×{scanCount} scans
+          </span>
+        )}
 
         {convergenceTrade && (
           <SignalConvergenceBadge trade={convergenceTrade} windowMinutes={windowMinutes} />
@@ -493,13 +587,15 @@ function ContractCard({
   onOpenDiscord,
   onDelete,
   onShowHolders,
+  forceIsNew,
+  scanCount,
 }: ContractItemProps) {
   const color = entry.chain === 'evm' ? evmColor : solColor;
   const chainLabel = entry.chain === 'evm' && entry.evmChain
     ? (EVM_CHAIN_LABELS[entry.evmChain] ?? entry.evmChain.toUpperCase())
     : entry.chain.toUpperCase();
 
-  const isNew = entry.firstSeen !== false;
+  const isNew = forceIsNew ?? (entry.firstSeen !== false);
   const { ticker, subtitle } = contractDisplay(entry, false);
   const { trade: convergenceTrade, windowMinutes } = useConvergenceForContract(entry);
 
@@ -529,6 +625,14 @@ function ContractCard({
         >
           {isNew ? 'NEW' : 'RESCAN'}
         </span>
+        {scanCount != null && scanCount > 1 && (
+          <span
+            className="text-[10px] font-bold px-1.5 py-0.5 rounded-full uppercase font-mono bg-oct-accent/20 text-oct-accent"
+            title={`${scanCount} scans of this address collapsed into this card`}
+          >
+            ×{scanCount}
+          </span>
+        )}
         {convergenceTrade && (
           <SignalConvergenceBadge trade={convergenceTrade} windowMinutes={windowMinutes} />
         )}
