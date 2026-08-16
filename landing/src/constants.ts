@@ -6,3 +6,4 @@ export const appConsolePath = (segment = '') =>
 /** Public socials. Single source of truth — link from here, don't inline URLs. */
 export const SOCIAL_X_URL = 'https://x.com/toolsonchain';
 export const SOCIAL_X_HANDLE = '@toolsonchain';
+export const SOCIAL_DISCORD_URL = 'https://discord.gg/f8HGPgdyTQ';
