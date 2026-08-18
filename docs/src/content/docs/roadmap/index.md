@@ -225,8 +225,12 @@ issues:
   set (sensitive vars can't be auto-verified).
 - **Express** — `trust proxy` not set in hosted mode produces rate-limit warnings
   in Railway logs.
-- Confirm whether `/feed/tradingActivity` is a global firehose or following-only
-  (auto-follow via `FOMO_ENSURE_FOLLOWS` mitigates if following-scoped).
+- ~~Confirm whether `/feed/tradingActivity` is a global firehose or
+  following-only~~ — moot: the tracked-trader poller pulls from
+  `/v2/users/{id}/activity`, not `/feed/tradingActivity`, so following-scope
+  on the latter can't affect it either way. The speculative auto-follow
+  mitigation (`FOMO_ENSURE_FOLLOWS`) guessed at two undocumented follow
+  endpoints that always 404'd and was removed 2026-08-18.
 
 Code-structure debt (the "god files" being split) lives on its own page: see
 [Tech debt](../architecture/tech-debt/).

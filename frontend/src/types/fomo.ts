@@ -57,7 +57,6 @@ export interface FomoServiceStatus {
   configured: boolean;
   pollerActive: boolean;
   pollerReason: string | null;
-  ensureFollows: boolean;
 }
 
 export interface FomoHolderOverlap {
