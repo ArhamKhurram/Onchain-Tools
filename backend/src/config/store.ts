@@ -2,6 +2,7 @@ import { readFileSync, writeFileSync, existsSync, mkdirSync } from 'fs';
 import { join, dirname } from 'path';
 import { fileURLToPath } from 'url';
 import type { AppConfig, Room } from '../discord/types.js';
+import { DEFAULT_RADAR_MULTIPLE_EMOJI_RULES } from '@oct/shared';
 import { v4 as uuidv4 } from 'uuid';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -32,6 +33,7 @@ const DEFAULT_CONFIG: AppConfig = {
   callerTierShowMuted: true,
   callerQualityRanking: false,
   callerScoreExclusions: [],
+  radarMultipleEmojiRules: [...DEFAULT_RADAR_MULTIPLE_EMOJI_RULES],
   messageSounds: false,
   soundSettings: {
     highlight: { ...DEFAULT_SOUND_CONFIG },

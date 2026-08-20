@@ -723,6 +723,17 @@ export interface CallerTierEntry {
   note?: string;
 }
 
+/**
+ * One threshold→emoji marker on the Radar's × column. See `radarEmoji.ts` for
+ * the matching rules (highest threshold wins) and the sanitiser.
+ */
+export interface RadarMultipleEmojiRule {
+  /** Multiple at or above which this rule applies (3 = "3x and up"). */
+  threshold: number;
+  /** The glyph rendered beside the multiple. */
+  emoji: string;
+}
+
 export interface AppConfig {
   discordTokens: string[];
   rooms: Room[];
@@ -754,6 +765,12 @@ export interface AppConfig {
    * mute tier the wrong one.
    */
   callerScoreExclusions?: string[];
+  /**
+   * Threshold→emoji markers beside the Radar's × column. Absent = the shipped
+   * defaults (3x 🧊, 5x 🔥); an explicit empty array = markers off. Highest
+   * matching threshold wins, so a 6x row shows one emoji, not two.
+   */
+  radarMultipleEmojiRules?: RadarMultipleEmojiRule[];
   messageSounds: boolean;
   soundSettings: SoundSettings;
   channelSounds: Record<string, SoundConfig>;

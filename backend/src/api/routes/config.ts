@@ -1,5 +1,11 @@
 import { Router } from 'express';
-import { parseCallerKey, type CallerTier, type CallerTierEntry, type FeedChromePreset } from '@oct/shared';
+import {
+  parseCallerKey,
+  sanitizeRadarEmojiRules,
+  type CallerTier,
+  type CallerTierEntry,
+  type FeedChromePreset,
+} from '@oct/shared';
 import { isHostedMode } from '../../storage/index.js';
 import type { RouterContext } from '../context.js';
 import { getUserId, safeError } from '../shared.js';
@@ -86,7 +92,7 @@ export function createConfigRoutes(ctx: RouterContext): Router {
 
   router.put('/config', async (req, res) => {
     const userId = getUserId(req);
-    const { globalHighlightedUsers, contractDetection, guildColors, dmColors, telegramColors, enabledGuilds, hiddenUsers, callerTiers, callerTierShowMuted, callerQualityRanking, callerScoreExclusions, evmAddressColor, solAddressColor, openInDiscordApp, openInTelegramApp, messageSounds, soundSettings, channelSounds, pushover, missedRunner, contractLinkTemplates, contractClickAction, showFullContractAddress, autoOpenHighlightedContracts, signalConvergenceWindowMinutes, globalKeywordPatterns, keywordAlertsEnabled, desktopNotifications, toastAlertsEnabled, toastPosition, mentionsUserEnabled, mentionsRoleEnabled, mentionsHereEnabled, mentionsEveryoneEnabled, badgeClickAction, chattingEnabled, messageDisplay, feedChromePreset, compactModeAvatars, roleColors, mobileZoomScale, splitLayout, paneRoomIds, paneLocks, gridMirror, seenAnnouncements, discordProxyUrl, workspaceLayout, discordBotDm } = req.body;
+    const { globalHighlightedUsers, contractDetection, guildColors, dmColors, telegramColors, enabledGuilds, hiddenUsers, callerTiers, callerTierShowMuted, callerQualityRanking, callerScoreExclusions, radarMultipleEmojiRules, evmAddressColor, solAddressColor, openInDiscordApp, openInTelegramApp, messageSounds, soundSettings, channelSounds, pushover, missedRunner, contractLinkTemplates, contractClickAction, showFullContractAddress, autoOpenHighlightedContracts, signalConvergenceWindowMinutes, globalKeywordPatterns, keywordAlertsEnabled, desktopNotifications, toastAlertsEnabled, toastPosition, mentionsUserEnabled, mentionsRoleEnabled, mentionsHereEnabled, mentionsEveryoneEnabled, badgeClickAction, chattingEnabled, messageDisplay, feedChromePreset, compactModeAvatars, roleColors, mobileZoomScale, splitLayout, paneRoomIds, paneLocks, gridMirror, seenAnnouncements, discordProxyUrl, workspaceLayout, discordBotDm } = req.body;
 
     // The Discord proxy only makes sense in local mode (the connection leaves the
     // user's own machine). In hosted mode the server IP is fixed, and honouring a
@@ -113,6 +119,12 @@ export function createConfigRoutes(ctx: RouterContext): Router {
       ...(callerQualityRanking !== undefined && { callerQualityRanking: Boolean(callerQualityRanking) }),
       ...(callerScoreExclusions !== undefined && {
         callerScoreExclusions: sanitizeCallerExclusions(callerScoreExclusions),
+      }),
+      // Emoji markers are free text that the console renders back into a table
+      // cell, so the shared sanitiser strips markup/control characters, caps the
+      // glyph length and bounds the ladder before any of it is stored.
+      ...(radarMultipleEmojiRules !== undefined && {
+        radarMultipleEmojiRules: sanitizeRadarEmojiRules(radarMultipleEmojiRules),
       }),
       ...(evmAddressColor !== undefined && { evmAddressColor }),
       ...(solAddressColor !== undefined && { solAddressColor }),
