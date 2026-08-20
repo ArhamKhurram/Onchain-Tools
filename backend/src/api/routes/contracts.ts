@@ -2,6 +2,7 @@ import { Router } from 'express';
 import { tryParseTokenEnrichment, buildRickReplyContext } from '../../utils/rickEmbedParser.js';
 import { resolveFallbackTarget, recordFallbackFdv } from '../../utils/dexFallback.js';
 import { enrichToken, getTokenSnapshot, persistEnrichment } from '../../utils/tokenSnapshot.js';
+import { recordScannedContract, scoringExclusions } from '../../callers/callerStatsRecorder.js';
 import type { RouterContext } from '../context.js';
 import { getUserId, safeError } from '../shared.js';
 
@@ -61,6 +62,16 @@ export function createContractsRoutes(ctx: RouterContext): Router {
       }
       const logged = await storage.logContract(userId, entry);
       wsServer.broadcastContract(logged, userId);
+      // In hosted mode the Discord gateway runs in the browser, so THIS is the
+      // ingest path for most scans — the durable caller record has to be
+      // written here too, not only in index.ts. Fire-and-forget: ranking never
+      // delays or fails a scan.
+      try {
+        const config = await storage.getConfig(userId).catch(() => null);
+        recordScannedContract(userId, logged, { exclude: scoringExclusions(config) });
+      } catch (err) {
+        console.error('[API] caller stat write failed:', (err as Error).message);
+      }
 
       const address: string = entry.address;
       const channelId: string = entry.channelId;

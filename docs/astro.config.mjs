@@ -19,6 +19,7 @@ export default defineConfig({
       social: [
         { icon: 'github', label: 'GitHub', href: 'https://github.com/ArhamKhurram/Onchain-Tools' },
         { icon: 'x.com', label: 'X', href: 'https://x.com/toolsonchain' },
+        { icon: 'discord', label: 'Discord', href: 'https://discord.gg/f8HGPgdyTQ' },
       ],
       // Expressive Code would swallow ```mermaid fences before the client
       // renderer could see them; plain Shiki highlighting is enough here.

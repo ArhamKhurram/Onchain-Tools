@@ -2,6 +2,7 @@ import { useState, useEffect, useMemo } from 'react';
 import { useAppStore } from '../stores/appStore';
 import type { ChannelRef, KeywordPattern, KeywordMatchMode, HighlightMode } from '../types';
 import { X } from 'lucide-react';
+import { normalizeUserIdentifier, appendUserIdentifiers } from '../utils/userIdentifiers';
 import ChannelsTab from './room-config/ChannelsTab';
 import UsersTab from './room-config/UsersTab';
 import FilterTab from './room-config/FilterTab';
@@ -121,12 +122,18 @@ export default function RoomConfig() {
     );
   };
 
+  // Single-add and bulk-add share `normalizeUserIdentifier`/`appendUserIdentifiers`
+  // so the two paths can't normalize or dedupe differently.
   const addHighlightedUser = () => {
-    const id = newUserId.trim();
-    if (id && !highlightedUsers.includes(id)) {
-      setHighlightedUsers((prev) => [...prev, id]);
-      setNewUserId('');
-    }
+    const id = normalizeUserIdentifier(newUserId);
+    if (!id) return;
+    setHighlightedUsers((prev) => appendUserIdentifiers(prev, [id]));
+    setNewUserId('');
+  };
+
+  const addHighlightedUsers = (ids: string[]) => {
+    if (ids.length === 0) return;
+    setHighlightedUsers((prev) => appendUserIdentifiers(prev, ids));
   };
 
   const removeHighlightedUser = (userId: string) => {
@@ -139,11 +146,15 @@ export default function RoomConfig() {
   };
 
   const addFilteredUser = () => {
-    const val = newFilterUser.trim();
-    if (val && !filteredUsers.includes(val)) {
-      setFilteredUsers((prev) => [...prev, val]);
-      setNewFilterUser('');
-    }
+    const val = normalizeUserIdentifier(newFilterUser);
+    if (!val) return;
+    setFilteredUsers((prev) => appendUserIdentifiers(prev, [val]));
+    setNewFilterUser('');
+  };
+
+  const addFilteredUsers = (vals: string[]) => {
+    if (vals.length === 0) return;
+    setFilteredUsers((prev) => appendUserIdentifiers(prev, vals));
   };
 
   const removeFilteredUser = (user: string) => {
@@ -289,6 +300,7 @@ export default function RoomConfig() {
               newUserId={newUserId}
               setNewUserId={setNewUserId}
               addHighlightedUser={addHighlightedUser}
+              addHighlightedUsers={addHighlightedUsers}
               highlightedUsers={highlightedUsers}
               removeHighlightedUser={removeHighlightedUser}
               highlightedUserColors={highlightedUserColors}
@@ -305,6 +317,7 @@ export default function RoomConfig() {
               newFilterUser={newFilterUser}
               setNewFilterUser={setNewFilterUser}
               addFilteredUser={addFilteredUser}
+              addFilteredUsers={addFilteredUsers}
               removeFilteredUser={removeFilteredUser}
               userNameMap={userNameMap}
             />

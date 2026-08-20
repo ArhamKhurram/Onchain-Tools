@@ -1,5 +1,6 @@
 import type { Dispatch, SetStateAction } from 'react';
 import { Plus, Trash2, Filter } from 'lucide-react';
+import BulkAddUsers from '../BulkAddUsers';
 
 interface FilterTabProps {
   filterEnabled: boolean;
@@ -8,6 +9,7 @@ interface FilterTabProps {
   newFilterUser: string;
   setNewFilterUser: Dispatch<SetStateAction<string>>;
   addFilteredUser: () => void;
+  addFilteredUsers: (users: string[]) => void;
   removeFilteredUser: (user: string) => void;
   userNameMap: Map<string, string>;
 }
@@ -19,6 +21,7 @@ export default function FilterTab({
   newFilterUser,
   setNewFilterUser,
   addFilteredUser,
+  addFilteredUsers,
   removeFilteredUser,
   userNameMap,
 }: FilterTabProps) {
@@ -70,6 +73,13 @@ export default function FilterTab({
                   <Plus size={16} />
                 </button>
               </div>
+
+              <BulkAddUsers
+                existing={filteredUsers}
+                onAdd={addFilteredUsers}
+                noun="filtered users"
+              />
+
               <div className="space-y-1">
                 {filteredUsers.length === 0 && (
                   <p className="text-sm text-oct-muted text-center py-4">

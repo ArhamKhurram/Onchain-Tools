@@ -1,8 +1,14 @@
-// The "Top Callers" tab — OCT's own auto-discovered, keyless caller-quality
-// board. It ranks every caller the backend has seen in the GLOBAL pump.fun
-// callout feed (no pump login, no follow needed) by call volume or multiple
-// quality, and lets you one-click Follow any of them straight into your callout
-// alerts (reusing the same follow path the Following tab uses).
+// The "Top Callers" tab — OCT's own auto-discovered, keyless board. It ranks
+// every caller the backend has seen in the GLOBAL pump.fun callout feed (no
+// pump login, no follow needed) by call volume or peak-price reach, and lets
+// you one-click Follow any of them straight into your callout alerts (reusing
+// the same follow path the Following tab uses).
+//
+// NOT a quality/track-record ranking: a 2026-08-16 census (3,424 callouts,
+// full population) found board rank on the "×" metrics correlates -0.217 with
+// actual outcome — ranking higher predicts slightly *worse* results, because
+// `multiple` is a running peak that can't fall below 1.0×. See
+// oct-pump-kol-callout-alerts memory for the full analysis.
 //
 // Type scale matches the newer pump panels (sm/base, dense header) rather than the
 // older text-[10px] tables.
@@ -103,6 +109,11 @@ export default function PumpTopCallersTab() {
         </button>
       </div>
 
+      <p className="shrink-0 px-5 py-1.5 text-[11px] text-oct-muted border-b border-oct-border">
+        Peak × is the highest price a call's token touched afterward, not a return — most calls never get back there.
+        This ranks callout volume and reach, not track record.
+      </p>
+
       {/* Board */}
       <div className="flex-1 min-h-0 overflow-auto">
         {loading && callers.length === 0 ? (
@@ -124,8 +135,12 @@ export default function PumpTopCallersTab() {
                 <th className="w-10 px-4 py-2.5 font-bold text-right">#</th>
                 <th className="px-3 py-2.5 font-bold">Caller</th>
                 <th className="px-3 py-2.5 font-bold text-right tabular-nums">Calls</th>
-                <th className="px-3 py-2.5 font-bold text-right tabular-nums">Avg ×</th>
-                <th className="px-3 py-2.5 font-bold text-right tabular-nums">Best ×</th>
+                <th className="px-3 py-2.5 font-bold text-right tabular-nums" title="Highest price the token reached after the call, divided by the call price. A peak the token touched, not a return you could have captured.">
+                  Avg Peak ×
+                </th>
+                <th className="px-3 py-2.5 font-bold text-right tabular-nums" title="Highest price the token reached after the call, divided by the call price. A peak the token touched, not a return you could have captured.">
+                  Best Peak ×
+                </th>
                 <th className="px-3 py-2.5 font-bold text-right">Last</th>
                 <th className="px-4 py-2.5 font-bold text-right">Follow</th>
               </tr>

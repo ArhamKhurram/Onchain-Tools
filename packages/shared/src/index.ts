@@ -25,6 +25,19 @@ export {
   buildRevivalContractUrl,
 } from './contract.js';
 export type { ContractDetectionResult, RevivalNetwork } from './contract.js';
+// Radar × column emoji markers (threshold ladder, highest match wins).
+export {
+  DEFAULT_RADAR_MULTIPLE_EMOJI_RULES,
+  MAX_RADAR_EMOJI_RULES,
+  MAX_RADAR_EMOJI_LENGTH,
+  MIN_RADAR_EMOJI_THRESHOLD,
+  MAX_RADAR_EMOJI_THRESHOLD,
+  sanitizeRadarEmoji,
+  sanitizeRadarEmojiRules,
+  resolveRadarEmojiRules,
+  radarEmojiForMultiple,
+} from './radarEmoji.js';
+
 export { processDiscordMessage } from './message.js';
 export type { MessageProcessorContext, MessageGateway } from './message.js';
 
@@ -59,6 +72,7 @@ export {
   DEFAULT_EXCLUDED_CALLERS,
   normalizeCallerName,
   isExcludedCaller,
+  isExcludedCallerKey,
   callerKey,
   parseCallerKey,
   contractCallerKey,
@@ -71,6 +85,11 @@ export {
   pickRoomScore,
   effectiveBand,
   callerRank,
+  sortCallerScores,
+  foldCallerCalls,
+  rateCall,
+  scoreFromAggregate,
+  splitCallerAggregates,
 } from './callerQuality.js';
 export type {
   CallerPlatform,
@@ -79,6 +98,8 @@ export type {
   CallerScore,
   RoomCallerScores,
   PeakLookup,
+  CallerCall,
+  CallerAggregateRow,
 } from './callerQuality.js';
 
 // Generated Supabase schema types (see database.types.ts header for regen).
@@ -152,6 +173,7 @@ export type {
   PriceAlertData,
   CallerTier,
   CallerTierEntry,
+  RadarMultipleEmojiRule,
   AppConfig,
   // workspace layout
   WorkspacePanelType,

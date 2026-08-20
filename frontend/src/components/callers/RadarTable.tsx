@@ -20,7 +20,7 @@ import {
 } from './radarColumns';
 import { isHostedMode, getAccessToken } from '../../lib/supabase';
 import { useNetworkFirstScans, type NetworkFirstScan } from '../../hooks/useNetworkFirstScans';
-import { useCallerQuality, type CallerQuality } from '../../hooks/useCallerQuality';
+import { useCallerQuality, refreshTokenPeak, type CallerQuality } from '../../hooks/useCallerQuality';
 import {
   BAND_DOT_CLASS,
   BAND_TEXT_CLASS,
@@ -29,7 +29,13 @@ import {
   BAND_NAME_COLOR,
   bandIsNotable,
 } from '../../utils/callerBandStyle';
-import { BAND_LABELS, type CallerBand } from '@oct/shared';
+import {
+  BAND_LABELS,
+  radarEmojiForMultiple,
+  resolveRadarEmojiRules,
+  type CallerBand,
+  type RadarMultipleEmojiRule,
+} from '@oct/shared';
 import type { ContractEntry } from '../../types';
 
 const API_BASE = import.meta.env.VITE_API_URL
@@ -303,6 +309,17 @@ type SortKey =
   | 'quality'
   | 'recent';
 
+// The × column is live MC ÷ MC at the first call. Two things it is NOT, both of
+// which the emoji markers make it tempting to read as: it is not a realised
+// return (nobody bought at MC@call and sold now), and it is not a peak — it
+// tracks the live quote and falls back down when the token does. MC@call itself
+// is the earliest FDV captured near the first mention, so the ratio is an
+// approximation on both ends. Settings › Caller Quality carries the matching
+// caveat for the peak-based caller multiples ("floors, not exact ATHs"); this
+// one is a different number and gets its own wording.
+const MULT_TITLE =
+  'Live market cap ÷ market cap at the first call. A live, unrealised quote that falls as well as rises — not profit, and not a peak. MC@call is the earliest FDV captured near that first mention, so treat the ratio as approximate. Emoji markers just flag the level the × has reached; configure them under columns.';
+
 // Text columns read better opened A→Z; every numeric column opens descending
 // (biggest on top). Module-level so useSort's memoised handler stays stable.
 const RADAR_ASC_FIRST: readonly SortKey[] = ['token', 'firstCaller'];
@@ -417,6 +434,7 @@ export default function RadarTable({ embedded: _embedded = false }: { embedded?:
   const config = useAppStore((s) => s.config);
   const convergenceWindowMs = getSignalConvergenceWindowMs(config);
   const convergenceWindowMinutes = config?.signalConvergenceWindowMinutes ?? 30;
+  const updateConfig = useAppStore((s) => s.updateConfig);
   const fetchContracts = useAppStore((s) => s.fetchContracts);
   const addressChains = useAppStore((s) => s.addressChains);
   const { overlaps } = useFomoHolderOverlap(contracts);
@@ -464,6 +482,20 @@ export default function RadarTable({ embedded: _embedded = false }: { embedded?:
   const handleVisibleColumnsChange = (cols: Set<RadarColumnId>) => {
     setVisibleColumns(cols);
     saveVisibleRadarColumns(cols);
+  };
+
+  // Threshold→emoji markers for the × column. Unlike the column set (a
+  // per-device localStorage preference) these live in AppConfig, so the ladder
+  // follows the account across devices in hosted mode.
+  const emojiRules = useMemo(
+    () => resolveRadarEmojiRules(config?.radarMultipleEmojiRules),
+    [config?.radarMultipleEmojiRules],
+  );
+
+  const handleEmojiRulesChange = (next: RadarMultipleEmojiRule[]) => {
+    updateConfig({ radarMultipleEmojiRules: next }).catch(() => {
+      /* config reload restores the last persisted ladder */
+    });
   };
 
   const handleCopy = (address: string) => {
@@ -574,6 +606,12 @@ export default function RadarTable({ embedded: _embedded = false }: { embedded?:
         fetchMcNow(address),
         fetchTokenMetadata(address, evmChain, addressChains),
       ]);
+      // The row refresh is also the on-demand peak backfill. `fetchMcNow` above
+      // asks DexScreener straight from the browser, so that observation never
+      // reaches the peak store; this asks the backend to re-observe and fold
+      // the result in, which re-derives every caller who called this token.
+      // Not awaited — a slow provider must not hold the spinner.
+      void refreshTokenPeak(address, { evmChain });
       if (meta) applyMetadataToStore(address, meta);
       if (mc) {
         setLiveMc((prev) => ({
@@ -652,6 +690,8 @@ export default function RadarTable({ embedded: _embedded = false }: { embedded?:
           onMentionWindowChange={setMentionWindow}
           visibleColumns={visibleColumns}
           onVisibleColumnsChange={handleVisibleColumnsChange}
+          emojiRules={emojiRules}
+          onEmojiRulesChange={handleEmojiRulesChange}
         />
         <div className="flex-1" />
         {showMuted && mutedOnlyCount > 0 && (
@@ -706,6 +746,7 @@ export default function RadarTable({ embedded: _embedded = false }: { embedded?:
                     dir={sortDir}
                     onSort={handleSort}
                     align={col === 'firstCaller' || col === 'globalFirst' ? 'left' : 'right'}
+                    title={col === 'mult' ? MULT_TITLE : undefined}
                   />
                 ),
               )}
@@ -898,18 +939,29 @@ export default function RadarTable({ embedded: _embedded = false }: { embedded?:
                             )}
                           </td>
                         );
-                      case 'mult':
+                      case 'mult': {
+                        // One marker only: `radarEmojiForMultiple` returns the
+                        // highest matching rung, never the set of rungs passed.
+                        // Fixed-width and outside the tabular-nums span so a
+                        // wide glyph can't push the digits out of column.
+                        const emoji = radarEmojiForMultiple(mult, emojiRules);
                         return (
-                          <td key={col} className="px-3 py-2 text-right font-mono text-sm tabular-nums">
-                            {mult != null ? (
-                              <span className={mult >= 1 ? 'text-oct-green' : 'text-oct-accent'}>
-                                {mult.toFixed(1)}x
+                          <td key={col} className="px-3 py-2 text-right font-mono text-sm" title={MULT_TITLE}>
+                            <span className="inline-flex items-center justify-end gap-1 whitespace-nowrap">
+                              <span className="w-4 text-center leading-none" aria-hidden={!emoji}>
+                                {emoji ?? ''}
                               </span>
-                            ) : (
-                              <span className="text-oct-muted">—</span>
-                            )}
+                              {mult != null ? (
+                                <span className={`tabular-nums ${mult >= 1 ? 'text-oct-green' : 'text-oct-accent'}`}>
+                                  {mult.toFixed(1)}x
+                                </span>
+                              ) : (
+                                <span className="text-oct-muted">—</span>
+                              )}
+                            </span>
                           </td>
                         );
+                      }
                       case 'quality':
                         return (
                           <td key={col} className="px-3 py-2 text-right whitespace-nowrap">

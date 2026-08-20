@@ -60,17 +60,30 @@ export default function CallerQualitySection({ form }: { form: SettingsForm }) {
     });
   };
 
-  const { scores, windowDays, pricedTokens, truncated, coversFrom, loaded } = useCallerQuality();
+  const {
+    scores,
+    windowDays,
+    pricedTokens,
+    truncated,
+    coversFrom,
+    loaded,
+    mode,
+    callersTracked,
+  } = useCallerQuality();
   const [newExclusion, setNewExclusion] = useState('');
 
   /** Whole days of history the scores were actually built from, when it falls short. */
   const coveredDays = useMemo(() => {
+    // On the persistent board there is no shortfall to warn about: a caller
+    // stays ranked once they have scanned, so the record IS the history, and
+    // `windowDays` reports the span recorded rather than a window claimed.
+    if (mode === 'persistent') return null;
     if (!coversFrom || !windowDays) return null;
     const days = (Date.now() - new Date(coversFrom).getTime()) / 86_400_000;
     if (!Number.isFinite(days)) return null;
     // A day of slack: the oldest row is rarely the first second of the window.
     return days < windowDays - 1 ? Math.max(1, Math.round(days)) : null;
-  }, [coversFrom, windowDays]);
+  }, [coversFrom, windowDays, mode]);
 
   const addExclusion = () => {
     const value = newExclusion.trim();
@@ -271,7 +284,14 @@ export default function CallerQualitySection({ form }: { form: SettingsForm }) {
             a spike between samples is missed: multiples are floors, not exact ATHs. A caller
             stays unrated below {MIN_RATED_CALLS} scored calls rather than showing a number
             built on noise.
-            {windowDays ? ` Window: last ${windowDays} days.` : ''}
+            {mode === 'persistent'
+              ? ` Records are kept per caller, so once someone scans they stay ranked and every
+                  later scan updates them${
+                    windowDays ? `; ${windowDays} ${windowDays === 1 ? 'day' : 'days'} on record` : ''
+                  }${callersTracked ? `, ${callersTracked} callers tracked` : ''}.`
+              : windowDays
+                ? ` Window: last ${windowDays} days.`
+                : ''}
             {pricedTokens != null ? ` ${pricedTokens} tokens priced.` : ''}
           </p>
         </div>

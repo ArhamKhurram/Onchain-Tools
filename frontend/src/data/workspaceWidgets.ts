@@ -32,7 +32,7 @@ export const WORKSPACE_WIDGETS: WorkspaceWidgetDef[] = [
   // broken — there was no live surface behind the name.
   { type: 'pump-callout-feed', label: 'Pump callouts live', description: 'Live callouts from the pump.fun callers you follow' },
   { type: 'pump-following', label: 'Pump callers', description: 'Manage which pump.fun callers you follow' },
-  { type: 'pump-top-callers', label: 'Top callers', description: 'Best pump.fun callers by calls & multiple' },
+  { type: 'pump-top-callers', label: 'Top callers', description: 'Rank pump.fun callers by call volume & peak price reach' },
   { type: 'pump-leaderboard', label: 'Pump leaderboard', description: 'Top pump.fun traders by PnL' },
 ];
 

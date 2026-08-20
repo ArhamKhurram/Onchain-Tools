@@ -8,7 +8,6 @@ import type { SupabaseClient } from '@supabase/supabase-js';
 import type { WsServer } from '../ws/server.js';
 import { ensureSharedFomoClientReady } from './client.js';
 import type { FomoClientLike } from './types.js';
-import { syncAllTrackedFollows } from './follows.js';
 import { resolveTradeTokenInfo } from './tokenInfo.js';
 import {
   deadUserSkipMs,
@@ -89,8 +88,6 @@ class FomoPoller {
       }
       this.client = client;
 
-      await this.syncTrackedFollows();
-
       this.pollIntervalMs = this.resolvePollInterval();
       console.log(
         `[FomoPoller] Started store-and-fan-out poller (interval ${this.pollIntervalMs}ms, limit ${USER_ACTIVITY_LIMIT}).`,
@@ -138,18 +135,6 @@ class FomoPoller {
       lastPollErrorAt: this.lastPollErrorAt,
       lastSuccessfulPollAt: this.lastSuccessfulPollAt,
     };
-  }
-
-  private async syncTrackedFollows(): Promise<void> {
-    if (!this.client || !this.db) return;
-    const { data, error } = await this.db.from('fomo_tracked_users').select('fomo_user_id');
-    if (error) {
-      console.warn('[FomoPoller] Could not load tracked users for follow sync:', error.message);
-      return;
-    }
-    const ids = (data ?? []).map((row) => row.fomo_user_id).filter(Boolean);
-    if (ids.length === 0) return;
-    await syncAllTrackedFollows(this.client, ids);
   }
 
   // At the pinned 10s prod interval this query ran ~260k times/month — small
