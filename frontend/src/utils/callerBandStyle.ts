@@ -1,4 +1,4 @@
-import type { CallerBand } from '@oct/shared';
+import { MIN_RATED_CALLS, type CallerBand } from '@oct/shared';
 
 /**
  * One place for how a caller band reads across the console, so the chat feed,
@@ -24,13 +24,33 @@ export const BAND_DOT_CLASS: Record<CallerBand, string> = {
   slop: 'bg-oct-muted',
 };
 
+/**
+ * Tooltips for a band.
+ *
+ * These are **reach** bands, and the wording has to keep saying so. A band
+ * comes from hit rate and slop rate over `peak ÷ MC at call`, where the peak is
+ * the highest market cap we have *observed* since the call and multiples are
+ * floored at 1x. So "Elite" means "a lot of their calls touched 2x at some
+ * point", never "you would have made 2x following them" — nobody exits at the
+ * peak, and the peak itself is sampled every few minutes, so a spike between
+ * samples is missed. Same framing as the Caller Quality settings panel.
+ */
 export const BAND_TITLE: Record<CallerBand, string> = {
-  elite: 'Elite caller — high hit rate on their own calls',
-  solid: 'Solid caller',
-  mixed: 'Mixed record',
-  unrated: 'Not enough call history to rate yet',
-  slop: 'Mostly slop — few calls have gone anywhere',
+  elite:
+    'Elite reach — 40%+ of their scored calls touched 2x at some point after the call, and few went nowhere. Reach, not realized profit: peaks are sampled, so multiples are floors.',
+  solid:
+    'Solid reach — 20%+ of their scored calls touched 2x at some point after the call. Reach, not realized profit: peaks are sampled, so multiples are floors.',
+  mixed: 'Mixed reach — some of their calls ran, plenty went nowhere.',
+  unrated: `Not enough call history to rate yet — under ${MIN_RATED_CALLS} scored calls.`,
+  slop: 'Mostly slop — nearly none of their calls got meaningfully above the market cap they called at.',
 };
+
+/**
+ * One line the feed can print next to the bands, so the reach framing is
+ * visible without having to hover a badge.
+ */
+export const BAND_REACH_NOTE =
+  'Bands are reach, not profit: the share of a caller’s calls that touched 2x at some point, from sampled peaks.';
 
 /**
  * Background + text pair for the small badge shown next to a name in the feed.

@@ -1,17 +1,32 @@
 import { useEffect, useState, useMemo, Fragment } from 'react';
-import { Search, ExternalLink, Copy, Check, Trash2, LayoutGrid, List, X, MessageSquare, PanelLeftOpen, Send, Eye, EyeOff, Users, ChevronDown, ChevronRight } from 'lucide-react';
+import { ExternalLink, Copy, Check, Trash2, X, MessageSquare, PanelLeftOpen, Send, Users, ChevronDown, ChevronRight, Flag } from 'lucide-react';
+import { BAND_LABELS } from '@oct/shared';
 import { useAppStore } from '../stores/appStore';
 import { useCallerQuality, type CallerQuality } from '../hooks/useCallerQuality';
-import { BAND_DOT_CLASS, BAND_TITLE, bandIsNotable } from '../utils/callerBandStyle';
+import { BAND_BADGE_CLASS, BAND_TITLE, bandIsNotable } from '../utils/callerBandStyle';
 import { buildContractUrl } from '../utils/contractUrl';
 import { contractAttribution, isTelegramContract, openContractSource } from '../utils/contractSource';
 import ConfirmModal from './ConfirmModal';
+import ContractFeedToolbar, { type ContractViewMode, type ContractChainFilter } from './contract-feed/ContractFeedToolbar';
 import SignalConvergenceBadge from './SignalConvergenceBadge';
 import TokenHoldersDrawer, { type HoldersTarget } from './fomo/TokenHoldersDrawer';
 import { useConvergenceForContract } from '../hooks/useSignalConvergence';
 import type { ContractEntry } from '../types';
 import { colorWithExtraAlpha } from './ColorPickerWithAlpha';
-import { groupContractFeedByAddress, type ContractScanGroup } from '../utils/contractFeedGrouping';
+import { groupContractFeedByAddress } from '../utils/contractFeedGrouping';
+import {
+  filterGoodCallerRows,
+  groupHistoryOldestFirst,
+  groupSummaryItem,
+  isUnratedCaller,
+  sortContractGroups,
+  type ContractSortMode,
+} from '../utils/contractFeedView';
+import {
+  buildFirstCallerIndex,
+  firstCallerIsElsewhere,
+  type FirstCallerResolution,
+} from '../utils/firstCaller';
 
 // Chains FOMO indexes. A detection on any other EVM chain still opens the
 // drawer — we just omit the hint and let the backend probe.
@@ -53,7 +68,29 @@ function contractDisplay(entry: ContractEntry, showFull: boolean) {
   return { shortAddr, ticker, subtitle };
 }
 
-type ViewMode = 'table' | 'cards';
+/**
+ * Tooltip for the "jump to the first caller" action.
+ *
+ * Deliberately says which of the two claims it can make. `isFirstLogged` means
+ * the target really is the address's first detection in this install's log;
+ * anything else is only the earliest row still loaded, and says so.
+ */
+function firstCallerTitle(resolution: FirstCallerResolution): string {
+  const { entry, isFirstLogged, skippedUnlinkable } = resolution;
+  const where = isTelegramContract(entry) ? 'Telegram' : 'Discord';
+  const lead = isFirstLogged
+    ? `Open the first call of this CA — ${entry.authorName} on ${where}, ${timeAgo(entry.timestamp)}`
+    : `Open the earliest call of this CA still in view — ${entry.authorName} on ${where}, ${timeAgo(entry.timestamp)} (earlier calls may exist outside the loaded feed)`;
+  const skipped = skippedUnlinkable
+    ? ' An earlier row has no shareable link, so this is the earliest one that can be opened.'
+    : '';
+  const rickName = entry.firstCallerName ?? resolution.earliest.firstCallerName;
+  const rick =
+    rickName && rickName !== entry.authorName
+      ? ` Rick reports ${rickName} called it first globally — there is no message to open for that.`
+      : '';
+  return `${lead}.${skipped}${rick}`;
+}
 
 interface ContractDashboardProps {
   embedded?: boolean;
@@ -68,14 +105,20 @@ export default function ContractDashboard({ embedded = false }: ContractDashboar
   const sidebarCollapsed = useAppStore((s) => s.sidebarCollapsed);
   const toggleSidebar = useAppStore((s) => s.toggleSidebar);
   const [search, setSearch] = useState('');
-  const [chainFilter, setChainFilter] = useState<'all' | 'evm' | 'sol'>('all');
+  const [chainFilter, setChainFilter] = useState<ContractChainFilter>('all');
   const [copiedAddr, setCopiedAddr] = useState<string | null>(null);
-  const [viewMode, setViewMode] = useState<ViewMode>('table');
+  const [viewMode, setViewMode] = useState<ContractViewMode>('table');
   const [showDeleteAll, setShowDeleteAll] = useState(false);
   const [holdersTarget, setHoldersTarget] = useState<HoldersTarget | null>(null);
   const [revealMuted, setRevealMuted] = useState(false);
   const [expandedGroups, setExpandedGroups] = useState<Set<string>>(new Set());
+  const [goodOnly, setGoodOnly] = useState(false);
+  // `null` = follow the Settings toggle. A click here overrides it for this
+  // session only, so flipping the sort to answer "is the feed broken?" doesn't
+  // quietly rewrite a saved preference.
+  const [sortOverride, setSortOverride] = useState<ContractSortMode | null>(null);
   const { qualityForContract, rankingEnabled, showMuted } = useCallerQuality();
+  const sortMode: ContractSortMode = sortOverride ?? (rankingEnabled ? 'ranked' : 'recent');
 
   useEffect(() => {
     fetchContracts();
@@ -112,23 +155,35 @@ export default function ContractDashboard({ embedded = false }: ContractDashboar
       : withQuality;
     if (!showMuted) rows = withQuality.filter((r) => r.quality.tier !== 'muted');
 
-    if (rankingEnabled) {
-      rows = [...rows].sort(
-        (a, b) =>
-          b.quality.rank - a.quality.rank ||
-          new Date(b.entry.timestamp).getTime() - new Date(a.entry.timestamp).getTime(),
-      );
-    }
+    // NOTE: rank ordering deliberately does NOT happen here any more. Sorting
+    // rows by rank before grouping shuffled same-address scans out of time
+    // order, so a collapsed group's head — the row whose symbol, FDV and
+    // timestamp the group is summarised by — stopped being its newest scan.
+    // Ranking is applied to the finished groups instead (see `groupedRows`).
     return { visible: rows, mutedCount: muted.length };
-  }, [filtered, qualityForContract, rankingEnabled, showMuted, revealMuted]);
+  }, [filtered, qualityForContract, showMuted, revealMuted]);
 
-  const filteredEntries = useMemo(() => visible.map((r) => r.entry), [visible]);
+  const {
+    rows: qualifiedRows,
+    unratedShown,
+    hidden: goodHidden,
+  } = useMemo(() => filterGoodCallerRows(visible, goodOnly), [visible, goodOnly]);
+
+  const filteredEntries = useMemo(() => qualifiedRows.map((r) => r.entry), [qualifiedRows]);
 
   // Same-address rescans flood the feed (scheduleDexFallback re-broadcasts
   // every ~15s), so collapse consecutive scans of one address into a single
-  // group. `visible` is already newest-first, which is what the grouping
-  // function expects. See contractFeedGrouping.ts for the window rationale.
-  const groupedRows = useMemo(() => groupContractFeedByAddress(visible), [visible]);
+  // group. Grouping runs on the newest-first list, which is what the grouping
+  // function expects; the chosen sort is applied to the groups afterwards.
+  // See contractFeedGrouping.ts for the window rationale.
+  const groupedRows = useMemo(
+    () => sortContractGroups(groupContractFeedByAddress(qualifiedRows), sortMode),
+    [qualifiedRows, sortMode],
+  );
+
+  // Built once over the whole loaded log rather than per row: "who called this
+  // first" has to look past the 20-minute rescan group the row belongs to.
+  const firstCallerIndex = useMemo(() => buildFirstCallerIndex(contracts), [contracts]);
 
   const toggleGroupExpanded = (address: string) => {
     setExpandedGroups((prev) => {
@@ -197,74 +252,25 @@ export default function ContractDashboard({ embedded = false }: ContractDashboar
           )}
         </div>
         )}
-        <div className="flex items-center gap-2 px-3 sm:px-4 pb-3 overflow-x-auto scrollbar-none">
-          <div className="flex rounded-oct-sm overflow-hidden border border-oct-border text-xs shrink-0">
-            <button
-              onClick={() => setViewMode('table')}
-              className={`px-2 py-1 transition-colors ${
-                viewMode === 'table'
-                  ? 'bg-oct-accent text-white'
-                  : 'bg-oct-surface text-oct-muted hover:text-oct-text'
-              }`}
-              title="Table view"
-            >
-              <List size={14} />
-            </button>
-            <button
-              onClick={() => setViewMode('cards')}
-              className={`px-2 py-1 transition-colors ${
-                viewMode === 'cards'
-                  ? 'bg-oct-accent text-white'
-                  : 'bg-oct-surface text-oct-muted hover:text-oct-text'
-              }`}
-              title="Card view"
-            >
-              <LayoutGrid size={14} />
-            </button>
-          </div>
-
-          <div className="flex rounded-oct-sm overflow-hidden border border-oct-border text-xs shrink-0">
-            {(['all', 'evm', 'sol'] as const).map((f) => (
-              <button
-                key={f}
-                onClick={() => setChainFilter(f)}
-                className={`px-2.5 py-1 font-mono font-bold uppercase transition-colors ${
-                  chainFilter === f
-                    ? 'bg-oct-accent text-white'
-                    : 'bg-oct-surface text-oct-muted hover:text-oct-text'
-                }`}
-              >
-                {f.toUpperCase()}
-              </button>
-            ))}
-          </div>
-
-          <div className="relative flex-1 min-w-[120px]">
-            <Search size={14} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-oct-muted" />
-            <input
-              type="text"
-              placeholder="Search..."
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-              className="oct-input pl-8 pr-3 py-1.5 text-sm w-full"
-            />
-          </div>
-
-          {showMuted && mutedCount > 0 && (
-            <button
-              onClick={() => setRevealMuted((v) => !v)}
-              className={`flex items-center gap-1 px-2.5 py-1 rounded-oct-sm text-[11px] font-mono font-bold uppercase border transition-all shrink-0 ${
-                revealMuted
-                  ? 'border-oct-accent/50 bg-oct-accent text-white shadow-oct-glow-accent'
-                  : 'border-oct-border text-oct-muted hover:text-oct-text hover:border-oct-border-bright'
-              }`}
-              title={revealMuted ? 'Hide muted callers again' : 'Show contracts from muted callers'}
-            >
-              {revealMuted ? <Eye size={12} /> : <EyeOff size={12} />}
-              <span>{mutedCount} muted</span>
-            </button>
-          )}
-        </div>
+        <ContractFeedToolbar
+          viewMode={viewMode}
+          onViewMode={setViewMode}
+          chainFilter={chainFilter}
+          onChainFilter={setChainFilter}
+          search={search}
+          onSearch={setSearch}
+          sortMode={sortMode}
+          onSortMode={setSortOverride}
+          sortFromSettings={sortOverride === null && rankingEnabled}
+          goodOnly={goodOnly}
+          onGoodOnly={setGoodOnly}
+          unratedShown={unratedShown}
+          goodHidden={goodHidden}
+          showMuted={showMuted}
+          mutedCount={mutedCount}
+          revealMuted={revealMuted}
+          onRevealMuted={setRevealMuted}
+        />
       </div>
 
       {/* Content */}
@@ -278,20 +284,25 @@ export default function ContractDashboard({ embedded = false }: ContractDashboar
             <p className="text-sm text-oct-muted">
               {contracts.length === 0
                 ? 'No contracts detected yet'
-                : mutedCount > 0
-                  ? 'Every match is from a muted caller'
-                  : 'No contracts match your filters'}
+                : goodOnly && goodHidden > 0
+                  ? `Every match is from a mixed, slop or muted caller — ${goodHidden} hidden by the good-callers filter`
+                  : mutedCount > 0
+                    ? 'Every match is from a muted caller'
+                    : 'No contracts match your filters'}
             </p>
           </div>
         ) : viewMode === 'table' ? (
           <div className="divide-y divide-oct-border/50">
             {groupedRows.map((group) => {
-              const head = group.items[0];
+              // The group's newest scan — what a collapsed row summarises.
+              // Derived rather than taken as items[0] so the summary timestamp
+              // is the newest scan under any sort mode.
+              const head = groupSummaryItem(group);
               const scanCount = group.items.length;
               const isExpanded = scanCount > 1 && expandedGroups.has(group.address);
               // Chronological (oldest-first) history of everything folded into
               // this group, excluding the head row already shown above it.
-              const history = scanCount > 1 ? [...group.items].slice(1).reverse() : [];
+              const history = scanCount > 1 ? groupHistoryOldestFirst(group) : [];
               return (
                 <Fragment key={`group-${group.address}-${head.entry.messageId}`}>
                   <ContractRow
@@ -310,6 +321,8 @@ export default function ContractDashboard({ embedded = false }: ContractDashboar
                     scanCount={scanCount}
                     isExpanded={isExpanded}
                     onToggleExpand={scanCount > 1 ? () => toggleGroupExpanded(group.address) : undefined}
+                    firstCall={firstCallerIndex.get(group.address)}
+                    markUnrated={goodOnly}
                   />
                   {isExpanded && (
                     <div className="pl-3 sm:pl-6 border-l-2 border-oct-border/60 ml-3 sm:ml-6">
@@ -327,6 +340,8 @@ export default function ContractDashboard({ embedded = false }: ContractDashboar
                           onOpenDiscord={handleOpenDiscord}
                           onDelete={handleDelete}
                           onShowHolders={(e) => setHoldersTarget(holdersTargetFor(e))}
+                          firstCall={firstCallerIndex.get(group.address)}
+                          markUnrated={goodOnly}
                           isSubRow
                         />
                       ))}
@@ -339,12 +354,13 @@ export default function ContractDashboard({ embedded = false }: ContractDashboar
         ) : (
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-2 sm:gap-3 p-3 sm:p-4">
             {groupedRows.map((group) => {
-              const head = group.items[0];
+              const head = groupSummaryItem(group);
               const scanCount = group.items.length;
               return (
               <ContractCard
                 key={`group-${group.address}-${head.entry.messageId}`}
                 entry={head.entry}
+                quality={head.quality}
                 evmColor={evmColor}
                 solColor={solColor}
                 isCopied={copiedAddr === head.entry.address}
@@ -355,6 +371,8 @@ export default function ContractDashboard({ embedded = false }: ContractDashboar
                 onShowHolders={(e) => setHoldersTarget(holdersTargetFor(e))}
                 forceIsNew={group.hasNew}
                 scanCount={scanCount}
+                firstCall={firstCallerIndex.get(group.address)}
+                markUnrated={goodOnly}
               />
               );
             })}
@@ -403,8 +421,50 @@ interface ContractItemProps {
   scanCount?: number;
   isExpanded?: boolean;
   onToggleExpand?: () => void;
+  /**
+   * Earliest openable call of this address across the whole loaded log, when
+   * one exists. Renders the "jump to the first caller" action — see
+   * `firstCaller.ts` for what "first" is allowed to mean.
+   */
+  firstCall?: FirstCallerResolution;
+  /**
+   * Tag unrated callers explicitly. On while the good-callers filter is
+   * active: that filter keeps unrated callers on purpose, so the rows it let
+   * through unvouched-for have to look different from the vetted ones.
+   */
+  markUnrated?: boolean;
   /** Renders as a condensed history row nested under a group's head. */
   isSubRow?: boolean;
+}
+
+/** Small pill shared by the chain / NEW / band markers on a feed row. */
+const ROW_PILL = 'text-[10px] font-bold px-1.5 py-0.5 rounded-full shrink-0 uppercase font-mono';
+
+/**
+ * The caller's band, as a readable word rather than the 6px dot this used to
+ * be — the label is the whole point of having bands in the feed. Matches the
+ * badge language already used in the chat feed and on the Radar.
+ */
+function CallerBandBadge({ quality, markUnrated }: { quality?: CallerQuality; markUnrated?: boolean }) {
+  if (!quality) return null;
+  if (bandIsNotable(quality.band)) {
+    return (
+      <span className={`${ROW_PILL} ${BAND_BADGE_CLASS[quality.band]}`} title={BAND_TITLE[quality.band]}>
+        {BAND_LABELS[quality.band]}
+      </span>
+    );
+  }
+  if (markUnrated && isUnratedCaller(quality)) {
+    return (
+      <span
+        className={`${ROW_PILL} border border-dashed border-oct-border-bright text-oct-muted`}
+        title={`${BAND_TITLE.unrated} Kept in the filtered feed on purpose — a new caller with a real edge starts here — but unproven, not vetted.`}
+      >
+        {BAND_LABELS.unrated}
+      </span>
+    );
+  }
+  return null;
 }
 
 function ContractRow({
@@ -423,10 +483,13 @@ function ContractRow({
   scanCount,
   isExpanded,
   onToggleExpand,
+  firstCall,
+  markUnrated,
   isSubRow = false,
 }: ContractItemProps) {
   const color = entry.chain === 'evm' ? evmColor : solColor;
   const isMuted = quality?.tier === 'muted';
+  const jumpToFirst = firstCallerIsElsewhere(firstCall, entry) ? firstCall : undefined;
   const chainLabel = entry.chain === 'evm' && entry.evmChain
     ? (EVM_CHAIN_LABELS[entry.evmChain] ?? entry.evmChain.toUpperCase())
     : entry.chain.toUpperCase();
@@ -451,21 +514,16 @@ function ContractRow({
             {isExpanded ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
           </button>
         )}
-        {quality && bandIsNotable(quality.band) && (
-          <span
-            className={`w-1.5 h-1.5 rounded-full shrink-0 ${BAND_DOT_CLASS[quality.band]}`}
-            title={BAND_TITLE[quality.band]}
-          />
-        )}
+        <CallerBandBadge quality={quality} markUnrated={markUnrated} />
         <span
-          className="text-[10px] font-bold px-1.5 py-0.5 rounded-full shrink-0 uppercase font-mono"
+          className={ROW_PILL}
           style={{ backgroundColor: colorWithExtraAlpha(color, 0.125), color }}
         >
           {chainLabel}
         </span>
 
         <span
-          className={`text-[10px] font-bold px-1.5 py-0.5 rounded-full shrink-0 uppercase hidden sm:inline font-mono ${
+          className={`${ROW_PILL} hidden sm:inline ${
             isNew
               ? 'bg-oct-green/15 text-oct-green'
               : 'bg-orange-500/15 text-orange-400'
@@ -476,7 +534,7 @@ function ContractRow({
 
         {scanCount != null && scanCount > 1 && (
           <span
-            className="text-[10px] font-bold px-1.5 py-0.5 rounded-full shrink-0 uppercase font-mono bg-oct-accent/15 text-oct-accent"
+            className={`${ROW_PILL} bg-oct-accent/15 text-oct-accent`}
             title={`${scanCount} scans of this address, latest ${timeAgo(entry.timestamp)}`}
           >
             ×{scanCount} scans
@@ -514,10 +572,23 @@ function ContractRow({
             <button
               onClick={() => onOpenDiscord(entry)}
               className="p-1 rounded hover:bg-oct-surface text-oct-muted hover:text-oct-text transition-colors hidden sm:block"
-              title={isTelegramContract(entry) ? 'Open in Telegram' : 'Open in Discord'}
+              title={isTelegramContract(entry) ? 'Open this message in Telegram' : 'Open this message in Discord'}
             >
               {isTelegramContract(entry) ? <Send size={13} className="text-[#2AABEE]" /> : <MessageSquare size={13} />}
             </button>
+            {jumpToFirst && (
+              <button
+                onClick={() => onOpenDiscord(jumpToFirst.entry)}
+                className={`p-1 rounded hover:bg-oct-surface transition-colors hidden sm:block ${
+                  jumpToFirst.isFirstLogged
+                    ? 'text-oct-green/70 hover:text-oct-green'
+                    : 'text-oct-muted hover:text-oct-text'
+                }`}
+                title={firstCallerTitle(jumpToFirst)}
+              >
+                <Flag size={13} />
+              </button>
+            )}
             <button
               onClick={() => onShowHolders(entry)}
               className="p-1 rounded hover:bg-oct-surface text-oct-muted hover:text-oct-text transition-colors"
@@ -579,6 +650,7 @@ function ContractRow({
 
 function ContractCard({
   entry,
+  quality,
   evmColor,
   solColor,
   isCopied,
@@ -589,8 +661,11 @@ function ContractCard({
   onShowHolders,
   forceIsNew,
   scanCount,
+  firstCall,
+  markUnrated,
 }: ContractItemProps) {
   const color = entry.chain === 'evm' ? evmColor : solColor;
+  const jumpToFirst = firstCallerIsElsewhere(firstCall, entry) ? firstCall : undefined;
   const chainLabel = entry.chain === 'evm' && entry.evmChain
     ? (EVM_CHAIN_LABELS[entry.evmChain] ?? entry.evmChain.toUpperCase())
     : entry.chain.toUpperCase();
@@ -609,15 +684,16 @@ function ContractCard({
         <X size={13} />
       </button>
 
-      <div className="flex items-center gap-2">
+      <div className="flex items-center gap-2 flex-wrap">
+        <CallerBandBadge quality={quality} markUnrated={markUnrated} />
         <span
-          className="text-[10px] font-bold px-1.5 py-0.5 rounded-full uppercase font-mono"
+          className={ROW_PILL}
           style={{ backgroundColor: colorWithExtraAlpha(color, 0.125), color }}
         >
           {chainLabel}
         </span>
         <span
-          className={`text-[10px] font-bold px-1.5 py-0.5 rounded-full uppercase font-mono ${
+          className={`${ROW_PILL} ${
             isNew
               ? 'bg-oct-green/20 text-oct-green'
               : 'bg-orange-500/20 text-orange-400'
@@ -627,7 +703,7 @@ function ContractCard({
         </span>
         {scanCount != null && scanCount > 1 && (
           <span
-            className="text-[10px] font-bold px-1.5 py-0.5 rounded-full uppercase font-mono bg-oct-accent/20 text-oct-accent"
+            className={`${ROW_PILL} bg-oct-accent/20 text-oct-accent`}
             title={`${scanCount} scans of this address collapsed into this card`}
           >
             ×{scanCount}
@@ -683,11 +759,21 @@ function ContractCard({
         <button
           onClick={() => onOpenDiscord(entry)}
           className="flex items-center gap-1 px-2 py-1 rounded-oct-sm text-xs bg-oct-bg hover:bg-oct-surface-raised transition-colors text-oct-muted hover:text-oct-text border border-oct-border"
-          title={isTelegramContract(entry) ? 'Open in Telegram' : 'Open in Discord'}
+          title={isTelegramContract(entry) ? 'Open this message in Telegram' : 'Open this message in Discord'}
         >
           {isTelegramContract(entry) ? <Send size={11} className="text-[#2AABEE]" /> : <MessageSquare size={11} />}
           <span>{isTelegramContract(entry) ? 'Telegram' : 'Discord'}</span>
         </button>
+        {jumpToFirst && (
+          <button
+            onClick={() => onOpenDiscord(jumpToFirst.entry)}
+            className="flex items-center gap-1 px-2 py-1 rounded-oct-sm text-xs bg-oct-bg hover:bg-oct-surface-raised transition-colors text-oct-muted hover:text-oct-text border border-oct-border"
+            title={firstCallerTitle(jumpToFirst)}
+          >
+            <Flag size={11} className={jumpToFirst.isFirstLogged ? 'text-oct-green' : undefined} />
+            <span>{jumpToFirst.isFirstLogged ? '1st' : 'Earliest'}</span>
+          </button>
+        )}
         <button
           onClick={() => onShowHolders(entry)}
           className="flex items-center gap-1 px-2 py-1 rounded-oct-sm text-xs bg-oct-bg hover:bg-oct-surface-raised transition-colors text-oct-muted hover:text-oct-text border border-oct-border"
