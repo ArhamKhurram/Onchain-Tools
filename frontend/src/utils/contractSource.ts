@@ -20,15 +20,37 @@ export function contractAttribution(entry: ContractEntry): string {
   return `${entry.authorName} · ${entry.guildName ? `${entry.guildName} / ` : ''}#${entry.channelName}`;
 }
 
+/**
+ * The `t.me` deep link for a Telegram row, or null when one can't be built.
+ *
+ * Only supergroups/channels (chat ids prefixed `-100`) have a public message
+ * URL shape; plain groups and DMs don't, so those rows are unlinkable rather
+ * than broken.
+ */
+export function telegramMessageUrl(entry: ContractEntry): string | null {
+  const parsed = parseTelegramMessageId(entry.messageId);
+  if (!parsed) return null;
+  const { chatId, msgId } = parsed;
+  if (!chatId.startsWith('-100')) return null;
+  return `https://t.me/c/${chatId.slice(4)}/${msgId}`;
+}
+
+/**
+ * Would `openContractSource` actually open something for this row?
+ *
+ * Discord rows always produce a URL. Telegram rows only do when the chat id is
+ * a supergroup/channel — for anything else `openContractSource` silently
+ * returns, so callers that want to *offer* the action (rather than just try it)
+ * need to know in advance.
+ */
+export function canOpenContractSource(entry: ContractEntry): boolean {
+  if (isTelegramContract(entry)) return telegramMessageUrl(entry) !== null;
+  return true;
+}
+
 export function openContractSource(entry: ContractEntry, config: AppConfig | null): void {
   if (isTelegramContract(entry)) {
-    const parsed = parseTelegramMessageId(entry.messageId);
-    if (!parsed) return;
-    const { chatId, msgId } = parsed;
-    let url: string | undefined;
-    if (chatId.startsWith('-100')) {
-      url = `https://t.me/c/${chatId.slice(4)}/${msgId}`;
-    }
+    const url = telegramMessageUrl(entry);
     if (!url) return;
     window.open(url, '_blank', 'noopener,noreferrer');
     return;
