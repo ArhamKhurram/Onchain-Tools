@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { Settings2, X } from 'lucide-react';
+import type { RadarMultipleEmojiRule } from '@oct/shared';
 import {
   RADAR_COLUMN_LABELS,
   RADAR_COLUMN_ORDER,
@@ -7,6 +8,7 @@ import {
   saveVisibleRadarColumns,
   type RadarColumnId,
 } from './radarColumns';
+import RadarEmojiRules from './RadarEmojiRules';
 
 export type MentionWindow = '15m' | '1h' | '4h';
 
@@ -15,6 +17,9 @@ interface RadarSettingsProps {
   onMentionWindowChange: (w: MentionWindow) => void;
   visibleColumns: Set<RadarColumnId>;
   onVisibleColumnsChange: (cols: Set<RadarColumnId>) => void;
+  /** Resolved threshold→emoji ladder for the × column. */
+  emojiRules: readonly RadarMultipleEmojiRule[];
+  onEmojiRulesChange: (next: RadarMultipleEmojiRule[]) => void;
 }
 
 export default function RadarSettings({
@@ -22,6 +27,8 @@ export default function RadarSettings({
   onMentionWindowChange,
   visibleColumns,
   onVisibleColumnsChange,
+  emojiRules,
+  onEmojiRulesChange,
 }: RadarSettingsProps) {
   const [open, setOpen] = useState(false);
   const rootRef = useRef<HTMLDivElement>(null);
@@ -66,7 +73,7 @@ export default function RadarSettings({
       </button>
 
       {open && (
-        <div className="oct-card absolute left-0 top-full mt-2 z-50 w-64 shadow-oct-soft-lg p-3.5">
+        <div className="oct-card absolute left-0 top-full mt-2 z-50 w-72 max-h-[70vh] overflow-y-auto shadow-oct-soft-lg p-3.5">
           <div className="flex items-center justify-between mb-3">
             <span className="oct-eyebrow">
               Radar display
@@ -123,6 +130,10 @@ export default function RadarSettings({
           >
             Reset to defaults
           </button>
+
+          <div className="mt-4 pt-3.5 border-t border-oct-border">
+            <RadarEmojiRules rules={emojiRules} onChange={onEmojiRulesChange} />
+          </div>
         </div>
       )}
     </div>

@@ -25,6 +25,19 @@ export {
   buildRevivalContractUrl,
 } from './contract.js';
 export type { ContractDetectionResult, RevivalNetwork } from './contract.js';
+// Radar × column emoji markers (threshold ladder, highest match wins).
+export {
+  DEFAULT_RADAR_MULTIPLE_EMOJI_RULES,
+  MAX_RADAR_EMOJI_RULES,
+  MAX_RADAR_EMOJI_LENGTH,
+  MIN_RADAR_EMOJI_THRESHOLD,
+  MAX_RADAR_EMOJI_THRESHOLD,
+  sanitizeRadarEmoji,
+  sanitizeRadarEmojiRules,
+  resolveRadarEmojiRules,
+  radarEmojiForMultiple,
+} from './radarEmoji.js';
+
 export { processDiscordMessage } from './message.js';
 export type { MessageProcessorContext, MessageGateway } from './message.js';
 
@@ -160,6 +173,7 @@ export type {
   PriceAlertData,
   CallerTier,
   CallerTierEntry,
+  RadarMultipleEmojiRule,
   AppConfig,
   // workspace layout
   WorkspacePanelType,

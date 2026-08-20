@@ -19,6 +19,9 @@ interface SortControlProps<K extends string> {
   dir: SortDir;
   onSort: (key: K) => void;
   align?: 'left' | 'right';
+  /** Hover text for the column. Used where the label alone (e.g. a bare ×)
+   *  doesn't say what the number actually measures. */
+  title?: string;
 }
 
 /** The bare sort control (label + chevrons). Use inside a <th> via SortHeader, or on
@@ -30,12 +33,14 @@ export function SortButton<K extends string>({
   dir,
   onSort,
   align = 'left',
+  title,
 }: SortControlProps<K>) {
   const active = activeKey === sortKey;
   return (
     <button
       type="button"
       onClick={() => onSort(sortKey)}
+      title={title}
       className={`inline-flex items-center gap-1 uppercase tracking-wider transition-colors ${
         align === 'right' ? 'flex-row-reverse ml-auto' : ''
       } ${active ? 'text-oct-accent' : 'text-oct-muted hover:text-oct-text'}`}

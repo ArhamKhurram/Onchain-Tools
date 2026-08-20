@@ -1,4 +1,5 @@
 import type { AppConfig, Room, ChannelRef, KeywordPattern } from '../../discord/types.js';
+import { DEFAULT_RADAR_MULTIPLE_EMOJI_RULES } from '@oct/shared';
 
 export const CACHE_TTL_MS = 10_000; // 10 seconds
 
@@ -17,6 +18,7 @@ export const DEFAULT_SETTINGS: Omit<AppConfig, 'discordTokens' | 'rooms'> = {
   callerTierShowMuted: true,
   callerQualityRanking: false,
   callerScoreExclusions: [],
+  radarMultipleEmojiRules: [...DEFAULT_RADAR_MULTIPLE_EMOJI_RULES],
   messageSounds: false,
   soundSettings: {
     highlight: { enabled: true, volume: 80, useCustom: false },
