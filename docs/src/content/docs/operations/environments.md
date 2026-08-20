@@ -40,7 +40,6 @@ rather than crashing.
 | `FOMO_POLL_INTERVAL_MS` | Poll interval override (default 10 000; idle default 60 000 via `FOMO_POLL_IDLE_INTERVAL_MS`). |
 | `FOMO_USER_ACTIVITY_LIMIT` | Activities fetched per trader per poll (default 15). |
 | `FOMO_LEADERBOARD_CACHE_MS` / `FOMO_HODLERS_CACHE_MS` | Cache TTLs (default 5 min / 15 min). |
-| `FOMO_ENSURE_FOLLOWS` | Auto-follow tracked users on the shared account (default on). |
 | `FOMO_TRADE_RETENTION_DAYS` | Trade-event retention (default 7). |
 | `FOMO_PRIVY_*`, `FOMO_CF_*` | Cold-start reliability extras (app id, client ids, CF cookies). |
 

@@ -4,7 +4,6 @@
 import { Router } from 'express';
 import { isHostedMode } from '../storage/index.js';
 import { ensureSharedFomoClientReady, resolveFomoRefreshToken } from './client.js';
-import { ensureSharedAccountFollows } from './follows.js';
 import { getFomoPollerStatus } from './poller.js';
 import {
   getCached,
@@ -138,7 +137,6 @@ export function createFomoRouter(wsServer: WsServer): Router {
         ? Math.max(0, Math.floor((Date.now() - Date.parse(tokenRotatedAt)) / 1000))
         : null,
       cache: getFomoCacheStats(),
-      ensureFollows: process.env.FOMO_ENSURE_FOLLOWS !== 'false',
     });
   });
 
@@ -455,10 +453,6 @@ export function createFomoRouter(wsServer: WsServer): Router {
         }
         throw error;
       }
-
-      // If tradingActivity is following-scoped, make the shared account follow
-      // this trader so their trades appear in the global poll feed.
-      await ensureSharedAccountFollows(client, resolved.fomoUserId);
 
       void deliverRecentTradesToUser(db, wsServer, resolved.fomoUserId, userId).catch((err) => {
         console.warn('[FomoAPI] Recent trade backfill failed:', (err as Error)?.message);

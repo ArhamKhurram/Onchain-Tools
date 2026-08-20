@@ -31,10 +31,17 @@ export const TOP_CALLERS_WINDOWS: readonly { id: TopCallersWindow; label: string
   { id: 'all', label: 'All' },
 ] as const;
 
+// Labelled "Peak", not "Return": `multiple` is maxPriceSol / calloutPrice — a
+// running high the token touched after the call, never a realized return (it
+// cannot go below 1.0×). A caller-quality census found board rank on this
+// metric correlates -0.217 with actual outcome (current price / call price) —
+// ranking higher predicts slightly worse, not better. See oct-pump-kol-callout-alerts
+// memory. Kept as a metric (raw feed data, not fabricated) but never call it
+// "Avg ×" / "Best ×" unqualified, which read as performance.
 export const TOP_CALLERS_METRICS: readonly { id: TopCallersMetric; label: string }[] = [
   { id: 'count', label: 'Calls' },
-  { id: 'avg', label: 'Avg ×' },
-  { id: 'max', label: 'Best ×' },
+  { id: 'avg', label: 'Avg Peak ×' },
+  { id: 'max', label: 'Best Peak ×' },
 ] as const;
 
 async function pumpFetch(path: string): Promise<Response> {
