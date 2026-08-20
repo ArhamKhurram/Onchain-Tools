@@ -148,7 +148,11 @@ export default function ContractFeedToolbar({
           }
         >
           <BadgeCheck size={12} />
-          <span>Good callers</span>
+          {/* "Hide slop", not "Good callers": the filter keeps not-yet-rated
+              callers (MIN_RATED_CALLS = 10 means every new caller is unrated),
+              so a label promising only proven callers would overstate what it
+              does. Naming it for what it removes is exactly true. */}
+          <span>Hide slop</span>
         </button>
 
         <div className="relative flex-1 min-w-[120px]">
@@ -188,7 +192,7 @@ export default function ContractFeedToolbar({
             )}
             {goodOnly && (
               <span>
-                <span className="font-bold text-oct-text">Good callers only</span>
+                <span className="font-bold text-oct-text">Hiding slop</span>
                 {goodHidden > 0 ? ` — ${goodHidden} mixed/slop hidden.` : ' — nothing hidden yet.'}{' '}
                 {unratedShown > 0
                   ? `${unratedShown} call${unratedShown === 1 ? '' : 's'} from not-yet-rated callers are kept and tagged UNRATED, so a new sharp caller isn’t buried. `
