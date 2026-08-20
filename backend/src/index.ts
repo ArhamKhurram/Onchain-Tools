@@ -50,6 +50,11 @@ import { startJournalPoller } from './journal/poller.js';
 import { startJournalVolumeDeathPoller } from './journal/volumeDeathPoller.js';
 import { startPriceAlertPoller } from './priceAlerts/poller.js';
 import { startTokenPeakSampler } from './alerts/tokenPeakSampler.js';
+import {
+  recordScannedContract,
+  scoringExclusions,
+  startCallerStatsReconciler,
+} from './callers/callerStatsRecorder.js';
 import type { DiscordMessage, PushoverConfig, FrontendMessage, ContractLinkTemplates } from './discord/types.js';
 import type { ContractEnrichmentPatch } from './utils/contractLog.js';
 
@@ -297,6 +302,9 @@ function wireGatewayEvents(gw: GatewayManager, wsServer: WsServer, userId: strin
             await storage.updateEvmChain(userId, addr, evmChainHint);
           }
           wsServer.broadcastContract(logged, userId);
+          // Durable caller record + a debounced peak refresh for this token.
+          // Fire-and-forget by design: ranking must never delay or break ingest.
+          recordScannedContract(userId, logged, { exclude: scoringExclusions(config) });
           scheduleDexFallback(wsServer, userId, addr, logged.channelId, logged.messageId);
         } catch (err) {
           console.error('[App] Failed to persist contract:', (err as Error).message);
@@ -515,6 +523,9 @@ function wireTelegramEvents(tg: TelegramClientManager, wsServer: WsServer, userI
             await storage.updateEvmChain(userId, addr, evmChainHint);
           }
           wsServer.broadcastContract(logged, userId);
+          // Same durable caller record as the Discord path — one pipeline, one
+          // board. See recordScannedContract.
+          recordScannedContract(userId, logged, { exclude: scoringExclusions(config) });
           scheduleDexFallback(wsServer, userId, addr, logged.channelId, logged.messageId);
         } catch (err) {
           console.error('[App] Failed to persist Telegram contract:', (err as Error).message);
@@ -754,6 +765,13 @@ httpServer.listen(PORT, HOST, async () => {
   // Runs in both modes — local keeps peaks in a JSON file so the desktop app
   // scores callers too.
   startTokenPeakSampler();
+
+  // Keeps the durable per-caller call record in step with the contract log. The
+  // ingest hook writes each call the moment it is scanned; this sweep re-folds
+  // recent rows so an MC@call that arrived later, via enrichment, lands on the
+  // call it belongs to. Idles when there is no persistent store (local mode),
+  // where scores still derive on read.
+  startCallerStatsReconciler();
 
   // In-process OCT Discord bot. Self-gates on DISCORD_BOT_TOKEN and swallows
   // its own failures, so it can never take the backend down.

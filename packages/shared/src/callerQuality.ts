@@ -70,9 +70,31 @@ export function isExcludedCaller(
   entry: Pick<ContractEntry, 'authorId' | 'authorName' | 'source' | 'messageId'>,
   exclusions: readonly string[] = DEFAULT_EXCLUDED_CALLERS,
 ): boolean {
+  return isExcludedCallerKey(
+    contractCallerKey(entry as ContractEntry),
+    entry.authorName ?? '',
+    exclusions,
+  );
+}
+
+/**
+ * The same exclusion test, expressed over an already-resolved caller key and
+ * display name rather than a contract row.
+ *
+ * The persistent board never sees contract rows — it reads per-caller
+ * aggregates back out of storage — but the operator can add an exclusion at any
+ * time, long after those rows were folded away. Filtering the aggregate on read
+ * means a new exclusion takes effect immediately and reversibly, with no
+ * rewrite of stored history, and it keeps one definition of "excluded" shared
+ * between the derive-on-read path and the persistent one.
+ */
+export function isExcludedCallerKey(
+  key: string,
+  displayName: string,
+  exclusions: readonly string[] = DEFAULT_EXCLUDED_CALLERS,
+): boolean {
   if (exclusions.length === 0) return false;
-  const key = contractCallerKey(entry as ContractEntry);
-  const name = normalizeCallerName(entry.authorName ?? '');
+  const name = normalizeCallerName(displayName ?? '');
 
   for (const raw of exclusions) {
     const candidate = raw?.trim();
@@ -238,52 +260,266 @@ export function buildCallerScores(
   windowDays: number,
   options: { exclude?: readonly string[] } = {},
 ): CallerScore[] {
-  const exclude = options.exclude ?? DEFAULT_EXCLUDED_CALLERS;
-  interface Acc {
-    displayName: string;
-    /** address -> that caller's earliest row for it */
-    firstByAddress: Map<string, ContractEntry>;
-  }
-  const byCaller = new Map<string, Acc>();
-
-  for (const entry of contracts) {
-    if (!entry.authorId) continue;
-    if (isExcludedCaller(entry, exclude)) continue;
-    const key = contractCallerKey(entry);
-    let acc = byCaller.get(key);
+  const byCaller = new Map<string, { displayName: string; calls: CallerCall[] }>();
+  for (const call of foldCallerCalls(contracts, options)) {
+    let acc = byCaller.get(call.callerKey);
     if (!acc) {
-      acc = { displayName: entry.authorName, firstByAddress: new Map() };
-      byCaller.set(key, acc);
+      acc = { displayName: call.displayName, calls: [] };
+      byCaller.set(call.callerKey, acc);
     }
-    if (entry.authorName) acc.displayName = entry.authorName;
-
-    const addr = entry.address.toLowerCase();
-    const prior = acc.firstByAddress.get(addr);
-    if (!prior || new Date(entry.timestamp).getTime() < new Date(prior.timestamp).getTime()) {
-      acc.firstByAddress.set(addr, entry);
-    }
+    if (call.displayName) acc.displayName = call.displayName;
+    acc.calls.push(call);
   }
 
   const out: CallerScore[] = [];
   for (const [key, acc] of byCaller) {
     const ratedCalls: RatedCall[] = [];
-    for (const [addr, entry] of acc.firstByAddress) {
-      const mcAtCall = entry.fdvAtCall;
-      if (mcAtCall == null || mcAtCall <= 0) continue;
-      const peak = peakFor(addr);
-      if (peak == null || peak <= 0) continue;
-      ratedCalls.push({
-        address: entry.address,
-        // A peak below the call is possible when the call itself was the top;
-        // floor at the call so a flat token reads as 1x, not a negative signal.
-        multiple: Math.max(peak, mcAtCall) / mcAtCall,
-        timestamp: entry.timestamp,
-      });
+    for (const call of acc.calls) {
+      const rated = rateCall(call, peakFor(call.address.toLowerCase()));
+      if (rated) ratedCalls.push(rated);
     }
-    out.push(scoreCaller(key, acc.displayName, acc.firstByAddress.size, ratedCalls, windowDays));
+    out.push(scoreCaller(key, acc.displayName, acc.calls.length, ratedCalls, windowDays));
   }
 
-  return out.sort((a, b) => b.rated - a.rated || b.calls - a.calls);
+  return sortCallerScores(out);
+}
+
+/** The board's ordering: deepest scoring sample first, then raw volume. */
+export function sortCallerScores(scores: CallerScore[]): CallerScore[] {
+  return scores.sort((a, b) => b.rated - a.rated || b.calls - a.calls);
+}
+
+// ---------------------------------------------------------------------------
+// Persistence primitives
+//
+// Scores used to be derived on read, every time, straight off the contract log.
+// That made a caller's record only as long as the log — roll the log and the
+// caller disappears, which on a real feed meant a board claiming 30 days while
+// scoring barely one. The durable unit is the *call*, not the log row: one
+// record per (caller, token), written once and kept. Everything below is the
+// pure half of that — the fold that turns log rows into call records, and the
+// fold that turns stored per-caller counts back into a CallerScore. The storage
+// itself lives in backend/src/callers/.
+// ---------------------------------------------------------------------------
+
+/**
+ * One durable call: a caller's EARLIEST post of one token, and the market cap
+ * it was posted at.
+ *
+ * `fdvAtCall` is that row's own MC@call and nothing else. It is deliberately
+ * NOT filled in from a later repost of the same address — MC@call is a
+ * point-in-time reading (see `enrichmentMerge.ts`), so borrowing a later one
+ * would silently score the caller against a moment they didn't call.
+ */
+export interface CallerCall {
+  callerKey: string;
+  displayName: string;
+  /** As posted, original case. Dedupe and peak lookup use the lowercased form. */
+  address: string;
+  chain?: 'evm' | 'sol';
+  evmChain?: string;
+  fdvAtCall?: number;
+  timestamp: string;
+  /** Union of every room this caller's posts of this token landed in. */
+  roomIds: string[];
+}
+
+/**
+ * Collapse a contract log into one record per (caller, token).
+ *
+ * This is the attribution rule that used to live inside `buildCallerScores`,
+ * lifted out so the persist path and the derive path can never drift:
+ *
+ * - **Earliest row wins.** Posting the same CA ten times is one call, otherwise
+ *   spamming inflates the sample it's judged on.
+ * - **Their own MC@call.** Five people calling one CA called it at five
+ *   different caps; each is scored against their own row, never the token's
+ *   earliest.
+ * - **Excluded authors are dropped.** Enrichment bots repost everything;
+ *   scoring them measures the room, not a caller.
+ *
+ * Rooms are the one thing merged across rows rather than taken from the
+ * earliest: a caller's post of a token can land in several rooms over several
+ * messages, and the record is of the call, not of one delivery of it.
+ */
+export function foldCallerCalls(
+  contracts: ContractEntry[],
+  options: { exclude?: readonly string[] } = {},
+): CallerCall[] {
+  const exclude = options.exclude ?? DEFAULT_EXCLUDED_CALLERS;
+  const byPair = new Map<string, CallerCall>();
+
+  for (const entry of contracts) {
+    if (!entry.authorId) continue;
+    if (!entry.address) continue;
+    if (isExcludedCaller(entry, exclude)) continue;
+
+    const callerKey = contractCallerKey(entry);
+    const addr = entry.address.toLowerCase();
+    const pairKey = `${callerKey} ${addr}`;
+    const at = new Date(entry.timestamp).getTime();
+    const prior = byPair.get(pairKey);
+
+    if (!prior) {
+      byPair.set(pairKey, {
+        callerKey,
+        displayName: entry.authorName ?? '',
+        address: entry.address,
+        chain: entry.chain,
+        evmChain: entry.evmChain,
+        fdvAtCall: entry.fdvAtCall,
+        timestamp: entry.timestamp,
+        roomIds: [...new Set(entry.roomIds ?? [])],
+      });
+      continue;
+    }
+
+    // Rooms and the resolved EVM chain accumulate across every row for the
+    // pair; the call itself (timestamp + MC@call) only ever moves earlier.
+    for (const roomId of entry.roomIds ?? []) {
+      if (!prior.roomIds.includes(roomId)) prior.roomIds.push(roomId);
+    }
+    if (!prior.evmChain && entry.evmChain) prior.evmChain = entry.evmChain;
+    if (entry.authorName) prior.displayName = entry.authorName;
+
+    if (at < new Date(prior.timestamp).getTime()) {
+      prior.address = entry.address;
+      prior.timestamp = entry.timestamp;
+      prior.fdvAtCall = entry.fdvAtCall;
+      prior.chain = entry.chain;
+    }
+  }
+
+  return [...byPair.values()];
+}
+
+/**
+ * Score one call against a peak, or `null` when either half is missing.
+ *
+ * A peak below the call is possible when the call itself was the top; floor at
+ * the call so a flat token reads as 1x rather than as a negative signal.
+ */
+export function rateCall(call: CallerCall, peak: number | undefined): RatedCall | null {
+  const mcAtCall = call.fdvAtCall;
+  if (mcAtCall == null || mcAtCall <= 0) return null;
+  if (peak == null || peak <= 0) return null;
+  return {
+    address: call.address,
+    multiple: Math.max(peak, mcAtCall) / mcAtCall,
+    timestamp: call.timestamp,
+  };
+}
+
+/**
+ * A caller's stored counts, as the persistent store hands them back.
+ *
+ * Counts rather than rates, because the ratios and the band must be derived by
+ * `bandFromRates` — the one place that decision is made — and not recomputed in
+ * SQL where it would quietly fork. `roomId` null/absent marks the global
+ * (all-rooms) aggregate for that caller.
+ */
+export interface CallerAggregateRow {
+  key: string;
+  displayName: string;
+  roomId?: string | null;
+  /** Distinct (caller, token) pairs — the call count, not the row count. */
+  calls: number;
+  /** Of those, the ones with both an MC@call and a peak. */
+  rated: number;
+  medianMultiple?: number;
+  bestMultiple?: number;
+  hits2x: number;
+  hits5x: number;
+  slopCount: number;
+  firstCallAt?: string;
+  lastCallAt?: string;
+}
+
+/** Counts can only ever be a subset of the rated sample; a bad row is clamped, not trusted. */
+function clampCount(n: number | undefined, rated: number): number {
+  if (!Number.isFinite(n as number)) return 0;
+  return Math.min(Math.max(Math.trunc(n as number), 0), rated);
+}
+
+/**
+ * Turn stored counts into a `CallerScore`.
+ *
+ * Deliberately mirrors `scoreCaller` field for field — same `callsPerDay`, same
+ * `bandFromRates` call — so a caller's band cannot depend on which path
+ * produced it. `scoreCaller` folds a list of multiples it holds in memory; this
+ * folds the same statistics after Postgres has already counted them.
+ */
+export function scoreFromAggregate(row: CallerAggregateRow, windowDays: number): CallerScore {
+  const calls = Math.max(0, Math.trunc(row.calls));
+  const rated = Math.min(Math.max(0, Math.trunc(row.rated)), calls);
+  const base: CallerScore = { key: row.key, displayName: row.displayName, calls, rated, band: 'unrated' };
+  if (windowDays > 0) base.callsPerDay = calls / windowDays;
+  if (rated === 0) return base;
+
+  const hits2x = clampCount(row.hits2x, rated) / rated;
+  const hits5x = clampCount(row.hits5x, rated) / rated;
+  const slop = clampCount(row.slopCount, rated) / rated;
+
+  return {
+    ...base,
+    medianMultiple: Number.isFinite(row.medianMultiple as number) ? row.medianMultiple : undefined,
+    bestMultiple: Number.isFinite(row.bestMultiple as number) ? row.bestMultiple : undefined,
+    hitRate2x: hits2x,
+    hitRate5x: hits5x,
+    slopRate: slop,
+    band: bandFromRates(rated, hits2x, slop),
+  };
+}
+
+/**
+ * Split one flat list of stored aggregates into the payload the console reads:
+ * the global board, the per-room boards, and how far back the record reaches.
+ *
+ * Exclusions are applied here rather than in storage so that adding one takes
+ * effect on the next read without rewriting history — see `isExcludedCallerKey`.
+ */
+export function splitCallerAggregates(
+  rows: CallerAggregateRow[],
+  windowDays: number,
+  options: { exclude?: readonly string[] } = {},
+): { scores: CallerScore[]; roomScores: RoomCallerScores; coversFrom?: string; callers: number } {
+  const exclude = options.exclude ?? DEFAULT_EXCLUDED_CALLERS;
+  const scores: CallerScore[] = [];
+  const roomBuckets = new Map<string, CallerScore[]>();
+  const callerKeys = new Set<string>();
+  let coversFrom: string | undefined;
+  let coversFromMs = Number.POSITIVE_INFINITY;
+
+  for (const row of rows) {
+    if (!row?.key) continue;
+    if (isExcludedCallerKey(row.key, row.displayName ?? '', exclude)) continue;
+
+    const score = scoreFromAggregate(row, windowDays);
+    if (row.roomId == null || row.roomId === '') {
+      callerKeys.add(row.key);
+      scores.push(score);
+      // Only the global rows are consulted for coverage: a room row is a slice
+      // of the same calls, so including them could not move the minimum but
+      // would make the scan proportional to rooms for nothing.
+      const ms = row.firstCallAt ? new Date(row.firstCallAt).getTime() : NaN;
+      if (Number.isFinite(ms) && ms < coversFromMs) {
+        coversFromMs = ms;
+        coversFrom = row.firstCallAt;
+      }
+      continue;
+    }
+    let bucket = roomBuckets.get(row.roomId);
+    if (!bucket) {
+      bucket = [];
+      roomBuckets.set(row.roomId, bucket);
+    }
+    bucket.push(score);
+  }
+
+  const roomScores: RoomCallerScores = {};
+  for (const [roomId, bucket] of roomBuckets) roomScores[roomId] = sortCallerScores(bucket);
+
+  return { scores: sortCallerScores(scores), roomScores, coversFrom, callers: callerKeys.size };
 }
 
 // ---------------------------------------------------------------------------
