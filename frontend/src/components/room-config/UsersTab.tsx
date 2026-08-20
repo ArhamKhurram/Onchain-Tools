@@ -2,6 +2,7 @@ import type { Dispatch, SetStateAction } from 'react';
 import { Plus, Trash2, Send } from 'lucide-react';
 import type { HighlightMode } from '../../types';
 import ColorPickerWithAlpha from '../ColorPickerWithAlpha';
+import BulkAddUsers from '../BulkAddUsers';
 
 interface UsersTabProps {
   highlightMode: HighlightMode;
@@ -9,6 +10,7 @@ interface UsersTabProps {
   newUserId: string;
   setNewUserId: Dispatch<SetStateAction<string>>;
   addHighlightedUser: () => void;
+  addHighlightedUsers: (userIds: string[]) => void;
   highlightedUsers: string[];
   removeHighlightedUser: (userId: string) => void;
   highlightedUserColors: Record<string, string>;
@@ -22,6 +24,7 @@ export default function UsersTab({
   newUserId,
   setNewUserId,
   addHighlightedUser,
+  addHighlightedUsers,
   highlightedUsers,
   removeHighlightedUser,
   highlightedUserColors,
@@ -88,6 +91,13 @@ export default function UsersTab({
                   <Plus size={16} />
                 </button>
               </div>
+
+              <BulkAddUsers
+                existing={highlightedUsers}
+                onAdd={addHighlightedUsers}
+                noun="highlighted users"
+              />
+
               <div className="space-y-1">
                 {highlightedUsers.length === 0 && (
                   <p className="text-sm text-oct-muted text-center py-4">
