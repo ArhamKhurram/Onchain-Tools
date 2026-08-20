@@ -5,6 +5,7 @@ import type { SolPlatform, EvmPlatform, ContractClickAction, BadgeClickAction, K
 import type { Section } from './constants';
 import { defaultSoundConfig, defaultRevivalSoundConfig, defaultTriggers, defaultFilters, defaultMissedRunner, defaultDiscordBotDm } from './constants';
 import { apiBase, authedFetch } from './fields';
+import { normalizeUserIdentifier, appendUserIdentifiers } from '../../utils/userIdentifiers';
 
 const FEED_CHROME_PRESETS: FeedChromePreset[] = ['terminal', 'masthead', 'rail'];
 
@@ -498,12 +499,18 @@ export function useSettingsForm() {
     }
   };
 
+  // Single-add and bulk-add share the same normalize/dedupe helpers so the two
+  // paths cannot store differently-shaped entries.
   const addGlobalUser = () => {
-    const id = newUserId.trim();
-    if (id && !globalUsers.includes(id)) {
-      setGlobalUsers((prev) => [...prev, id]);
-      setNewUserId('');
-    }
+    const id = normalizeUserIdentifier(newUserId);
+    if (!id) return;
+    setGlobalUsers((prev) => appendUserIdentifiers(prev, [id]));
+    setNewUserId('');
+  };
+
+  const addGlobalUsers = (ids: string[]) => {
+    if (ids.length === 0) return;
+    setGlobalUsers((prev) => appendUserIdentifiers(prev, ids));
   };
 
   const removeGlobalUser = (userId: string) => {
@@ -554,7 +561,7 @@ export function useSettingsForm() {
     setProxySaved, saveError, setSaveError, showTelegramSetup, setShowTelegramSetup, exporting,
     setExporting, importing, setImporting, importError, setImportError, importSuccess,
     setImportSuccess, importFileRef, hasUnsavedChanges, guardNavigation, handleSave, handleMissedRunnerTest,
-    handleExport, handleImportFile, addGlobalUser, removeGlobalUser, addKeyword,
+    handleExport, handleImportFile, addGlobalUser, addGlobalUsers, removeGlobalUser, addKeyword,
   };
 }
 

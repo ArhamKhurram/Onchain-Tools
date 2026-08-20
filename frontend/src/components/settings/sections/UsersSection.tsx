@@ -4,6 +4,7 @@ import { PUSHOVER_SOUNDS, TOAST_POSITIONS, MISSED_RUNNER_NOTIFY_OPTIONS } from '
 import { requestNotificationPermission } from '../../../utils/desktopNotification';
 import { previewSound, previewPreset, PRESET_SOUNDS } from '../../../utils/notificationSound';
 import ColorPickerWithAlpha from '../../ColorPickerWithAlpha';
+import BulkAddUsers from '../../BulkAddUsers';
 import TelegramSetup from '../../TelegramSetup';
 import { isHostedMode } from '../../../lib/supabase';
 import { isClientGatewayMode } from '../../../discord/clientGateway';
@@ -42,7 +43,7 @@ export default function UsersSection({ form }: { form: SettingsForm }) {
     setProxySaved, saveError, setSaveError, showTelegramSetup, setShowTelegramSetup, exporting,
     setExporting, importing, setImporting, importError, setImportError, importSuccess,
     setImportSuccess, importFileRef, hasUnsavedChanges, guardNavigation, handleSave, handleMissedRunnerTest,
-    handleExport, handleImportFile, addGlobalUser, removeGlobalUser, addKeyword,
+    handleExport, handleImportFile, addGlobalUser, addGlobalUsers, removeGlobalUser, addKeyword,
   } = form;
   return (
               <>
@@ -71,6 +72,14 @@ export default function UsersSection({ form }: { form: SettingsForm }) {
                       <Plus size={16} />
                     </button>
                   </div>
+
+                  <BulkAddUsers
+                    existing={globalUsers}
+                    onAdd={addGlobalUsers}
+                    variant="settings"
+                    noun="global highlighted users"
+                  />
+
                   <div className="space-y-1">
                     {globalUsers.length === 0 && (
                       <p className="text-sm text-oct-muted text-center py-4">
