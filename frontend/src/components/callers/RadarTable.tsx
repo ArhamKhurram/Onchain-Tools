@@ -20,7 +20,7 @@ import {
 } from './radarColumns';
 import { isHostedMode, getAccessToken } from '../../lib/supabase';
 import { useNetworkFirstScans, type NetworkFirstScan } from '../../hooks/useNetworkFirstScans';
-import { useCallerQuality, type CallerQuality } from '../../hooks/useCallerQuality';
+import { useCallerQuality, refreshTokenPeak, type CallerQuality } from '../../hooks/useCallerQuality';
 import {
   BAND_DOT_CLASS,
   BAND_TEXT_CLASS,
@@ -574,6 +574,12 @@ export default function RadarTable({ embedded: _embedded = false }: { embedded?:
         fetchMcNow(address),
         fetchTokenMetadata(address, evmChain, addressChains),
       ]);
+      // The row refresh is also the on-demand peak backfill. `fetchMcNow` above
+      // asks DexScreener straight from the browser, so that observation never
+      // reaches the peak store; this asks the backend to re-observe and fold
+      // the result in, which re-derives every caller who called this token.
+      // Not awaited — a slow provider must not hold the spinner.
+      void refreshTokenPeak(address, { evmChain });
       if (meta) applyMetadataToStore(address, meta);
       if (mc) {
         setLiveMc((prev) => ({

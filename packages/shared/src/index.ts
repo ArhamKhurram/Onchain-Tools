@@ -59,6 +59,7 @@ export {
   DEFAULT_EXCLUDED_CALLERS,
   normalizeCallerName,
   isExcludedCaller,
+  isExcludedCallerKey,
   callerKey,
   parseCallerKey,
   contractCallerKey,
@@ -71,6 +72,11 @@ export {
   pickRoomScore,
   effectiveBand,
   callerRank,
+  sortCallerScores,
+  foldCallerCalls,
+  rateCall,
+  scoreFromAggregate,
+  splitCallerAggregates,
 } from './callerQuality.js';
 export type {
   CallerPlatform,
@@ -79,6 +85,8 @@ export type {
   CallerScore,
   RoomCallerScores,
   PeakLookup,
+  CallerCall,
+  CallerAggregateRow,
 } from './callerQuality.js';
 
 // Generated Supabase schema types (see database.types.ts header for regen).

@@ -40,6 +40,17 @@ interface ScoresResponse {
   scores: CallerScore[];
   /** Absent from older backends; room preference degrades to global. */
   roomScores?: RoomCallerScores;
+  /**
+   * How the board was built. `persistent` reads a durable per-caller record —
+   * a caller stays ranked once they have scanned, regardless of how far the
+   * contract log still reaches. `derived` is the original fold over the log,
+   * which is what local mode does. Absent from older backends.
+   */
+  mode?: 'persistent' | 'derived';
+  /** True when the board covers the caller's whole recorded history. */
+  allTime?: boolean;
+  /** Distinct callers on the persistent record. */
+  callersTracked?: number;
 }
 
 let cached: ScoresResponse | null = null;
@@ -182,6 +193,37 @@ export function useCallerQuality() {
     contractsScanned: scores?.contracts,
     truncated: scores?.truncated ?? false,
     coversFrom: scores?.coversFrom,
+    /** Older backends only ever derived, so that's the honest default. */
+    mode: scores?.mode ?? 'derived',
+    allTime: scores?.allTime ?? false,
+    callersTracked: scores?.callersTracked ?? 0,
     scores: scores?.scores ?? [],
+    /** Force a refetch — e.g. after refreshing a token's peak. */
+    reload: () => loadScores(true),
   };
+}
+
+/**
+ * Re-observe one token's market cap and fold it into its peak.
+ *
+ * Peaks are joined when scores are read, so raising one re-derives every caller
+ * who called that token — there is nothing else to invalidate. The value folded
+ * in is today's MC, not a historical ATH: peaks are a high-water mark of
+ * observations, so this raises the floor and can never lower it.
+ */
+export async function refreshTokenPeak(
+  address: string,
+  opts: { chain?: 'evm' | 'sol'; evmChain?: string } = {},
+): Promise<{ mcNow?: number; peakMc?: number; raised: boolean } | null> {
+  try {
+    const res = await apiFetch(`${API_BASE}/callers/peaks/refresh`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ address, ...opts }),
+    });
+    if (!res.ok) return null;
+    return (await res.json()) as { mcNow?: number; peakMc?: number; raised: boolean };
+  } catch {
+    return null;
+  }
 }
