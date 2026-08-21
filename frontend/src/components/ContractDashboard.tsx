@@ -6,6 +6,7 @@ import { useCallerQuality, type CallerQuality } from '../hooks/useCallerQuality'
 import { BAND_BADGE_CLASS, BAND_TITLE, bandIsNotable } from '../utils/callerBandStyle';
 import { buildContractUrl } from '../utils/contractUrl';
 import { contractAttribution, isTelegramContract, openContractSource } from '../utils/contractSource';
+import { stripDiscordCustomEmoji } from '../utils/discordText';
 import ConfirmModal from './ConfirmModal';
 import ContractFeedToolbar, { type ContractViewMode, type ContractChainFilter } from './contract-feed/ContractFeedToolbar';
 import SignalConvergenceBadge from './SignalConvergenceBadge';
@@ -496,6 +497,10 @@ function ContractRow({
 
   const isNew = forceIsNew ?? (entry.firstSeen !== false);
   const { ticker, subtitle } = contractDisplay(entry, showFull);
+  // Rick embed descriptions carry raw Discord custom-emoji markup
+  // (`<:sol:941653282420576296> Solana @ Pump`); strip it for this plain-text
+  // line. Empty after stripping (emoji-only) falls back to the source label.
+  const desc = entry.description ? stripDiscordCustomEmoji(entry.description) : '';
   const { trade: convergenceTrade, windowMinutes } = useConvergenceForContract(entry);
 
   return (
@@ -614,7 +619,7 @@ function ContractRow({
         </button>
       </div>
 
-      {(subtitle || entry.fdvAtCallDisplay || entry.liquidityDisplay || entry.description) && (
+      {(subtitle || entry.fdvAtCallDisplay || entry.liquidityDisplay || desc) && (
         <div className="pl-[4.5rem] sm:pl-24 min-w-0">
           <div className="flex items-baseline gap-2 min-w-0 flex-wrap">
             {subtitle && (
@@ -631,15 +636,15 @@ function ContractRow({
               </span>
             )}
           </div>
-          {(entry.description || (!isTelegramContract(entry) && entry.guildName)) && (
+          {(desc || (!isTelegramContract(entry) && entry.guildName)) && (
             <div className="text-xs text-oct-muted truncate mt-0.5">
-              {entry.description ?? `${entry.guildName ?? ''} / #${entry.channelName}`}
+              {desc || `${entry.guildName ?? ''} / #${entry.channelName}`}
             </div>
           )}
         </div>
       )}
 
-      {!subtitle && !entry.fdvAtCallDisplay && !entry.liquidityDisplay && !entry.description && (
+      {!subtitle && !entry.fdvAtCallDisplay && !entry.liquidityDisplay && !desc && (
         <div className="pl-[4.5rem] sm:pl-24 text-xs text-oct-muted truncate">
           {contractAttribution(entry)}
         </div>
