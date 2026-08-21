@@ -3,6 +3,7 @@ import type { Room } from '../../types';
 import type { AppState } from '../appStore';
 import { isDemoMode, createDemoOverrides } from '../../demo/demoStore';
 import { apiFetch, API_BASE, savePaneRoomIds, loadPaneRoomIds } from '../appStore.helpers';
+import { track } from '../../lib/analytics';
 
 export interface RoomsSlice {
   rooms: Room[];
@@ -44,6 +45,13 @@ export const createRoomsSlice: StateCreator<AppState, [], [], RoomsSlice> = (set
         body: JSON.stringify({ name, channels, highlightedUsers, color: color ?? null, filteredUsers: filteredUsers ?? [], filterEnabled: filterEnabled ?? false }),
       });
       const room: Room = await res.json();
+      // Activation milestone: a room is where feeds actually happen. Counts
+      // only — never the channel names or user handles being tracked.
+      track('room_created', {
+        channels: channels.length,
+        highlighted_users: highlightedUsers.length,
+        filter_enabled: filterEnabled ?? false,
+      });
       await get().fetchRooms();
       return room;
     },

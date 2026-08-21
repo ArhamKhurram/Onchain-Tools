@@ -6,9 +6,11 @@ import UpdatesModal from './components/UpdatesModal';
 import PopoutView from './components/PopoutView';
 import { IS_POPOUT } from './stores/appStore';
 import { initTheme } from './stores/themeStore';
+import { initAnalytics } from './lib/analytics';
 import './index.css';
 
 initTheme();
+initAnalytics();
 
 ReactDOM.createRoot(document.getElementById('root')!).render(
   <React.StrictMode>
