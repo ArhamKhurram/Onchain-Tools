@@ -40,15 +40,54 @@ export function initAnalytics(): void {
   posthog.init(KEY, {
     api_host: HOST,
     autocapture: false, // never scrape the DOM — wallets/CAs live there
-    capture_pageview: false, // SPA: we send app_opened + explicit events instead
+    // Pageviews ARE captured (traffic, top pages, referrers) but they only ever
+    // carry a URL, never DOM content — and `sanitize_properties` scrubs the URL
+    // first (query/hash dropped, address-like path segments masked). The truly
+    // invasive channels (autocapture, session recording) stay off.
+    capture_pageview: true,
     disable_session_recording: true, // never record a screen full of holdings
     mask_all_text: true,
     persistence: 'localStorage',
     respect_dnt: true,
     // Keep PostHog from auto-identifying via anything but our explicit id.
     person_profiles: 'identified_only',
+    sanitize_properties: (properties) => {
+      for (const key of URL_PROPERTY_KEYS) {
+        const value = properties[key];
+        if (typeof value === 'string') properties[key] = sanitizeUrl(value);
+      }
+      return properties;
+    },
   });
   track('app_opened');
+}
+
+// PostHog auto-props that carry a URL. We rewrite each so a wallet or contract
+// address that ends up in the path/query never reaches PostHog.
+const URL_PROPERTY_KEYS = [
+  '$current_url',
+  '$pathname',
+  '$referrer',
+  '$initial_current_url',
+  '$initial_pathname',
+  '$initial_referrer',
+] as const;
+
+const EVM_ADDR = /^0x[0-9a-fA-F]{40}$/;
+const SOL_ADDR = /^[1-9A-HJ-NP-Za-km-z]{32,44}$/;
+
+/**
+ * Strip the query/hash and mask any address-like path segment. A token detail
+ * URL like `/dashboard/token/0xabc…/` becomes `/dashboard/token/:addr/` — we
+ * learn which *pages* get traffic without recording which wallet or coin a
+ * given user looked at.
+ */
+export function sanitizeUrl(raw: string): string {
+  const noQuery = raw.split(/[?#]/)[0];
+  return noQuery
+    .split('/')
+    .map((seg) => (EVM_ADDR.test(seg) || SOL_ADDR.test(seg) ? ':addr' : seg))
+    .join('/');
 }
 
 /**
