@@ -29,19 +29,24 @@
   --oct-border-bright: 72 77 90;
   --oct-text: 245 246 248;
   --oct-muted: 150 156 168;
-  --oct-accent: 255 42 42;
-  --oct-accent-hover: 225 6 0;
-  --oct-flame: 255 74 74;
-  --oct-accent-dim: 255 42 42 / 0.14;
+  /* Brand red, retuned from a hot fire-red (was 255 42 42) to a desaturated
+     crimson-rose. Users read the old pure red as an alarm; ~60% saturation and a
+     hue nudged off 0° to ~352° makes it a controlled brand signal that still
+     carries down/loss/slop/danger meaning. Stays AA-legible as text on the dark
+     ground (accent≈4.5:1 on --oct-bg). Light theme's accent is blue — untouched. */
+  --oct-accent: 210 75 92;
+  --oct-accent-hover: 184 54 70;
+  --oct-flame: 224 108 122;
+  --oct-accent-dim: 210 75 92 / 0.14;
   /* One tasteful secondary accent — warm gold. Pairs with flame-red for a
      two-tone premium feel and carries positive/highlight moments (best multiples,
      leaderboard trophies) without a third hue. */
   --oct-accent-2: 240 178 92;
   --oct-accent-2-hover: 250 194 116;
   --oct-accent-2-dim: 240 178 92 / 0.14;
-  --oct-live: 255 42 42;
-  --oct-live-dim: 255 42 42 / 0.16;
-  --oct-live-pulse: 255 42 42 / 0.55;
+  --oct-live: 210 75 92;
+  --oct-live-dim: 210 75 92 / 0.16;
+  --oct-live-pulse: 210 75 92 / 0.55;
   --oct-green: 45 210 122;
   --oct-yellow: 251 191 36;
   /* Telegram brand blue. Platform identity, like the SOL/EVM chain colours —
@@ -52,8 +57,8 @@
   --oct-feed-bg: 11 14 26;
   /* Premium surface effects (used by the .oct-* primitives below). */
   --oct-hairline: 255 255 255 / 0.07; /* top inner highlight on cards */
-  --oct-glow-accent: 255 42 42 / 0.35;
-  --oct-glow-accent-soft: 255 42 42 / 0.16;
+  --oct-glow-accent: 210 75 92 / 0.35;
+  --oct-glow-accent-soft: 210 75 92 / 0.16;
   --oct-shadow-soft: 0 0 0 / 0.55;
   --oct-card-from: 34 37 45; /* elevated */
   --oct-card-to: 20 22 27; /* surface */
