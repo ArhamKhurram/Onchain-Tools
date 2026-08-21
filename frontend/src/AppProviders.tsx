@@ -6,6 +6,7 @@ import { useAppStore } from './stores/appStore';
 import { isHostedMode } from './lib/supabase';
 import { useAuthSession } from './hooks/useAuthSession';
 import { setTokenStateUserId } from './utils/tokenState';
+import { identifyUser, resetAnalytics } from './lib/analytics';
 import AlertToast from './components/AlertToast';
 import RoomConfig from './components/RoomConfig';
 
@@ -52,6 +53,10 @@ export default function AppProviders({ children }: { children: React.ReactNode }
 
   useEffect(() => {
     setTokenStateUserId(userId);
+    // Tie analytics to the Supabase UUID once a session resolves; clear it on
+    // sign-out so the next user on this browser starts a fresh identity.
+    if (userId) identifyUser(userId);
+    else resetAnalytics();
   }, [userId]);
 
   useEffect(() => {
