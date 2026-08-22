@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
-import { Flame, RefreshCw } from 'lucide-react';
+import { Flame, RefreshCw, Copy, Check } from 'lucide-react';
 import ConsoleEmptyState from '../console/ConsoleEmptyState';
 import RevivalStats from './RevivalStats';
 import { useAppStore } from '../../stores/appStore';
@@ -63,6 +63,14 @@ export default function RevivalLog() {
   const [alerts, setAlerts] = useState<RevivalAlertEntry[] | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [refreshing, setRefreshing] = useState(false);
+  // Which mint's CA was just copied — drives the transient ✓ on its button.
+  const [copiedMint, setCopiedMint] = useState<string | null>(null);
+
+  const copyMint = useCallback((mint: string) => {
+    void navigator.clipboard?.writeText(mint);
+    setCopiedMint(mint);
+    setTimeout(() => setCopiedMint((m) => (m === mint ? null : m)), 1200);
+  }, []);
 
   const load = useCallback(async () => {
     setRefreshing(true);
@@ -165,6 +173,17 @@ export default function RevivalLog() {
                       title={`Open ${sym} on ${chain} (${a.mint})`}
                     >
                       {sym}
+                    </button>
+                    {/* Copy the raw CA — the symbol opens the platform, but you
+                        often just want the address to paste into a terminal. */}
+                    <button
+                      type="button"
+                      onClick={() => copyMint(a.mint)}
+                      className="ml-1.5 align-middle p-0.5 rounded-oct-sm text-oct-muted hover:text-oct-accent hover:bg-oct-surface transition-colors"
+                      title={copiedMint === a.mint ? 'Copied' : `Copy CA (${a.mint})`}
+                      aria-label="Copy contract address"
+                    >
+                      {copiedMint === a.mint ? <Check size={12} className="text-oct-green" /> : <Copy size={12} />}
                     </button>
                     {/* Signal kind — rows without one predate breakout and are revivals. */}
                     <span className={`ml-1.5 align-middle text-[9px] font-mono font-bold uppercase tracking-wider px-1.5 py-0.5 rounded-oct-sm border ${a.kind === 'breakout' ? 'text-oct-accent-2 border-oct-accent-2/40 bg-oct-accent-2/10' : 'text-red-500 border-red-500/40 bg-red-500/10'}`}>
