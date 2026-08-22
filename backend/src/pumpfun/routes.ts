@@ -11,7 +11,9 @@ import type { Response } from 'express';
 import {
   getPumpfunClient,
   isPumpfunConfigured,
+  isRateLimitedPumpfunError,
   PumpfunError,
+  PumpfunRequestError,
 } from './client.js';
 import { getTokenHolders, isHoldersConfigured } from './holdersClient.js';
 import { getPumpCalloutFeedClient } from './calloutFeedClient.js';
@@ -39,6 +41,7 @@ import type { PumpLeaderboardPeriod } from './types.js';
 import { getStorageProvider } from '../storage/index.js';
 import {
   getCached,
+  peekStale,
   setCached,
   tokenCalloutsCacheKey,
   walletCalloutsCacheKey,
@@ -210,14 +213,24 @@ export function parseTopCallersQuery(query: Record<string, unknown>): TopCallers
 
 /**
  * Translate the client's error taxonomy into HTTP. config-missing is the one
- * that is not a vendor problem, so it is 503 ("we are not set up"); every other
- * kind is an upstream/contract fault behind our gateway, so 502 ("bad response
- * from the thing we depend on"). An unknown error is a 500.
+ * that is not a vendor problem, so it is 503 ("we are not set up"); a 429
+ * rate-limit is the shared key being paced, so it gets its OWN calm 429 with a
+ * structured `rateLimited`/`retryAfter` body the console can self-heal from (see
+ * below) rather than the raw 502 every other request-failed maps to. The rest are
+ * an upstream/contract fault behind our gateway, so 502 ("bad response from the
+ * thing we depend on"). An unknown error is a 500.
  *
  * The response body carries the constructed message, which never contains the
  * key by construction (see the INVARIANT on PumpfunError).
  */
 function sendPumpfunError(res: Response, err: unknown): void {
+  // A 429 is not an outage — it is the one shared x-api-key being rate-limited.
+  // Answer with a calm, structured 429 (never the raw "failed (429): …" message)
+  // so the console shows a self-healing "retrying" state instead of a red card.
+  if (isRateLimitedPumpfunError(err)) {
+    sendRateLimited(res, err instanceof PumpfunRequestError ? err.retryAfterMs : undefined);
+    return;
+  }
   if (err instanceof PumpfunError) {
     switch (err.kind) {
       case 'config-missing':
@@ -242,6 +255,23 @@ function sendPumpfunError(res: Response, err: unknown): void {
 }
 
 /**
+ * The 429 response body. Deliberately carries NO endpoint/status string — the
+ * console shows this verbatim, so it must read as a human sentence, not a stack
+ * detail. `rateLimited: true` is the flag the client keys its backoff on;
+ * `retryAfter` (seconds) is echoed only when the vendor gave a `Retry-After`, and
+ * mirrored into the response header so a plain HTTP client sees it too.
+ */
+function sendRateLimited(res: Response, retryAfterMs: number | undefined): void {
+  const retryAfterSec = retryAfterMs != null ? Math.max(1, Math.ceil(retryAfterMs / 1000)) : null;
+  if (retryAfterSec !== null) res.setHeader('Retry-After', String(retryAfterSec));
+  res.status(429).json({
+    error: 'pump.fun is busy right now (rate limit). This will retry automatically.',
+    rateLimited: true,
+    ...(retryAfterSec !== null ? { retryAfter: retryAfterSec } : {}),
+  });
+}
+
+/**
  * Serve a cached value or fetch, cache and serve. Kept generic so every route is
  * one line of intent (key, ttl, fetcher) with the caching boilerplate factored
  * out. The self-gate check lives at each route entry, before this runs.
@@ -262,6 +292,19 @@ async function serveCached<T>(
     setCached(cacheKey, value, ttlMs);
     res.json(value);
   } catch (err) {
+    // On a rate-limit, a slightly-stale last-known value beats an error card: a
+    // caller's callout history changes slowly, so serving the retained entry
+    // (within the grace window) keeps the panel populated while the shared key
+    // cools off. Marked with a header so a caller can tell it is stale. Only when
+    // nothing is retained do we fall through to the calm structured 429.
+    if (isRateLimitedPumpfunError(err)) {
+      const stale = peekStale<T>(cacheKey);
+      if (stale !== null) {
+        res.setHeader('X-Pump-Cache', 'stale');
+        res.json(stale);
+        return;
+      }
+    }
     sendPumpfunError(res, err);
   }
 }

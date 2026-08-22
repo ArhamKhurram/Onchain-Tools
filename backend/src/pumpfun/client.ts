@@ -164,6 +164,14 @@ export class PumpfunRequestError extends PumpfunError {
     readonly endpoint: string,
     readonly status: number,
     detail: string,
+    /**
+     * Milliseconds the vendor asked us to wait before retrying, parsed from a
+     * `Retry-After` header when present (429/503). Undefined when the vendor gave
+     * no hint. Surfaced by the route so the console can pace its own auto-retry to
+     * the server's ask rather than guess. Never part of `message` — it is a number,
+     * carries no credential.
+     */
+    readonly retryAfterMs?: number,
   ) {
     super('request-failed', `pump.fun API call to ${endpoint} failed (${status}): ${detail}`);
     this.name = 'PumpfunRequestError';
@@ -180,6 +188,40 @@ export class PumpfunRequestError extends PumpfunError {
 export function isTransientPumpfunError(err: unknown): boolean {
   if (!(err instanceof PumpfunRequestError)) return false;
   return err.status === 0 || err.status === 429 || err.status === 502 || err.status === 503 || err.status === 504;
+}
+
+/**
+ * True specifically for a 429 rate-limit. The route treats this apart from other
+ * request failures: a 429 is the shared key being paced, not a broken vendor, so
+ * it earns a slightly-stale cache fallback and a calm structured 429 rather than
+ * the raw 502 every other request-failed maps to.
+ */
+export function isRateLimitedPumpfunError(err: unknown): boolean {
+  return err instanceof PumpfunRequestError && err.status === 429;
+}
+
+/**
+ * Parse a `Retry-After` header into milliseconds. The header comes in two RFC
+ * forms — a delay in whole seconds (`120`) or an absolute HTTP-date — and this
+ * accepts both, returning null when the header is absent or unparseable. The wait
+ * is capped at 5 minutes so a hostile or buggy upstream value cannot wedge a
+ * client into an absurd sleep. Pure and exported so its parsing is unit-testable.
+ */
+export function parseRetryAfter(value: string | null): number | null {
+  if (value === null) return null;
+  const trimmed = value.trim();
+  if (trimmed === '') return null;
+  const MAX_MS = 5 * 60 * 1000;
+  if (/^\d+$/.test(trimmed)) {
+    const secs = Number.parseInt(trimmed, 10);
+    if (!Number.isFinite(secs) || secs < 0) return null;
+    return Math.min(secs * 1000, MAX_MS);
+  }
+  const when = Date.parse(trimmed);
+  if (Number.isNaN(when)) return null;
+  const delta = when - Date.now();
+  if (delta <= 0) return 0;
+  return Math.min(delta, MAX_MS);
 }
 
 function sleep(ms: number): Promise<void> {
@@ -536,8 +578,10 @@ export class PumpfunClient {
       const text = await res.text();
       if (!res.ok) {
         // Vendor-authored body, capped. Contains no credential (the key travels in
-        // a request header, never echoed in a response).
-        throw new PumpfunRequestError(path, res.status, text.slice(0, VENDOR_ERROR_TEXT_LIMIT));
+        // a request header, never echoed in a response). A `Retry-After` on a 429
+        // is captured so the route can pace the console's auto-retry to the ask.
+        const retryAfterMs = res.status === 429 ? (parseRetryAfter(res.headers.get('retry-after')) ?? undefined) : undefined;
+        throw new PumpfunRequestError(path, res.status, text.slice(0, VENDOR_ERROR_TEXT_LIMIT), retryAfterMs);
       }
 
       if (text.length === 0) throw new PumpfunContractError(path, 'empty body');
@@ -681,7 +725,8 @@ export class PumpfunClient {
 
     const text = await res.text();
     if (!res.ok) {
-      throw new PumpfunRequestError(path, res.status, text.slice(0, VENDOR_ERROR_TEXT_LIMIT));
+      const retryAfterMs = res.status === 429 ? (parseRetryAfter(res.headers.get('retry-after')) ?? undefined) : undefined;
+      throw new PumpfunRequestError(path, res.status, text.slice(0, VENDOR_ERROR_TEXT_LIMIT), retryAfterMs);
     }
 
     if (text.length === 0) throw new PumpfunContractError(path, 'empty body');
