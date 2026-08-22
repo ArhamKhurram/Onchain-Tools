@@ -1,0 +1,23 @@
+# Python / uv artifacts for the trading-agent research package.
+# (src/ is tracked; build + cache + data outputs are not.)
+__pycache__/
+*.py[cod]
+*.egg-info/
+.eggs/
+build/
+dist/
+.venv/
+venv/
+.uv/
+uv.lock
+
+# Tooling caches
+.mypy_cache/
+.ruff_cache/
+.pytest_cache/
+.coverage
+htmlcov/
+
+# Substreams package + any downloaded/derived data (never commit the tape)
+data/
+*.spkg

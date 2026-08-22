@@ -1,0 +1,107 @@
+# Phase-0 scaffolding for OCT's autonomous trading-agent research program.
+# Python 3.11+, managed with uv (also installable with plain pip: `pip install -e '.[dev]'`).
+#
+# Heavy ML/RL dependencies (torch, d3rlpy, ray, pyribs) are DELIBERATELY optional —
+# Phase 0 is engineering-heavy, not compute-heavy (03-experiment-plan.md §Phase 0).
+# Wave-1 agents pull the group they need; nothing heavy is a required install.
+
+[project]
+name = "oct-trading-agent"
+version = "0.0.0"
+description = "OCT autonomous trading-agent research (Model N) — Phase 0 contracts + scaffolding."
+readme = "src/README.md"
+requires-python = ">=3.11"
+license = { text = "UNLICENSED" }
+authors = [{ name = "Onchain Tools" }]
+
+# Runtime deps kept lean: typed contracts (pydantic v2), numeric (numpy),
+# columnar/point-in-time work (polars). Everything else is optional.
+dependencies = [
+    "numpy>=1.26",
+    "polars>=1.0",
+    "pydantic>=2.6,<3",
+]
+
+[project.optional-dependencies]
+# Dev tooling. Works with both pip (`pip install -e '.[dev]'`) and uv (`uv sync --extra dev`).
+dev = [
+    "pytest>=8.0",
+    "ruff>=0.6",
+    "mypy>=1.11",
+]
+# --- Heavy groups: only installed by the wave that needs them. Not pinned tightly. ---
+# Wave: agent (encoders/policies/critics) — the RL/DL spine.
+torch = ["torch>=2.2"]
+# Wave: agent/offline — offline RL (IQL/CQL) per 02 §4.
+offline = ["d3rlpy>=2.4"]
+# Wave: agent/population — PBT + quality-diversity per 02 §4.
+population = ["ray[tune]>=2.9", "ribs>=0.7"]
+# Wave: data — Substreams gRPC firehose client (Pinax). See config.py for the proven facts.
+firehose = ["grpcio>=1.60", "protobuf>=4.25"]
+
+[tool.uv]
+# Nothing to pin here yet; groups above carry the intent. Kept as an explicit anchor
+# so Wave-1 agents know this project is uv-managed.
+package = true
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+# src layout: the importable package is `oct_trading_agent`, and the 02 §6 module tree
+# (data/, featurestore/, sim/, agent/, eval/, ledger/, bridge/, convergence/) lives under it.
+packages = ["src/oct_trading_agent"]
+
+# ---------------------------------------------------------------------------
+# Tooling
+# ---------------------------------------------------------------------------
+
+[tool.ruff]
+target-version = "py311"
+line-length = 100
+src = ["src", "tests"]
+
+[tool.ruff.lint]
+select = [
+    "E", "F", "W",   # pyflakes + pycodestyle
+    "I",             # isort
+    "UP",            # pyupgrade
+    "B",             # bugbear
+    "SIM",           # simplify
+    "TID",           # tidy imports
+    "RUF",           # ruff-specific
+]
+# Contracts intentionally carry long, load-bearing docstrings.
+# RUF022: __all__ is grouped by submodule (more readable than alphabetical) on purpose.
+ignore = ["E501", "RUF022"]
+
+[tool.ruff.lint.isort]
+known-first-party = ["oct_trading_agent"]
+
+[tool.mypy]
+python_version = "3.11"
+strict = true
+plugins = ["pydantic.mypy"]
+files = ["src", "tests"]
+# Optional heavy deps may be absent in a lean install; don't fail typecheck on them.
+ignore_missing_imports = true
+warn_unused_ignores = true
+disallow_untyped_defs = true
+disallow_any_generics = true
+
+# numpy 2.5's bundled stubs use 3.12-only `type` syntax; don't follow them under a 3.11 target.
+[[tool.mypy.overrides]]
+module = ["numpy", "numpy.*"]
+follow_imports = "skip"
+follow_imports_for_stubs = true
+
+[tool.pydantic-mypy]
+init_forbid_extra = true
+init_typed = true
+warn_required_dynamic_aliases = true
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-ra -q"
+pythonpath = ["src"]
