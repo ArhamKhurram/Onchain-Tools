@@ -194,6 +194,15 @@ Per the parent's non-negotiable design principle — **signals stay independent,
 
 Independently of the RL agent, "**attention is igniting on this pair**" — a rising \(\lambda_{\text{buy}}\) with broadening unique buyers and a branching ratio climbing toward 1, *and a low manipulation-suspicion score* — is a shippable OCT alert on its own, in the same family as the existing revival and missed-runner alerts. This gives the sub-project a delivery path that does not depend on the full agent landing.
 
+### 6.4 Codependent training with the agent (mechanics)
+
+§6.1–6.3 can misread as a one-way pipeline; the mature design is **codependent** (parent §4.4, "Codependent training"). New pairs *are* attention markets — price ≈ the derivative of crowd attention — so an agent trading here trades *within* the system this model estimates, and the two are jointly optimized. The mechanics the parent defers to here:
+
+- **Joint objective.** After self-supervised pretraining the encoder is **not frozen**. Total loss during agent training is \(\mathcal{L} = \mathcal{L}_{\text{RL}} + \beta\,\mathcal{L}_{\text{SSL}}\), where \(\mathcal{L}_{\text{SSL}}\) is the standing self-supervised head (next-event timing/mark prediction + Hawkes-intensity distillation) and \(\mathcal{L}_{\text{RL}}\) is the policy/critic loss. RL gradients flow into the shared encoder alongside \(\mathcal{L}_{\text{SSL}}\), so the representation is shaped by *both* "reconstructs the tape" and "is decision-relevant." \(\beta\) is annealed: high early (keep the representation honest and stable on tiny per-token samples), lower later (let the task specialize it). **When to unfreeze** — immediately with a small encoder LR, or after an RL warmup — is a Phase-1 ablation.
+- **The reflexive-impact correction is why joint training is mandatory, not optional.** The agent's own fills enter \(\lambda_{\text{buy}}/\lambda_{\text{sell}}\) and inflate the branching ratio \(n\) that would justify them (§8.4). An encoder frozen on passive-observer flow misreads the tape the instant the agent acts. Co-training on the agent's *own* interaction stream — with own-flow tagged as a covariate the model must subtract — is how the policy learns its impact on attention rather than trading its own shadow.
+- **The stop-gradient boundary keeps the standalone signal clean.** The convergence/alert consumer (§6.2–6.3) reads a **stop-gradient copy of the SSL representation** — the attention state *without* the policy's task-shaping — so the shared signal stays flow-derived and mechanically independent of the agent's objective (preserving the non-double-counting property of parent §4.3), while the agent consumes the fully co-trained, task-specialized view. One backbone, two heads: a `detach()`ed public head and a task-coupled private head.
+- **Ordering.** The model can be *born alone* — pretrained on the firehose and shipped as the §6.3 alert before the agent exists — then folded into joint training when Model N comes online. Standalone-first is the delivery hedge; codependence is the mature state.
+
 ---
 
 ## 7. Evaluation

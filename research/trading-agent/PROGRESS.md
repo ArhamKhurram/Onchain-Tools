@@ -14,7 +14,38 @@ program logs reasoning and scoping; once Phase 0 starts, entries carry real numb
 
 ---
 
-## 2026-08-22 — Attention model folded in; signal-first locked; workspace synced to the paper
+## 2026-08-22 (b) — Codependence decision; Phase 0 build kicking off
+
+**Decisions**
+- **The attention model and the agent are codependent — trained side by side, not in sequence**
+  (operator's call, reading the attention paper). New pairs *are* attention markets (price ≈ the
+  derivative of crowd attention), so an agent trading here trades *within* the attention system the
+  model estimates; the two are one jointly-optimized system with two heads. Folded into paper §4.4
+  ("Codependent training") and companion §6.4 (mechanics). Key points: (a) encoder is co-trained
+  end-to-end with the policy — pretraining is a warm start, not a freeze; joint loss
+  `L_RL + β·L_SSL` with β annealed; (b) the reflexive coupling (the agent's own flow inflates the
+  branching ratio it reads) is *why* joint training is mandatory, not just convenient — an encoder
+  frozen on passive-observer flow misreads the tape the moment the agent acts; (c) a **stop-gradient
+  copy** of the SSL representation feeds the convergence layer / standalone alert, so the shared
+  signal stays flow-derived and independent even as the agent's private view specializes.
+- **Attention-as-independent-signal survives** — the model can still be *born alone* (pretrained,
+  shipped as an alert before the agent exists). Standalone-first is the delivery hedge; codependence
+  is the mature state.
+
+**Changes**
+- Paper §4.4: new "Codependent training" paragraph; wire-in point 1 now says "warm start, not a freeze."
+- Companion sub-project: new §6.4 "Codependent training with the agent (mechanics)."
+
+**Open / next**
+- **Phase 0 build is being scoped for a multi-agent launch** (simulator + data pipeline + feature
+  store + attention pretrainer + eval harness) — pending operator's go. Ground truth for the scope:
+  `03-experiment-plan.md` Phase 0 and `02-technical-design.md` §6 module layout. Phase 0 is
+  engineering-heavy, near-zero training compute; the deliverable is a *fidelity-measurable simulator*,
+  not a trained agent. Hard gate: sim reproduces real fills within tolerance + leakage audit passes.
+
+---
+
+## 2026-08-22 (a) — Attention model folded in; signal-first locked; workspace synced to the paper
 
 **Decisions**
 - **Signal-first is now the program's committed deliverable** (paper §4.2, §9.8, §1.3; charter §6;
