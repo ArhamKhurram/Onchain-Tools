@@ -63,6 +63,36 @@ export function isUnratedCaller(quality: FeedRowQuality): boolean {
 }
 
 /**
+ * The "absolute best" test that backs the Top Callers Feed pane.
+ *
+ * Deliberately far stricter than the good-callers filter: this is not "hide the
+ * slop", it is "show only the ones you'd act on blind". That means the earned
+ * `elite` band, or a manual `trusted` tier. `solid` and — unlike the good-caller
+ * filter — `unrated` are both excluded on purpose: the pane's whole value is that
+ * it stays quiet, so an unproven caller doesn't belong in it.
+ *
+ * `effectiveBand` already maps a trusted tier to the `elite` band, so the band
+ * check alone would catch trusted callers; the explicit tier check is belt and
+ * braces so an operator's manual trust survives any future change to that mapping.
+ */
+export function isTopCaller(quality: FeedRowQuality): boolean {
+  return quality.tier === 'trusted' || quality.band === 'elite';
+}
+
+/** Keep only the elite + manually-trusted rows; report how many were cut. */
+export function filterTopCallerRows<T extends { quality: FeedRowQuality }>(
+  rows: readonly T[],
+): { rows: T[]; hidden: number } {
+  const kept: T[] = [];
+  let hidden = 0;
+  for (const row of rows) {
+    if (isTopCaller(row.quality)) kept.push(row);
+    else hidden += 1;
+  }
+  return { rows: kept, hidden };
+}
+
+/**
  * Does this row survive the good-callers filter?
  *
  * Proven callers pass, and so do **unrated** ones. That is the deliberate

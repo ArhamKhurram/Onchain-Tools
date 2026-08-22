@@ -666,6 +666,7 @@ export interface PriceAlertData {
 export type WorkspacePanelType =
   | 'room'
   | 'contracts'
+  | 'top-callers-feed'
   | 'radar'
   | 'fomo-feed'
   | 'fomo-leaderboard'
