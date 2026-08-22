@@ -1,10 +1,12 @@
 import { describe, it, expect } from 'vitest';
 import {
   filterGoodCallerRows,
+  filterTopCallerRows,
   groupHistoryOldestFirst,
   groupRank,
   groupSummaryItem,
   isProvenCaller,
+  isTopCaller,
   isUnratedCaller,
   passesGoodCallerFilter,
   sortContractGroups,
@@ -76,6 +78,40 @@ describe('good-caller predicates', () => {
     expect(passesGoodCallerFilter(quality('mixed'))).toBe(false);
     expect(passesGoodCallerFilter(quality('slop'))).toBe(false);
     expect(passesGoodCallerFilter(quality('slop', 'muted'))).toBe(false);
+  });
+});
+
+describe('top-caller filter (Top Callers Feed)', () => {
+  it('admits only elite and manually-trusted callers', () => {
+    // The "absolute best" — earned elite or a manual trust.
+    expect(isTopCaller(quality('elite'))).toBe(true);
+    expect(isTopCaller(quality('elite', 'trusted'))).toBe(true);
+    // A trusted tier survives even if its band somehow read otherwise.
+    expect(isTopCaller(quality('unrated', 'trusted'))).toBe(true);
+  });
+
+  it('is stricter than the good-callers filter — solid and unrated are OUT', () => {
+    // The whole point of the pane is that it stays quiet, so anything short of
+    // the top is excluded — including callers the "Hide slop" filter keeps.
+    expect(isTopCaller(quality('solid'))).toBe(false);
+    expect(isTopCaller(quality('unrated'))).toBe(false);
+    expect(isTopCaller(quality('mixed'))).toBe(false);
+    expect(isTopCaller(quality('slop'))).toBe(false);
+    expect(isTopCaller(quality('slop', 'muted'))).toBe(false);
+  });
+
+  it('keeps only the top rows and counts what it held out', () => {
+    const rows = [
+      row('elite'),
+      row('elite', 'trusted'),
+      row('solid'),
+      row('unrated'),
+      row('mixed'),
+      row('slop', 'muted'),
+    ];
+    const result = filterTopCallerRows(rows);
+    expect(result.rows).toHaveLength(2);
+    expect(result.hidden).toBe(4);
   });
 });
 

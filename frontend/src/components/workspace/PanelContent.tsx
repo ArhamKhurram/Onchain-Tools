@@ -40,6 +40,8 @@ export default function PanelContent({ panel, onRoomChange }: PanelContentProps)
         );
       case 'contracts':
         return <ContractDashboard embedded />;
+      case 'top-callers-feed':
+        return <ContractDashboard embedded topOnly />;
       case 'radar':
         return <RadarTable embedded />;
       case 'fomo-feed':
@@ -71,6 +73,7 @@ export default function PanelContent({ panel, onRoomChange }: PanelContentProps)
 export function panelSubtitle(panel: WorkspacePanelSlot, roomName: string | null): string | null {
   if (panel.type === 'room' && roomName) return roomName;
   if (panel.type === 'contracts') return 'Live detections';
+  if (panel.type === 'top-callers-feed') return 'Elite & trusted only';
   if (panel.type === 'radar') return 'Token radar';
   if (panel.type === 'fomo-feed') return 'Tracked traders';
   if (panel.type === 'fomo-leaderboard') return 'Top traders';

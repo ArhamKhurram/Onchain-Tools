@@ -21,6 +21,7 @@ export interface WorkspaceWidgetDef {
 export const WORKSPACE_WIDGETS: WorkspaceWidgetDef[] = [
   { type: 'room', label: 'Room feed', description: 'Stream a Discord room, DM, or mentions', needsRoom: true },
   { type: 'contracts', label: 'Contract feed', description: 'Detected contract addresses from your channels' },
+  { type: 'top-callers-feed', label: 'Top Callers Feed', description: 'A quiet feed of only your elite & trusted callers, with inline stats' },
   { type: 'radar', label: 'Radar', description: 'Token mention aggregation and overlap' },
   { type: 'fomo-feed', label: 'FOMO live', description: 'Live buys and sells from tracked traders' },
   { type: 'fomo-leaderboard', label: 'FOMO leaderboard', description: 'Top traders on fomo.family' },
