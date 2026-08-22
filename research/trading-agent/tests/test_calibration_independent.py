@@ -254,6 +254,44 @@ def test_opt_in_gate_drops_the_offset_pool() -> None:
     assert any(r.skip_reason == "anchor_offset_pool" for r in report.per_swap)
 
 
+def test_runner_gates_offset_pools_by_default() -> None:
+    # The runner config gates bad-vault pools by DEFAULT (1000 bps). Sells are sparse, so the robust
+    # median does not rescue them the way it does buys — the gate is what makes the sell aggregate
+    # comparable (live: sell median 3921 bps -> 97 bps gate OFF -> ON). The pure `reproduce_pool`
+    # keeps its own gate off so the primitive stays honest.
+    assert IndependentCalibrationConfig().max_anchor_divergence_bps == Decimal(1000)
+
+    curve = ConstantProductCurve(fee_bps=25)
+    reserves_by_pool: dict[str, PoolReserves] = {}
+    rows_by_pool: dict[str, list[dict[str, Any]]] = {}
+    for i in range(3):
+        base, quote = Decimal(1_000_000), Decimal(100)
+        rows: list[dict[str, Any]] = []
+        for _ in range(4):
+            r, base, quote = _gen_swap(curve, base, quote, Side.BUY, Decimal("0.05"), block=200)
+            rows.append(r)
+        reserves_by_pool[f"clean{i}"] = _reserves(base, quote, 200)
+        rows_by_pool[f"clean{i}"] = rows
+    base, quote = Decimal(1_000_000), Decimal(100)
+    bad_rows: list[dict[str, Any]] = []
+    for _ in range(4):
+        r, base, quote = _gen_swap(curve, base, quote, Side.BUY, Decimal("0.05"), block=200)
+        bad_rows.append(r)
+    reserves_by_pool["offset"] = _offset_reserves("offset", base, quote)
+    rows_by_pool["offset"] = bad_rows
+
+    # No explicit gate arg -> the default (1000 bps) must drop the offset pool.
+    report = calibrate_independent(
+        {"raydium_amm_v4": list(reserves_by_pool)},
+        _FakeReservesClient(reserves_by_pool),
+        lambda pool: rows_by_pool[pool],
+        IndependentCalibrationConfig(window=1),
+    )
+    venue = report.venue("raydium_amm_v4")
+    assert venue is not None and venue.buy.n == 3  # only the clean pools scored
+    assert any(r.skip_reason == "anchor_offset_pool" for r in report.per_swap)
+
+
 # ---------------------------------------------------------------------------------------------
 # Roll-back drift + freshest-fill default
 # ---------------------------------------------------------------------------------------------

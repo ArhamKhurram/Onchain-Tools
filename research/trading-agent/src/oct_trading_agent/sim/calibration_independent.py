@@ -29,20 +29,21 @@ Two properties make the number trustworthy:
   The default ``window`` is therefore the **freshest 1 swap** — zero roll-back past the anchor's own
   reversal — with a knob to widen it and watch the drift.
 
-* **The reported number is the robust median; an anchor-offset diagnostic flags bad-vault pools.**
+* **The anchor gate is what makes sells reproduce comparably to buys; the median alone is not enough.**
   The sell-side investigation (PROGRESS 2026-08-23) traced the ~17% "broken sells" NOT to the sell
   model (:meth:`PumpFunAmmCurve.fill` reproduces a self-consistent synthetic sell to ~0.03 bps, same
   as a buy) but to a subset of pump.fun-AMM pools whose raw ``owner=amm_pool`` vault balances are
   **not** their constant-product pricing reserves: every recent swap on such a pool — buys included,
   even a zero-impact 0.01-SOL trade — executes at a *systematic, size-independent* offset from the
   reserve-implied mid (measured 0–14% across live pools; a pool at +13% corrupted its buys AND sells
-  identically). The tiny original sell sample (n=7) simply landed on high-offset pools, so the error
-  concentrated there — it was a sampling artifact, not a sell mapping bug. The harness reports the
-  **median** (and p75/p90), which is inherently resistant to that minority of offset pools, and it
-  computes a pool-level anchor divergence (median executed price vs reserve mid) surfaced per record.
-  A hard gate (``max_anchor_divergence_bps``) that drops offset pools is available but **off by
-  default**, because any reserves-vs-price filter is confounded by a genuine recent large price move,
-  and the robust median needs no hard filter to make sells reproduce comparably to buys.
+  identically). The original ~1700 bps was a sampling artifact — sells are **sparse** (n≈3–10 per run)
+  and land disproportionately on those offset pools. Crucially, because sells are sparse the robust
+  median does **not** rescue the aggregate the way it does for buys (large n): the fix is the
+  pool-level **anchor gate** (``max_anchor_divergence_bps``, ON by default in the runner at 1000 bps),
+  which drops the bad-vault pools. Measured decisively (window=3): a clean-anchor sell reproduces to
+  **97 bps** (in line with buys ~76 bps), while the aggregate **sell median moves 3921 bps → 97 bps
+  gate OFF → ON**. The pool-level anchor divergence is always surfaced per record; the pure
+  ``reproduce_pool`` keeps the gate off so the primitive stays honest.
 
 The core :func:`reproduce_pool` is pure: it takes an already-fetched :class:`PoolReserves` plus the
 raw Pinax swap rows and returns per-swap reproductions, so the whole harness is unit-tested against
@@ -520,12 +521,16 @@ class IndependentCalibrationConfig:
     max_pools_per_venue: int = 8
     #: Resolve pump.fun's fee tier per pool from market cap (vs the flat mature 30 bps).
     per_pool_pumpfun_tier: bool = True
-    #: Pool-level anchor-validity gate (OPT-IN; None = off, the default). When set, drops a pool whose
-    #: median executed price diverges from its reserve-implied mid by more than this (bps) — catches
-    #: vaults that aren't the pricing reserves. Off by default because the robust MEDIAN percentiles
-    #: already resist the minority offset pools, and a hard reserves-vs-price gate is confounded by a
-    #: genuine recent large price move; ``anchor_divergence_bps`` is always reported as a diagnostic.
-    max_anchor_divergence_bps: Decimal | None = None
+    #: Pool-level anchor-validity gate. Drops a pool whose median executed price diverges from its
+    #: reserve-implied mid by more than this (bps) — catches vaults whose ``owner=amm_pool`` balance is
+    #: NOT the constant-product pricing reserve. **ON by default for the runner** at a conservative 10%
+    #: (1000 bps): the live data showed the robust median fixes the BUY aggregate (large n) but NOT the
+    #: SPARSE sell sample (n≈3–10, which lands disproportionately on offset pools) — gating those pools
+    #: moves the sell median 3921 bps → 97 bps, comparable to buys (~76 bps). The pure ``reproduce_pool``
+    #: keeps its own default off so the primitive stays honest; ``anchor_divergence_bps`` is always
+    #: reported as a diagnostic regardless. A hard gate can, rarely, drop a pool mid a genuine large
+    #: price move — accepted, since 1000 bps is well above normal fee+impact.
+    max_anchor_divergence_bps: Decimal | None = Decimal(1000)
     #: How many of the newest swaps feed the pool-level median for the gate (size/side mix → robust).
     validity_sample: int = 15
     #: Venue→curve registry the runner resolves through (the process-wide default by default).
