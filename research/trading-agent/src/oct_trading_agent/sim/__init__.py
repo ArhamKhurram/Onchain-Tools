@@ -15,7 +15,40 @@ PERFORMANCE NOTE (src/README.md): the correctness reference is Python (numpy/pol
 The hot loop sits behind the ``Simulator`` protocol so a Rust kernel (PyO3/maturin) can replace it
 ONLY where profiling proves it necessary — no premature native code.
 
-TODO(Wave-1: sim agent): implement the AMM curve + execution model behind ``core.sim.Simulator``.
+TODO(Wave-1: sim agent): a Rust kernel behind ``core.sim.Simulator`` only where profiling demands it.
 """
 
 from __future__ import annotations
+
+from .amm import FeeTier, PoolConfig, PoolReconstructor, PoolState
+from .calibration import (
+    CalibrationConfig,
+    CalibrationReport,
+    calibrate,
+    load_tape_parquet,
+)
+from .execution import ExecutionModel, ExecutionParams
+from .replay import RecentWindowReplay, ReplaySimulator, SimConfig
+from .rug import RugTracker
+
+__all__ = [
+    # amm
+    "PoolConfig",
+    "FeeTier",
+    "PoolReconstructor",
+    "PoolState",
+    # execution
+    "ExecutionModel",
+    "ExecutionParams",
+    # rug
+    "RugTracker",
+    # replay
+    "ReplaySimulator",
+    "SimConfig",
+    "RecentWindowReplay",
+    # calibration
+    "calibrate",
+    "CalibrationConfig",
+    "CalibrationReport",
+    "load_tape_parquet",
+]
