@@ -14,6 +14,28 @@ program logs reasoning and scoping; once Phase 0 starts, entries carry real numb
 
 ---
 
+## 2026-08-22 (i) — Wave 2 launched: full venue coverage + independent reserves
+
+Goal: take the sim from "~65% of volume, self-consistency-validated" to full venue coverage,
+independently validated. Structured like Wave 1 — foundation first, then parallel builders.
+
+- **Step 0 (running) — multi-venue curve abstraction + pump.fun fee schedule.** Introduce `sim/curves/`
+  with a `Curve` protocol + a venue→curve resolver keyed on `protocol`, move existing constant-product
+  behind `ConstantProductCurve` (no behavior change), and replace the flat CPMM fee with pump.fun's
+  real LP+protocol+creator schedule — re-validating that the ~26 bps residual drops. This is the
+  foundation the two new curves plug into.
+- **Agent G (running, parallel) — independent reserves via `/v1/svm/balances`.** Fetch real pool vault
+  reserves as-of a block so calibration can validate ABSOLUTE depth / large-order slippage (closing the
+  self-consistency-fit caveat). Data-layer only; key open question it answers: does Pinax expose
+  historical-by-block balances at all?
+- **Deferred to after Step 0 merges:** **Agent E** (pump.fun bonding-curve model — the ~8% earliest-life
+  regime; pump.fun uses a known virtual-reserves curve, so fills are predictable from the formula, not
+  fitted) and **Agent F** (concentrated-liquidity: whirlpool/CLMM/DLMM ~14% — scoped to an effective-
+  local-liquidity approximation with honest documentation of where tick-crossing breaks it). Jupiter
+  (~8%, a router, not a venue) is a known gap, not modeled now.
+
+---
+
 ## 2026-08-22 (h) — FIRST real calibration: constant-product reproduces pump.fun-AMM fills to ~26 bps
 
 Ran the first real fill-reproduction against live Pinax `solana@swaps` (5000 consecutive swaps on one
