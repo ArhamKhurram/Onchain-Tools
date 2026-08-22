@@ -14,6 +14,25 @@ program logs reasoning and scoping; once Phase 0 starts, entries carry real numb
 
 ---
 
+## 2026-08-22 (f) — Pinax key live; live WS firehose discovered
+
+**Findings**
+- **`PINAX_API_KEY` populated and verified** — REST `/v1/networks` → HTTP 200 (auth works; the 400 on
+  `/v1/svm/swaps?limit=1` is just missing query params, not auth). Key + JWT now in `backend/.env`
+  (`PINAX_API_KEY` for REST `X-Api-Key` / Substreams gRPC bearer; `PINAX_API_TOKEN` = JWT for WS).
+  Live ingestion + real fill-reproduction calibration are unblocked.
+- **Pinax exposes a live decoded-swap WebSocket firehose** — `wss://ws.pinax.network/ws/solana@swaps?token=<JWT>`
+  — cleaner than Substreams gRPC for the live tail (no spkg, just `<network>@<table>` + token). Intended
+  split now: **REST `/v1/svm/swaps` for historical backfill, WS `solana@swaps` for live.** Sent this to
+  Agent A mid-build as an additive augmentation (keep the stream name parameterized).
+- **Broader Pinax surface (PRO plan), noted for later — NOT in Phase-0 scope:** Token API, Prediction
+  Markets, Perp Exchanges, Blobs, RPC, Firehose; WS streams incl. `solana@spl_transfer`,
+  `bsc@erc20_transfers`, `robinhood@erc20_transfers` (maps onto the operator's own Sol/BNB/Robinhood
+  trading surfaces), `mainnet@swaps`, hyperliquid/polymarket. A real multi-chain experimentation surface
+  for after the new-pair agent proves out.
+
+---
+
 ## 2026-08-22 (e) — Scaffold merged (#160); Wave 1 (all four) launched
 
 **Changes / status**
