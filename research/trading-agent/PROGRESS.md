@@ -14,6 +14,24 @@ program logs reasoning and scoping; once Phase 0 starts, entries carry real numb
 
 ---
 
+## 2026-08-23 (d) — Phase-1 LEARNER launched; vector-DB deferred to Phase D
+
+- **Learner agent launched** (owns `agent/policies/` learned + `agent/critics/` + `agent/online/` +
+  `agent/train.py`): a neural actor on the tier-A observation → §3.3 hybrid action, a **distributional
+  critic** (§6.3, for fat tails / CVaR), and a **PPO** loop training against `TradingEnv` on real
+  bonding-curve tape with recent-window replay + walk-forward eval + the leakage-guard ablation. Runs
+  bounded (first honest signal, not a hyperparameter search). **A "no edge after costs" verdict is a
+  valid Phase-1 outcome** (charter §2) — the brief forbids chasing a positive number. Offline-RL /
+  imitation warm-start is the next enhancement (needs the labeled-wallet DB, not yet wired).
+- **Vector DB — deferred to Phase D (operator asked).** Not needed for Phase 1–2 (pure numeric
+  price/flow features → policy; nothing to embed). It earns its place at **Phase D (narrative/social)
+  and E (chatter)**, where text is embedded + retrieved ("what's the narrative around this token") —
+  already implied by the tech-design's text-encoder + retrieval at those tiers. Optional earlier use:
+  episodic / retrieval-augmented memory ("similar past setups"), an enhancement, not a requirement.
+  Logged as a Phase-D infra dependency so it isn't forgotten.
+
+---
+
 ## 2026-08-23 (b) — Hybrid launch: Phase 1 begins while the sim hardens in parallel
 
 Operator chose the hybrid path. Two agents launched in parallel (disjoint scopes):
