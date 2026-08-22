@@ -14,6 +14,21 @@ program logs reasoning and scoping; once Phase 0 starts, entries carry real numb
 
 ---
 
+## 2026-08-22 (d) — Phase-0 gate sharpened: tape is self-sufficient; labeled DB deferred
+
+**Decisions (operator, correcting my over-flagging)**
+- **The Pinax tape is the ground truth for the Phase-0 gate — no external validation set.** Every
+  real swap already encodes executed price, slippage, and fees on-chain. Calibration = hold out real
+  swaps, reconstruct pool state as-of the instant before each, sim predicts the fill, compare to what
+  actually executed. Cleaner and fully self-contained. (03-experiment-plan Phase 0 Dataset + Primary
+  metric updated accordingly.)
+- **Labeled-wallet DB is NOT a Phase-0 dependency.** It feeds imitation warm-start (Phase 1) and
+  traders-as-opponents (Phase 3), not the GO gate (sim reproduces fills + leakage audit + trivial
+  baseline). Phase 0 builds the labeling *pipeline* against a fixture schema; the real DB is wired at
+  Phase 1. Removes both prior "needs you" data blockers — Phase 0 needs only the tape.
+
+---
+
 ## 2026-08-22 (c) — Phase 0 build launched (scaffold agent running)
 
 **Decisions**

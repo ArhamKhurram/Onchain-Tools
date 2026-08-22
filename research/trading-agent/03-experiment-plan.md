@@ -42,9 +42,9 @@ tolerance — i.e. it is faithful enough that exploits found in it will transfer
 6. Calibrate the simulator against a **validation set of tokens** with known real fills; measure reproduction error.
 7. Run a **trivial baseline** (buy-and-hold, random) end-to-end: firehose → feature store → sim → ledger, with correct costs.
 
-**Dataset.** Historical Pinax new-pair tape (validation subset with reconstructable real fills); the labeled-wallet DB. See [`04-data-spec.md`](./04-data-spec.md).
+**Dataset.** Historical Pinax new-pair tape — **self-sufficient for this gate.** Every real swap already encodes its executed price, slippage, and fees on-chain, so the tape *is* the ground truth: no external validation set is needed. Calibration holds out real swaps, reconstructs pool state as-of the instant before each, has the sim predict the fill, and compares to what actually executed. The **labeled-wallet DB is NOT a Phase-0 dependency** — it feeds imitation warm-start (Phase 1) and traders-as-opponents (Phase 3). In Phase 0 we build the labeling *pipeline* against a fixture schema; the real DB is wired when Phase 1 begins. See [`04-data-spec.md`](./04-data-spec.md).
 
-**Primary metric.** Simulator fill-reproduction error vs a calibrated slippage tolerance on the validation set (fills the sim produces vs fills that actually occurred).
+**Primary metric.** Simulator fill-reproduction error vs a calibrated slippage tolerance on **held-out real swaps** (the fill the sim predicts from pre-swap pool state vs the fill that actually executed in the tape).
 
 **Go/no-go gate.**
 - **GO** if: sim reproduces validation fills within the pre-registered slippage tolerance **AND** the leakage audit passes **AND** the trivial baseline runs end-to-end with correct costs.
