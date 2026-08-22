@@ -15,6 +15,13 @@ const store = new Map<string, CacheEntry<unknown>>();
 let hits = 0;
 let misses = 0;
 
+// How long past its TTL an entry is RETAINED (though reported as a miss, so a
+// refresh is still attempted) so a rate-limited refresh can fall back to the last
+// good value via peekStale. Callout/profile data is append-only history that
+// changes slowly, so serving minutes-stale on a 429 beats a red error card.
+// Overridable by env for tuning without a redeploy.
+export const STALE_GRACE_MS = Number.parseInt(process.env.PUMPFUN_STALE_GRACE_MS ?? '', 10) || 10 * 60 * 1000;
+
 export function getCached<T>(key: string): T | null {
   const entry = store.get(key);
   if (!entry) {
@@ -22,11 +29,28 @@ export function getCached<T>(key: string): T | null {
     return null;
   }
   if (Date.now() > entry.expiresAt) {
-    store.delete(key);
     misses += 1;
+    // Past TTL: report a miss so the caller refreshes, but KEEP the entry within
+    // the stale-grace window so a rate-limited refresh can fall back to it. Evict
+    // only once even the grace window has elapsed.
+    if (Date.now() > entry.expiresAt + STALE_GRACE_MS) store.delete(key);
     return null;
   }
   hits += 1;
+  return entry.value as T;
+}
+
+/**
+ * Peek the last cached value for a key even when it is past its TTL, provided it
+ * is still within the stale-grace window. Does NOT touch the hit/miss counters
+ * and does NOT evict — it is the emergency fallback for a rate-limited refresh
+ * (serve slightly-stale over erroring), not a normal read. Returns null when
+ * nothing is retained, or when the entry is older than the grace window.
+ */
+export function peekStale<T>(key: string): T | null {
+  const entry = store.get(key);
+  if (!entry) return null;
+  if (Date.now() > entry.expiresAt + STALE_GRACE_MS) return null;
   return entry.value as T;
 }
 
