@@ -14,6 +14,38 @@ program logs reasoning and scoping; once Phase 0 starts, entries carry real numb
 
 ---
 
+## 2026-08-22 (g) — Wave 1 COMPLETE: all four merged, integrated package green
+
+**Changes / status**
+- **All four Wave-1 PRs merged** (#161 featurestore, #162 sim+ledger, #163 attention, #164 data).
+  Integrated locally, resolved conflicts (only a trivial `tests/__init__.py` add/add; pyproject
+  auto-merged), fixed two ruff violations that surfaced only in the merged config (an absolute-import
+  + a now-unused `S310` noqa in the data client). **Certified the COMBINED package green — not just
+  per-agent:** `ruff` clean · `mypy --strict` clean (73 files) · **pytest 168 passed / 3 torch-skipped**.
+- Phase-0 skeleton now exists end-to-end: `data/` (REST backfill + `solana@swaps` WS + Parquet tape
+  log + labeling) → `featurestore/` (point-in-time + tier-A + leakage audit) → `sim/` (constant-product
+  AMM fills + execution realism + rug states + replay + calibration harness) + `ledger/` + the
+  `agent/encoders/` attention model (Hawkes + manipulation channel + two-head transformer).
+
+**Open — decisions/notes for the first real run**
+- **pump.fun bonding curve vs constant-product (the real fidelity question).** Genuinely new Solana
+  pairs launch on pump.fun's *bonding curve*, NOT an x*y=k AMM; the sim models constant-product
+  (Raydium-style, default 25 bps). Calibration against real tape will EXPOSE this as high
+  reproduction error on pre-migration pump.fun swaps. Plan: pull real tape, measure per-venue
+  reproduction error, add a bonding-curve fill model if constant-product doesn't clear tolerance.
+  Fee tier is itself a calibration output.
+- **Pre-register the GO-gate numbers.** Sim calibration tolerance / reproduction-fraction are
+  placeholders (50 bps / 0.95). Per experiment-plan governance they must be pre-registered before
+  the GO decision — but sensibly set after a first real pull reveals the error distribution. Operator
+  call.
+- **Frozen-feature contract nit** (deferred): `core.PointInTimeFeature` declares `name`/`tier`
+  writable, forcing feature classes non-frozen under mypy-strict. Small post-wave `core` cleanup
+  (make them read-only properties). Low priority.
+- **Next concrete step:** pull real `solana@swaps` tape via REST backfill → Parquet log → run the
+  calibration harness = the first "does the sim reproduce reality" signal.
+
+---
+
 ## 2026-08-22 (f) — Pinax key live; live WS firehose discovered
 
 **Findings**
