@@ -14,6 +14,68 @@ program logs reasoning and scoping; once Phase 0 starts, entries carry real numb
 
 ---
 
+## 2026-08-23 (b) — Sell-side root cause found + independent-reserve calibration productionized
+
+Turned the scratchpad prototype into a tested repo module (`sim/calibration_independent.py`,
+`tests/test_calibration_independent.py`) and chased down the "broken sells" the (a) entry flagged.
+
+**The sell-side root cause is NOT the sell model — it is a per-pool reserve/pricing-vault offset.**
+Investigated directly against live `pumpfun_amm` swaps:
+- `fill_sell` is correct. A self-consistent synthetic sell reproduces through the whole harness to
+  **~0.03 bps — identical to a buy** (`test_buy_and_sell_symmetric_residual`). The model was never
+  the problem, exactly as the (a) entry suspected.
+- A genuinely independent, post-anchored predictor (predict the SOL-out from real reserves + the
+  token-in *only*, never touching the observed SOL-out) showed live sells **~15–18% off** even at
+  **zero roll-back (freshest fill, gap=0)** — far too large to be a fee-interpretation issue
+  (removing the fee moved it only ~25 bps). So it is not fee-inclusive/exclusive, not a recording
+  offset, not a mislabeled leg.
+- The **same** post-anchored predictor on **buys** is mostly clean (~30 bps = the fee) but with the
+  same-magnitude outliers on the *same pools* that the sells blew up on. Forensic on those pools:
+  **every recent swap — buys included, even a zero-impact 0.01-SOL trade — executes at a systematic,
+  size-independent offset from the reserve-implied mid** (measured 0–14% across pools; one pool at
+  +13% corrupted its buys and sells identically). So for a subset of pump.fun-AMM pools the raw
+  `owner=amm_pool` vault balances are **not** the pool's constant-product pricing reserves (extra
+  tokens / accrued fees in the vault). The original sell number was ~1700 bps because the tiny n=7
+  sell sample happened to land on high-offset pools — a **sampling artifact, not a sell mapping bug**.
+
+**The productionized harness (`reproduce_pool` / `calibrate_independent`):**
+- Real curve models via the registry, real `ReservesClient` anchors, **naive reversal** (observed
+  user amounts, not the curve's fee-exact deltas — reconstructing from the swap's own fee deltas and
+  then predicting it forward would cancel to ~0 by construction; the naive path keeps the fee model
+  exposed, so a wrong fee shows as real error). Verified: full-retention CP reproduces a
+  self-consistent swap to **exactly 0 bps**, pump.fun's LP+protocol+creator stack to a small,
+  fee-exposed residual (both sides).
+- **Freshest-fill default** (`window=1`): roll-back drift climbs monotonically with reconstruction
+  distance, so the newest swap is the cleanest; a `window` knob widens it and a test pins the drift.
+- **Robust reporting**: per-venue **buy AND sell** median / p75 / p90. The median is inherently
+  resistant to the minority of offset pools, so sells reproduce comparably to buys without any hard
+  filter. A pool-level **anchor-divergence diagnostic** (median executed price vs reserve mid, size-
+  robust) is surfaced on every record to flag bad-vault pools; a hard gate is available but **off by
+  default** (any reserves-vs-price filter is confounded by a genuine recent large price move).
+
+**Live numbers (freshest fill, gate off, ~15 live `pumpfun_amm` pools):** buys ~90–120 bps median,
+sells at the same fee/naive-reversal level once the median absorbs the offset-pool tail — the sell
+side is no longer an outlier. Offset pools (median-vs-mid > 1000 bps) are a minority and flagged.
+
+**Per-pool pump.fun fee tier (task 3):** wired (`resolve_pumpfun_curve` resolves the mcap tier per
+pool and the runner passes it in). Caveat surfaced by the data: the mcap proxy uses a fixed 1e9 token
+supply, but real pump tokens are **not** uniformly 1e9 (a live vault held 12.46B tokens), so the tier
+mis-resolves without a true per-token circulating supply and did **not** cleanly tighten the buy
+median on the live sample. The mechanism is in place; correct tiering needs the token supply — noted
+as the refinement.
+
+**Deferred (task 4, P2):** non-`pumpfun_amm` vault resolution. raydium/orca/meteora return no
+reserves because `ReservesClient` only resolves vaults via `owner=amm_pool` (verified for the pump
+AMM only), so the calibration currently covers `pumpfun_amm`. The harness itself is venue-general
+(registry dispatch); extending it needs per-venue vault-account resolution in `reserves.py`.
+
+**Lesson banked:** a per-swap "executed vs mid" gate looks reasonable but wrongly drops legitimately
+large-impact fills (they diverge from mid yet reproduce fine) — the offset is only separable from
+impact by a *median over many swaps* at the pool level, and even that is confounded by a real price
+move, which is why the honest number leans on the robust median, not a hard filter.
+
+---
+
 ## 2026-08-23 — Independent-reserve calibration: the honest Phase-0 fidelity number
 
 Built + ran the independent-reserve fill-reproduction (anchor at REAL on-chain reserves via
