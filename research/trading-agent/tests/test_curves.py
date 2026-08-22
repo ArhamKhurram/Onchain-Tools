@@ -135,7 +135,8 @@ def test_resolve_for_swap_reads_protocol_tag() -> None:
         )
 
     assert isinstance(DEFAULT_REGISTRY.resolve_for_swap(swap("pumpfun_amm")), PumpFunAmmCurve)
-    assert DEFAULT_REGISTRY.try_resolve_for_swap(swap("pumpfun")).supported is False
+    # (``pumpfun`` — the pre-migration bonding curve — is now modelled; see test_bonding_curve.py.)
+    assert DEFAULT_REGISTRY.try_resolve_for_swap(swap("raydium_clmm")).supported is False
     with pytest.raises(UnsupportedVenueError):
         DEFAULT_REGISTRY.resolve_for_swap(swap(None))
 

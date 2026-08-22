@@ -33,6 +33,13 @@ from .base import (
 )
 
 # --- built-in curves: importing each module runs its @register_curve on DEFAULT_REGISTRY ---------
+from .bonding_curve import (
+    PUMPFUN_BONDING_CURVE_STANDARD_FEE,
+    BondingCurveComplete,
+    BondingCurveFee,
+    BondingCurveParams,
+    PumpFunBondingCurve,
+)
 from .constant_product import ConstantProductCurve
 from .pumpfun import (
     PUMPFUN_AMM_STANDARD_FEE,
@@ -77,6 +84,11 @@ __all__ = [
     "PumpFunAmmFeeSchedule",
     "PUMPFUN_AMM_STANDARD_FEE",
     "PUMPFUN_BONDING_CURVE_FEE_BPS",
+    "PumpFunBondingCurve",
+    "BondingCurveFee",
+    "BondingCurveParams",
+    "BondingCurveComplete",
+    "PUMPFUN_BONDING_CURVE_STANDARD_FEE",
     # registry / resolution
     "CurveRegistry",
     "CurveFactory",

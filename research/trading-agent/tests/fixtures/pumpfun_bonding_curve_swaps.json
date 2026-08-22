@@ -1,0 +1,211 @@
+{
+ "_comment": "Real pump.fun pre-migration bonding-curve swaps (protocol=pumpfun) for ONE token, in causal order from its creation. Pulled from Pinax /v1/svm/swaps (network=solana) in a single atomic 500-row page, so the sequence is contiguous (no offset-pagination gaps). The first swap sits at the on-chain seed price (v_sol/v_token = 30/1.073e9), i.e. the token is captured from birth. amount_in/observed_out are Pinax UI-unit amounts: BUY = SOL in / token out, SELL = token in / SOL out. These are CURVE-LEVEL (fee-exclusive) amounts, so the pure constant-product invariant reproduces the BUY leg exactly; the documented 125 bps trader fee sits on top of these amounts (see test_bonding_curve.py). Used offline to validate PumpFunBondingCurve; no network in tests.",
+ "pool": "EHu5dVU4Jei9TwxN4bqe85AMs6XnViNxihEKi25jGV6w",
+ "first_swap_seed_ratio": 1.0,
+ "initial_virtual_token_reserves_ui": 1073000000.0,
+ "initial_virtual_sol_reserves_ui": 30.0,
+ "fee_protocol_bps": 95,
+ "fee_creator_bps": 30,
+ "swaps": [
+  {
+   "side": "buy",
+   "amount_in": 5.3607e-05,
+   "observed_out": 1917.340273
+  },
+  {
+   "side": "buy",
+   "amount_in": 4.8062e-05,
+   "observed_out": 1719.008635
+  },
+  {
+   "side": "buy",
+   "amount_in": 4.7068e-05,
+   "observed_out": 1683.451415
+  },
+  {
+   "side": "buy",
+   "amount_in": 4.8033e-05,
+   "observed_out": 1717.960514
+  },
+  {
+   "side": "buy",
+   "amount_in": 4.8684e-05,
+   "observed_out": 1741.238732
+  },
+  {
+   "side": "buy",
+   "amount_in": 4.677e-05,
+   "observed_out": 1672.777019
+  },
+  {
+   "side": "buy",
+   "amount_in": 5.0828e-05,
+   "observed_out": 1817.909637
+  },
+  {
+   "side": "buy",
+   "amount_in": 5.0926e-05,
+   "observed_out": 1821.408518
+  },
+  {
+   "side": "buy",
+   "amount_in": 4.4998e-05,
+   "observed_out": 1609.383781
+  },
+  {
+   "side": "buy",
+   "amount_in": 5.144e-05,
+   "observed_out": 1839.780336
+  },
+  {
+   "side": "buy",
+   "amount_in": 5.0965e-05,
+   "observed_out": 1822.785474
+  },
+  {
+   "side": "buy",
+   "amount_in": 4.4236e-05,
+   "observed_out": 1582.114831
+  },
+  {
+   "side": "buy",
+   "amount_in": 4.8014e-05,
+   "observed_out": 1717.230941
+  },
+  {
+   "side": "buy",
+   "amount_in": 4.4387e-05,
+   "observed_out": 1587.505624
+  },
+  {
+   "side": "buy",
+   "amount_in": 4.4716e-05,
+   "observed_out": 1599.267593
+  },
+  {
+   "side": "buy",
+   "amount_in": 5.1449e-05,
+   "observed_out": 1840.067417
+  },
+  {
+   "side": "buy",
+   "amount_in": 5.0407e-05,
+   "observed_out": 1802.79429
+  },
+  {
+   "side": "buy",
+   "amount_in": 5.2086e-05,
+   "observed_out": 1862.836959
+  },
+  {
+   "side": "buy",
+   "amount_in": 4.9867e-05,
+   "observed_out": 1783.469165
+  },
+  {
+   "side": "buy",
+   "amount_in": 5.1233e-05,
+   "observed_out": 1832.31732
+  },
+  {
+   "side": "sell",
+   "amount_in": 1839.780336,
+   "observed_out": 5.1985e-05
+  },
+  {
+   "side": "sell",
+   "amount_in": 1822.785474,
+   "observed_out": 5.1504e-05
+  },
+  {
+   "side": "sell",
+   "amount_in": 1717.230941,
+   "observed_out": 4.8521e-05
+  },
+  {
+   "side": "sell",
+   "amount_in": 1672.777019,
+   "observed_out": 4.7265e-05
+  },
+  {
+   "side": "sell",
+   "amount_in": 1817.909637,
+   "observed_out": 5.1366e-05
+  },
+  {
+   "side": "sell",
+   "amount_in": 1862.836959,
+   "observed_out": 5.2635e-05
+  },
+  {
+   "side": "sell",
+   "amount_in": 1917.340273,
+   "observed_out": 5.4175e-05
+  },
+  {
+   "side": "sell",
+   "amount_in": 1243.829874,
+   "observed_out": 3.5144e-05
+  },
+  {
+   "side": "sell",
+   "amount_in": 1587.505624,
+   "observed_out": 4.4855e-05
+  },
+  {
+   "side": "sell",
+   "amount_in": 1717.960514,
+   "observed_out": 4.8541e-05
+  },
+  {
+   "side": "sell",
+   "amount_in": 1783.469165,
+   "observed_out": 5.0392e-05
+  },
+  {
+   "side": "sell",
+   "amount_in": 1802.79429,
+   "observed_out": 5.0938e-05
+  },
+  {
+   "side": "sell",
+   "amount_in": 1741.238732,
+   "observed_out": 4.9198e-05
+  },
+  {
+   "side": "sell",
+   "amount_in": 1719.008635,
+   "observed_out": 4.857e-05
+  },
+  {
+   "side": "sell",
+   "amount_in": 1821.408518,
+   "observed_out": 5.1463e-05
+  },
+  {
+   "side": "sell",
+   "amount_in": 1582.114831,
+   "observed_out": 4.4702e-05
+  },
+  {
+   "side": "sell",
+   "amount_in": 1599.267593,
+   "observed_out": 4.5186e-05
+  },
+  {
+   "side": "sell",
+   "amount_in": 1840.067417,
+   "observed_out": 5.199e-05
+  },
+  {
+   "side": "sell",
+   "amount_in": 1832.31732,
+   "observed_out": 5.1771e-05
+  },
+  {
+   "side": "sell",
+   "amount_in": 1683.451415,
+   "observed_out": 4.7564e-05
+  }
+ ]
+}
