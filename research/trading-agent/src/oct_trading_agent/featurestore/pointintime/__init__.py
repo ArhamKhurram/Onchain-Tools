@@ -1,15 +1,17 @@
 """featurestore/pointintime — as-of reconstruction with explicit missingness.
 
-Ships :class:`StubTierAFeatureStore`, a deliberately tiny, correct point-in-time store used by the
-Phase-0 vertical slice to prove the wiring (tape → feature bundle → policy). It computes a couple
-of Tier-A ("naked chart") features from the swap tape restricted to ``block_time <= as_of``, and
-marks everything it cannot compute as explicitly MISSING (never imputed).
+Two stores live here:
 
-It is a reference for the CAUSAL contract, not the real store: the real point-in-time store (over
-columnar storage, all five tiers, with the standing leakage audit) is Wave-1's job.
+* :class:`PointInTimeFeatureStore` — **the real store**. Registry-driven, mint-scoped, time-clipped,
+  and backed by the auditable Tier-A feature set in :mod:`..tiers.tier_a`. Every feature it runs is
+  independently certified future-blind by the standing leakage audit. Tiers B-E are present-but-empty
+  until the curriculum unlocks them.
+* :class:`StubTierAFeatureStore` — a deliberately tiny, correct store retained for the Phase-0
+  vertical-slice wiring test (tape → feature bundle → policy). It computes a couple of Tier-A slots
+  inline; the real store supersedes it for everything else.
 
-TODO(Wave-1: featurestore agent): replace this with the real store; keep the causality invariant
-(no event with ``block_time > as_of`` may ever influence a feature).
+Both keep the one invariant that matters: no event with ``block_time > as_of`` may ever influence a
+feature, and missingness is explicit — never imputed.
 """
 
 from __future__ import annotations
@@ -27,6 +29,8 @@ from oct_trading_agent.core import (
     TapeEvent,
     TierFeatures,
 )
+
+from .store import FeatureRegistry, PointInTimeFeatureStore
 
 
 class StubTierAFeatureStore:
@@ -81,3 +85,6 @@ class StubTierAFeatureStore:
         return Feature(
             value=None, status=FeatureStatus.MISSING_NOT_YET_AVAILABLE, as_of=as_of
         )
+
+
+__all__ = ["FeatureRegistry", "PointInTimeFeatureStore", "StubTierAFeatureStore"]

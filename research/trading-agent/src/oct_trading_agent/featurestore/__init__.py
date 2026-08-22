@@ -5,19 +5,36 @@ instant — no look-ahead — with EXPLICIT missingness and tier tags. This is t
 (the ONLY place features are computed).
 
 Subpackages:
-    * pointintime  — as-of reconstruction + missingness encoding. Ships a tiny stub store today.
-    * tiers        — the five tiers' feature computations (A raw-chart … E chatter).
+    * pointintime  — as-of reconstruction + missingness encoding. Ships :class:`PointInTimeFeatureStore`
+                     (the real store) plus the retained :class:`StubTierAFeatureStore` wiring stub.
+    * tiers        — the five tiers' feature computations. Tier A ("naked chart") is implemented;
+                     B-E are present-but-empty registries gated on the curriculum.
     * leakage_audit — the standing causality test ("a feature that knows the future must fail").
 
 Contracts (FeatureStore, PointInTimeFeature, LeakageAudit, Feature, FeatureBundle) live in
 :mod:`oct_trading_agent.core.features`.
 
-TODO(Wave-1: featurestore agent): implement per-tier PointInTimeFeature computations and the
-LeakageAudit; replace the stub store below with a real point-in-time store over columnar storage.
+TODO(Wave-2: featurestore agent): implement Tier B-E PointInTimeFeature computations behind the
+curriculum gate; back the store with columnar, time-partitioned storage for scale.
 """
 
 from __future__ import annotations
 
-from .pointintime import StubTierAFeatureStore
+from .leakage_audit import (
+    NextTradePriceLeak,
+    StandingLeakageAudit,
+    assert_no_leaks,
+    run_standing_audit,
+)
+from .pointintime import PointInTimeFeatureStore, StubTierAFeatureStore
+from .tiers import default_tier_a_features
 
-__all__ = ["StubTierAFeatureStore"]
+__all__ = [
+    "NextTradePriceLeak",
+    "PointInTimeFeatureStore",
+    "StandingLeakageAudit",
+    "StubTierAFeatureStore",
+    "assert_no_leaks",
+    "default_tier_a_features",
+    "run_standing_audit",
+]
