@@ -34,6 +34,16 @@ def ws_swaps() -> dict[str, Any]:
     return load_json_fixture("pinax_ws_swaps.json")
 
 
+@pytest.fixture
+def pool_meta() -> dict[str, Any]:
+    return load_json_fixture("pinax_pool_meta.json")
+
+
+@pytest.fixture
+def pool_balances() -> dict[str, Any]:
+    return load_json_fixture("pinax_pool_balances.json")
+
+
 class FakeTransport:
     """A deterministic :class:`HttpTransport` that dispatches to a handler. Never hits the network."""
 

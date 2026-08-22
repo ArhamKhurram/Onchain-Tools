@@ -30,6 +30,11 @@ from .decode import (
     decode_ws_frames,
     decode_ws_swap_event,
 )
+from .reserves import (
+    PoolMeta,
+    PoolReserves,
+    ReservesClient,
+)
 from .rest import DEFAULT_PAGE_LIMIT, PAGE_LIMIT_MAX, PinaxRestClient
 from .substreams import stream_substreams_swaps, substreams_available
 from .transport import (
@@ -57,6 +62,10 @@ __all__ = [
     "iter_swap_events",
     "BackfillSummary",
     "PinaxRestTapeSource",
+    # reserves (independent depth anchors)
+    "ReservesClient",
+    "PoolMeta",
+    "PoolReserves",
     # WS live tail
     "PinaxWebSocketClient",
     "PINAX_WS_BASE",
