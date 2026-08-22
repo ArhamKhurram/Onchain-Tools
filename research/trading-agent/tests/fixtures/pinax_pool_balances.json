@@ -1,0 +1,41 @@
+{
+  "_fixture_note": "Real Pinax GET /v1/svm/balances?owner=<pool> response \u2014 the pool account's own token accounts ARE the pump.fun-AMM vaults; their `value` fields are UI-unit reserves. NOTE: balances are LATEST-ONLY; no block param is honored (historical-by-block unsupported).",
+  "_pool": "FARg7kxWgE9nVPXNtWsrF57WE5LdJRbQdErf3FWv4uvZ",
+  "_base_mint": "B4e4hWwcr5g9Pt8JWUUGxH6gB4qkux9WWL2L26vMKgq6",
+  "_quote_mint": "So11111111111111111111111111111111111111112",
+  "data": [
+    {
+      "last_update": "2026-08-22 16:30:23",
+      "last_update_block_num": 440961563,
+      "last_update_timestamp": 1787416223,
+      "program_id": "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
+      "owner": "FARg7kxWgE9nVPXNtWsrF57WE5LdJRbQdErf3FWv4uvZ",
+      "account": "4vppTGSUYY3WuvyynRvtXPGQqKfCX2ZWcu4AKEtCoi7N",
+      "mint": "So11111111111111111111111111111111111111112",
+      "amount": "1685510891478",
+      "value": 1685.510891478,
+      "decimals": 9,
+      "name": "Wrapped SOL",
+      "symbol": "SOL",
+      "uri": null,
+      "network": "solana"
+    },
+    {
+      "last_update": "2026-08-22 16:30:23",
+      "last_update_block_num": 440961563,
+      "last_update_timestamp": 1787416223,
+      "program_id": "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
+      "owner": "FARg7kxWgE9nVPXNtWsrF57WE5LdJRbQdErf3FWv4uvZ",
+      "account": "EKVfXP8MisweCNLtDCj5dDu3zVRC3Uns5jvbKgTGR4de",
+      "mint": "B4e4hWwcr5g9Pt8JWUUGxH6gB4qkux9WWL2L26vMKgq6",
+      "amount": "12461517517714381",
+      "value": 12461517517.71438,
+      "decimals": 6,
+      "name": "AAPL",
+      "symbol": "AAPL",
+      "uri": "https://ipfs.io/ipfs/QmWwerFuppL3webvuoKnM5Jvbqft8HifMdgXaLZkHP5Rby",
+      "network": "solana"
+    }
+  ],
+  "results": 2
+}

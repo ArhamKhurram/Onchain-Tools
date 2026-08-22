@@ -41,6 +41,10 @@ from .transport import HttpTransport, UrllibTransport
 PAGE_LIMIT_MAX = 1000
 DEFAULT_PAGE_LIMIT = 500
 
+# Pinax expects a User-Agent on requests (a bare urllib default is a soft red flag); identify the
+# research client without leaking anything sensitive. Sent on every call alongside the API key.
+PINAX_USER_AGENT = "oct-trading-agent/pinax-client (+research)"
+
 
 class PinaxRestClient:
     """A polite, cached, retrying Pinax REST client.
@@ -114,7 +118,10 @@ class PinaxRestClient:
             loaded = json.loads(cache_path.read_text(encoding="utf-8"))
             return dict(loaded)
 
-        headers = {PINAX_REST_API_KEY_HEADER: self._api_key_provider()}
+        headers = {
+            PINAX_REST_API_KEY_HEADER: self._api_key_provider(),
+            "User-Agent": PINAX_USER_AGENT,
+        }
         last_error: Exception | None = None
         for attempt in range(self._max_retries + 1):
             self._throttle()
@@ -221,4 +228,4 @@ class PinaxRestClient:
                 return
 
 
-__all__ = ["PinaxRestClient", "PAGE_LIMIT_MAX", "DEFAULT_PAGE_LIMIT"]
+__all__ = ["PinaxRestClient", "PAGE_LIMIT_MAX", "DEFAULT_PAGE_LIMIT", "PINAX_USER_AGENT"]

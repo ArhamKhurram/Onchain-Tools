@@ -1,0 +1,21 @@
+{
+  "_fixture_note": "Real Pinax GET /v1/svm/pools?amm_pool=<pool> row for a live pump.fun-AMM pool, captured for the reserves client. No vault accounts in the row \u2014 only mints + decimals.",
+  "_pool": "FARg7kxWgE9nVPXNtWsrF57WE5LdJRbQdErf3FWv4uvZ",
+  "data": [
+    {
+      "program_id": "pAMMBay6oceH9fJKBRHGP5D4bD4sWpmSwMn52FMfXEA",
+      "program_name": "Pump.fun AMM",
+      "protocol": "pumpfun_amm",
+      "amm": "pAMMBay6oceH9fJKBRHGP5D4bD4sWpmSwMn52FMfXEA",
+      "amm_name": "Pump.fun AMM",
+      "amm_pool": "FARg7kxWgE9nVPXNtWsrF57WE5LdJRbQdErf3FWv4uvZ",
+      "input_mint": "B4e4hWwcr5g9Pt8JWUUGxH6gB4qkux9WWL2L26vMKgq6",
+      "input_decimals": 6,
+      "output_mint": "So11111111111111111111111111111111111111112",
+      "output_decimals": 9,
+      "transactions": 9633,
+      "network": "solana"
+    }
+  ],
+  "results": 1
+}
