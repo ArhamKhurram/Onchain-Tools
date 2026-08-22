@@ -138,7 +138,9 @@ def test_resolve_for_swap_reads_protocol_tag() -> None:
         )
 
     assert isinstance(DEFAULT_REGISTRY.resolve_for_swap(swap("pumpfun_amm")), PumpFunAmmCurve)
-    assert DEFAULT_REGISTRY.try_resolve_for_swap(swap("pumpfun")).supported is False
+    # (``pumpfun`` bonding curve and ``raydium_clmm`` are now modelled — see test_bonding_curve.py /
+    # test_clmm.py. ``jupiter_v6`` is a router, never priced directly, so it stays unsupported.)
+    assert DEFAULT_REGISTRY.try_resolve_for_swap(swap("jupiter_v6")).supported is False
     with pytest.raises(UnsupportedVenueError):
         DEFAULT_REGISTRY.resolve_for_swap(swap(None))
 

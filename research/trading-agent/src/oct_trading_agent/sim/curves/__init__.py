@@ -35,6 +35,13 @@ from .base import (
 )
 
 # --- built-in curves: importing each module runs its @register_curve on DEFAULT_REGISTRY ---------
+from .bonding_curve import (
+    PUMPFUN_BONDING_CURVE_STANDARD_FEE,
+    BondingCurveComplete,
+    BondingCurveFee,
+    BondingCurveParams,
+    PumpFunBondingCurve,
+)
 from .clmm import (
     CLMM_VENUES,
     CLMMFill,
@@ -93,6 +100,11 @@ __all__ = [
     "LocalSwapObservation",
     "LocalLiquidityEstimate",
     "RollingLocalLiquidityEstimator",
+    "PumpFunBondingCurve",
+    "BondingCurveFee",
+    "BondingCurveParams",
+    "BondingCurveComplete",
+    "PUMPFUN_BONDING_CURVE_STANDARD_FEE",
     # registry / resolution
     "CurveRegistry",
     "CurveFactory",
