@@ -14,6 +14,42 @@ program logs reasoning and scoping; once Phase 0 starts, entries carry real numb
 
 ---
 
+## 2026-08-22 (h) — FIRST real calibration: constant-product reproduces pump.fun-AMM fills to ~26 bps
+
+Ran the first real fill-reproduction against live Pinax `solana@swaps` (5000 consecutive swaps on one
+busy `pumpfun_amm` pool, ~8 min of blocks). **Result: constant-product reproduces real fills to
+median 25.6 bps, p90 85.6 bps, p99 149 bps — 100% within 200 bps, ZERO curve-breaks (>10%).**
+
+**What it means**
+- **The pump.fun *AMM* (post-migration, `pAMMBay…`) is genuinely constant-product** — our x·y=k model is
+  the right law for it, empirically. The ~26 bps residual is almost certainly pump.fun's fuller
+  fee stack (LP + protocol + creator fee) vs my single fitted 20 bps — a fee-schedule refinement,
+  not a curve-model problem.
+- **Venue mix (2000 recent solana swaps):** `pumpfun_amm` **62.5%**, `pumpfun` (pre-migration bonding
+  curve) 7.9%, jupiter_v6 (router) 8.4%, meteora_dlmm 5.8%, orca_whirlpool 5.5%, meteora_daam 3.1%,
+  raydium_clmm 3.0%, raydium_amm_v4 1.9%, cpmm/others ~1%. So constant-product cleanly covers
+  **~65%** (pumpfun_amm + raydium_amm_v4/cpmm/meteora_amm). Needs separate models: the **pump.fun
+  bonding curve** (~8%, and it's the *earliest-life* regime new pairs launch into — matters most for
+  the paper's first-minutes focus) and **concentrated-liquidity** DLMM/whirlpool/CLMM (~14%).
+
+**Honest methodology caveats**
+- This is a **self-consistency** fit: reserves fitted to the swap sequence, then the CPMM law tested
+  for consistency with observed fills. It validates the curve LAW (and relative fills), NOT
+  prediction from independently-sourced reserves. Absolute depth is weakly identified (trades small
+  vs pool), so large-order slippage isn't yet validated — needs independent reserves via
+  `/v1/svm/balances` (historical, by pool vault + block).
+- One pool, one venue, ~8 min. Not yet routed through Agent A's Parquet log + Agent B's calibration
+  harness (used the raw CPMM math, which mirrors B's `curve.py`).
+
+**Next**
+- Model pump.fun's real fee schedule → expect the ~26 bps residual to shrink toward rounding.
+- Add the **pump.fun bonding-curve** fill model (earliest-life regime) + a CLMM model.
+- Pull independent reserves (`/v1/svm/balances` historical) to validate absolute depth / large-order
+  slippage, then run the official A→B pipeline and pre-register the GO tolerance against that
+  error distribution.
+
+---
+
 ## 2026-08-22 (g) — Wave 1 COMPLETE: all four merged, integrated package green
 
 **Changes / status**
