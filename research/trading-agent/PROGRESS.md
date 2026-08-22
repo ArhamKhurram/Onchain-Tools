@@ -14,6 +14,29 @@ program logs reasoning and scoping; once Phase 0 starts, entries carry real numb
 
 ---
 
+## 2026-08-22 (j) — Agent G merged (#165): no historical reserves, but live reserves validate impact
+
+**Findings (plan-changing)**
+- **Pinax has NO historical-by-block reserves for Solana.** `/v1/svm/balances` is latest-snapshot only —
+  the `block_num` param is silently ignored; only EVM has a `/historical` variant. Consequence:
+  - **Live / recent pools** → latest snapshot ≈ swap-time reserves (within a block or two) → usable.
+  - **Dead pools** (most pump.fun tokens after they rug/fade) → latest balance is dust, unrelated to
+    swap-time depth → absolute depth NOT recoverable from this endpoint.
+  - **Implication:** independent reserves work for LIVE trading + forward paper-testing (the agent's
+    actual regime). For HISTORICAL backtest depth we fall back to the self-consistency fit, OR capture
+    reserves live going forward (snapshot as we ingest, building our own reserve series). Not a blocker
+    — it just splits "live depth = measured, historical depth = fitted."
+- **Live reserves validate the impact signal.** Sanity check on two pump.fun-AMM pools: reserve-implied
+  mid matched executed price to ~0.8–1.2%, correct direction (buys execute above mid = fees + own
+  impact against a finite ~700–1700 SOL pool). That own-impact term is exactly the absolute-depth
+  signal the fitted reserves couldn't identify — so live reserves genuinely add information.
+
+**Changes** — `data/pinax_client/reserves.py` (`ReservesClient`: pool meta, reserves via `owner=amm_pool`
+vaults, `reserve_anchors`, `is_fresh`), a network-gated probe, and a `User-Agent` fix on every Pinax
+REST call (was missing → the 403s). Merged #165; combined tree green (177 passed / 3 skipped).
+
+---
+
 ## 2026-08-22 (i) — Wave 2 launched: full venue coverage + independent reserves
 
 Goal: take the sim from "~65% of volume, self-consistency-validated" to full venue coverage,
