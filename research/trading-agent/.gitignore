@@ -18,6 +18,8 @@ uv.lock
 .coverage
 htmlcov/
 
-# Substreams package + any downloaded/derived data (never commit the tape)
-data/
+# Substreams package + any downloaded/derived data (never commit the tape).
+# Anchored to the package-root output dir so it does NOT swallow the `data/` SOURCE module
+# (src/oct_trading_agent/data/) or the data-layer tests (tests/data/).
+/data/
 *.spkg

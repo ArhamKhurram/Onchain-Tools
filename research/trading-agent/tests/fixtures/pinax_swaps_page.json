@@ -1,0 +1,302 @@
+{
+  "_fixture_note": "Real Pinax GET /v1/svm/swaps rows (trimmed subset), captured 2026-08-04 by the oct-revival revival-scanner spike (http-cache). Base/tracked mint below, quote = WSOL. A trailing non-WSOL-pair row is included to exercise the decoder pair filter.",
+  "_source_cache_file": "00636cb496be5fcb0acfd6bb3815c17071d79911.json",
+  "base_mint": "38uoXFAKBDSa9Yxqvk91sYC1TF1rEMUYhpUvaRgfYuhq",
+  "wsol": "So11111111111111111111111111111111111111112",
+  "statistics": {
+    "bytes_read": 2493198142,
+    "rows_read": 36222159,
+    "elapsed": 4.427763906
+  },
+  "pagination": {
+    "previous_page": 15,
+    "current_page": 16
+  },
+  "results": 7,
+  "data": [
+    {
+      "block_num": 436113278,
+      "datetime": "2026-07-30 07:57:13",
+      "timestamp": 1785398233,
+      "signature": "2hzeGVS3ZycyqTGorco1VF3maZwKncjJkYhC4NaAp5noZ62XTawcgfbgwPfXqetCqb9Dj29vSuQRuthne4nwPNJB",
+      "transaction_index": 11,
+      "instruction_index": 0,
+      "stack_height": 2,
+      "fee_payer": "wfgmpzZ9JCbquriWKLkkiajZgqFDZpJkkx15mt6J2iw",
+      "signer": "wfgmpzZ9JCbquriWKLkkiajZgqFDZpJkkx15mt6J2iw",
+      "signers": [
+        "wfgmpzZ9JCbquriWKLkkiajZgqFDZpJkkx15mt6J2iw",
+        "HfNV9vhVuxo1c4xMuuGEG7baatMft2fifd2fP6wBEQuu"
+      ],
+      "fee": 10000,
+      "compute_units_consumed": 179884,
+      "program_id": "pAMMBay6oceH9fJKBRHGP5D4bD4sWpmSwMn52FMfXEA",
+      "program_name": "Pump.fun AMM",
+      "amm": "pAMMBay6oceH9fJKBRHGP5D4bD4sWpmSwMn52FMfXEA",
+      "amm_pool": "2gkRv2ioMGT22xwRQT6tVjz3eCHNyoh6gmcXvCYH9KdM",
+      "input_token": {
+        "address": "So11111111111111111111111111111111111111112",
+        "symbol": "SOL",
+        "decimals": 9
+      },
+      "output_token": {
+        "address": "38uoXFAKBDSa9Yxqvk91sYC1TF1rEMUYhpUvaRgfYuhq",
+        "symbol": "YODA",
+        "decimals": 6
+      },
+      "user": "wfgmpzZ9JCbquriWKLkkiajZgqFDZpJkkx15mt6J2iw",
+      "input_mint": "So11111111111111111111111111111111111111112",
+      "input_amount": "9753263262",
+      "input_value": 9.753263262,
+      "output_mint": "38uoXFAKBDSa9Yxqvk91sYC1TF1rEMUYhpUvaRgfYuhq",
+      "output_amount": "18061815526474",
+      "output_value": 18061815.526474,
+      "protocol": "pumpfun_amm",
+      "summary": "Swap 9.753263262 SOL for 18.06 million YODA on Pumpfun Amm",
+      "network": "solana"
+    },
+    {
+      "block_num": 436113276,
+      "datetime": "2026-07-30 07:57:12",
+      "timestamp": 1785398232,
+      "signature": "2Y11pPd7Q71iF5TtTVKtno86g72SuwQN8Ly6mrYzXuz1ZKxRe9enFFkVfPboTj43tGVDEs16cCPLUUnhYCS3deKa",
+      "transaction_index": 53,
+      "instruction_index": 0,
+      "stack_height": 2,
+      "fee_payer": "3Fihn7h5aPGYxSdKXU6iYfxWoHLxG43omcsqoQ9iQSgW",
+      "signer": "3Fihn7h5aPGYxSdKXU6iYfxWoHLxG43omcsqoQ9iQSgW",
+      "signers": [
+        "3Fihn7h5aPGYxSdKXU6iYfxWoHLxG43omcsqoQ9iQSgW"
+      ],
+      "fee": 5000,
+      "compute_units_consumed": 79397,
+      "program_id": "pAMMBay6oceH9fJKBRHGP5D4bD4sWpmSwMn52FMfXEA",
+      "program_name": "Pump.fun AMM",
+      "amm": "pAMMBay6oceH9fJKBRHGP5D4bD4sWpmSwMn52FMfXEA",
+      "amm_pool": "2gkRv2ioMGT22xwRQT6tVjz3eCHNyoh6gmcXvCYH9KdM",
+      "input_token": {
+        "address": "So11111111111111111111111111111111111111112",
+        "symbol": "SOL",
+        "decimals": 9
+      },
+      "output_token": {
+        "address": "38uoXFAKBDSa9Yxqvk91sYC1TF1rEMUYhpUvaRgfYuhq",
+        "symbol": "YODA",
+        "decimals": 6
+      },
+      "user": "3Fihn7h5aPGYxSdKXU6iYfxWoHLxG43omcsqoQ9iQSgW",
+      "input_mint": "So11111111111111111111111111111111111111112",
+      "input_amount": "14094285",
+      "input_value": 0.014094285,
+      "output_mint": "38uoXFAKBDSa9Yxqvk91sYC1TF1rEMUYhpUvaRgfYuhq",
+      "output_amount": "26186829945",
+      "output_value": 26186.829945,
+      "protocol": "pumpfun_amm",
+      "summary": "Swap 0.014094285 SOL for 26.19 thousand YODA on Pumpfun Amm",
+      "network": "solana"
+    },
+    {
+      "block_num": 436113276,
+      "datetime": "2026-07-30 07:57:12",
+      "timestamp": 1785398232,
+      "signature": "4sZ6jJAnEA28NwcxnJPAELa7myWGd5nNsdufpSCf9TL4sWAy1x7UTEuonS9KYVCrAFSDBkyQQLdqCzU8cC2D6hzM",
+      "transaction_index": 22,
+      "instruction_index": 0,
+      "stack_height": 2,
+      "fee_payer": "ALpGRGqDJmGk9SJAK3yKbjunD7Ax72Kg2unkQP1KM3nU",
+      "signer": "ALpGRGqDJmGk9SJAK3yKbjunD7Ax72Kg2unkQP1KM3nU",
+      "signers": [
+        "ALpGRGqDJmGk9SJAK3yKbjunD7Ax72Kg2unkQP1KM3nU",
+        "3Ho3uUSU3Dp2CsAwuy3U6xZMCpx4nEFfdCsyPhcmLAUj"
+      ],
+      "fee": 10000,
+      "compute_units_consumed": 176795,
+      "program_id": "pAMMBay6oceH9fJKBRHGP5D4bD4sWpmSwMn52FMfXEA",
+      "program_name": "Pump.fun AMM",
+      "amm": "pAMMBay6oceH9fJKBRHGP5D4bD4sWpmSwMn52FMfXEA",
+      "amm_pool": "2gkRv2ioMGT22xwRQT6tVjz3eCHNyoh6gmcXvCYH9KdM",
+      "input_token": {
+        "address": "So11111111111111111111111111111111111111112",
+        "symbol": "SOL",
+        "decimals": 9
+      },
+      "output_token": {
+        "address": "38uoXFAKBDSa9Yxqvk91sYC1TF1rEMUYhpUvaRgfYuhq",
+        "symbol": "YODA",
+        "decimals": 6
+      },
+      "user": "ALpGRGqDJmGk9SJAK3yKbjunD7Ax72Kg2unkQP1KM3nU",
+      "input_mint": "So11111111111111111111111111111111111111112",
+      "input_amount": "905797522",
+      "input_value": 0.905797522,
+      "output_mint": "38uoXFAKBDSa9Yxqvk91sYC1TF1rEMUYhpUvaRgfYuhq",
+      "output_amount": "1683178117434",
+      "output_value": 1683178.117434,
+      "protocol": "pumpfun_amm",
+      "summary": "Swap 0.905797522 SOL for 1.68 million YODA on Pumpfun Amm",
+      "network": "solana"
+    },
+    {
+      "block_num": 436113276,
+      "datetime": "2026-07-30 07:57:12",
+      "timestamp": 1785398232,
+      "signature": "3H9sUckSUWXMPjx39zP5u9hMMr4RkW4CMJovyRbLvpnpP7PRgNQsRFBP8GXMocm4kkcGBxqqqHnwqN3tTnXSxV5A",
+      "transaction_index": 11,
+      "instruction_index": 0,
+      "stack_height": 2,
+      "fee_payer": "91hwMCU5qw9Ly2PcqvDNrQUieBeQsQGMD5RdUz32M11",
+      "signer": "91hwMCU5qw9Ly2PcqvDNrQUieBeQsQGMD5RdUz32M11",
+      "signers": [
+        "91hwMCU5qw9Ly2PcqvDNrQUieBeQsQGMD5RdUz32M11",
+        "3Ho3uUSU3Dp2CsAwuy3U6xZMCpx4nEFfdCsyPhcmLAUj"
+      ],
+      "fee": 10000,
+      "compute_units_consumed": 190173,
+      "program_id": "pAMMBay6oceH9fJKBRHGP5D4bD4sWpmSwMn52FMfXEA",
+      "program_name": "Pump.fun AMM",
+      "amm": "pAMMBay6oceH9fJKBRHGP5D4bD4sWpmSwMn52FMfXEA",
+      "amm_pool": "2gkRv2ioMGT22xwRQT6tVjz3eCHNyoh6gmcXvCYH9KdM",
+      "input_token": {
+        "address": "So11111111111111111111111111111111111111112",
+        "symbol": "SOL",
+        "decimals": 9
+      },
+      "output_token": {
+        "address": "38uoXFAKBDSa9Yxqvk91sYC1TF1rEMUYhpUvaRgfYuhq",
+        "symbol": "YODA",
+        "decimals": 6
+      },
+      "user": "91hwMCU5qw9Ly2PcqvDNrQUieBeQsQGMD5RdUz32M11",
+      "input_mint": "So11111111111111111111111111111111111111112",
+      "input_amount": "9618368404",
+      "input_value": 9.618368404,
+      "output_mint": "38uoXFAKBDSa9Yxqvk91sYC1TF1rEMUYhpUvaRgfYuhq",
+      "output_amount": "17827043339729",
+      "output_value": 17827043.339729,
+      "protocol": "pumpfun_amm",
+      "summary": "Swap 9.618368404 SOL for 17.83 million YODA on Pumpfun Amm",
+      "network": "solana"
+    },
+    {
+      "block_num": 436113274,
+      "datetime": "2026-07-30 07:57:11",
+      "timestamp": 1785398231,
+      "signature": "45bjqkhmHob6cKhpJX69d7LdarDTXQWwyHs21HkebXpMduBNswMH6Tep7CzY49YTL7HoKrqZCDae7yi24bkpngtk",
+      "transaction_index": 68,
+      "instruction_index": 0,
+      "stack_height": 2,
+      "fee_payer": "CvAjD6REgxVUqUQCTYGS8Ffk7F3Ap6fRz6wpR5PLJfrf",
+      "signer": "CvAjD6REgxVUqUQCTYGS8Ffk7F3Ap6fRz6wpR5PLJfrf",
+      "signers": [
+        "CvAjD6REgxVUqUQCTYGS8Ffk7F3Ap6fRz6wpR5PLJfrf",
+        "A4FGXdkwApRuSqAj3iMWtvbuPs5yMd4iLQi6DtndWVae"
+      ],
+      "fee": 10000,
+      "compute_units_consumed": 171105,
+      "program_id": "pAMMBay6oceH9fJKBRHGP5D4bD4sWpmSwMn52FMfXEA",
+      "program_name": "Pump.fun AMM",
+      "amm": "pAMMBay6oceH9fJKBRHGP5D4bD4sWpmSwMn52FMfXEA",
+      "amm_pool": "2gkRv2ioMGT22xwRQT6tVjz3eCHNyoh6gmcXvCYH9KdM",
+      "input_token": {
+        "address": "So11111111111111111111111111111111111111112",
+        "symbol": "SOL",
+        "decimals": 9
+      },
+      "output_token": {
+        "address": "38uoXFAKBDSa9Yxqvk91sYC1TF1rEMUYhpUvaRgfYuhq",
+        "symbol": "YODA",
+        "decimals": 6
+      },
+      "user": "CvAjD6REgxVUqUQCTYGS8Ffk7F3Ap6fRz6wpR5PLJfrf",
+      "input_mint": "So11111111111111111111111111111111111111112",
+      "input_amount": "110868790",
+      "input_value": 0.11086879,
+      "output_mint": "38uoXFAKBDSa9Yxqvk91sYC1TF1rEMUYhpUvaRgfYuhq",
+      "output_amount": "206066108122",
+      "output_value": 206066.108122,
+      "protocol": "pumpfun_amm",
+      "summary": "Swap 0.11086879 SOL for 206.07 thousand YODA on Pumpfun Amm",
+      "network": "solana"
+    },
+    {
+      "block_num": 436113080,
+      "datetime": "2026-07-30 07:55:48",
+      "timestamp": 1785398148,
+      "signature": "3uaziBLREHCW3VUmSimHF79xp4d3FPR1LT7iTmxByMyAKmAcE4P36U4uKvwNGkBj9jLQ1D436rkYDvLMfm82priL",
+      "transaction_index": 6,
+      "instruction_index": 0,
+      "stack_height": 4,
+      "fee_payer": "2FDFZVGGkXbb9PzLu2PgPrMMN3dHcSJEqv95muKURxJF",
+      "signer": "2FDFZVGGkXbb9PzLu2PgPrMMN3dHcSJEqv95muKURxJF",
+      "signers": [
+        "2FDFZVGGkXbb9PzLu2PgPrMMN3dHcSJEqv95muKURxJF"
+      ],
+      "fee": 5000,
+      "compute_units_consumed": 281505,
+      "program_id": "pAMMBay6oceH9fJKBRHGP5D4bD4sWpmSwMn52FMfXEA",
+      "program_name": "Pump.fun AMM",
+      "amm": "pAMMBay6oceH9fJKBRHGP5D4bD4sWpmSwMn52FMfXEA",
+      "amm_pool": "2gkRv2ioMGT22xwRQT6tVjz3eCHNyoh6gmcXvCYH9KdM",
+      "input_token": {
+        "address": "38uoXFAKBDSa9Yxqvk91sYC1TF1rEMUYhpUvaRgfYuhq",
+        "symbol": "YODA",
+        "decimals": 6
+      },
+      "output_token": {
+        "address": "So11111111111111111111111111111111111111112",
+        "symbol": "SOL",
+        "decimals": 9
+      },
+      "user": "ARu4n5mFdZogZAravu7CcizaojWnS6oqka37gdLT5SZn",
+      "input_mint": "38uoXFAKBDSa9Yxqvk91sYC1TF1rEMUYhpUvaRgfYuhq",
+      "input_amount": "3613078501009",
+      "input_value": 3613078.501009,
+      "output_mint": "So11111111111111111111111111111111111111112",
+      "output_amount": "1933797011",
+      "output_value": 1.933797011,
+      "protocol": "pumpfun_amm",
+      "summary": "Swap 3.61 million YODA for 1.933797011 SOL on Pumpfun Amm",
+      "network": "solana"
+    },
+    {
+      "block_num": 436113052,
+      "datetime": "2026-07-30 07:55:36",
+      "timestamp": 1785398136,
+      "signature": "msHqWuzpaLVMhCECk2DQ8RCn2sGSXn6Vv1d8Y32Cr3Abv7eGPva1msw7YLwMkNVSjTjJBr4rNwfb5wkqAZ9r9RJ",
+      "transaction_index": 12,
+      "instruction_index": 0,
+      "stack_height": 4,
+      "fee_payer": "91fktfp8nr8z6c4i84qKzY2PVaSiws5ddykABqNMqom8",
+      "signer": "91fktfp8nr8z6c4i84qKzY2PVaSiws5ddykABqNMqom8",
+      "signers": [
+        "91fktfp8nr8z6c4i84qKzY2PVaSiws5ddykABqNMqom8"
+      ],
+      "fee": 20082,
+      "compute_units_consumed": 389169,
+      "program_id": "pAMMBay6oceH9fJKBRHGP5D4bD4sWpmSwMn52FMfXEA",
+      "program_name": "Pump.fun AMM",
+      "amm": "pAMMBay6oceH9fJKBRHGP5D4bD4sWpmSwMn52FMfXEA",
+      "amm_pool": "2gkRv2ioMGT22xwRQT6tVjz3eCHNyoh6gmcXvCYH9KdM",
+      "input_token": {
+        "address": "38uoXFAKBDSa9Yxqvk91sYC1TF1rEMUYhpUvaRgfYuhq",
+        "symbol": "YODA",
+        "decimals": 6
+      },
+      "output_token": {
+        "address": "So11111111111111111111111111111111111111112",
+        "symbol": "SOL",
+        "decimals": 9
+      },
+      "user": "91fktfp8nr8z6c4i84qKzY2PVaSiws5ddykABqNMqom8",
+      "input_mint": "38uoXFAKBDSa9Yxqvk91sYC1TF1rEMUYhpUvaRgfYuhq",
+      "input_amount": "120804667224",
+      "input_value": 120804.667224,
+      "output_mint": "So11111111111111111111111111111111111111112",
+      "output_amount": "64594463",
+      "output_value": 0.064594463,
+      "protocol": "pumpfun_amm",
+      "summary": "Swap 120.80 thousand YODA for 0.064594463 SOL on Pumpfun Amm",
+      "network": "solana"
+    }
+  ]
+}

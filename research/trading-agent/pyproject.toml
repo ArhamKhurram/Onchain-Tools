@@ -20,6 +20,9 @@ dependencies = [
     "numpy>=1.26",
     "polars>=1.0",
     "pydantic>=2.6,<3",
+    # Provides the IANA tz database for zoneinfo so polars' UTC-aware tape timestamps work on
+    # platforms (Windows) without a system tzdb. Pure data, no code.
+    "tzdata>=2024.1",
 ]
 
 [project.optional-dependencies]
@@ -38,6 +41,11 @@ offline = ["d3rlpy>=2.4"]
 population = ["ray[tune]>=2.9", "ribs>=0.7"]
 # Wave: data — Substreams gRPC firehose client (Pinax). See config.py for the proven facts.
 firehose = ["grpcio>=1.60", "protobuf>=4.25"]
+# Wave: data — optional httpx transport for the Pinax REST client (the default transport is
+# stdlib urllib, so this is a convenience, not a requirement).
+http = ["httpx>=0.27"]
+# Wave: data — Pinax LIVE WebSocket firehose (wss://ws.pinax.network/ws/solana@swaps) client.
+ws = ["websockets>=12"]
 
 [tool.uv]
 # Nothing to pin here yet; groups above carry the intent. Kept as an explicit anchor
