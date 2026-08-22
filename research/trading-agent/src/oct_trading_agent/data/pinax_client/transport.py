@@ -50,7 +50,7 @@ class UrllibTransport:
     def get(self, url: str, headers: dict[str, str], timeout: float) -> HttpResponse:
         req = urllib.request.Request(url, headers=headers, method="GET")
         try:
-            with urllib.request.urlopen(req, timeout=timeout) as resp:  # noqa: S310 - fixed https base
+            with urllib.request.urlopen(req, timeout=timeout) as resp:
                 return HttpResponse(status=resp.status, body=resp.read())
         except urllib.error.HTTPError as exc:  # 4xx/5xx — surface the status for the retry ladder
             body = exc.read() if hasattr(exc, "read") else b""

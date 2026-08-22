@@ -24,8 +24,8 @@ from dataclasses import dataclass
 from datetime import datetime
 
 from oct_trading_agent.core import Mint, SwapEvent, TapeEvent
+from oct_trading_agent.data.log import TapeLogWriter
 
-from ..log import TapeLogWriter
 from .decode import WSOL, decode_swap_row
 from .rest import DEFAULT_PAGE_LIMIT, PinaxRestClient
 
