@@ -4,8 +4,11 @@ Rugs and honeypots are absorbing zero states read from the tape (:class:`~oct_tr
 once seen for a mint, no later swap is tradeable and the episode terminates. Avoidance is a
 first-class LEARNED objective, so this belongs in the environment, not the reward alone.
 
-TODO(Wave-1: sim agent): implement absorbing-state handling — mark terminal on RugEvent, fail fills
-attempted at/after it with FillFailureReason.RUGGED.
+Public surface: ``RugTracker`` (as-of terminality) and ``RugMarker`` (the first rug per mint).
 """
 
 from __future__ import annotations
+
+from .absorbing import RugMarker, RugTracker
+
+__all__ = ["RugMarker", "RugTracker"]

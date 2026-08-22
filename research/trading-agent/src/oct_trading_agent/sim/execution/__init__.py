@@ -4,7 +4,12 @@ Models decision→inclusion delay and MEV (back-run/sandwich) as a stochastic sl
 penalty early, with an explicit MEV model later; charges fees/priority fees; models failed txns.
 Produces the :class:`~oct_trading_agent.core.sim.Fill` cost fields.
 
-TODO(Wave-1: sim agent): implement the execution/cost model. Start conservative (own-impact-only).
+Public surface: ``ExecutionParams`` (the knobs; ``ExecutionParams.ideal()`` for calibration) and
+``ExecutionModel`` (applies them to a curve fill).
 """
 
 from __future__ import annotations
+
+from .model import ExecutionModel, ExecutionParams
+
+__all__ = ["ExecutionModel", "ExecutionParams"]
