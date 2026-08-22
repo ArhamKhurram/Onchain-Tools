@@ -1,0 +1,32 @@
+{
+  "_fixture_note": "Synthetic labeled-wallet DB fixture (Phase-0 stand-in). Exercises win, loss, open, multi-episode, and scale-in (average-cost) reconstruction paths. Amounts are UI units as strings for exact Decimal parsing; quote leg is SOL. This is the shape the Phase-1 real labeled-wallet DB must yield.",
+  "wallets": [
+    {
+      "wallet": "SmartWa11etAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
+      "labels": ["smart-money"],
+      "trades": [
+        {"timestamp": "2026-08-01T00:00:00Z", "mint": "TokWINxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx", "side": "buy",  "base_amount": "1000000", "quote_amount": "1.0", "signature": "sigWinBuy"},
+        {"timestamp": "2026-08-01T01:00:00Z", "mint": "TokWINxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx", "side": "sell", "base_amount": "1000000", "quote_amount": "2.0", "signature": "sigWinSell"},
+
+        {"timestamp": "2026-08-01T02:00:00Z", "mint": "TokLOSSxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx", "side": "buy",  "base_amount": "500000", "quote_amount": "2.0", "signature": "sigLossBuy"},
+        {"timestamp": "2026-08-01T03:00:00Z", "mint": "TokLOSSxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx", "side": "sell", "base_amount": "500000", "quote_amount": "1.0", "signature": "sigLossSell"},
+
+        {"timestamp": "2026-08-01T04:00:00Z", "mint": "TokOPENxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx", "side": "buy",  "base_amount": "300000", "quote_amount": "0.5", "signature": "sigOpenBuy"},
+
+        {"timestamp": "2026-08-01T05:00:00Z", "mint": "TokSCALExxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx", "side": "buy",  "base_amount": "100000", "quote_amount": "1.0", "signature": "sigScaleBuy1"},
+        {"timestamp": "2026-08-01T06:00:00Z", "mint": "TokSCALExxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx", "side": "buy",  "base_amount": "100000", "quote_amount": "3.0", "signature": "sigScaleBuy2"},
+        {"timestamp": "2026-08-01T07:00:00Z", "mint": "TokSCALExxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx", "side": "sell", "base_amount": "200000", "quote_amount": "5.0", "signature": "sigScaleSell"}
+      ]
+    },
+    {
+      "wallet": "BotWa11etBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBB",
+      "labels": ["bot"],
+      "trades": [
+        {"timestamp": "2026-08-02T00:00:00Z", "mint": "TokMULTIxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx", "side": "buy",  "base_amount": "100000", "quote_amount": "0.5", "signature": "sigM1Buy"},
+        {"timestamp": "2026-08-02T00:10:00Z", "mint": "TokMULTIxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx", "side": "sell", "base_amount": "100000", "quote_amount": "0.4", "signature": "sigM1Sell"},
+        {"timestamp": "2026-08-02T01:00:00Z", "mint": "TokMULTIxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx", "side": "buy",  "base_amount": "100000", "quote_amount": "0.3", "signature": "sigM2Buy"},
+        {"timestamp": "2026-08-02T02:00:00Z", "mint": "TokMULTIxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx", "side": "sell", "base_amount": "100000", "quote_amount": "0.9", "signature": "sigM2Sell"}
+      ]
+    }
+  ]
+}

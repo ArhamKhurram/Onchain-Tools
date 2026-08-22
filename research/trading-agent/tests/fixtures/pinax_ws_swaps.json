@@ -1,0 +1,229 @@
+{
+  "_fixture_note": "Real Pinax live WS frames from wss://ws.pinax.network/ws/solana@swaps, captured 2026-08-22. One session control frame + 2 block frames (events trimmed to 6 each). WS events carry RAW base-unit input_amount/output_amount strings only (no UI *_value, no token decimals) — the decoder scales to UI units with a supplied decimals map.",
+  "session": {
+    "type": "session",
+    "status": "connected",
+    "client_id": 14761,
+    "subscriptions": [
+      "solana@swaps"
+    ],
+    "wrap_envelope": false,
+    "_note": "streams[] catalog omitted from fixture"
+  },
+  "frames": [
+    {
+      "network": "solana",
+      "table": "swaps",
+      "block_num": 440941667,
+      "block_hash": "B7wWA5APQnJACNxXaGCZKNGQFEuCeorDx6kri7bxdyUP",
+      "timestamp": "2026-08-22 14:28:44",
+      "timestamp_seconds": 1787408924,
+      "module_hash": "411d6a461ae98065f767bb84afbfa2dca028b295",
+      "events": [
+        {
+          "output_amount": "19194718",
+          "protocol": "meteora_dlmm",
+          "output_mint": "Es9vMFrzaCERmJfrF4H2FYD4KCoNkY11McCe8BenwNYB",
+          "user": "44R3VRU7t8VtsCLREwkym3kT3UBggjCxVXWYiWQgLHP2",
+          "program_id": "LBUZKhRxPF3XUpBCjp4YzTKgLccjZhTSDM9YuVaPwxo",
+          "fee_payer": "44R3VRU7t8VtsCLREwkym3kT3UBggjCxVXWYiWQgLHP2",
+          "input_mint": "CWZ6BsdnjkDVTGkmL6bGbJXXig6ceef12KvyGQW14cMt",
+          "input_amount": "456505607",
+          "signature": "3Yh6PnPZA3Bp5yxQZupuaahW3NCPwHJegdQFuwJH8w9rEFiRQLAuecNqhTdvVMX6br8XAJQRT1rFjk8RebR8XC2c",
+          "amm_pool": "54Vp27uLaw4wNLo5n7r4fcC6zLamoQc28xBARjss4EUJ",
+          "signers": [
+            "44R3VRU7t8VtsCLREwkym3kT3UBggjCxVXWYiWQgLHP2"
+          ],
+          "amm": "LBUZKhRxPF3XUpBCjp4YzTKgLccjZhTSDM9YuVaPwxo"
+        },
+        {
+          "signers": [
+            "AWjCySKayUEQFdyBc4zLu7i35BfM3kxAmBxv8qwy1SC5"
+          ],
+          "program_id": "JUP6LkbZbjS1jKKwapdHNy74zcZ3tLUZoi5QNyVTaV4",
+          "signature": "54GJTBuXCQtm1zPChm3MmfdceR3hFG1Y2RHFALN8eaDKdV4GJSJcCag1xMtSVnuAQrGGL73V3xkzEQppxLX5TKAY",
+          "input_amount": "100000000",
+          "protocol": "jupiter_v6",
+          "output_mint": "METAwkXcqyXKy1AtsSgJ8JiUHwGCafnZL38n3vYmeta",
+          "fee_payer": "AWjCySKayUEQFdyBc4zLu7i35BfM3kxAmBxv8qwy1SC5",
+          "amm_pool": "EXpXkwcWDhjEYyC5pfNfxsu8fUtK4CDCYTZR4ApQNRzo",
+          "output_amount": "18869332",
+          "user": "AWjCySKayUEQFdyBc4zLu7i35BfM3kxAmBxv8qwy1SC5",
+          "input_mint": "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
+          "amm": "Eo7WjKq67rjJQSZxS6z3YkapzY3eMj6Xy8X5EQVn5UaB"
+        },
+        {
+          "protocol": "meteora_amm",
+          "fee_payer": "AWjCySKayUEQFdyBc4zLu7i35BfM3kxAmBxv8qwy1SC5",
+          "output_amount": "18869332",
+          "program_id": "Eo7WjKq67rjJQSZxS6z3YkapzY3eMj6Xy8X5EQVn5UaB",
+          "amm": "Eo7WjKq67rjJQSZxS6z3YkapzY3eMj6Xy8X5EQVn5UaB",
+          "signature": "54GJTBuXCQtm1zPChm3MmfdceR3hFG1Y2RHFALN8eaDKdV4GJSJcCag1xMtSVnuAQrGGL73V3xkzEQppxLX5TKAY",
+          "amm_pool": "EXpXkwcWDhjEYyC5pfNfxsu8fUtK4CDCYTZR4ApQNRzo",
+          "input_amount": "99999996",
+          "output_mint": "METAwkXcqyXKy1AtsSgJ8JiUHwGCafnZL38n3vYmeta",
+          "signers": [
+            "AWjCySKayUEQFdyBc4zLu7i35BfM3kxAmBxv8qwy1SC5"
+          ],
+          "input_mint": "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
+          "user": "AWjCySKayUEQFdyBc4zLu7i35BfM3kxAmBxv8qwy1SC5"
+        },
+        {
+          "output_amount": "133760228",
+          "amm_pool": "FHoomMuFEYDuTbxnUKnu4uJdB9k5n828diX94AH7gp6M",
+          "signers": [
+            "49XNwnfQwr7D2N2V3fwo6cQBW93hjFu6d5u6HyojQWU4"
+          ],
+          "output_mint": "So11111111111111111111111111111111111111112",
+          "input_amount": "912271937763",
+          "protocol": "pumpfun",
+          "fee_payer": "49XNwnfQwr7D2N2V3fwo6cQBW93hjFu6d5u6HyojQWU4",
+          "signature": "65idbcoqfHbama3uDVjKmja18wZMjAjpdW7gmzeK12F7Agcv2AsV7GZuAHkoEHRVvaUeJ84aQLCKurMsm7itUdo6",
+          "program_id": "6EF8rrecthR5Dkzon8Nwu78hRvfCKubJ14M5uBEwF6P",
+          "input_mint": "DBH4LrT2fqtiyZLgx6pycUzjjB2uJg9FjTZvnsjUpump",
+          "amm": "6EF8rrecthR5Dkzon8Nwu78hRvfCKubJ14M5uBEwF6P",
+          "user": "49XNwnfQwr7D2N2V3fwo6cQBW93hjFu6d5u6HyojQWU4"
+        },
+        {
+          "signers": [
+            "6JDGn2Wh9JQakp7S5bWAcd183RzccyhF1DtaJsKCQLAi"
+          ],
+          "program_id": "pAMMBay6oceH9fJKBRHGP5D4bD4sWpmSwMn52FMfXEA",
+          "output_amount": "94234165",
+          "input_amount": "1264390755029",
+          "user": "6JDGn2Wh9JQakp7S5bWAcd183RzccyhF1DtaJsKCQLAi",
+          "amm": "pAMMBay6oceH9fJKBRHGP5D4bD4sWpmSwMn52FMfXEA",
+          "amm_pool": "5xyUjWjtcqtsd2gQHaTgLw3su5dLGhGkBYZZjSLF57DY",
+          "fee_payer": "6JDGn2Wh9JQakp7S5bWAcd183RzccyhF1DtaJsKCQLAi",
+          "protocol": "pumpfun_amm",
+          "output_mint": "So11111111111111111111111111111111111111112",
+          "signature": "4ssWhkcAzEdXEXfzWDTaNRvXQDHzqXsCELR2qAyFYzguQopKb8fcozhbUZSqfB4ciJZD7wvsCn8xnDV7onJpzPYz",
+          "input_mint": "7p2V2ocVSpjR2s5yy7WkU2U43e4XBpuz9Eve4dP9pump"
+        },
+        {
+          "amm": "CAMMCzo5YL8w4VFF8KVHrK22GGUsp5VTaW7grrKgrWqK",
+          "output_amount": "37320167541",
+          "fee_payer": "J6ZUbnyyJ8yj6QeZspFyByhzP4n6EefZbE88YTjnbNE4",
+          "signers": [
+            "J6ZUbnyyJ8yj6QeZspFyByhzP4n6EefZbE88YTjnbNE4"
+          ],
+          "input_mint": "So11111111111111111111111111111111111111112",
+          "signature": "kHmRB8M9MpLZnoK5rkTr5eg1fzRv9NgKKUMF6JoLJUAbbzXsdQy6awZvsZLDU4YYmgVusiFksLiSw4dobDBV252",
+          "protocol": "jupiter_v6",
+          "program_id": "JUP6LkbZbjS1jKKwapdHNy74zcZ3tLUZoi5QNyVTaV4",
+          "user": "J6ZUbnyyJ8yj6QeZspFyByhzP4n6EefZbE88YTjnbNE4",
+          "input_amount": "64922908",
+          "output_mint": "AgCpt2wgiLaV29fmaFTZMuM4Hn59gwCArkiMj24zHTVb",
+          "amm_pool": "21gyi2Gi66uXPNBztyhbAN2oBhPP5hp2oWAiyc8J95py"
+        }
+      ]
+    },
+    {
+      "network": "solana",
+      "table": "swaps",
+      "block_num": 440941668,
+      "block_hash": "FVDXyqsCH2jy3LDtKxjiZXwc85UvEuLY8QxaMJPwpAky",
+      "timestamp": "2026-08-22 14:28:44",
+      "timestamp_seconds": 1787408924,
+      "module_hash": "411d6a461ae98065f767bb84afbfa2dca028b295",
+      "events": [
+        {
+          "fee_payer": "MfDuWeqSHEqTFVYZ7LoexgAK9dxk7cy4DFJWjWMGVWa",
+          "protocol": "pumpfun_amm",
+          "output_mint": "pumpCmXqMfrsAkQ5r49WcJnRayYRqmXz6ae8H7H9Dfn",
+          "user": "MfDuWeqSHEqTFVYZ7LoexgAK9dxk7cy4DFJWjWMGVWa",
+          "input_amount": "2872409245",
+          "input_mint": "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
+          "program_id": "pAMMBay6oceH9fJKBRHGP5D4bD4sWpmSwMn52FMfXEA",
+          "signature": "3nnvyUEshbqGrwYagZM8TBhNPH7mgrLUcjNMJywyTLVyfaaWny25btMaMt1anj5PLqT21rju8UxhBixKFhL2Uqcp",
+          "output_amount": "624067664718",
+          "amm": "pAMMBay6oceH9fJKBRHGP5D4bD4sWpmSwMn52FMfXEA",
+          "amm_pool": "2uF4Xh61rDwxnG9woyxsVQP7zuA6kLFpb3NvnRQeoiSd",
+          "signers": [
+            "MfDuWeqSHEqTFVYZ7LoexgAK9dxk7cy4DFJWjWMGVWa"
+          ]
+        },
+        {
+          "amm": "6EF8rrecthR5Dkzon8Nwu78hRvfCKubJ14M5uBEwF6P",
+          "output_mint": "DBH4LrT2fqtiyZLgx6pycUzjjB2uJg9FjTZvnsjUpump",
+          "signature": "523u2H9bqeSUpWANn3D4wWxGBHyNi4JyqUvGApQC5TwVCBb63TSd4tjVPyiRmGU543vp6ZGn9SDZ3b9Ns1YbK7q2",
+          "signers": [
+            "5hYsHp8HWFgySy1ZCn7rThQiZ1Cy5qd6mArW3inmMAfG"
+          ],
+          "input_mint": "So11111111111111111111111111111111111111112",
+          "user": "5hYsHp8HWFgySy1ZCn7rThQiZ1Cy5qd6mArW3inmMAfG",
+          "amm_pool": "FHoomMuFEYDuTbxnUKnu4uJdB9k5n828diX94AH7gp6M",
+          "program_id": "6EF8rrecthR5Dkzon8Nwu78hRvfCKubJ14M5uBEwF6P",
+          "fee_payer": "5hYsHp8HWFgySy1ZCn7rThQiZ1Cy5qd6mArW3inmMAfG",
+          "protocol": "pumpfun",
+          "input_amount": "1732931179",
+          "output_amount": "11550343303474"
+        },
+        {
+          "program_id": "6EF8rrecthR5Dkzon8Nwu78hRvfCKubJ14M5uBEwF6P",
+          "input_amount": "1492397272",
+          "protocol": "pumpfun",
+          "input_mint": "So11111111111111111111111111111111111111112",
+          "output_mint": "DBH4LrT2fqtiyZLgx6pycUzjjB2uJg9FjTZvnsjUpump",
+          "signature": "gom1k3Tf1FmhBudTgjerB8CjAFDgq5KMSztjFHFDUDPZuL8rq98imKvUwnMeXTqfwdU61Y2J3jrhQv6RKxxMnrh",
+          "user": "5wHBg65RsM9t2tu4Bqn8xUTwP9X1q1jgf67WDMXsTmT5",
+          "signers": [
+            "5wHBg65RsM9t2tu4Bqn8xUTwP9X1q1jgf67WDMXsTmT5"
+          ],
+          "output_amount": "9500668565344",
+          "fee_payer": "5wHBg65RsM9t2tu4Bqn8xUTwP9X1q1jgf67WDMXsTmT5",
+          "amm": "6EF8rrecthR5Dkzon8Nwu78hRvfCKubJ14M5uBEwF6P",
+          "amm_pool": "FHoomMuFEYDuTbxnUKnu4uJdB9k5n828diX94AH7gp6M"
+        },
+        {
+          "amm": "pAMMBay6oceH9fJKBRHGP5D4bD4sWpmSwMn52FMfXEA",
+          "signature": "3dGmwA2ccQegxkudcALLyTAGD1LpRt5Bbk4UjtXSNWGpwXyNFYY2nCxjmbEsjdFViGZubsYWmeKK6XT7VaPbPWBc",
+          "signers": [
+            "4zXiXzyxPGfXD8CHzSNrgaxL8BsdcZ7oqHynocCFpNbX"
+          ],
+          "user": "4zXiXzyxPGfXD8CHzSNrgaxL8BsdcZ7oqHynocCFpNbX",
+          "input_mint": "So11111111111111111111111111111111111111112",
+          "input_amount": "10000000",
+          "output_amount": "113507556776",
+          "program_id": "pAMMBay6oceH9fJKBRHGP5D4bD4sWpmSwMn52FMfXEA",
+          "protocol": "pumpfun_amm",
+          "fee_payer": "4zXiXzyxPGfXD8CHzSNrgaxL8BsdcZ7oqHynocCFpNbX",
+          "output_mint": "G53mPRosyKft6mPYXLh5vhiZsM3bQNbwh1fLgj4ipump",
+          "amm_pool": "6WFd9n7qZjDBx2T7wP51xp8JpHUqDqfw4WDbNrgzjyTG"
+        },
+        {
+          "signature": "3XTtLB98z8kqMikTYB9orMRNrcKpqxPZc4Wb1hxXeVWRc793ksLA5cNSVsCN2LF9EfrGiorMoB5FUVFXczHHDSDd",
+          "program_id": "675kPX9MHTjS2zt1qfr1NYHuzeLXfQM9H24wFSUt1Mp8",
+          "input_amount": "47386392946000",
+          "amm": "675kPX9MHTjS2zt1qfr1NYHuzeLXfQM9H24wFSUt1Mp8",
+          "amm_pool": "5NLeMabMyuJQUbvXNfVyUPbtYKwTXBesfmFmDswbgqUz",
+          "input_mint": "AFbX8oGjGpmVFywbVouvhQSRmiW2aR1mohfahi4Y2AdB",
+          "fee_payer": "GczJwrTZBkKHRrCsQMnV7kDqcQXeEwKfeeGZnAJorDGD",
+          "signers": [
+            "GczJwrTZBkKHRrCsQMnV7kDqcQXeEwKfeeGZnAJorDGD"
+          ],
+          "user": "GczJwrTZBkKHRrCsQMnV7kDqcQXeEwKfeeGZnAJorDGD",
+          "protocol": "raydium_amm_v4",
+          "output_mint": "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
+          "output_amount": "52842884"
+        },
+        {
+          "user": "CvhUR9GTbMFKFR6Cx24NiDgNcCncyTUGauhq9SWkBYuU",
+          "input_mint": "So11111111111111111111111111111111111111112",
+          "amm_pool": "FHoomMuFEYDuTbxnUKnu4uJdB9k5n828diX94AH7gp6M",
+          "program_id": "6EF8rrecthR5Dkzon8Nwu78hRvfCKubJ14M5uBEwF6P",
+          "input_amount": "1663560439",
+          "signers": [
+            "CvhUR9GTbMFKFR6Cx24NiDgNcCncyTUGauhq9SWkBYuU"
+          ],
+          "fee_payer": "CvhUR9GTbMFKFR6Cx24NiDgNcCncyTUGauhq9SWkBYuU",
+          "output_amount": "10135713873085",
+          "signature": "5Q2zQG6nTDAQmyvcga8CKrgFwxXiStXfZmUEShNApLedHr1sKJaxHWBGd2UfCgPYmvVGfTAtYjEGTDD8L3TnshGi",
+          "output_mint": "DBH4LrT2fqtiyZLgx6pycUzjjB2uJg9FjTZvnsjUpump",
+          "protocol": "pumpfun",
+          "amm": "6EF8rrecthR5Dkzon8Nwu78hRvfCKubJ14M5uBEwF6P"
+        }
+      ]
+    }
+  ]
+}

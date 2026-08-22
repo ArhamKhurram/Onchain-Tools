@@ -40,6 +40,11 @@ PINAX_SWAPS_REST_PATH = "/v1/svm/swaps"  # same data as the substreams package
 # The env var carrying the key, and the canonical backend/.env location (with a relative fallback
 # that resolves from this file up to the monorepo root — mirrors env.js's two candidates).
 PINAX_API_KEY_ENV = "PINAX_API_KEY"
+# The Pinax LIVE WebSocket firehose (wss://ws.pinax.network/ws/<network>@<table>) authenticates with
+# a JWT — a DIFFERENT credential from the raw REST/Substreams key. It is carried in backend/.env as
+# PINAX_API_TOKEN. VERIFIED 2026-08-22: the WS stream accepts this JWT as the ?token= param.
+PINAX_API_TOKEN_ENV = "PINAX_API_TOKEN"
+PINAX_WS_ENDPOINT = "wss://ws.pinax.network/ws"  # append /<network>@<table>?token=<PINAX_API_TOKEN>
 _CANONICAL_BACKEND_ENV = Path("D:/Projects/Coding/active/Onchain Tools/backend/.env")
 _RELATIVE_BACKEND_ENV = Path(__file__).resolve().parents[4] / "backend" / ".env"
 
@@ -95,3 +100,22 @@ def get_pinax_credentials() -> PinaxCredentials:
             "Do not hardcode it — set it in the environment or backend/.env."
         )
     return PinaxCredentials(api_key=key)
+
+
+def get_pinax_api_token() -> str:
+    """Return the Pinax WS JWT (``PINAX_API_TOKEN``): process env first, else ``backend/.env``.
+
+    This is the credential for the LIVE WebSocket firehose ONLY — distinct from the raw REST key.
+    Never logs the value. Raises ``RuntimeError`` if it cannot be found (the WS path is optional, so
+    callers that only backfill via REST never touch this).
+    """
+    token = os.environ.get(PINAX_API_TOKEN_ENV)
+    if not token:
+        env = _parse_dotenv(_find_backend_env().read_text(encoding="utf-8"))
+        token = env.get(PINAX_API_TOKEN_ENV)
+    if not token:
+        raise RuntimeError(
+            f"{PINAX_API_TOKEN_ENV} missing (checked process env and backend/.env). "
+            "The live WS firehose needs the JWT; do not hardcode it."
+        )
+    return token
