@@ -14,6 +14,37 @@ program logs reasoning and scoping; once Phase 0 starts, entries carry real numb
 
 ---
 
+## 2026-08-22 (k) — Step 0 merged (#166); fee-model finding: self-consistency can't validate fees
+
+**Changes**
+- **Step 0 merged (#166)** — multi-venue `Curve` abstraction + `CurveRegistry` (resolve by `protocol`,
+  `@register_curve` extension point) + `PumpFunAmmCurve` with pump.fun's real 3-part fee stack
+  (LP+protocol+creator, fees-on-top `·10000/(10000+bps)`, only LP retained in reserves), + additive
+  `SwapEvent.protocol` tag. **Salvaged**: the building agent completed the code green (204 tests) but
+  looped on the optional live re-validation and never PR'd; I reviewed the contracts/fee model
+  directly and merged. Combined tree green (ruff/mypy-80-files/204 passed).
+
+**Finding (methodological — matters for how we validate the sim)**
+- **The fee-model refinement is NOT observable under self-consistency fitting.** Controlled A/B on the
+  same 5000-swap pool: flat-fee const-product median 160.6 bps vs pump.fun fee stack 162.1 bps —
+  Δ ~1.5 bps, i.e. no improvement. Reason: when reserves are *fitted* to the swap sequence, the
+  fitted depth **absorbs** any fee mis-specification. So the fee correction can only be validated with
+  **independent reserves** (Agent G's `ReservesClient`, live pools), where depth is fixed and the fee
+  must be exactly right. The fee model is still correct and needed — it just can't be proven this way.
+- **Residuals are strongly pool-dependent** (~26 bps on the first pool measured, ~160 bps on another) —
+  dominated by per-pool dynamics the simple constant-k self-consistency fit doesn't capture (LP
+  add/remove, routed/multi-hop swaps), NOT by the fee. So "constant-product reproduces to ~26 bps" was
+  a good-pool result, not a universal one; a robust fidelity number needs independent reserves + LP-event
+  handling, not a better fee.
+
+**Implication for the Phase-0 gate:** the honest calibration is **independent reserves (G) on LIVE pools**,
+not self-consistency fitting — that's where the fee model earns its keep and where absolute-depth slippage
+is actually testable. Self-consistency stays a fallback for dead historical pools only.
+
+**Also:** E (bonding curve) + F (CLMM) launched against the merged registry.
+
+---
+
 ## 2026-08-22 (j) — Agent G merged (#165): no historical reserves, but live reserves validate impact
 
 **Findings (plan-changing)**
