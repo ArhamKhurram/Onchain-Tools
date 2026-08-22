@@ -7,16 +7,20 @@ is identical. A leaky feature changes under appended future events and fails.
 
 This is a first-class, always-on test (03 §Phase 1/2 leakage-guard ablation), not a one-off.
 
-TODO(Wave-1: featurestore agent): implement ``LeakageAudit`` (see core.features) and wire it into
-the standing test suite so every registered feature is audited on every run.
+Public surface:
+    * :class:`StandingLeakageAudit` — the audit (satisfies ``core.LeakageAudit``).
+    * :func:`run_standing_audit` / :func:`assert_no_leaks` — run it over a feature set and fail loudly.
+    * :class:`NextTradePriceLeak` — a deliberately leaky feature the audit must catch (the canary).
 """
 
 from __future__ import annotations
 
+from .audit import StandingLeakageAudit
+from .examples import NextTradePriceLeak, assert_no_leaks, run_standing_audit
 
-def audit_feature_is_causal() -> None:
-    """Placeholder for the standing audit runner.
-
-    TODO(Wave-1): implement per core.features.LeakageAudit — invariance under appended future events.
-    """
-    raise NotImplementedError("Wave-1: featurestore agent owns the leakage audit implementation")
+__all__ = [
+    "NextTradePriceLeak",
+    "StandingLeakageAudit",
+    "assert_no_leaks",
+    "run_standing_audit",
+]
