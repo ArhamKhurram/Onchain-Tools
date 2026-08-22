@@ -1,8 +1,9 @@
 import { useRef, useState } from 'react';
 import { useAppStore } from '../stores/appStore';
-import { Loader2, AlertCircle, Upload, ArrowRight } from 'lucide-react';
+import { Loader2, AlertCircle, Upload, PlayCircle } from 'lucide-react';
 import { isClientGatewayMode } from '../discord/clientGateway';
 import OctLogo from './OctLogo';
+import TokenTrustPanel from './auth/TokenTrustPanel';
 
 interface TokenSetupProps {
   /** Compact form for Feed page — skips full-screen shell and duplicate header. */
@@ -13,7 +14,7 @@ export default function TokenSetup({ embedded = false }: TokenSetupProps) {
   const submitToken = useAppStore((s) => s.submitToken);
   const checkAuth = useAppStore((s) => s.checkAuth);
   const importSettings = useAppStore((s) => s.importSettings);
-  const setPreviewMode = useAppStore((s) => s.setPreviewMode);
+  const enterPreview = useAppStore((s) => s.enterPreview);
   const [token, setToken] = useState('');
   const [loading, setLoading] = useState(false);
   const [importing, setImporting] = useState(false);
@@ -65,12 +66,31 @@ export default function TokenSetup({ embedded = false }: TokenSetupProps) {
           <OctLogo size="lg" showSubtitle className="mb-2" />
           <h1 className="text-2xl font-extrabold uppercase text-oct-text mb-2 mt-3">Welcome to OCT</h1>
           <p className="text-oct-muted text-sm text-center leading-relaxed max-w-sm">
-            {isClientGatewayMode()
-              ? 'Enter your Discord token to connect. Your token stays in this browser only — it is never sent to our servers.'
-              : 'Enter your Discord token to get started. Your token is stored locally on this machine.'}
+            See live calls flow in first — no token needed. Connect Discord when you&apos;re ready to
+            track your own servers.
           </p>
         </div>
       )}
+
+      {/* Value-first: let a brand-new user watch the feed before the token ask. */}
+      <button
+        type="button"
+        onClick={enterPreview}
+        disabled={loading || importing}
+        className="brutal-btn w-full py-2.5 text-sm mb-3"
+      >
+        <PlayCircle size={16} />
+        Watch the live demo feed
+      </button>
+      <p className={`text-[11px] text-center mb-6 leading-relaxed ${embedded ? 'text-oct-muted' : 'text-discord-channel-icon'}`}>
+        Sample calls, streaming live. No account access required.
+      </p>
+
+      <div className="flex items-center gap-3 mb-6">
+        <div className={`h-px flex-1 ${embedded ? 'bg-oct-border' : 'bg-discord-dark'}`} />
+        <span className={`text-[11px] uppercase tracking-wide ${embedded ? 'text-oct-muted' : 'text-discord-channel-icon'}`}>or connect now</span>
+        <div className={`h-px flex-1 ${embedded ? 'bg-oct-border' : 'bg-discord-dark'}`} />
+      </div>
 
       <form onSubmit={handleSubmit} className="space-y-4">
         <div>
@@ -125,7 +145,9 @@ export default function TokenSetup({ embedded = false }: TokenSetupProps) {
         </button>
       </form>
 
-      <p className={`text-[11px] text-center mt-6 leading-relaxed ${embedded ? 'text-oct-muted' : 'text-discord-channel-icon'}`}>
+      <TokenTrustPanel />
+
+      <p className={`text-[11px] text-center mt-4 leading-relaxed ${embedded ? 'text-oct-muted' : 'text-discord-channel-icon'}`}>
         You can also set multiple tokens separated by commas.
       </p>
 
@@ -143,43 +165,27 @@ export default function TokenSetup({ embedded = false }: TokenSetupProps) {
         className="hidden"
       />
 
-      <div className="space-y-2.5">
-        <button
-          type="button"
-          onClick={() => importInputRef.current?.click()}
-          disabled={loading || importing}
-          className="brutal-btn-ghost w-full py-2.5 text-sm"
-        >
-          {importing ? (
-            <>
-              <Loader2 size={16} className="animate-spin" />
-              Importing...
-            </>
-          ) : (
-            <>
-              <Upload size={16} />
-              Import settings
-            </>
-          )}
-        </button>
-
-        <button
-          type="button"
-          onClick={() => setPreviewMode(true)}
-          disabled={loading || importing}
-          className={`w-full py-2.5 disabled:opacity-50 disabled:cursor-not-allowed rounded text-sm font-medium transition-colors flex items-center justify-center gap-2 ${
-            embedded
-              ? 'text-oct-muted hover:text-oct-text hover:bg-oct-surface-raised'
-              : 'hover:bg-discord-darker text-discord-text-muted hover:text-discord-text'
-          }`}
-        >
-          Continue without a token
-          <ArrowRight size={16} />
-        </button>
-      </div>
+      <button
+        type="button"
+        onClick={() => importInputRef.current?.click()}
+        disabled={loading || importing}
+        className="brutal-btn-ghost w-full py-2.5 text-sm"
+      >
+        {importing ? (
+          <>
+            <Loader2 size={16} className="animate-spin" />
+            Importing...
+          </>
+        ) : (
+          <>
+            <Upload size={16} />
+            Import settings
+          </>
+        )}
+      </button>
 
       <p className={`text-[11px] text-center mt-4 leading-relaxed ${embedded ? 'text-oct-muted' : 'text-discord-channel-icon'}`}>
-        Import your existing <span className={embedded ? 'text-oct-text' : 'text-discord-text-muted'}>config.json</span> to bring over your token, rooms and settings — or explore the app first without connecting.
+        Import your existing <span className={embedded ? 'text-oct-text' : 'text-discord-text-muted'}>config.json</span> to bring over your token, rooms and settings.
       </p>
     </>
   );

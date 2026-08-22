@@ -8,6 +8,8 @@ import GatewayAuthBanner from '../components/GatewayAuthBanner';
 import FeedChrome from '../components/feed/FeedChrome';
 import { DEFAULT_FEED_CHROME_PRESET, FeedChromeContext, chromeOwnsPaneHeader } from '../components/feed/feedChromeContract';
 import ConsoleEmptyState from '../components/console/ConsoleEmptyState';
+import PreviewBanner from '../components/preview/PreviewBanner';
+import FirstRunGuide from '../components/preview/FirstRunGuide';
 import { routes } from '../lib/routes';
 
 export default function FeedPage() {
@@ -15,6 +17,7 @@ export default function FeedPage() {
   const authStatus = useAppStore((s) => s.authStatus);
   const authLoading = useAppStore((s) => s.authLoading);
   const previewMode = useAppStore((s) => s.previewMode);
+  const previewSeeded = useAppStore((s) => s.previewSeeded);
   const rooms = useAppStore((s) => s.rooms);
   const paneRoomIds = useAppStore((s) => s.paneRoomIds);
   const setActiveRoom = useAppStore((s) => s.setActiveRoom);
@@ -82,14 +85,24 @@ export default function FeedPage() {
     );
   }
 
+  // Connected for real but no room yet: guide the user instead of a blank feed.
+  const showFirstRun = !previewSeeded && rooms.length === 0;
+
   return (
     <FeedChromeContext.Provider value={chromeContext}>
       <div className="flex flex-col h-full w-full min-h-0 bg-oct-bg">
-        <FeedChrome preset={chromeContext.preset} />
-        <div className="flex flex-1 min-h-0 w-full">
-          <ChatView standalone />
-          <GatewayAuthBanner />
-        </div>
+        <PreviewBanner />
+        {showFirstRun ? (
+          <FirstRunGuide />
+        ) : (
+          <>
+            <FeedChrome preset={chromeContext.preset} />
+            <div className="flex flex-1 min-h-0 w-full">
+              <ChatView standalone />
+              <GatewayAuthBanner />
+            </div>
+          </>
+        )}
       </div>
     </FeedChromeContext.Provider>
   );
