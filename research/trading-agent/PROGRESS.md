@@ -14,6 +14,32 @@ program logs reasoning and scoping; once Phase 0 starts, entries carry real numb
 
 ---
 
+## 2026-08-22 (c) — Phase 0 build launched (scaffold agent running)
+
+**Decisions**
+- **Language: Python-first, native-kernel-ready.** Build correct in Python (Phase-0 doc: correctness
+  > cleverness), vectorized with numpy/polars. Keep the simulator hot loop behind a clean interface
+  so it can be swapped to a **Rust** kernel (PyO3/maturin — preferred over C++ for Python bindings +
+  Solana-ecosystem fit) *only where profiling proves it's needed*. No premature native code. (Operator
+  asked for "fastest/most efficient for non-Python parts"; this is the honest answer — memory-bandwidth-
+  bound vectorized replay gets most of the way in polars before any native kernel earns its keep.)
+- **Data access resolved.** Pinax creds already exist in the monorepo `backend/.env` as `PINAX_API_KEY`.
+  Proven access (from the revival spike, `oct-revival/spike/revival-scanner/src/`): REST
+  `https://api.pinax.network` (`X-Api-Key`); Substreams gRPC `https://solana.substreams.pinax.network:443`
+  (bearer = raw `PINAX_API_KEY`, NOT a JWT — verified 2026-08-04); package `dex-swaps-v0.5.2.spkg`
+  (pinax-network/substreams-svm), same data as REST `/v1/svm/swaps`. Creds read at runtime from
+  backend/.env, never hardcoded/committed. Still TBD for the GO gate: a validation set of *known real
+  fills* to calibrate the sim against, and the labeled-wallet DB in queryable form.
+
+**Changes / status**
+- **Step 0 (scaffold + shared contracts) agent launched** — worktree-isolated, PRs into
+  `research/trading-agent`. Establishes the Python package + the typed contracts (tape events, feature
+  bundle w/ explicit missingness, Order/Fill, AgentDecision, AttentionState w/ authenticity channel,
+  leakage-audit hook) that Wave 1 builds against. Wave 1 (Data+labeling · Simulator+ledger ·
+  Feature-store+leakage-audit · Attention-pretrainer) fires once the scaffold PR merges.
+
+---
+
 ## 2026-08-22 (b) — Codependence decision; Phase 0 build kicking off
 
 **Decisions**
