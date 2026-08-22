@@ -14,6 +14,43 @@ program logs reasoning and scoping; once Phase 0 starts, entries carry real numb
 
 ---
 
+## 2026-08-22 (l) — WAVE 2 COMPLETE: full venue coverage, bonding curve validated to ~0 bps
+
+All four Wave-2 PRs merged (#165 reserves, #166 curve abstraction + pump.fun AMM fees, #167 CLMM,
+#168 bonding curve). Combined tree green: ruff + mypy-strict (82 files) + **242 passed / 5 skipped**.
+Resolved the E/F cross-conflict (both registered venues in `__init__.py`; a stale `raydium_clmm`-
+unsupported assertion superseded by `jupiter_v6` since CLMM now supports raydium_clmm).
+
+**Venue coverage now (share of live Solana swaps):**
+| Venue | Share | Model | Fidelity |
+|---|---|---|---|
+| `pumpfun_amm` | 62.5% | `PumpFunAmmCurve` (CPMM + real 3-part fee) | ~26 bps on a good pool (self-consistency; pool-dependent) |
+| `pumpfun` (bonding) | 7.9% | `PumpFunBondingCurve` (virtual-reserve CP) | **~0.0 bps median buys** — deterministic, exact seed constants proven across 4 tokens |
+| CLMM (orca/raydium_clmm/meteora_dlmm) | ~14% | `ConcentratedLiquidityCurve` (effective local L) | honest map: ~409 bps in-range vs ~1478 out-of-range (meteora_dlmm); flags out-of-range |
+| other CPMM (raydium_amm_v4/cpmm, meteora_amm) | ~3% | `ConstantProductCurve` | textbook x·y=k |
+| jupiter_v6 (router) | ~8% | typed-unsupported | resolved per-hop later, never priced directly |
+
+**~87% of swaps now have a curve model**; the venue→curve resolver dispatches on `protocol`, unknown
+venues return a typed unsupported result (never a silent wrong fill). **Independent reserves**
+(`ReservesClient`, #165) enable live-pool absolute-depth calibration.
+
+**Standout result:** the pump.fun bonding curve — the earliest-life regime the paper's thesis centers
+on — reproduces real buys to **~0.0 bps**. Because it's deterministic (virtual-reserve constant
+product, fees fully external so k is preserved), that near-zero error *proves* the seed constants
+(virtual 1.073e9 token / 30 SOL, 125 bps fee) are exactly right. The first-minutes regime is the one
+we can model most precisely.
+
+**Process note:** 3 of 4 Wave-2 agents finished their code green but stalled on their live-validation
+sub-tasks and failed to open a PR (Step 0, F) or left work uncommitted; I salvaged + reviewed +
+merged each. Pattern for long research-with-live-data agent tasks: the git/PR wrap-up is where they
+drop the ball — orchestrator must verify PR state, never trust the "done" message alone.
+
+**Next — the honest Phase-0 gate:** wire independent-reserve calibration (`ReservesClient`) on LIVE
+pools across venues → a real per-venue fill-reproduction number where the fee model actually binds and
+absolute-depth slippage is testable. Then pre-register the GO tolerance against that distribution.
+
+---
+
 ## 2026-08-22 (k) — Step 0 merged (#166); fee-model finding: self-consistency can't validate fees
 
 **Changes**
