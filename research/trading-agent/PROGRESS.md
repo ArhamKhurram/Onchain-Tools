@@ -14,6 +14,35 @@ program logs reasoning and scoping; once Phase 0 starts, entries carry real numb
 
 ---
 
+## 2026-08-22 (e) — Scaffold merged (#160); Wave 1 (all four) launched
+
+**Changes / status**
+- **Scaffold merged — PR #160** (`99f618d`). Python package `oct_trading_agent` with typed core
+  contracts (tape events, `Feature`+enforced-missingness, `Order`/`Fill`, `AgentDecision`,
+  `AttentionState`+mandatory authenticity channel, leakage-audit hook). Gates were green
+  (ruff/mypy-strict/pytest). Nested-namespace deviation accepted (good call). Reviewed the core
+  contracts directly before merge — they're high quality (realized-only walling on `mark_price`,
+  leakage audit = append-future-invariance, discriminated-union tape w/ dual slot/block_time).
+- **Wave 1 launched — four parallel worktree agents, disjoint module ownership, PRs into the branch:**
+  - **A · data/** — Pinax REST/gRPC client → append-only Parquet log; backfill; trader-labeling
+    pipeline (fixture schema, real DB deferred). Tests on the revival spike's cached real responses.
+  - **B · sim/ + ledger/** — constant-product AMM fills (slippage/impact/fees), execution realism
+    (latency/MEV/failed-txn), rug absorbing states, replay driver (`Simulator` protocol), paper
+    ledger, and the calibration harness (held-out real swaps → fill-reproduction error = the GO metric).
+  - **C · featurestore/** — point-in-time store (explicit missingness), tier-A raw-chart features,
+    the standing leakage audit (catches a deliberately-leaky feature).
+  - **D · agent/encoders/** — Hawkes estimator (λ, branching ratio n) + manipulation-suspicion channel
+    (both pure-numpy, mandatory) + causal-attention transformer w/ SSL head + the §6.4 two-head
+    (stop-gradient public / task-coupled private) structure. Torch optional; suite green without it.
+
+**Open / blocker for the GO gate (not for building)**
+- **`PINAX_API_KEY` is EMPTY in `backend/.env`.** All four build+test on fixtures/synthetic, so this
+  does not block the wave — but live historical backfill (Agent A) and therefore the real
+  fill-reproduction calibration (Agent B) can't RUN until the key is populated. Need the value from
+  the operator (revival spike must have sourced it from an env that's since been cleared).
+
+---
+
 ## 2026-08-22 (d) — Phase-0 gate sharpened: tape is self-sufficient; labeled DB deferred
 
 **Decisions (operator, correcting my over-flagging)**
