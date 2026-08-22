@@ -14,6 +14,43 @@ program logs reasoning and scoping; once Phase 0 starts, entries carry real numb
 
 ---
 
+## 2026-08-23 — Independent-reserve calibration: the honest Phase-0 fidelity number
+
+Built + ran the independent-reserve fill-reproduction (anchor at REAL on-chain reserves via
+`ReservesClient`, roll back through the recent swap sequence to each swap's true pre-trade state,
+predict with the ACTUAL merged curve models, compare). Two harness bugs found and fixed en route
+(roll-back/snapshot-block alignment; a `PoolState` 6-field signature my catch-all `except` was
+silently masking — lesson: never catch-all around the thing under test).
+
+**Results (pumpfun_amm, ~20 live pools, freshest fills where roll-back drift is negligible):**
+- **BUYS: ~90 bps median** (n=33, p75 181, p90 458) — sound.
+- **SELLS: ~1700 bps median** (n=7, small) — systematically broken.
+- Roll-back drift confirmed as the dominant artifact beyond the freshest fills: error climbs
+  monotonically with reconstruction distance (pos0 ~30 bps → pos10 ~1480 bps), so only the newest
+  1–2 swaps per pool give a clean model number.
+
+**The load-bearing methodology finding:** independent reserves give **~90 bps** where the earlier
+self-consistency fit gave ~26–30 bps — because a *fitted* depth silently **absorbs** fee/model error.
+**~90 bps is the honest fidelity; the ~30 bps was flattered.** This is exactly why the honest gate
+had to use independent reserves, not curve-fitting.
+
+**Verdict — NOT a clean GO yet; sound model, 3 concrete fixes before the gate can be called:**
+1. **Sell-side data interpretation** — `fill_sell` passes all unit tests + synthetic, so the ~17%
+   blowup is how Pinax records sell amounts (cf. Agent E's ~1.05% bonding-curve sell offset). Resolve
+   the sell `input_value`/`output_value` semantics before trusting the sell path in calibration.
+2. **Per-pool fee tier** — pump.fun fee is mcap-tiered (30→125 bps); the curve used the mature 30 bps
+   for all pools, so the ~90 bps buy residual is largely tier mismatch. Wire the per-pool tier.
+3. **Non-pumpfun vault resolution** — raydium/orca/meteora returned no reserves (`owner=amm_pool`
+   only verified for pump.fun AMM per #165); needs per-venue vault-account resolution to extend the
+   gate beyond the 62.5% + 8% pump.fun venues.
+
+**What IS validated:** the bonding curve (~0 bps, deterministic), the CPMM law and fee mechanics
+(unit tests + buys), and the whole real-reserves → roll-back → real-curve pipeline end to end. The
+honest number for the dominant post-migration venue is ~90 bps buys, with a clear path to tighten it.
+Prototype harness in scratchpad (`indep_calib.py`); productionizing it (with the 3 fixes) is the next task.
+
+---
+
 ## 2026-08-22 (l) — WAVE 2 COMPLETE: full venue coverage, bonding curve validated to ~0 bps
 
 All four Wave-2 PRs merged (#165 reserves, #166 curve abstraction + pump.fun AMM fees, #167 CLMM,
