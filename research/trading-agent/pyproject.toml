@@ -82,7 +82,9 @@ select = [
 ]
 # Contracts intentionally carry long, load-bearing docstrings.
 # RUF022: __all__ is grouped by submodule (more readable than alphabetical) on purpose.
-ignore = ["E501", "RUF022"]
+# RUF001/002/003: the trade-flow attention model is intrinsically mathematical — λ, α, β, μ, n,
+# and → appear throughout its docstrings/comments as the paper's own notation, not typos.
+ignore = ["E501", "RUF022", "RUF001", "RUF002", "RUF003"]
 
 [tool.ruff.lint.isort]
 known-first-party = ["oct_trading_agent"]
