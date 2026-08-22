@@ -35,6 +35,12 @@ dev = [
 # --- Heavy groups: only installed by the wave that needs them. Not pinned tightly. ---
 # Wave: agent (encoders/policies/critics) — the RL/DL spine.
 torch = ["torch>=2.2"]
+# Phase-1 env: the OPTIONAL Gym adapter (agent/envs/gymnasium_env.py). The core TradingEnv needs
+# NONE of this — it runs on the base install; only `make_gymnasium_env` imports gymnasium. Kept out
+# of the base + dev groups so `uv sync --extra dev` stays lean. POSSIBLE CONFLICT (flagged for the
+# orchestrator to resolve): gymnasium pins numpy ranges that can interact with the base numpy>=1.26
+# and, later, with the torch/d3rlpy groups; resolve together when the learner lands.
+rl = ["gymnasium>=0.29"]
 # Wave: agent/offline — offline RL (IQL/CQL) per 02 §4.
 offline = ["d3rlpy>=2.4"]
 # Wave: agent/population — PBT + quality-diversity per 02 §4.
