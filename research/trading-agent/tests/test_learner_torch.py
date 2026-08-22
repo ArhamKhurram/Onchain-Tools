@@ -200,3 +200,40 @@ def test_run_phase1_end_to_end_produces_verdict() -> None:
     assert "learned_agent" in result.evaluations
     assert set(result.edges) == {"hold_sol", "buy_and_hold"}
     assert result.n_train_envs >= 1 and result.n_eval_envs >= 1
+
+
+def _synthetic_tape_at(mint: str, t0: datetime, n: int) -> TokenTape:
+    swaps = [
+        SwapEvent(
+            mint=mint, slot=1000 + i, block_time=t0 + timedelta(seconds=i), signature=f"s{i}",
+            signer=f"w{i % 8}", side=Side.BUY if i % 4 != 3 else Side.SELL,
+            base_amount=Decimal("1900"), quote_amount=Decimal(f"{0.00004 + 0.0000005 * i:.8f}"),
+            price=Decimal(f"{0.00004 + 0.0000005 * i:.8f}") / Decimal("1900"), protocol="pumpfun",
+        )
+        for i in range(n)
+    ]
+    return TokenTape(mint=mint, swaps=swaps, source="synthetic")
+
+
+def test_held_out_tokens_axis_end_to_end() -> None:
+    """The held-out-TOKENS axis: train on earliest tokens, evaluate on strictly-newer held-out ones."""
+    pytest.importorskip("torch")
+    from oct_trading_agent.agent.train import TrainConfig, run_phase1
+
+    tapes = [
+        _synthetic_tape_at(f"MintTok{k}PumpFunBondingHoldout00000000000{k}", T0 + timedelta(hours=k), 40)
+        for k in range(4)
+    ]
+    result = run_phase1(
+        tapes,
+        axis="held-out-tokens",
+        train_config=TrainConfig(n_iterations=2, episodes_per_iter=1, hidden_dim=16, n_quantiles=6),
+        seed=0,
+        n_windows=3,
+        run_leakage_guard=True,
+        log=lambda _m: None,
+    )
+    assert result.axis == "held-out-tokens"
+    assert result.verdict.verdict in {"GO", "NO-GO", "INCONCLUSIVE"}
+    assert result.noised_agent_shows_edge is not None  # guard ran
+    assert result.n_train_envs >= 1 and result.n_eval_envs >= 1
