@@ -14,6 +14,26 @@ program logs reasoning and scoping; once Phase 0 starts, entries carry real numb
 
 ---
 
+## 2026-08-23 (b) — Hybrid launch: Phase 1 begins while the sim hardens in parallel
+
+Operator chose the hybrid path. Two agents launched in parallel (disjoint scopes):
+- **Sim hardening** (owns `sim/` + `data/reserves`): P0 fix the sell-side data interpretation
+  (~17% off — a data-mapping issue, not the model); productionize the independent-reserve
+  calibration as a tested repo module (freshest-fill mode, real curve models); P1 per-pool pump.fun
+  fee tier (to tighten the ~90 bps buy residual); P2 non-pumpfun vault resolution.
+- **Phase-1 substrate** (owns `agent/envs/` + `eval/`): the RL environment + §3.3 action space +
+  §3.4 scalper episode + §3.5 reward (realized risk-adjusted, potential-based shaping, NEVER
+  unrealized/peak) + walk-forward eval + baselines (hold-SOL/buy-and-hold/random), on the **bonding-
+  curve regime** (~0 bps fidelity, the first-minutes phase the thesis centers on). Env + eval only —
+  the actual learner (offline RL, PPO, distributional critic) is the next phase; clean `Policy` seam left.
+
+**Rationale:** ~90 bps AMM entry error is tiny vs the 100%+ moves a memecoin scalper trades, and the
+bonding curve is already ~0 bps — so start learning on the highest-fidelity, highest-importance regime
+now rather than over-engineering the sim first. The sell-side bug is the one non-negotiable fix (can't
+trade a sim you can't sell in), hence P0 on the hardening agent.
+
+---
+
 ## 2026-08-23 — Independent-reserve calibration: the honest Phase-0 fidelity number
 
 Built + ran the independent-reserve fill-reproduction (anchor at REAL on-chain reserves via
