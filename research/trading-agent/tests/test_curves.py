@@ -105,13 +105,16 @@ def test_default_registry_resolves_known_venues() -> None:
 
 
 def test_unsupported_venue_is_typed_never_falls_back() -> None:
-    res = try_resolve_curve("raydium_clmm")
+    # NOTE (Wave-2 Agent F): this used ``raydium_clmm`` as the unsupported placeholder, but the CLMM
+    # curve now registers that venue. ``jupiter_v6`` is the durable unsupported case — a router that
+    # must be resolved per hop, never priced directly (KNOWN_UNSUPPORTED), so it stays typed-absent.
+    res = try_resolve_curve("jupiter_v6")
     assert res.supported is False
     assert res.curve is None
-    assert res.reason is not None and "concentrated-liquidity" in res.reason
+    assert res.reason is not None and "router" in res.reason
     with pytest.raises(UnsupportedVenueError) as exc:
-        resolve_curve("raydium_clmm")
-    assert exc.value.protocol == "raydium_clmm"
+        resolve_curve("jupiter_v6")
+    assert exc.value.protocol == "jupiter_v6"
 
 
 def test_missing_protocol_resolves_to_unsupported() -> None:

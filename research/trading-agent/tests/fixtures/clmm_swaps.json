@@ -1,0 +1,1109 @@
+{
+  "_note": "real Pinax CLMM swaps for offline tests; see scripts/clmm_local_liquidity_repro.py",
+  "meteora_dlmm": {
+    "pool": "Fb4boyNpTSEnVheNp6R3YzuokB3N6dQR8koF62Gkz39d",
+    "fee_bps": 100,
+    "swaps": [
+      {
+        "side": "sell",
+        "amount_in": 207002.467658,
+        "observed_out": 0.580341724
+      },
+      {
+        "side": "buy",
+        "amount_in": 0.44481585,
+        "observed_out": 149687.635113
+      },
+      {
+        "side": "buy",
+        "amount_in": 0.207894553,
+        "observed_out": 68504.166519
+      },
+      {
+        "side": "buy",
+        "amount_in": 0.100118224,
+        "observed_out": 32753.291251
+      },
+      {
+        "side": "buy",
+        "amount_in": 0.14738393,
+        "observed_out": 47742.389968
+      },
+      {
+        "side": "buy",
+        "amount_in": 0.109159089,
+        "observed_out": 35008.101009
+      },
+      {
+        "side": "buy",
+        "amount_in": 0.000372692,
+        "observed_out": 119.369572
+      },
+      {
+        "side": "buy",
+        "amount_in": 0.103985756,
+        "observed_out": 33010.400095
+      },
+      {
+        "side": "buy",
+        "amount_in": 0.109620817,
+        "observed_out": 34458.486456
+      },
+      {
+        "side": "buy",
+        "amount_in": 0.004917007,
+        "observed_out": 1544.857175
+      },
+      {
+        "side": "buy",
+        "amount_in": 0.103994211,
+        "observed_out": 32332.604425
+      },
+      {
+        "side": "buy",
+        "amount_in": 0.223789415,
+        "observed_out": 68498.530686
+      },
+      {
+        "side": "buy",
+        "amount_in": 0.100078798,
+        "observed_out": 30124.95034
+      },
+      {
+        "side": "buy",
+        "amount_in": 0.14734985,
+        "observed_out": 43803.377417
+      },
+      {
+        "side": "sell",
+        "amount_in": 191645.36522,
+        "observed_out": 0.588899226
+      },
+      {
+        "side": "buy",
+        "amount_in": 0.050659324,
+        "observed_out": 15860.928183
+      },
+      {
+        "side": "buy",
+        "amount_in": 0.413429689,
+        "observed_out": 126443.805635
+      },
+      {
+        "side": "buy",
+        "amount_in": 0.201659158,
+        "observed_out": 59771.38858
+      },
+      {
+        "side": "sell",
+        "amount_in": 59575.853992,
+        "observed_out": 0.187153531
+      },
+      {
+        "side": "sell",
+        "amount_in": 20238.574303,
+        "observed_out": 0.062787104
+      },
+      {
+        "side": "sell",
+        "amount_in": 13916.223619,
+        "observed_out": 0.043172971
+      },
+      {
+        "side": "sell",
+        "amount_in": 35000.429723,
+        "observed_out": 0.107616905
+      },
+      {
+        "side": "sell",
+        "amount_in": 85870.311616,
+        "observed_out": 0.261636935
+      },
+      {
+        "side": "sell",
+        "amount_in": 116458.861195,
+        "observed_out": 0.354836718
+      },
+      {
+        "side": "sell",
+        "amount_in": 84831.059269,
+        "observed_out": 0.25736047
+      },
+      {
+        "side": "sell",
+        "amount_in": 2725816.89325,
+        "observed_out": 7.926297955
+      },
+      {
+        "side": "buy",
+        "amount_in": 0.285786459,
+        "observed_out": 95314.170153
+      },
+      {
+        "side": "buy",
+        "amount_in": 0.003138828,
+        "observed_out": 1046.847157
+      },
+      {
+        "side": "buy",
+        "amount_in": 1.4125e-05,
+        "observed_out": 4.710658
+      },
+      {
+        "side": "buy",
+        "amount_in": 0.113455553,
+        "observed_out": 37839.167909
+      },
+      {
+        "side": "sell",
+        "amount_in": 440215.999931,
+        "observed_out": 1.236488455
+      },
+      {
+        "side": "buy",
+        "amount_in": 0.360618232,
+        "observed_out": 121408.639922
+      },
+      {
+        "side": "buy",
+        "amount_in": 0.00202382,
+        "observed_out": 680.643737
+      },
+      {
+        "side": "buy",
+        "amount_in": 0.060431767,
+        "observed_out": 20154.921603
+      },
+      {
+        "side": "buy",
+        "amount_in": 4.62682661,
+        "observed_out": 1521333.22844
+      },
+      {
+        "side": "buy",
+        "amount_in": 0.004787985,
+        "observed_out": 1550.982017
+      },
+      {
+        "side": "buy",
+        "amount_in": 0.017470668,
+        "observed_out": 5659.310333
+      },
+      {
+        "side": "buy",
+        "amount_in": 0.012005271,
+        "observed_out": 3888.892685
+      },
+      {
+        "side": "buy",
+        "amount_in": 0.002985,
+        "observed_out": 966.9374
+      },
+      {
+        "side": "buy",
+        "amount_in": 0.032728931,
+        "observed_out": 10601.952225
+      },
+      {
+        "side": "buy",
+        "amount_in": 0.027367538,
+        "observed_out": 8865.224521
+      },
+      {
+        "side": "buy",
+        "amount_in": 0.047651627,
+        "observed_out": 15435.892848
+      },
+      {
+        "side": "buy",
+        "amount_in": 0.026813276,
+        "observed_out": 8685.681298
+      },
+      {
+        "side": "buy",
+        "amount_in": 0.038593676,
+        "observed_out": 12501.731333
+      },
+      {
+        "side": "buy",
+        "amount_in": 0.032777236,
+        "observed_out": 10617.599483
+      },
+      {
+        "side": "buy",
+        "amount_in": 0.259981768,
+        "observed_out": 84216.446894
+      },
+      {
+        "side": "buy",
+        "amount_in": 0.15147,
+        "observed_out": 49065.999349
+      },
+      {
+        "side": "buy",
+        "amount_in": 0.129229044,
+        "observed_out": 41861.438928
+      },
+      {
+        "side": "buy",
+        "amount_in": 0.102342702,
+        "observed_out": 33031.326381
+      },
+      {
+        "side": "buy",
+        "amount_in": 0.747166071,
+        "observed_out": 239616.218889
+      },
+      {
+        "side": "buy",
+        "amount_in": 0.671546338,
+        "observed_out": 213183.587343
+      },
+      {
+        "side": "buy",
+        "amount_in": 0.893904075,
+        "observed_out": 281215.809273
+      },
+      {
+        "side": "buy",
+        "amount_in": 0.00389838,
+        "observed_out": 1212.034639
+      },
+      {
+        "side": "buy",
+        "amount_in": 0.080876586,
+        "observed_out": 25145.121099
+      },
+      {
+        "side": "buy",
+        "amount_in": 0.020158524,
+        "observed_out": 6267.432321
+      },
+      {
+        "side": "buy",
+        "amount_in": 0.050850121,
+        "observed_out": 15809.673927
+      },
+      {
+        "side": "buy",
+        "amount_in": 0.10397564,
+        "observed_out": 32326.785846
+      },
+      {
+        "side": "buy",
+        "amount_in": 0.10397564,
+        "observed_out": 32326.785846
+      },
+      {
+        "side": "buy",
+        "amount_in": 0.10397564,
+        "observed_out": 32326.785846
+      },
+      {
+        "side": "buy",
+        "amount_in": 0.020158325,
+        "observed_out": 6267.370384
+      },
+      {
+        "side": "buy",
+        "amount_in": 0.051988116,
+        "observed_out": 16163.484706
+      },
+      {
+        "side": "buy",
+        "amount_in": 0.207952678,
+        "observed_out": 64654.006218
+      },
+      {
+        "side": "buy",
+        "amount_in": 0.007992,
+        "observed_out": 2484.770976
+      },
+      {
+        "side": "buy",
+        "amount_in": 0.520412638,
+        "observed_out": 160166.090113
+      },
+      {
+        "side": "buy",
+        "amount_in": 1.581303783,
+        "observed_out": 458857.729307
+      },
+      {
+        "side": "sell",
+        "amount_in": 317444.525536,
+        "observed_out": 1.030602801
+      },
+      {
+        "side": "sell",
+        "amount_in": 651.946722,
+        "observed_out": 0.002040413
+      },
+      {
+        "side": "buy",
+        "amount_in": 0.030971225,
+        "observed_out": 9219.067396
+      },
+      {
+        "side": "sell",
+        "amount_in": 9551.459135,
+        "observed_out": 0.029893429
+      },
+      {
+        "side": "buy",
+        "amount_in": 1.055593992,
+        "observed_out": 299098.322684
+      },
+      {
+        "side": "sell",
+        "amount_in": 113049.865202,
+        "observed_out": 0.376134743
+      },
+      {
+        "side": "sell",
+        "amount_in": 65216.469939,
+        "observed_out": 0.211920504
+      },
+      {
+        "side": "sell",
+        "amount_in": 85906.829672,
+        "observed_out": 0.273851908
+      },
+      {
+        "side": "sell",
+        "amount_in": 45383.792724,
+        "observed_out": 0.142416997
+      },
+      {
+        "side": "sell",
+        "amount_in": 2419.07707,
+        "observed_out": 0.007571043
+      },
+      {
+        "side": "buy",
+        "amount_in": 0.004198362,
+        "observed_out": 1249.707839
+      },
+      {
+        "side": "buy",
+        "amount_in": 0.209724614,
+        "observed_out": 62080.325847
+      },
+      {
+        "side": "sell",
+        "amount_in": 148105.889757,
+        "observed_out": 0.461270042
+      },
+      {
+        "side": "buy",
+        "amount_in": 0.117431822,
+        "observed_out": 35735.595951
+      },
+      {
+        "side": "buy",
+        "amount_in": 0.108274599,
+        "observed_out": 32589.858011
+      },
+      {
+        "side": "sell",
+        "amount_in": 203025.291172,
+        "observed_out": 0.628607132
+      },
+      {
+        "side": "buy",
+        "amount_in": 0.05,
+        "observed_out": 15215.465318
+      },
+      {
+        "side": "buy",
+        "amount_in": 0.256325269,
+        "observed_out": 77462.607275
+      },
+      {
+        "side": "buy",
+        "amount_in": 0.051979367,
+        "observed_out": 15645.40707
+      },
+      {
+        "side": "buy",
+        "amount_in": 0.549774183,
+        "observed_out": 164319.366528
+      },
+      {
+        "side": "buy",
+        "amount_in": 0.220357222,
+        "observed_out": 63750.778415
+      },
+      {
+        "side": "buy",
+        "amount_in": 0.330718602,
+        "observed_out": 92903.93812
+      },
+      {
+        "side": "buy",
+        "amount_in": 0.112521374,
+        "observed_out": 30853.943089
+      },
+      {
+        "side": "buy",
+        "amount_in": 0.103956601,
+        "observed_out": 28191.841565
+      },
+      {
+        "side": "buy",
+        "amount_in": 0.083716858,
+        "observed_out": 22499.958371
+      },
+      {
+        "side": "buy",
+        "amount_in": 0.187660543,
+        "observed_out": 49689.567808
+      },
+      {
+        "side": "buy",
+        "amount_in": 0.103956343,
+        "observed_out": 27091.805867
+      },
+      {
+        "side": "sell",
+        "amount_in": 2738.688142,
+        "observed_out": 0.009632943
+      },
+      {
+        "side": "sell",
+        "amount_in": 18858.921091,
+        "observed_out": 0.065676785
+      },
+      {
+        "side": "sell",
+        "amount_in": 10950.844354,
+        "observed_out": 0.038136659
+      },
+      {
+        "side": "sell",
+        "amount_in": 46108.817783,
+        "observed_out": 0.160575408
+      },
+      {
+        "side": "buy",
+        "amount_in": 0.020120098,
+        "observed_out": 5248.494627
+      },
+      {
+        "side": "buy",
+        "amount_in": 0.60877759,
+        "observed_out": 156647.661841
+      },
+      {
+        "side": "sell",
+        "amount_in": 47415.923282,
+        "observed_out": 0.170646578
+      },
+      {
+        "side": "sell",
+        "amount_in": 43323.592946,
+        "observed_out": 0.153126558
+      },
+      {
+        "side": "buy",
+        "amount_in": 0.269700489,
+        "observed_out": 68939.544701
+      },
+      {
+        "side": "buy",
+        "amount_in": 0.093836736,
+        "observed_out": 23522.96495
+      },
+      {
+        "side": "buy",
+        "amount_in": 0.049689113,
+        "observed_out": 12332.724847
+      },
+      {
+        "side": "buy",
+        "amount_in": 0.196241436,
+        "observed_out": 48191.178835
+      },
+      {
+        "side": "sell",
+        "amount_in": 14871.472666,
+        "observed_out": 0.055526287
+      },
+      {
+        "side": "sell",
+        "amount_in": 216758.563206,
+        "observed_out": 0.801308134
+      },
+      {
+        "side": "sell",
+        "amount_in": 324700.739286,
+        "observed_out": 1.184533002
+      },
+      {
+        "side": "sell",
+        "amount_in": 961042.023947,
+        "observed_out": 3.420856958
+      },
+      {
+        "side": "sell",
+        "amount_in": 203317.94945,
+        "observed_out": 0.708061154
+      },
+      {
+        "side": "sell",
+        "amount_in": 73643.567521,
+        "observed_out": 0.25646604
+      },
+      {
+        "side": "sell",
+        "amount_in": 129201.46255,
+        "observed_out": 0.449948157
+      },
+      {
+        "side": "sell",
+        "amount_in": 31343.05225,
+        "observed_out": 0.10807244
+      },
+      {
+        "side": "sell",
+        "amount_in": 5983.724269,
+        "observed_out": 0.020632186
+      },
+      {
+        "side": "sell",
+        "amount_in": 59625.501062,
+        "observed_out": 0.205591765
+      },
+      {
+        "side": "sell",
+        "amount_in": 13022.090956,
+        "observed_out": 0.044900833
+      },
+      {
+        "side": "sell",
+        "amount_in": 42011.063437,
+        "observed_out": 0.144856286
+      },
+      {
+        "side": "sell",
+        "amount_in": 60170.957441,
+        "observed_out": 0.207472526
+      },
+      {
+        "side": "sell",
+        "amount_in": 434683.851752,
+        "observed_out": 1.497217288
+      },
+      {
+        "side": "sell",
+        "amount_in": 149876.554783,
+        "observed_out": 0.511665342
+      },
+      {
+        "side": "sell",
+        "amount_in": 212597.090866,
+        "observed_out": 0.725787722
+      },
+      {
+        "side": "sell",
+        "amount_in": 611023.552197,
+        "observed_out": 2.07188066
+      },
+      {
+        "side": "sell",
+        "amount_in": 9601.546636,
+        "observed_out": 0.032450804
+      },
+      {
+        "side": "sell",
+        "amount_in": 168733.090882,
+        "observed_out": 0.564689632
+      },
+      {
+        "side": "sell",
+        "amount_in": 4160890.497077,
+        "observed_out": 13.57368711
+      },
+      {
+        "side": "sell",
+        "amount_in": 5175.606916,
+        "observed_out": 0.016477581
+      },
+      {
+        "side": "sell",
+        "amount_in": 214163.057015,
+        "observed_out": 0.681831002
+      },
+      {
+        "side": "sell",
+        "amount_in": 34887.754694,
+        "observed_out": 0.111072157
+      },
+      {
+        "side": "sell",
+        "amount_in": 6524.627809,
+        "observed_out": 0.020669475
+      },
+      {
+        "side": "sell",
+        "amount_in": 310323.60873,
+        "observed_out": 0.979643668
+      },
+      {
+        "side": "sell",
+        "amount_in": 13186.088676,
+        "observed_out": 0.041626443
+      },
+      {
+        "side": "sell",
+        "amount_in": 91037.544569,
+        "observed_out": 0.287391457
+      },
+      {
+        "side": "sell",
+        "amount_in": 41861.438928,
+        "observed_out": 0.132150092
+      },
+      {
+        "side": "sell",
+        "amount_in": 113618.348483,
+        "observed_out": 0.358675565
+      },
+      {
+        "side": "sell",
+        "amount_in": 32140.043149,
+        "observed_out": 0.101461148
+      },
+      {
+        "side": "sell",
+        "amount_in": 187973.478466,
+        "observed_out": 0.590472589
+      },
+      {
+        "side": "sell",
+        "amount_in": 142636.450039,
+        "observed_out": 0.446412694
+      },
+      {
+        "side": "sell",
+        "amount_in": 20391.515048,
+        "observed_out": 0.06381981
+      },
+      {
+        "side": "sell",
+        "amount_in": 182601.303819,
+        "observed_out": 0.571491649
+      },
+      {
+        "side": "sell",
+        "amount_in": 2121.110197,
+        "observed_out": 0.006638489
+      },
+      {
+        "side": "sell",
+        "amount_in": 5227555.631144,
+        "observed_out": 15.906485057
+      },
+      {
+        "side": "buy",
+        "amount_in": 0.974980776,
+        "observed_out": 309508.791512
+      },
+      {
+        "side": "buy",
+        "amount_in": 0.750693472,
+        "observed_out": 238308.52351
+      },
+      {
+        "side": "buy",
+        "amount_in": 0.195914917,
+        "observed_out": 61553.830336
+      },
+      {
+        "side": "buy",
+        "amount_in": 0.429694289,
+        "observed_out": 135004.16355
+      },
+      {
+        "side": "buy",
+        "amount_in": 0.021594567,
+        "observed_out": 6784.722168
+      },
+      {
+        "side": "buy",
+        "amount_in": 0.076738495,
+        "observed_out": 24110.202344
+      },
+      {
+        "side": "buy",
+        "amount_in": 0.568181899,
+        "observed_out": 178515.107308
+      },
+      {
+        "side": "buy",
+        "amount_in": 0.411742847,
+        "observed_out": 129364.06219
+      },
+      {
+        "side": "buy",
+        "amount_in": 0.348771823,
+        "observed_out": 109579.413716
+      },
+      {
+        "side": "buy",
+        "amount_in": 0.02178747,
+        "observed_out": 6845.329792
+      },
+      {
+        "side": "buy",
+        "amount_in": 0.236702036,
+        "observed_out": 74368.594708
+      },
+      {
+        "side": "buy",
+        "amount_in": 0.156468844,
+        "observed_out": 49160.405321
+      },
+      {
+        "side": "buy",
+        "amount_in": 0.152849075,
+        "observed_out": 48022.496542
+      },
+      {
+        "side": "buy",
+        "amount_in": 0.921041279,
+        "observed_out": 286358.460386
+      },
+      {
+        "side": "buy",
+        "amount_in": 0.167447332,
+        "observed_out": 52060.598383
+      },
+      {
+        "side": "buy",
+        "amount_in": 0.050252674,
+        "observed_out": 15623.923181
+      },
+      {
+        "side": "buy",
+        "amount_in": 3.175718631,
+        "observed_out": 982145.868702
+      },
+      {
+        "side": "buy",
+        "amount_in": 0.258124473,
+        "observed_out": 79402.840134
+      },
+      {
+        "side": "buy",
+        "amount_in": 0.041359071,
+        "observed_out": 12722.651284
+      },
+      {
+        "side": "buy",
+        "amount_in": 1.593993553,
+        "observed_out": 487666.768908
+      },
+      {
+        "side": "buy",
+        "amount_in": 0.155880214,
+        "observed_out": 47435.799799
+      },
+      {
+        "side": "buy",
+        "amount_in": 0.002765748,
+        "observed_out": 841.642842
+      },
+      {
+        "side": "buy",
+        "amount_in": 0.342954694,
+        "observed_out": 104364.30489
+      },
+      {
+        "side": "buy",
+        "amount_in": 0.01718466,
+        "observed_out": 5229.45177
+      },
+      {
+        "side": "sell",
+        "amount_in": 277879.067251,
+        "observed_out": 0.854403411
+      },
+      {
+        "side": "buy",
+        "amount_in": 1.516949242,
+        "observed_out": 461621.771394
+      },
+      {
+        "side": "buy",
+        "amount_in": 0.103924905,
+        "observed_out": 31625.315565
+      },
+      {
+        "side": "buy",
+        "amount_in": 0.556420358,
+        "observed_out": 169323.893104
+      },
+      {
+        "side": "buy",
+        "amount_in": 0.001275881,
+        "observed_out": 388.262135
+      },
+      {
+        "side": "buy",
+        "amount_in": 0.024365313,
+        "observed_out": 7333.780057
+      },
+      {
+        "side": "buy",
+        "amount_in": 0.00821236,
+        "observed_out": 2471.859742
+      },
+      {
+        "side": "buy",
+        "amount_in": 1.635873571,
+        "observed_out": 492385.918092
+      },
+      {
+        "side": "buy",
+        "amount_in": 0.20778406,
+        "observed_out": 62541.474229
+      },
+      {
+        "side": "buy",
+        "amount_in": 0.014178594,
+        "observed_out": 4267.652291
+      },
+      {
+        "side": "buy",
+        "amount_in": 0.091977367,
+        "observed_out": 27684.511215
+      },
+      {
+        "side": "buy",
+        "amount_in": 0.099951137,
+        "observed_out": 30084.557271
+      },
+      {
+        "side": "buy",
+        "amount_in": 0.155829059,
+        "observed_out": 46903.400997
+      },
+      {
+        "side": "buy",
+        "amount_in": 0.207765059,
+        "observed_out": 62535.755111
+      },
+      {
+        "side": "buy",
+        "amount_in": 0.207753758,
+        "observed_out": 62449.040716
+      },
+      {
+        "side": "buy",
+        "amount_in": 0.199091005,
+        "observed_out": 59262.538555
+      },
+      {
+        "side": "buy",
+        "amount_in": 0.941554495,
+        "observed_out": 280268.360364
+      },
+      {
+        "side": "buy",
+        "amount_in": 0.0995,
+        "observed_out": 29617.724754
+      },
+      {
+        "side": "buy",
+        "amount_in": 0.035975044,
+        "observed_out": 10708.532028
+      },
+      {
+        "side": "buy",
+        "amount_in": 1.036290396,
+        "observed_out": 308467.976958
+      },
+      {
+        "side": "buy",
+        "amount_in": 0.155774086,
+        "observed_out": 45888.208648
+      },
+      {
+        "side": "buy",
+        "amount_in": 0.2587,
+        "observed_out": 76142.932176
+      },
+      {
+        "side": "buy",
+        "amount_in": 0.144497839,
+        "observed_out": 42529.915502
+      },
+      {
+        "side": "buy",
+        "amount_in": 0.297595845,
+        "observed_out": 87591.110231
+      },
+      {
+        "side": "sell",
+        "amount_in": 47506.591401,
+        "observed_out": 0.149970966
+      },
+      {
+        "side": "sell",
+        "amount_in": 3768.4245,
+        "observed_out": 0.011896333
+      },
+      {
+        "side": "sell",
+        "amount_in": 6710.642502,
+        "observed_out": 0.021184461
+      },
+      {
+        "side": "buy",
+        "amount_in": 1.247165745,
+        "observed_out": 367077.142892
+      },
+      {
+        "side": "buy",
+        "amount_in": 1.289411006,
+        "observed_out": 375198.127439
+      },
+      {
+        "side": "buy",
+        "amount_in": 1.304782858,
+        "observed_out": 375296.843702
+      },
+      {
+        "side": "buy",
+        "amount_in": 0.586598073,
+        "observed_out": 168724.17046
+      },
+      {
+        "side": "buy",
+        "amount_in": 0.737888867,
+        "observed_out": 209761.572845
+      },
+      {
+        "side": "buy",
+        "amount_in": 1.246281253,
+        "observed_out": 354022.567828
+      },
+      {
+        "side": "buy",
+        "amount_in": 0.583649476,
+        "observed_out": 163951.70211
+      },
+      {
+        "side": "buy",
+        "amount_in": 2.120291944,
+        "observed_out": 592710.938011
+      },
+      {
+        "side": "buy",
+        "amount_in": 0.897574319,
+        "observed_out": 249111.198759
+      },
+      {
+        "side": "buy",
+        "amount_in": 0.770703585,
+        "observed_out": 211299.719973
+      },
+      {
+        "side": "buy",
+        "amount_in": 0.030703425,
+        "observed_out": 8417.795161
+      },
+      {
+        "side": "buy",
+        "amount_in": 0.8278438,
+        "observed_out": 226965.550356
+      },
+      {
+        "side": "buy",
+        "amount_in": 1.928312281,
+        "observed_out": 523830.484669
+      },
+      {
+        "side": "buy",
+        "amount_in": 0.675260158,
+        "observed_out": 181484.659413
+      },
+      {
+        "side": "buy",
+        "amount_in": 0.103867754,
+        "observed_out": 27915.765169
+      },
+      {
+        "side": "sell",
+        "amount_in": 2512047.298905,
+        "observed_out": 8.298127056
+      },
+      {
+        "side": "buy",
+        "amount_in": 0.061145978,
+        "observed_out": 17382.125
+      },
+      {
+        "side": "buy",
+        "amount_in": 1.273612825,
+        "observed_out": 359812.132156
+      },
+      {
+        "side": "buy",
+        "amount_in": 0.017206967,
+        "observed_out": 4833.571398
+      },
+      {
+        "side": "buy",
+        "amount_in": 1.107677988,
+        "observed_out": 311155.409205
+      },
+      {
+        "side": "buy",
+        "amount_in": 1.444643846,
+        "observed_out": 400943.914071
+      },
+      {
+        "side": "buy",
+        "amount_in": 0.300354184,
+        "observed_out": 83359.772079
+      },
+      {
+        "side": "buy",
+        "amount_in": 0.000300655,
+        "observed_out": 83.44305
+      },
+      {
+        "side": "buy",
+        "amount_in": 0.508999049,
+        "observed_out": 139549.573007
+      },
+      {
+        "side": "buy",
+        "amount_in": 0.484301753,
+        "observed_out": 132778.446794
+      },
+      {
+        "side": "buy",
+        "amount_in": 2.036518034,
+        "observed_out": 554184.551711
+      },
+      {
+        "side": "buy",
+        "amount_in": 0.519936619,
+        "observed_out": 139739.505052
+      },
+      {
+        "side": "buy",
+        "amount_in": 0.353200082,
+        "observed_out": 94926.964007
+      },
+      {
+        "side": "buy",
+        "amount_in": 0.167470996,
+        "observed_out": 45009.936353
+      }
+    ]
+  }
+}
