@@ -9,19 +9,25 @@ code lives here yet, and nothing here touches any build.
 
 ---
 
-## ⚑ Decision pending — this shapes everything
+## ✔ Decision — signal-first (resolved 2026-08-22)
 
-The operator has **not** chosen what this program is *for*. Three mutually-exclusive end-states,
-each of which changes scope, risk posture, and success criteria:
+**The primary deliverable is a *signal*, not a live trader** (paper §4.2; charter §6). The agent
+emits a calibrated, explainable decision into OCT's convergence layer and as an API; live
+autonomous execution through `/sniper/v1` is an **optional, separately-gated extension that
+defaults off and may never be enabled.** A system that never custodies funds cannot be tilted into
+ruin — so the largest danger in the whole program (§9.8) is opt-in, not default.
 
-| Path | One-liner | What it implies |
+What remains is a lighter **business-packaging** choice — how the *signal* reaches the world — which
+no longer changes the safety architecture and can be made later:
+
+| Packaging | One-liner | What it implies |
 |---|---|---|
-| **Ship as a feature** | An autonomous-trading product inside OCT for users | Highest bar: consumer-financial-product duties, disclosures, no personalized-advice framing, hardest safety caps, the ethics stance in §9.9 of the paper becomes binding. |
-| **Publish as research** | A paper + open findings; no live money at scale | Emphasis shifts to scientific rigor, reproducibility, and the honest yes/no on the open question. Live trading stays a minimal validation pilot, not a product. |
-| **Trade own capital** | OCT/operator runs it privately on its own funds | Narrowest surface; no user-protection duties, but the full catastrophic-risk profile (§9.8) lands squarely on the operator's own balance. |
+| **Signal as an OCT feature** | The console surfaces the agent's calls as one more convergence signal | Consumer-product care (disclosures, no personalized-advice framing, §9.9 ethics) still applies — but no fund-custody liability by default. |
+| **Signal published as research + API** | A paper + open findings + the calibrated signal | Rigor, reproducibility, and the honest yes/no on the open question dominate. Any live trading stays a minimal internal pilot. |
+| **Signal used privately** | The operator consumes it by hand / own tooling | Narrowest surface; only if live-execution mode is later switched on does the full §9.8 profile land on the operator's own funds. |
 
-Until this is chosen, treat all three as live. Every charter, plan, and gate below is written to
-serve whichever path is picked; where a document had to assume, it says so.
+Documents are still written to the **most demanding** packaging so nothing has to be re-scoped
+upward later. What is *no longer* assumed is default live execution — that is now opt-in by construction.
 
 ---
 
@@ -35,6 +41,10 @@ serve whichever path is picked; where a document had to assume, it says so.
 6. **[`05-evaluation-plan.md`](./05-evaluation-plan.md)** — Evaluation & Benchmarks: metrics, the backtest→paper→live promotion gate, ablation protocol, and statistical-rigor rules.
 7. **[`06-risk-register.md`](./06-risk-register.md)** — Risk Register: the paper's §9 threats as a tracked table, the safety envelope, and the ethics stance.
 
+**Living documents (updated as work proceeds):**
+- **[`PROGRESS.md`](./PROGRESS.md)** — running, reverse-chronological log of decisions, findings, and progress. Start here to see *what's changed*.
+- **[`subprojects/trade-flow-attention.md`](./subprojects/trade-flow-attention.md)** — full standalone development of the trade-flow attention model (companion to paper §4.4 / §9.10).
+
 ---
 
 ## Current status
@@ -46,8 +56,10 @@ proceeds to a learned policy until Phase 0's exit milestone is met.
 
 | Artifact | State |
 |---|---|
-| Research paper | Drafted (v0.1), copied in as `00-paper.md` |
-| Document set (this workspace) | Drafted |
+| Research paper | Drafted + reviewed; attention model integrated (§4.4/§9.10); signal-first locked. Synced as `00-paper.md` |
+| Attention sub-project | Drafted as `subprojects/trade-flow-attention.md` |
+| Document set (this workspace) | Drafted; charter + README updated for the signal-first decision |
+| Progress log | Started (`PROGRESS.md`) |
 | Simulator / data pipeline | Not started (Phase 0) |
 | Any learned policy | Not started |
 | Any live money | Not permitted until the full backtest→paper→live gate is cleared |

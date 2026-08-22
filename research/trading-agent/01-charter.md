@@ -16,8 +16,9 @@ autonomous reinforcement-learning agent that:
 - is trained against a **high-fidelity replay simulator** whose exploits transfer to the chain;
 - is bred as a **diverse population of profitable archetypes**, not a single optimum;
 - optimizes **risk-adjusted, benchmark-relative** rewards under **hard risk constraints**, never the literal 1→100 SOL goal;
-- adapts **continually online** to a non-stationary meta; and
-- can only ever *propose* trades to OCT's existing `/sniper/v1` actuator and safety envelope.
+- adapts **continually online** to a non-stationary meta;
+- **ships its output as a signal/API by default** — a calibrated, explainable decision routed to the console and to consumers, *not* a fund-holding autopilot (paper §4.2); and
+- can only ever *propose* trades to OCT's existing `/sniper/v1` actuator and safety envelope, and only in the opt-in, separately-gated live-execution mode.
 
 The 1 SOL → 100 SOL run is an **evaluation north-star**, never a training reward (paper §3.5, §8.1).
 
@@ -103,18 +104,29 @@ judged jointly with the risk metrics — a 100× reached only via near-ruin draw
 
 ---
 
-## 6. The ship / publish / trade decision (unresolved — flag)
+## 6. The deliverable decision (resolved: signal-first)
 
-The operator has **not** chosen the program's end-state. The choice is load-bearing and should be
-made no later than the Phase-2 gate, because it changes the required rigor of the safety and ethics work.
+**Resolved (2026-08-22): the program's primary deliverable is a *signal*, not a live trader** (paper §4.2).
+Model N and the trade-flow attention model emit a calibrated, explainable decision into OCT's
+convergence layer and, for consumers, as an API. Live autonomous execution — the agent actually
+spending through `/sniper/v1` — is an **optional, separately-gated extension that OCT may never
+enable**; it is strictly downstream of the signal and defaults *off*. This is the single most
+important safety property in the program, because a system that never custodies funds cannot be
+tilted into ruin (§5, paper §9.8).
 
-| Path | Implies |
+This resolves the *technical* end-state and collapses most of the old three-way risk fork: the
+catastrophic-risk profile (paper §9.8) applies only to the opt-in live mode. What remains is a
+lighter **business-packaging** choice — how the *signal* itself reaches the world — which no longer
+changes the safety architecture and can be made later:
+
+| Packaging | Implies |
 |---|---|
-| **Ship as a feature** | Treat as a regulated-adjacent consumer financial product: mandatory loss disclosures, no personalized-advice framing, hardest caps, and the ethics stance in paper §9.9 becomes binding (refuse manipulation-primary features). Highest bar. |
-| **Publish as research** | Rigor, reproducibility, and the honest open-question answer dominate. Live trading stays a minimal validation pilot, never a product; the deliverable is the finding, not a service. |
-| **Trade own capital** | Narrowest external surface (no user-protection duties), but the full catastrophic-risk profile (paper §9.8) lands on the operator's own funds. Discipline is self-imposed and must be encoded structurally, since there is no external regulator. |
+| **Signal as an OCT feature** | The console surfaces the agent's calls as one more convergence signal / alert. Consumer-product care still applies (loss disclosures, no personalized-advice framing, the §9.9 ethics stance), but there is no fund-custody liability by default. |
+| **Signal published as research + API** | The finding and the calibrated signal are the deliverable; rigor, reproducibility, and the honest open-question answer dominate. Any live trading stays a minimal internal validation pilot. |
+| **Signal used privately for own trading** | The operator consumes the signal by hand or via their own tooling. Narrowest external surface; if they later flip on live-execution mode, the full §9.8 profile lands on their own funds and the structural caps become the only guardrail. |
 
-**Assumption made in this document set (flagged):** until the operator decides, all documents are
-written to satisfy the **most demanding** path (ship-as-feature) so nothing has to be re-scoped
-upward later. If the operator picks a narrower path, requirements can be relaxed deliberately —
-never the reverse. See the flag in [`README.md`](./README.md) and the ethics item in [`06-risk-register.md`](./06-risk-register.md).
+**Assumption made in this document set (flagged):** documents are still written to satisfy the
+**most demanding** packaging (feature-grade disclosures + ethics) so nothing has to be re-scoped
+upward later; a narrower packaging can relax requirements deliberately, never the reverse. What is
+*no longer* assumed is default live execution — that is now opt-in by construction. See
+[`README.md`](./README.md) and the ethics item in [`06-risk-register.md`](./06-risk-register.md).
