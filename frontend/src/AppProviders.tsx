@@ -2,6 +2,7 @@ import { useEffect } from 'react';
 import { useWebSocket } from './hooks/useWebSocket';
 import { useClientGateway } from './hooks/useClientGateway';
 import { useSignalConvergence } from './hooks/useSignalConvergence';
+import { usePreviewFeed } from './preview/usePreviewFeed';
 import { useAppStore } from './stores/appStore';
 import { isHostedMode } from './lib/supabase';
 import { useAuthSession } from './hooks/useAuthSession';
@@ -31,6 +32,7 @@ export default function AppProviders({ children }: { children: React.ReactNode }
   useWebSocket();
   useClientGateway();
   useSignalConvergence();
+  usePreviewFeed();
   useZoomScale();
 
   const { ready, userId, isAuthenticated } = useAuthSession();
@@ -43,6 +45,7 @@ export default function AppProviders({ children }: { children: React.ReactNode }
   const fetchContracts = useAppStore((s) => s.fetchContracts);
   const loadFomoTradeHistory = useAppStore((s) => s.loadFomoTradeHistory);
   const previewMode = useAppStore((s) => s.previewMode);
+  const previewSeeded = useAppStore((s) => s.previewSeeded);
   const rooms = useAppStore((s) => s.rooms);
   const setActiveRoom = useAppStore((s) => s.setActiveRoom);
   const dockPopout = useAppStore((s) => s.dockPopout);
@@ -69,15 +72,19 @@ export default function AppProviders({ children }: { children: React.ReactNode }
   }, [ready, isAuthenticated, checkAuth]);
 
   useEffect(() => {
+    // Seeded preview supplies its own rooms/config/history in-memory; hitting the
+    // backend here would overwrite the sample feed with an empty account.
+    if (previewSeeded) return;
     if (authStatus?.configured || previewMode) {
       fetchRooms();
       fetchConfig();
       fetchDMChannels();
       fetchHistory();
     }
-  }, [authStatus?.configured, previewMode, fetchRooms, fetchHistory, fetchConfig, fetchDMChannels]);
+  }, [authStatus?.configured, previewMode, previewSeeded, fetchRooms, fetchHistory, fetchConfig, fetchDMChannels]);
 
   useEffect(() => {
+    if (previewSeeded) return; // sample contracts are already seeded in-memory
     if (!ready) return;
     if (isHostedMode && !isAuthenticated) return;
     if (authStatus?.configured || previewMode || isAuthenticated) {
@@ -86,7 +93,7 @@ export default function AppProviders({ children }: { children: React.ReactNode }
       // WS frames merge in on top. No-ops without FOMO storage configured.
       void loadFomoTradeHistory();
     }
-  }, [ready, isAuthenticated, authStatus?.configured, previewMode, fetchContracts, loadFomoTradeHistory]);
+  }, [ready, isAuthenticated, authStatus?.configured, previewMode, previewSeeded, fetchContracts, loadFomoTradeHistory]);
 
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
