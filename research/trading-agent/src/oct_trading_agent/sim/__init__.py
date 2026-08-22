@@ -27,6 +27,21 @@ from .calibration import (
     calibrate,
     load_tape_parquet,
 )
+from .curves import (
+    DEFAULT_REGISTRY,
+    ConstantProductCurve,
+    Curve,
+    CurveInput,
+    CurveRegistry,
+    FeeSplit,
+    PumpFunAmmCurve,
+    PumpFunAmmFeeSchedule,
+    UnsupportedVenueError,
+    VenueResolution,
+    register_curve,
+    resolve_curve,
+    try_resolve_curve,
+)
 from .execution import ExecutionModel, ExecutionParams
 from .replay import RecentWindowReplay, ReplaySimulator, SimConfig
 from .rug import RugTracker
@@ -37,6 +52,20 @@ __all__ = [
     "FeeTier",
     "PoolReconstructor",
     "PoolState",
+    # curves (multi-venue fill abstraction)
+    "Curve",
+    "CurveInput",
+    "ConstantProductCurve",
+    "PumpFunAmmCurve",
+    "FeeSplit",
+    "PumpFunAmmFeeSchedule",
+    "CurveRegistry",
+    "DEFAULT_REGISTRY",
+    "register_curve",
+    "resolve_curve",
+    "try_resolve_curve",
+    "VenueResolution",
+    "UnsupportedVenueError",
     # execution
     "ExecutionModel",
     "ExecutionParams",

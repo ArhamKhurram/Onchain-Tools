@@ -75,6 +75,16 @@ class SwapEvent(_TapeEventBase):
         default=None, description="Execution price in quote per base; None if not carried."
     )
 
+    # The venue the swap executed on — Pinax's ``protocol`` tag (``pumpfun_amm``, ``pumpfun``,
+    # ``raydium_clmm``, ``orca_whirlpool``, …). OPTIONAL: a decoded swap stream may omit it, and a
+    # ``None`` means "not carried", never "unknown venue". The simulator's venue→curve resolver
+    # (``sim/curves``) dispatches on this to pick the right fill model; when it is absent the caller
+    # must supply the venue out-of-band. Kept as a free string alias (not an enum) so a
+    # newly-listed venue in the firehose never fails validation — the resolver decides support.
+    protocol: str | None = Field(
+        default=None, description="Execution venue (Pinax `protocol` tag); None if not carried."
+    )
+
     base_reserve_before: NonNegDecimal | None = None
     quote_reserve_before: NonNegDecimal | None = None
     base_reserve_after: NonNegDecimal | None = None
