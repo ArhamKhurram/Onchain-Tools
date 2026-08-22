@@ -10,6 +10,8 @@ Public surface:
     * ``CurveFill`` — the fill result shape (re-exported from ``sim.amm.curve``; unchanged).
     * ``ConstantProductCurve`` — the existing ``x·y=k`` math behind the interface (Raydium/CPMM).
     * ``PumpFunAmmCurve`` / ``FeeSplit`` / ``PumpFunAmmFeeSchedule`` — pump.fun AMM + its real fee stack.
+    * ``ConcentratedLiquidityCurve`` / ``CLMMFill`` / ``RollingLocalLiquidityEstimator`` — the
+      effective-local-liquidity CLMM/DLMM/Whirlpool approximation + its rolling ``L`` estimator.
     * ``CurveRegistry`` / ``DEFAULT_REGISTRY`` / ``register_curve`` — venue→curve dispatch.
     * ``VenueResolution`` / ``UnsupportedVenueError`` — the explicit "no model for this venue" result.
     * ``resolve_curve`` / ``try_resolve_curve`` — module-level shortcuts over ``DEFAULT_REGISTRY``.
@@ -33,6 +35,14 @@ from .base import (
 )
 
 # --- built-in curves: importing each module runs its @register_curve on DEFAULT_REGISTRY ---------
+from .clmm import (
+    CLMM_VENUES,
+    CLMMFill,
+    ConcentratedLiquidityCurve,
+    LocalLiquidityEstimate,
+    LocalSwapObservation,
+    RollingLocalLiquidityEstimator,
+)
 from .constant_product import ConstantProductCurve
 from .pumpfun import (
     PUMPFUN_AMM_STANDARD_FEE,
@@ -77,6 +87,12 @@ __all__ = [
     "PumpFunAmmFeeSchedule",
     "PUMPFUN_AMM_STANDARD_FEE",
     "PUMPFUN_BONDING_CURVE_FEE_BPS",
+    "ConcentratedLiquidityCurve",
+    "CLMMFill",
+    "CLMM_VENUES",
+    "LocalSwapObservation",
+    "LocalLiquidityEstimate",
+    "RollingLocalLiquidityEstimator",
     # registry / resolution
     "CurveRegistry",
     "CurveFactory",
