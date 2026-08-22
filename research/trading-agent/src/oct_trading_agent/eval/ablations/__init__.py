@@ -5,7 +5,23 @@
                       prior. If it doesn't, the agent was exploiting leakage (a NO-GO).
     * convergence   : convergence-with-N vs convergence-without-N — the clean A/B for Model N's lift.
 
-TODO(Wave-1/2: eval agent): implement the ablation runners with multiple-comparison discipline.
+Phase 1 ships the leakage-guard: :func:`assert_raw_chart_causal` (the causal audit over the tier-A
+features) and :class:`NoiseTierFeatureStore` / :func:`noise_ablation` (the "replace a tier with noise;
+performance must collapse" scaffold). Per-tier and convergence ablations arrive with tiers B-E.
 """
 
 from __future__ import annotations
+
+from .leakage import (
+    NoiseAblationStores,
+    NoiseTierFeatureStore,
+    assert_raw_chart_causal,
+    noise_ablation,
+)
+
+__all__ = [
+    "NoiseAblationStores",
+    "NoiseTierFeatureStore",
+    "assert_raw_chart_causal",
+    "noise_ablation",
+]

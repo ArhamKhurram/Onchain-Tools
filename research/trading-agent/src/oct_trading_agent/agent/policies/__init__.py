@@ -1,11 +1,18 @@
 """agent/policies — actor heads; the hybrid discrete-continuous action (paper §3.3).
 
-Ships :class:`HoldPolicy`, a trivial baseline that always emits ``HOLD`` with zero size. It exists
-to prove the Phase-0 vertical slice (feature bundle → typed decision) end-to-end; it is NOT a
-learned policy. The real policy (hybrid discrete intent + continuous size head reading a
-distributional critic) is Wave-1's job.
+Two policy surfaces live here, deliberately distinct:
 
-TODO(Wave-1: agent agent): implement the learned actor behind ``core.decision.Policy``.
+* **OCT-facing** (``core.decision.Policy``): a :class:`~oct_trading_agent.core.features.FeatureBundle`
+  in, a rich :class:`~oct_trading_agent.core.decision.AgentDecision` out — the product/convergence
+  contract. :class:`HoldPolicy` is the trivial stub for the Phase-0 vertical slice.
+* **RL-loop-facing** (:class:`EnvPolicy`): an :class:`~oct_trading_agent.agent.envs.Observation` in,
+  an :class:`~oct_trading_agent.agent.envs.EnvAction` out — the seam the Phase-1 environment and the
+  eval runner accept. :class:`RandomPolicy` is the mandated random baseline; a learned actor
+  (IQL/CQL/PPO) drops in here without touching the env. :class:`CorePolicyAdapter` bridges an
+  OCT-facing policy into an ``EnvPolicy`` for evaluation.
+
+TODO(next phase): implement the learned actor (hybrid intent + continuous size head reading a
+distributional critic) behind both surfaces.
 """
 
 from __future__ import annotations
@@ -17,6 +24,9 @@ from oct_trading_agent.core import (
     SignalContribution,
     ValueDistribution,
 )
+
+from .base import CorePolicyAdapter, EnvPolicy
+from .random_policy import RandomPolicy
 
 _HOLD_MODEL_ID = "stub.hold_policy.v0"
 
@@ -41,3 +51,6 @@ class HoldPolicy:
             rationale_trace=[],
             signal_contribution=SignalContribution(model_id=_HOLD_MODEL_ID, score=0.0),
         )
+
+
+__all__ = ["CorePolicyAdapter", "EnvPolicy", "HoldPolicy", "RandomPolicy"]
