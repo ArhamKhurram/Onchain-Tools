@@ -11,8 +11,11 @@ Two policy surfaces live here, deliberately distinct:
   (IQL/CQL/PPO) drops in here without touching the env. :class:`CorePolicyAdapter` bridges an
   OCT-facing policy into an ``EnvPolicy`` for evaluation.
 
-TODO(next phase): implement the learned actor (hybrid intent + continuous size head reading a
-distributional critic) behind both surfaces.
+Phase 1 lands the **learned actor** (:mod:`.torch_actor`): a shared-torso
+:class:`HybridActorCritic` (categorical intent + Beta size + distributional quantile critic) and
+:class:`TorchPolicy`, the :class:`EnvPolicy` adapter that drops the trained actor into the eval
+runner unchanged. The torch pieces require the ``learn`` extra; :class:`TorchPolicy`/
+:class:`ActorConfig` import in a lean install and raise only on construction.
 """
 
 from __future__ import annotations
@@ -27,6 +30,7 @@ from oct_trading_agent.core import (
 
 from .base import CorePolicyAdapter, EnvPolicy
 from .random_policy import RandomPolicy
+from .torch_actor import ActorConfig, TorchPolicy
 
 _HOLD_MODEL_ID = "stub.hold_policy.v0"
 
@@ -53,4 +57,11 @@ class HoldPolicy:
         )
 
 
-__all__ = ["CorePolicyAdapter", "EnvPolicy", "HoldPolicy", "RandomPolicy"]
+__all__ = [
+    "ActorConfig",
+    "CorePolicyAdapter",
+    "EnvPolicy",
+    "HoldPolicy",
+    "RandomPolicy",
+    "TorchPolicy",
+]

@@ -35,6 +35,13 @@ dev = [
 # --- Heavy groups: only installed by the wave that needs them. Not pinned tightly. ---
 # Wave: agent (encoders/policies/critics) — the RL/DL spine.
 torch = ["torch>=2.2"]
+# Phase-1 LEARNER: the neural policy + distributional critic + PPO loop (agent/policies, agent/critics,
+# agent/online, agent/train.py). Bundles torch with the `rl` extra's gymnasium so one
+# `uv sync --extra learn` provisions everything the learner and its optional Gym adapter need. The
+# non-RL suite stays green WITHOUT this (torch imports are guarded; heavy tests importorskip torch).
+# POSSIBLE CONFLICT (flagged for the orchestrator): overlaps the `torch` + `rl` extras and their
+# numpy pins — resolve together with those groups.
+learn = ["torch>=2.2", "gymnasium>=0.29"]
 # Phase-1 env: the OPTIONAL Gym adapter (agent/envs/gymnasium_env.py). The core TradingEnv needs
 # NONE of this — it runs on the base install; only `make_gymnasium_env` imports gymnasium. Kept out
 # of the base + dev groups so `uv sync --extra dev` stays lean. POSSIBLE CONFLICT (flagged for the
