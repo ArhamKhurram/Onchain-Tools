@@ -14,6 +14,41 @@ program logs reasoning and scoping; once Phase 0 starts, entries carry real numb
 
 ---
 
+## 2026-08-23 (e) — FIRST REAL RESULT: Phase-1 chart-only = NO-GO (3 seeds, 24 live tokens)
+
+The program's first genuine scientific answer to the charter §2 question, for the raw-chart tier.
+
+**Setup:** assembled a real dataset of **24 distinct pump.fun bonding-curve tokens** (via the
+`protocol=pumpfun` REST filter, paginated — the learner's built-in one-page loader was too thin;
+driver `scratchpad/phase1_real.py` reuses the repo's exact decode + `TokenTape` + `run_phase1` gate).
+Held-out-**tokens** axis (train on some tokens, evaluate on entirely unseen ones), 3 seeds, 4 windows,
+125 bps bonding fee, leakage guard on. Bounded budget (40 PPO iters, 64-dim net).
+
+**Result: NO-GO on all 3 seeds.**
+- Agent mean return **−24 to −47 bps** per episode; **loses to hold-SOL (cash) on every seed** (0 bps).
+- vs buy-and-hold: mixed and sample-dependent — beat it on 10–70% of tokens across runs (an earlier
+  partial run on a different 24-token draw had the agent beating BH 70%; this fresh draw 10–60%). No
+  reliable edge either way.
+- **Leakage guard passes all 3** (the noised-tier agent shows no edge — the result is honest, not leakage).
+
+**Interpretation (clean, pre-registered — NOT a failure):** from **price/flow alone**, no edge survives
+125 bps costs out-of-sample on new-pair bonding-curve tokens. The agent learns *something* (it sometimes
+beats naive buy-and-hold by cutting losers) but not enough to beat simply holding SOL. This is exactly
+what the progressive-information curriculum predicts and exists to test: **the edge, if it exists, must
+come from the later tiers** (wallet flows → narrative/social), not the chart. High token-sample variance
+is itself a finding (24-token draws give materially different BH-beat rates).
+
+**Honest scope caveats (don't overclaim):** bounded first pass (small net, 40 iters); the **distributional
+critic was numerically unstable** (value estimates blew to ~1e5 — the eval is on real returns so the
+verdict stands, but training quality needs a fix); one venue (bonding curve); the verdict is "chart-alone
+shows no edge under an honest bounded setup," NOT "no edge can ever exist."
+
+**Next:** (1) productionize a `protocol=pumpfun` paginated **dataset builder** in-repo (reproducible, not
+scratch); (2) **fix the critic instability** (value normalization / return scaling); (3) **Phase 2 — add
+the wallet-flow tier**, the first curriculum step where the design expects an edge to actually appear.
+
+---
+
 ## 2026-08-23 (d) — Phase-1 LEARNER launched; vector-DB deferred to Phase D
 
 - **Learner agent launched** (owns `agent/policies/` learned + `agent/critics/` + `agent/online/` +
