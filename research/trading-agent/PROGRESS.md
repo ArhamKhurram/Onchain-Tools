@@ -14,6 +14,62 @@ program logs reasoning and scoping; once Phase 0 starts, entries carry real numb
 
 ---
 
+## 2026-08-23 (f) — Full-chart MULTI-VENUE env + token-count ladder trainer (unblocks migrated tokens)
+
+**Decisions**
+- The bonding-only `TradingEnv` is kept intact; a NEW generic env sits beside it. The bonding env
+  seeds the pump.fun virtual reserves and fills every order with the flat constant-product law —
+  correct for the pre-migration regime it was built for, garbage on MIGRATED / multi-venue tokens
+  (a long-only agent could show −2000×, which is impossible). The fix changes ONLY the fill/sim path.
+
+**Changes (code)**
+- `sim/replay/reconstruct.py` — generic reserve reconstruction. A decoded swap stream carries no
+  reserves, so pre-trade depth is anchored two honest ways: (default) a **self-consistency fit** of
+  constant-product depth `(base0, quote0)` at the token's first swap — reusing the CLMM
+  `RollingLocalLiquidityEstimator` (for a CP pool the v3 virtual reserves `(L/√P, L·√P)` ARE the
+  reserves) — then rolled FORWARD by the existing `PoolReconstructor` (the forward dual of
+  `calibration_independent`'s roll-back); or an explicit independent-reserve anchor when a fresh
+  on-chain snapshot exists. Output is a sim-ready tape shaped exactly like `prepare_bonding_curve_tape`.
+- `sim/replay/generic_simulator.py` — `MarketReplaySimulator(ReplaySimulator)`: overrides ONLY the
+  buy/sell fill to route through a venue `Curve` resolved from the registry; every other part (rug
+  check, causal reconstruction, execution realism, realized-only book, terminals) is inherited. A
+  curve that refuses a fill → honest `INSUFFICIENT_LIQUIDITY`, never a fabricated number.
+- `agent/envs/generic_env.py` — `MarketReplayEnv(TradingEnv)` + `build_market_regime`. Resolves the
+  token's venue → curve via `try_resolve_curve` (`pumpfun_amm` → validated CP+fee-stack ~30 bps;
+  CLMM venues → effective-`L` curve fit from the token's own swaps; `pumpfun` → closed-form bonding
+  curve on the KNOWN seed, not a fit; constant-product venues → CP curve). Unsupported venues
+  (`jupiter_v6` router, unknown DEXes) resolve to a NON-tradeable regime with a reason — skipped and
+  counted, never faked. Same §3.3 action / tier-A obs / §3.5 reward as the bonding env (it IS a
+  `TradingEnv`, so the eval battery + baselines score it unchanged). `env.py` gained one seam:
+  `_build_simulator()`.
+- `data/dataset.py` — `MarketSwapDataset`: a resumable, pool-partitioned, **venue-preserving** raw
+  Pinax swap cache (Parquet + manifest), idempotent on swap identity — the substrate for the
+  token-count ladder (the append-only tape log drops `protocol`, so it can't back the venue env).
+  `build_dataset` does a paginated, resumable REST backfill.
+- `agent/train_market.py` — `run_ladder`: trains the heavier net (128-hidden, 16-quantile) with an
+  entropy-decay schedule and 1000+ PPO iters, on a progressive token-count ladder
+  (10 → 100 → 1k → 10k → 100k), WARM-STARTING each rung from the previous (checkpointed). Reports at
+  each rung: does the agent TRADE (trade count + tokens touched), the risk-adjusted battery vs
+  hold-SOL/buy-and-hold, and the held-out-**tokens** edge. `agent/train_data.load_live_market_tapes`
+  is the single-page multi-venue loader.
+
+**Findings (validated offline, torch-free)**
+- On a synthetic `pumpfun_amm` token the self-consistency fit recovers the true mid to <0.3% and a
+  long-only buy→close books a small COST-scale loss (~4bps of the risk budget), not a catastrophe —
+  the −2000× bug is a bonding-seed artefact, fixed. All curve families (pumpfun_amm, raydium CP,
+  the three CLMM venues, bonding) fill sanely; `jupiter_v6` is flagged unsupported.
+- **Scale limit (honest):** paginated REST reaches the 10 / 100 / 1k rungs and into the low
+  thousands; **10k / 100k tokens is a bulk-historical job for the Substreams gRPC firehose**
+  (`solana.substreams.pinax.network:443`, bearer = raw `PINAX_API_KEY`, pkg `dex-swaps-v0.5.2.spkg`).
+  The dataset's on-disk format is the same target a gRPC backfill writes into, so the top rungs are a
+  data-collection job, not a code change.
+
+**Open**
+- The heavy multi-token training run itself needs the `learn` extra (torch) + real data volume;
+  results reported separately once the run lands.
+
+---
+
 ## 2026-08-23 (e) — FIRST REAL RESULT: Phase-1 chart-only = NO-GO (3 seeds, 24 live tokens)
 
 The program's first genuine scientific answer to the charter §2 question, for the raw-chart tier.

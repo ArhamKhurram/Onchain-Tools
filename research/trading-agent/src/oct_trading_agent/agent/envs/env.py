@@ -164,9 +164,15 @@ class TradingEnv:
 
     # -- Gym API ----------------------------------------------------------------------------------
 
+    def _build_simulator(self) -> ReplaySimulator:
+        """Construct the simulator ``reset`` drives. The bonding-curve env uses the constant-product
+        :class:`ReplaySimulator`; a subclass (the generic full-chart env) overrides this to build a
+        venue-dispatching simulator. Kept a seam so the rest of the RL contract is shared verbatim."""
+        return ReplaySimulator(self._tape, self._sim_config)
+
     def reset(self) -> Observation:
         """Reset to the first decision instant and return the initial observation."""
-        self._sim = ReplaySimulator(self._tape, self._sim_config)
+        self._sim = self._build_simulator()
         self._sim.reset(self.mint)
         self._ledger = PaperLedger(self.config.initial_balance_quote)
         self._reward.reset()

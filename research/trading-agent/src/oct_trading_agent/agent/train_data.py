@@ -96,4 +96,65 @@ def load_live_bonding_curve_tapes(
     return tapes[:max_tokens]
 
 
-__all__ = ["load_live_bonding_curve_tapes"]
+def load_live_market_tapes(
+    *,
+    protocols: tuple[str, ...] = ("pumpfun_amm",),
+    network: str = "solana",
+    page_rows: int = 500,
+    max_tokens: int = 100,
+    min_swaps: int = 24,
+    cache_dir: Path | None = None,
+) -> list[TokenTape]:
+    """One network-wide page → up to ``max_tokens`` MULTI-VENUE token tapes (venue tag PRESERVED).
+
+    The bonding sibling above forces ``protocol == "pumpfun"``; this one keeps each pool's REAL
+    ``protocol`` (``pumpfun_amm``, ``raydium_*``, a CLMM, …) so the multi-venue env can pick the right
+    fill curve. Groups the page by pool, keeps WSOL-quoted pools in ``protocols`` with ``>= min_swaps``
+    decodable prints, oldest-first. A single page caps this at the low hundreds of tokens — the
+    persisted :class:`~oct_trading_agent.data.dataset.MarketSwapDataset` is the path to the high rungs.
+    """
+    from oct_trading_agent.data.pinax_client.decode import decode_swap_row
+    from oct_trading_agent.data.pinax_client.rest import PinaxRestClient
+
+    wanted = set(protocols)
+    limit = max(1, min(500, page_rows))
+    client = PinaxRestClient(cache_dir=cache_dir)
+    payload = client.get_swaps(network=network, limit=limit, page=1, use_cache=cache_dir is not None)
+    rows = [r for r in (payload.get("data") or []) if isinstance(r, dict)]
+
+    by_pool: dict[str, list[dict[str, Any]]] = defaultdict(list)
+    pool_mint: dict[str, str] = {}
+    pool_protocol: dict[str, str] = {}
+    for row in rows:
+        pool = row.get("amm_pool")
+        protocol = row.get("protocol")
+        if not isinstance(pool, str) or not pool or protocol not in wanted:
+            continue
+        tracked = _tracked_mint(row)
+        if tracked is None:
+            continue
+        by_pool[pool].append(row)
+        pool_mint.setdefault(pool, tracked)
+        pool_protocol.setdefault(pool, str(protocol))
+
+    tapes: list[TokenTape] = []
+    for pool, pool_rows in by_pool.items():
+        tracked = pool_mint[pool]
+        protocol = pool_protocol[pool]
+        swaps: list[SwapEvent] = []
+        for row in pool_rows:
+            event = decode_swap_row(row, tracked, quote_mint=_WSOL)
+            if event is not None:
+                swaps.append(event.model_copy(update={"protocol": protocol}))
+        if len(swaps) < min_swaps:
+            continue
+        swaps.sort(key=lambda s: (s.slot, s.block_time))
+        tapes.append(
+            TokenTape(mint=tracked, swaps=swaps, source=f"live:pinax/{network}/{protocol}/{pool[:8]}...")
+        )
+
+    tapes.sort(key=lambda t: min(e.block_time for e in t.swaps))
+    return tapes[:max_tokens]
+
+
+__all__ = ["load_live_bonding_curve_tapes", "load_live_market_tapes"]
