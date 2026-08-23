@@ -31,6 +31,12 @@ always-buy/always-hold); and **learn from real traders**. Provided a 968-wallet 
   a warm-started policy that actually trades (fixes the from-scratch degenerate collapse). This is the
   Phase-2 offline/imitation warm-start (paper §2.4/§6.2). Bounded subset first (~30–50 traders), scale later.
 
+**Dataset-scale ladder (operator directive):** train progressively on **10 → 100 → 1,000 → 10,000 →
+100,000 tokens**, reporting does-it-trade + risk-adjusted OOS metrics at each rung, warm-starting each
+rung from the last. Engineering reality: 10–1,000 run on paginated REST; **10k needs a persisted
+resumable Parquet dataset cache; 100k realistically needs the Substreams firehose bulk backfill**, not
+one-page REST. Ladder is the plan; low rungs run now, high rungs gated on the dataset pipeline scaling.
+
 **Honesty carried forward:** realized-only reward, walk-forward eval, leakage guard, selection-bias
 caveat on the trader labels (§9.3). Heavy training + 968-wallet pulls take real time — results land async.
 
