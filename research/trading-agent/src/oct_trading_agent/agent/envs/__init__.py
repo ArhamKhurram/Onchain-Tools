@@ -34,6 +34,12 @@ from .bonding import (
     prepare_bonding_curve_tape,
 )
 from .env import DEFAULT_HARD_CAP, EnvConfig, StepResult, TradingEnv
+from .generic_env import (
+    MarketRegime,
+    MarketReplayEnv,
+    build_market_regime,
+    market_sim_config,
+)
 from .observation import (
     STATE_SLOTS,
     TIER_A_SLOTS,
@@ -81,6 +87,8 @@ __all__ = [
     "DiscreteSpace",
     "EnvAction",
     "EnvConfig",
+    "MarketRegime",
+    "MarketReplayEnv",
     "Observation",
     "PotentialShaper",
     "RewardBreakdown",
@@ -95,7 +103,9 @@ __all__ = [
     "assert_no_unrealized_read",
     "bonding_curve_seed_liquidity",
     "bonding_curve_sim_config",
+    "build_market_regime",
     "encode",
+    "market_sim_config",
     "intent_index",
     "make_gymnasium_env",
     "observation_space",
