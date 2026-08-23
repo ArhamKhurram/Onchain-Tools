@@ -1,0 +1,31 @@
+[
+  {
+    "chain": "solana",
+    "address": "Wa11etHighBa1anceTrader1111111111111111111111",
+    "name": "Whale One",
+    "fundingInfo": {"nativeBalance": 1337.5, "numTokensCreated": 0}
+  },
+  {
+    "chain": "solana",
+    "address": "Wa11etMidBa1anceTrader22222222222222222222222",
+    "name": "Mid Two",
+    "fundingInfo": {"nativeBalance": 42.0}
+  },
+  {
+    "chain": "solana",
+    "address": "Wa11etLowBa1anceTrader33333333333333333333333",
+    "name": "Low Three",
+    "fundingInfo": {"nativeBalance": 0.5}
+  },
+  {
+    "chain": "ethereum",
+    "address": "0xNotSolanaShouldBeDropped000000000000000000",
+    "name": "Wrong Chain",
+    "fundingInfo": {"nativeBalance": 9999.0}
+  },
+  {
+    "chain": "solana",
+    "address": "Wa11etNoBa1anceInfo4444444444444444444444444",
+    "name": "No Funding"
+  }
+]

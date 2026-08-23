@@ -11,6 +11,7 @@ hindsight-filtered (leakage rule 7).
 from __future__ import annotations
 
 from .fixtures import load_labeled_wallets
+from .pinax_loader import iter_signer_swaps, load_wallet_trades
 from .reconstruct import build_trajectories, build_trajectories_for
 from .schema import (
     DemonstrationStep,
@@ -19,6 +20,7 @@ from .schema import (
     LabeledWallet,
     TrajectoryOutcome,
 )
+from .wallets_file import TrackedWallet, parse_tracked_wallets, select_cohort
 
 __all__ = [
     "LabeledWallet",
@@ -29,4 +31,9 @@ __all__ = [
     "load_labeled_wallets",
     "build_trajectories",
     "build_trajectories_for",
+    "iter_signer_swaps",
+    "load_wallet_trades",
+    "TrackedWallet",
+    "parse_tracked_wallets",
+    "select_cohort",
 ]

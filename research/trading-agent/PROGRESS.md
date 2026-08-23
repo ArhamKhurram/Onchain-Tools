@@ -14,6 +14,38 @@ program logs reasoning and scoping; once Phase 0 starts, entries carry real numb
 
 ---
 
+## 2026-08-23 (g) — Imitation-learning seam SHIPPED: BC warm-start from tracked traders
+
+The (f) imitation agent landed. `data/labeling/` + `agent/imitation/` now carry the whole Phase-2
+behavioral-cloning warm-start, torch-free where it can be and torch-gated where it must be.
+
+**Changes.**
+- `data/labeling/pinax_loader.py` — pull a trader's **full** swap history by `signer=<addr>` (bounded
+  pagination on the shared `PinaxRestClient`; reuses `decode_swap_row`), mapped to the existing
+  `LabeledWallet`/`LabeledTrade` contract → straight into `build_trajectories`. This is the promised
+  swap-point for `load_labeled_wallets` (fixture → live), nothing downstream changed.
+- `data/labeling/wallets_file.py` — parse the operator's 968-wallet export (never committed) and
+  select a **bounded, balance-ranked** cohort (the cap is what keeps a run bounded).
+- `agent/imitation/demos.py` — reconstruct each trader's per-token episodes (wins AND losses) into
+  **env-aligned (observation, expert-action)** demos: tier-A masked bundle assembled *as-of* each
+  decision instant from the **pooled cohort tape** (every tracked trader's swaps on that mint — a
+  bounded, partial reconstruction of the chart; liquidity honestly masked-missing), paired with the
+  §3.3 hybrid action. Crucially it also synthesizes **HOLD** (in-position cohort prints) and **NO_OP**
+  (pre-entry prints), class-capped — so BC can't collapse to "always act" *or* "always hold".
+- `agent/imitation/bc.py` — supervised BC on `HybridActorCritic`: cross-entropy on intent + Beta-NLL
+  on size (masked to sized intents). Generalization measured **held-out by token**. torch, `learn`
+  extra; base suite green without it.
+- `agent/imitation/cohort.py` — bounded end-to-end report + CLI (`--wallets-file`, `--max-wallets`,
+  `--max-pages`): pull cohort → demos → BC → verdict "**does the cloned policy trade?**".
+
+**Honesty carried forward.** Realized-only labels, full win-and-loss history (nothing
+hindsight-filtered), and the report leads with the **§9.3 selection-bias caveat**: the cohort is
+operator-chosen + balance-ranked, and BC clones *behaviour*, not a proven edge — profitability is a
+separate measurement this does not make. Live cohort numbers land async (heavy torch install + Pinax
+pulls); the mechanism, tests (ruff/mypy/pytest green), and the honest framing ship first.
+
+---
+
 ## 2026-08-23 (f) — Full-chart multi-venue trading + imitation from 968 tracked traders (Phase 1.5→2)
 
 Operator pushback (correct): the agent should trade a token's **whole chart on any venue**, not be
