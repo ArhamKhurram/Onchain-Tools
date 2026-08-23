@@ -41,8 +41,26 @@ behavioral-cloning warm-start, torch-free where it can be and torch-gated where 
 **Honesty carried forward.** Realized-only labels, full win-and-loss history (nothing
 hindsight-filtered), and the report leads with the **§9.3 selection-bias caveat**: the cohort is
 operator-chosen + balance-ranked, and BC clones *behaviour*, not a proven edge — profitability is a
-separate measurement this does not make. Live cohort numbers land async (heavy torch install + Pinax
-pulls); the mechanism, tests (ruff/mypy/pytest green), and the honest framing ship first.
+separate measurement this does not make.
+
+**FIRST LIVE RESULT (bounded): BC produces a policy that TRADES.** Ran the pipeline on the top-8
+balance-ranked wallets, ≤2 Pinax pages each (3 wallets skipped on transient 5xx after retries — the
+resilience path worked; 4 of the 5 pulled carried trades):
+- **2,006 real swaps → 283 per-token episodes** (140 win / 104 loss / 39 still-open — the full
+  win-and-loss record, as intended) → **2,058 env-aligned demos**.
+- **Held-out-by-token intent accuracy = 85.0%.** BC val predictions are a genuine trading mix
+  (open_long 77, add 399, trim 43, close 121; no_op/hold 0), tracking the expert val distribution
+  (open_long 74, add 380, trim 69, close 91) — whereas the **untrained** same-arch net predicts a
+  degenerate scatter (add 0, close 299 dominating). BC clearly moved the policy off the from-scratch
+  corner toward the experts. Mean cloned size on sized intents ≈ 0.28.
+- **Caveat on the passive classes:** HOLD/NO_OP demos are sparse here (9 / 43) because passive
+  decision instants come only from *other* cohort members' prints on the same mint, and a 4–5-wallet
+  pool overlaps little within any one wallet's hold window. Expected with a tiny cohort; grows as the
+  cohort scales. The verdict ("does it trade?") is unaffected.
+
+Scale-up (more wallets, more pages, the balance of the 968) is a config change, deliberately not run
+here (bounded first pass). The mechanism, tests (ruff/mypy/pytest green), and this honest live result
+ship in the PR.
 
 ---
 
