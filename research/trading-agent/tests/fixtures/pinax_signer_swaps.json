@@ -1,0 +1,58 @@
+{
+  "_fixture_note": "Synthetic Pinax /v1/svm/swaps rows for ONE signer (a tracked trader) on one WSOL-quoted token: two buys, a partial sell (trim) and a full sell (close), plus one token->token route row that MUST be skipped. Row shape mirrors tests/fixtures/pinax_swaps_page.json (real capture) but amounts are hand-made for the signer-loader test.",
+  "wsol": "So11111111111111111111111111111111111111112",
+  "token": "Tok1imitationLearnDemoMint1111111111111111",
+  "pagination": {"page": 1},
+  "data": [
+    {
+      "block_num": 500000000,
+      "timestamp": 1785400000,
+      "signature": "sig-buy-1",
+      "signer": "Trader1imitationLearnWa11et11111111111111111",
+      "input_mint": "So11111111111111111111111111111111111111112",
+      "output_mint": "Tok1imitationLearnDemoMint1111111111111111",
+      "input_value": 2.0,
+      "output_value": 1000000.0
+    },
+    {
+      "block_num": 500000010,
+      "timestamp": 1785400010,
+      "signature": "sig-buy-2",
+      "signer": "Trader1imitationLearnWa11et11111111111111111",
+      "input_mint": "So11111111111111111111111111111111111111112",
+      "output_mint": "Tok1imitationLearnDemoMint1111111111111111",
+      "input_value": 1.0,
+      "output_value": 400000.0
+    },
+    {
+      "block_num": 500000020,
+      "timestamp": 1785400020,
+      "signature": "sig-sell-1",
+      "signer": "Trader1imitationLearnWa11et11111111111111111",
+      "input_mint": "Tok1imitationLearnDemoMint1111111111111111",
+      "output_mint": "So11111111111111111111111111111111111111112",
+      "input_value": 600000.0,
+      "output_value": 1.2
+    },
+    {
+      "block_num": 500000030,
+      "timestamp": 1785400030,
+      "signature": "sig-sell-2",
+      "signer": "Trader1imitationLearnWa11et11111111111111111",
+      "input_mint": "Tok1imitationLearnDemoMint1111111111111111",
+      "output_mint": "So11111111111111111111111111111111111111112",
+      "input_value": 800000.0,
+      "output_value": 2.6
+    },
+    {
+      "block_num": 500000040,
+      "timestamp": 1785400040,
+      "signature": "sig-route-skip",
+      "signer": "Trader1imitationLearnWa11et11111111111111111",
+      "input_mint": "Tok1imitationLearnDemoMint1111111111111111",
+      "output_mint": "OtherTokenNotWso1RouteLegMint2222222222222",
+      "input_value": 12345.0,
+      "output_value": 678.0
+    }
+  ]
+}
