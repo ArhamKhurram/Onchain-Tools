@@ -14,6 +14,28 @@ program logs reasoning and scoping; once Phase 0 starts, entries carry real numb
 
 ---
 
+## 2026-08-23 (f) — Full-chart multi-venue trading + imitation from 968 tracked traders (Phase 1.5→2)
+
+Operator pushback (correct): the agent should trade a token's **whole chart on any venue**, not be
+restricted to the bonding curve; train **far harder** (the 40-iter run collapses to degenerate
+always-buy/always-hold); and **learn from real traders**. Provided a 968-wallet Solana tracking list
+(`scratchpad/tracked-wallets.json`; includes known traders — Cupsey, Cented, slingoor…). Two agents launched:
+- **Full-chart multi-venue env + heavy training** (`agent/envs/` generic env + `sim/`): reconstruct
+  pool depth per token from its swap sequence and fill with the venue-appropriate `Curve` from the
+  registry (pumpfun_amm/CPMM validated, CLMM approx, jupiter-router flagged), episode = the token's
+  whole life, then a serious (~1000–3000-iter) PPO run. Fixes the "trade the full chart" + "train a
+  thousand sessions" asks. **Corrects my earlier over-restriction** — I defaulted to the bonding-curve
+  sim (garbage on migrated tokens) instead of using the Wave-2 multi-venue curves we built for exactly this.
+- **Imitation from the tracked wallets** (`agent/imitation/` + `data/labeling/`): pull each trader's
+  trades from Pinax by `signer=addr`, build demonstration trajectories, behavioral-clone the policy →
+  a warm-started policy that actually trades (fixes the from-scratch degenerate collapse). This is the
+  Phase-2 offline/imitation warm-start (paper §2.4/§6.2). Bounded subset first (~30–50 traders), scale later.
+
+**Honesty carried forward:** realized-only reward, walk-forward eval, leakage guard, selection-bias
+caveat on the trader labels (§9.3). Heavy training + 968-wallet pulls take real time — results land async.
+
+---
+
 ## 2026-08-23 (e) — FIRST REAL RESULT: Phase-1 chart-only = NO-GO (3 seeds, 24 live tokens)
 
 The program's first genuine scientific answer to the charter §2 question, for the raw-chart tier.
