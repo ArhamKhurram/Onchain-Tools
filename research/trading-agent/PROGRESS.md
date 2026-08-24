@@ -14,6 +14,112 @@ program logs reasoning and scoping; once Phase 0 starts, entries carry real numb
 
 ---
 
+## 2026-08-24 (iii) — Trade-flow attention features wired into the observation (tier-A+ ablation ready)
+
+The §4.4 attention model's Hawkes backbone now feeds the AGENT, not just the standalone alert: the
+three-scalar attention state — λ_buy(t)/μ_buy (the baseline-normalized attention chart), the
+branching ratio n (attention momentum), and the MANDATORY manipulation-suspicion score — is wired
+as an optional tier-A+ observation block behind one flag. The motivating question, post the (ii)
+chart-only NO-GO: does a richer endogenous-attention representation of the SAME tape (no wallet
+resolution needed — trade timestamps only) change anything, BEFORE wallet flows are unlocked?
+
+**Changes**
+- `agent/encoders/tracker.py` (new): `HawkesAttentionTracker` — causal, per-token,
+  **stride-refit** wrapper over the existing EM Hawkes fit (`encoders/hawkes.py`) + suspicion
+  channel (`encoders/manipulation.py`). Refit grid is by event COUNT (`min_events=20`, then every
+  `refit_stride=10` events); between grid points the cached parameters are re-evaluated over the
+  events seen so far, so λ(t) stays event-fresh. Fits cache across env resets — a token's whole
+  training run pays each fit once. `features_at(as_of)` is a pure function of the causal prefix
+  (unit-tested: full vs truncated tape agree at t, on synthetic AND real tapes).
+- Observation: `ATTENTION_SLOTS` appended after the tier-A block when `EnvConfig` /
+  `MarketTrainConfig(attention_features=True)`; obs grows (B,15)→(B,21). The three slots share ONE
+  mask state — λ/n are never observable without their suspicion companion (§9.10), and all three
+  are masked-missing before the fit window (honest cold start, §8.6). Flag OFF = byte-identical
+  observation (regression-tested); every running config is untouched.
+- Plumbing: `--attention-features` on `train_market.py` and `population/map_elites.py`;
+  `ActorConfig.d_in` sizes the net from the widened vector; `RunningNormalizer` now pins its block
+  widths from the first observation (shape-mix raises). n ≥ 1 is REPORTED (flagged `explosive`),
+  never silently clipped.
+- Smoke proof on 10 real snap800 tokens (read-only): fits converge on tapes from 94 to 2,709
+  swaps; λ/μ ∈ [1, 86], n ∈ [0.25, 0.87] with two honest transient n≥1 flags on a hot early tape;
+  suspicion ∈ [0.22, 0.45]; a tiny PPO step runs flag-on (d_in=21) in ~2s.
+
+**Decisions**
+- Suspicion at this tier is the pure-flow blend (Benford, round-number, breadth deficit, buyer
+  concentration) computed on the refit stride. **What it cannot catch, stated plainly (§9.10):** it
+  resolves NO wallets — a sybil splitting one entity across fresh signers with organic-looking
+  sizes defeats it, and self-excitation is not identifiable from a hidden common driver using flow
+  alone. A high λ/n reading with low suspicion is a corroboration-dependent hypothesis, never an
+  identity; the features are inputs the agent may learn to weigh, not a detector.
+- The built-but-unwired GELU transformer (`encoders/transformer.py`) stays the **Phase-2 encoder
+  seam** — this task wired the interpretable Hawkes teacher only; the learned student (and
+  codependent training, §6.4) comes after the ablation says the tier is worth it.
+
+**Open**
+- The actual chart+attention ablation (flag-on vs flag-off ladder on the same tokens/seeds) runs
+  AFTER the 800-agent MAP-Elites run finishes — one flag, same harness. If it moves nothing, the
+  honest outcome is recorded and the tier stays off.
+
+---
+
+## 2026-08-24 (iii) — QD selection layer hardened: survival gate, loss-discipline gate, 54-cell style grid
+
+Operator-directed upgrades to the archive/selection semantics (selection only — the DSR reward is
+untouched; `envs/reward.py` off-limits by design).
+
+**Decisions**
+- **Hard survival gate.** An agent whose held-out realized equity path breaches the ruin floor
+  (default: min equity ≤ 0.2 of the starting risk budget, i.e. lost 80%) is inadmissible — it never
+  holds a MAP-Elites niche, never crowns a PBT niche champion, and is never a PBT exploit source (it
+  is instead always reseeded). Counted in telemetry (`ruined`, additive field).
+- **Curve gate = loss DISCIPLINE, not shape.** Mid-build refinement from the operator: in this
+  fat-tailed market a flat-or-bleed-then-sudden-step-up equity curve is the legitimate positive-skew
+  (barbell) profile, so no smoothness/monotonicity/ulcer score exists anywhere in the gate. What IS
+  gated: **max drawdown depth** (deepest peak-to-trough retrace of previously-held equity, default
+  ≤ 0.5 budget units — duration-agnostic, so plateaus and ranges cost only their depth) and **loss
+  escalation** (tail-half vs early-half mean realized-loss size ≤ 3.0 — the martingale doubling-down
+  signature; computed only once ≥ 8 losses exist). Thresholds deliberately LOOSE: with 40–300
+  held-out tokens a genuine rare-event strategy may catch only 1–2 runners per window, and tighter
+  gates would false-negative real skill. **Known false-negative risk:** a true barbell agent whose
+  rare win lands EARLY and then bleeds a long tail can still show a large "drawdown" from that peak;
+  0.5 budget-units of headroom is the loose compromise, revisit against real run data.
+- **Luck-vs-skill diagnostics are recorded, never gated.** Each champion now carries
+  `pnl_share_top` (single best episode's share of total pnl) and `pnl_split_bps` (mean pnl over the
+  first vs second half of the held-out episode sequence — time-disjoint under the walk-forward
+  ordering), so concentration/repeatability can be judged across runs without filtering rare-event
+  styles out.
+- **Fine 4-axis style grid, 6-role projection preserved.** Descriptor grew two behavioral axes:
+  entry-size style (mean buy size fraction: SMALL < 0.15 ≤ MID < 0.5 ≤ FULL) and exit style (mean
+  fraction of position per exit: CLIP ≤ 0.25 < CHUNK < 0.75 ≤ FULL; an agent with no self-driven
+  exits realizes its book in one forced close ⇒ FULL). Full space = 3×2×3×3 = **54 cells**
+  (`bin_style_cell`, `"ROLE:ENTRY:EXIT"`); the coarse 3×2 role grid (`bin_descriptor`) is untouched
+  and the desk console keeps its 6 desks — the fine cell rides only as the additive champion field
+  `style_cell`.
+
+**Changes**
+- New `agent/population/admission.py` (pure, torch-free): `AdmissionConfig` + `admission_verdict`.
+- `descriptor.py`: realized-equity/loss/entry-size/exit-clip streams collected in
+  `behavioral_rollout`; `CurveMetrics` (+ `equity_curve`/`max_drawdown`/`loss_escalation_ratio`)
+  on every `BehaviorProfile`; style-cell binning. `archive.py`: `NicheArchive` excludes
+  inadmissible agents from occupancy/champion/best (preserving the occupancy>0 ⇒ champion
+  invariant) and tallies them. `map_elites.py`: `EliteArchive` gates `try_add` unconditionally
+  (gate ON by default), counters checkpointed, CLI flags `--ruin-floor` / `--max-drawdown` /
+  `--max-loss-escalation`. `pbt.py`: `select_exploit_explore` takes an admissibility mask.
+  `telemetry.py` + `desk-telemetry-schema.md`: additive generation fields (`ruined`,
+  `curve_rejected`) and champion fields (`style_cell`, `final_equity`, `max_drawdown`,
+  `loss_escalation`, `pnl_share_top`, `pnl_split_bps`) — the 6-role contract validates unchanged.
+- Tests: `tests/test_population_admission.py` (gate invariants, barbell-passes/deep-retrace-fails,
+  martingale rejection, style binning, exploit-mask, additive-telemetry validity) + a scripted
+  clip-policy rollout test in `test_population_descriptor.py`. Full suite green; ruff clean; mypy
+  at branch baseline (no new errors; fixed the `**dict` config-expansion typing the new config
+  field surfaced in `test_population_checkpoint.py`).
+
+**Findings**
+- Tiny smoke (init 4 / iters 4, `market_dataset_snap800`, CPU, 1 torch thread, gates on defaults):
+  ran end-to-end, telemetry schema-valid; 8 evaluations → 5 admitted, **1 curve_rejected (the
+  discipline gate fired live on a real random-seed agent), 0 ruined**; coverage 0.17 → 0.67 and
+  monotone, so the gate coexists with the anti-collapse property.
+
 ## 2026-08-24 (ii) — OVERNIGHT VERDICT: chart-only has no durable edge — two independent methods converge
 
 The synthesis of the overnight escalation campaign. This is the program's most important result to

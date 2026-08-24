@@ -21,12 +21,16 @@ featurestore/learner concern and is deliberately out of the substrate.
 from __future__ import annotations
 
 from dataclasses import dataclass
+from typing import TYPE_CHECKING
 
 import numpy as np
 
 from oct_trading_agent.core import FeatureBundle, FeatureTier
 
 from .spaces import BoxSpace, DictSpace
+
+if TYPE_CHECKING:
+    from oct_trading_agent.agent.encoders.tracker import AttentionFeatures
 
 # Canonical tier-A slot order — matches ``featurestore.default_tier_a_features`` and is STABLE
 # (a learned policy encodes against these positions).
@@ -39,6 +43,16 @@ TIER_A_SLOTS: tuple[str, ...] = (
     "mean_inter_trade_secs",
 )
 
+# OPTIONAL tier-A+ attention slots (paper §4.4), appended AFTER the tier-A block when the env's
+# ``attention_features`` flag is on — flag-off observations are byte-identical to before. The three
+# travel as ONE unit sharing one missingness state: λ/n are never observable without the mandatory
+# manipulation-suspicion companion (§9.10), and all three are masked before the first fit window.
+ATTENTION_SLOTS: tuple[str, ...] = (
+    "attn_lambda_buy_ratio",  # λ_buy(t)/μ_buy — the attention chart, baseline-normalized
+    "attn_branching_n",  # attention-momentum scalar n (raw; ≥1 = explosive, honestly reported)
+    "attn_suspicion",  # the mandatory authenticity channel, [0, 1]
+)
+
 # Agent-state slots appended after the raw-chart block. All REALIZED (balance moves only on realized
 # cash flows + gas); no unrealized/peak mark ever enters here, keeping the observation aligned with
 # the reward's realized-only discipline (paper §3.5.4). Order is stable.
@@ -49,20 +63,27 @@ STATE_SLOTS: tuple[str, ...] = (
 )
 
 _N_FEATURES = len(TIER_A_SLOTS)
+_N_ATTENTION = len(ATTENTION_SLOTS)
 _N_STATE = len(STATE_SLOTS)
+
+
+def _n_features(*, attention: bool) -> int:
+    """Feature-block width: tier-A alone, or tier-A plus the optional attention slots."""
+    return _N_FEATURES + (_N_ATTENTION if attention else 0)
 
 
 def _transform(slot: str, value: float) -> float:
     """Stateless, monotone, causal squashing of an observed slot value.
 
-    ``buy_sell_imbalance`` is already in ``[-1, 1]``; the heavy-tailed magnitudes (price, liquidity,
-    volume, count, cadence) get a signed ``log1p`` so their dynamic range is compressed without any
-    running statistic. Non-finite inputs collapse to ``0.0`` (defensive; the featurestore should
-    never emit them).
+    ``buy_sell_imbalance`` and ``attn_suspicion`` are already bounded and pass through; the
+    heavy-tailed magnitudes (price, liquidity, volume, count, cadence, the λ/μ ratio, and the
+    branching ratio — which may exceed 1 and stays monotone through the squash) get a signed
+    ``log1p`` so their dynamic range is compressed without any running statistic. Non-finite
+    inputs collapse to ``0.0`` (defensive; the featurestore should never emit them).
     """
     if not np.isfinite(value):
         return 0.0
-    if slot == "buy_sell_imbalance":
+    if slot in ("buy_sell_imbalance", "attn_suspicion"):
         return float(value)
     if slot == "price":
         # Prices are tiny positive numbers; a signed log10 keeps them O(1) and monotone.
@@ -83,15 +104,17 @@ class AgentState:
 class Observation:
     """A tier-A observation as three named blocks — values, missingness mask, agent state.
 
-    ``features`` and ``mask`` are aligned to :data:`TIER_A_SLOTS`; ``state`` to :data:`STATE_SLOTS`.
+    ``features`` and ``mask`` are aligned to :data:`TIER_A_SLOTS` (followed by
+    :data:`ATTENTION_SLOTS` when the env's ``attention_features`` flag is on); ``state`` to
+    :data:`STATE_SLOTS`.
     ``mask[i] == 0.0`` means slot ``i`` was MISSING and ``features[i]`` is a placeholder, not a
     measured value — always branch on the mask. :attr:`bundle` is the raw point-in-time bundle the
     vector was built from, so a policy that prefers to read typed features directly (rather than the
     vector) still can.
     """
 
-    features: np.ndarray  # shape (len(TIER_A_SLOTS),), float32 — masked-missing slots are 0.0
-    mask: np.ndarray  # shape (len(TIER_A_SLOTS),), float32 in {0.0, 1.0}
+    features: np.ndarray  # shape (n_feature_slots,), float32 — masked-missing slots are 0.0
+    mask: np.ndarray  # shape (n_feature_slots,), float32 in {0.0, 1.0}
     state: np.ndarray  # shape (len(STATE_SLOTS),), float32
     bundle: FeatureBundle
 
@@ -104,36 +127,66 @@ class Observation:
         return np.concatenate([self.features, self.mask, self.state]).astype(np.float32)
 
 
-def observation_space() -> DictSpace:
-    """The observation space: three named boxes (features, mask, state)."""
+def observation_space(*, attention: bool = False) -> DictSpace:
+    """The observation space: three named boxes (features, mask, state).
+
+    ``attention=True`` widens the feature/mask boxes by the tier-A+ attention slots — the shape the
+    env advertises when its ``attention_features`` flag is on.
+    """
+    n = _n_features(attention=attention)
     return DictSpace(
         spaces={
-            "features": BoxSpace(low=(-30.0,) * _N_FEATURES, high=(30.0,) * _N_FEATURES),
-            "mask": BoxSpace(low=(0.0,) * _N_FEATURES, high=(1.0,) * _N_FEATURES),
+            "features": BoxSpace(low=(-30.0,) * n, high=(30.0,) * n),
+            "mask": BoxSpace(low=(0.0,) * n, high=(1.0,) * n),
             "state": BoxSpace(low=(0.0, 0.0, 0.0), high=(1.0, 1.0, 1e6)),
         }
     )
 
 
-def vector_length() -> int:
-    """Length of :meth:`Observation.to_vector` (features + mask + state)."""
-    return _N_FEATURES + _N_FEATURES + _N_STATE
+def vector_length(*, attention: bool = False) -> int:
+    """Length of :meth:`Observation.to_vector` (features + mask + state) for the chosen tier."""
+    n = _n_features(attention=attention)
+    return n + n + _N_STATE
 
 
-def encode(bundle: FeatureBundle, state: AgentState) -> Observation:
+def encode(
+    bundle: FeatureBundle,
+    state: AgentState,
+    *,
+    attention: AttentionFeatures | None = None,
+) -> Observation:
     """Build an :class:`Observation` from a tier-A bundle and the agent's realized state.
 
     Missing slots (or absent slots) yield ``0.0`` value + ``0.0`` mask — explicit missingness, never
     an imputed number (paper §3.2). Only ``FeatureStatus.OBSERVED`` slots carry a real value + mask 1.
+
+    ``attention`` (tier-A+, paper §4.4) appends the :data:`ATTENTION_SLOTS` block: pass ``None``
+    (the default) for the unchanged tier-A observation, or an
+    :class:`~oct_trading_agent.agent.encoders.tracker.AttentionFeatures` to widen the observation —
+    masked as one unit while ``attention.observed`` is ``False`` (the honest pre-fit-window
+    missingness), valued + mask 1 once the tracker has enough events.
     """
-    features = np.zeros(_N_FEATURES, dtype=np.float32)
-    mask = np.zeros(_N_FEATURES, dtype=np.float32)
+    n_feat = _n_features(attention=attention is not None)
+    features = np.zeros(n_feat, dtype=np.float32)
+    mask = np.zeros(n_feat, dtype=np.float32)
     for i, slot in enumerate(TIER_A_SLOTS):
         feat = bundle.get(FeatureTier.A_RAW_CHART, slot)
         if feat is not None and feat.observed and isinstance(feat.value, (int, float)):
             features[i] = _transform(slot, float(feat.value))
             mask[i] = 1.0
         # else: leave 0.0 value + 0.0 mask — the missingness is explicit, not imputed.
+
+    if attention is not None and attention.observed:
+        att_values = (
+            attention.lambda_buy_ratio,
+            attention.branching_ratio_n,
+            attention.suspicion,
+        )
+        for j, (slot, value) in enumerate(zip(ATTENTION_SLOTS, att_values, strict=True)):
+            features[_N_FEATURES + j] = _transform(slot, float(value))
+            mask[_N_FEATURES + j] = 1.0
+    # else (attention supplied but not yet observed): the three slots stay 0.0/0.0 as one
+    # masked-missing unit — λ/n never appear without their suspicion companion (§9.10).
 
     state_vec = np.array(
         [
@@ -147,6 +200,7 @@ def encode(bundle: FeatureBundle, state: AgentState) -> Observation:
 
 
 __all__ = [
+    "ATTENTION_SLOTS",
     "STATE_SLOTS",
     "TIER_A_SLOTS",
     "AgentState",

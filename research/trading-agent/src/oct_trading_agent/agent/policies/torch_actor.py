@@ -42,10 +42,8 @@ from oct_trading_agent.agent.envs import (
     Observation,
     vector_length,
 )
-from oct_trading_agent.agent.envs.observation import TIER_A_SLOTS
 from oct_trading_agent.agent.online.normalize import RunningNormalizer
 
-_N_FEATURES = len(TIER_A_SLOTS)
 _N_INTENTS = len(INTENT_ORDER)
 
 try:  # pragma: no cover - trivial import guard
@@ -68,17 +66,28 @@ def _require_torch() -> None:
 
 @dataclass(frozen=True)
 class ActorConfig:
-    """Small-net hyperparameters for the Phase-1 learner (bounded compute by design)."""
+    """Small-net hyperparameters for the Phase-1 learner (bounded compute by design).
+
+    ``d_in`` sizes the torso input. ``None`` (the default) is the tier-A
+    ``vector_length()``; a run with the tier-A+ attention observation passes
+    ``vector_length(attention=True)`` so the net matches the widened vector.
+    """
 
     hidden_dim: int = 64
     n_quantiles: int = 8
     cvar_alpha: float = 0.05
+    d_in: int | None = None
 
 
 def _gate_missing(vector: np.ndarray, mask: np.ndarray) -> np.ndarray:
-    """Return a copy of the flat obs vector with the feature block zeroed where the mask is 0."""
+    """Return a copy of the flat obs vector with the feature block zeroed where the mask is 0.
+
+    The feature block is the leading ``len(mask)`` entries — derived from the mask itself, so the
+    gate is correct for both the tier-A and the widened tier-A+ observation.
+    """
     out = np.asarray(vector, dtype=np.float32).copy()
-    out[:_N_FEATURES] = out[:_N_FEATURES] * mask.astype(np.float32)
+    n = int(mask.shape[0])
+    out[:n] = out[:n] * mask.astype(np.float32)
     return out
 
 
@@ -101,7 +110,7 @@ if TORCH_AVAILABLE:
             _require_torch()
             super().__init__()
             self.config = config or ActorConfig()
-            d_in = vector_length()
+            d_in = self.config.d_in if self.config.d_in is not None else vector_length()
             h = self.config.hidden_dim
             self.torso = nn.Sequential(
                 nn.Linear(d_in, h), nn.Tanh(), nn.Linear(h, h), nn.Tanh()

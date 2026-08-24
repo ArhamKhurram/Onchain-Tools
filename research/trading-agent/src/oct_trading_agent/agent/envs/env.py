@@ -31,6 +31,11 @@ from decimal import Decimal
 
 import numpy as np
 
+from oct_trading_agent.agent.encoders.tracker import (
+    AttentionFeatures,
+    AttentionTrackerConfig,
+    HawkesAttentionTracker,
+)
 from oct_trading_agent.core import (
     Episode,
     FeatureStore,
@@ -96,6 +101,8 @@ class EnvConfig:
         max_steps: int | None = None,
         force_liquidate_on_truncation: bool = True,
         reward_config: RewardConfig | None = None,
+        attention_features: bool = False,
+        attention_config: AttentionTrackerConfig | None = None,
     ) -> None:
         if initial_balance_quote <= 0:
             raise ValueError("initial_balance_quote must be positive")
@@ -104,6 +111,11 @@ class EnvConfig:
         self.max_steps = max_steps
         self.force_liquidate_on_truncation = force_liquidate_on_truncation
         self.reward_config = reward_config or RewardConfig()
+        # Tier-A+ ablation flag (paper §4.4): OFF by default so every existing config/test sees a
+        # byte-identical observation. ON widens the obs by the three attention slots (λ_buy/μ, n,
+        # suspicion), masked-missing before the tracker's fit window.
+        self.attention_features = attention_features
+        self.attention_config = attention_config
 
 
 class TradingEnv:
@@ -137,6 +149,16 @@ class TradingEnv:
         self._reward = RewardFunction(
             self.config.reward_config, capital_base=self.config.initial_balance_quote
         )
+        # Tier-A+ attention tracker (paper §4.4) — built once per token; its stride-refit cache
+        # persists across resets, so repeated episodes over the same tape pay for each fit once.
+        self._attention_tracker: HawkesAttentionTracker | None = None
+        if self.config.attention_features:
+            mint_swaps = [
+                e for e in tape if isinstance(e, SwapEvent) and e.mint == mint
+            ]
+            self._attention_tracker = HawkesAttentionTracker(
+                mint_swaps, config=self.config.attention_config
+            )
         # Built on reset.
         self._sim: ReplaySimulator | None = None
         self._ledger: PaperLedger | None = None
@@ -148,7 +170,7 @@ class TradingEnv:
 
     @property
     def observation_space(self) -> DictSpace:
-        return observation_space()
+        return observation_space(attention=self.config.attention_features)
 
     @property
     def action_space(self) -> tuple[DiscreteSpace, BoxSpace]:
@@ -156,7 +178,7 @@ class TradingEnv:
 
     @property
     def observation_vector_length(self) -> int:
-        return vector_length()
+        return vector_length(attention=self.config.attention_features)
 
     @property
     def decision_times(self) -> list[datetime]:
@@ -323,7 +345,11 @@ class TradingEnv:
             steps_elapsed_frac=self._step_index / denom,
             balance_ratio=float(self._ledger.balance_quote / self.config.initial_balance_quote),
         )
-        return encode(bundle, state)
+        attention: AttentionFeatures | None = None
+        if self._attention_tracker is not None:
+            # Causal by construction: the tracker reads only swaps with block_time <= as_of.
+            attention = self._attention_tracker.features_at(as_of)
+        return encode(bundle, state, attention=attention)
 
     def _fallback_as_of(self) -> datetime:
         # Only reached if the token has no swaps at all; use the earliest tape event's time.

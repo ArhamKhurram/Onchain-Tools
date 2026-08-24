@@ -45,6 +45,7 @@ from oct_trading_agent.agent.envs import (
     TradingEnv,
     build_market_regime,
     market_sim_config,
+    vector_length,
 )
 from oct_trading_agent.agent.envs.generic_env import MarketRegime
 from oct_trading_agent.agent.imitation.demos import build_cohort_action_tape
@@ -91,6 +92,10 @@ class MarketTrainConfig:
     gae_lambda: float = 0.95
     risk_budget_quote: Decimal = Decimal("0.05")
     initial_balance_quote: Decimal = Decimal(1)
+    # Tier-A+ ablation flag (paper §4.4): adds the three Hawkes attention slots (λ_buy/μ, n,
+    # suspicion) to every env observation AND widens the net input to match. OFF by default —
+    # flag-off runs are byte-identical to before.
+    attention_features: bool = False
 
 
 # ---------------------------------------------------------------------------
@@ -119,7 +124,10 @@ class MarketWalkForward:
         return MarketReplayEnv.from_regime(
             prepared.regime,
             market_sim_config(risk_budget_quote=cfg.risk_budget_quote, seed=seed),
-            config=EnvConfig(initial_balance_quote=cfg.initial_balance_quote),
+            config=EnvConfig(
+                initial_balance_quote=cfg.initial_balance_quote,
+                attention_features=cfg.attention_features,
+            ),
         )
 
     def train_envs(self, cfg: MarketTrainConfig, *, seed: int = 0) -> list[TradingEnv]:
@@ -249,7 +257,8 @@ def train_market_policy(
     if resume_state is not None:
         model = build_actor_critic(
             ActorConfig(
-                hidden_dim=cfg.hidden_dim, n_quantiles=cfg.n_quantiles, cvar_alpha=cfg.cvar_alpha
+                hidden_dim=cfg.hidden_dim, n_quantiles=cfg.n_quantiles, cvar_alpha=cfg.cvar_alpha,
+                d_in=vector_length(attention=cfg.attention_features),
             ),
             device=device,
         )
@@ -261,7 +270,8 @@ def train_market_policy(
     else:
         model = build_actor_critic(
             ActorConfig(
-                hidden_dim=cfg.hidden_dim, n_quantiles=cfg.n_quantiles, cvar_alpha=cfg.cvar_alpha
+                hidden_dim=cfg.hidden_dim, n_quantiles=cfg.n_quantiles, cvar_alpha=cfg.cvar_alpha,
+                d_in=vector_length(attention=cfg.attention_features),
             ),
             device=device,
         )
@@ -518,7 +528,10 @@ def _rebuild_warm(
     from oct_trading_agent.agent.policies.torch_actor import ActorConfig, build_actor_critic
 
     model = build_actor_critic(
-        ActorConfig(hidden_dim=cfg.hidden_dim, n_quantiles=cfg.n_quantiles, cvar_alpha=cfg.cvar_alpha),
+        ActorConfig(
+            hidden_dim=cfg.hidden_dim, n_quantiles=cfg.n_quantiles, cvar_alpha=cfg.cvar_alpha,
+            d_in=vector_length(attention=cfg.attention_features),
+        ),
         device=device,
     )
     model.load_state_dict(model_state)
@@ -746,6 +759,12 @@ def main() -> None:  # pragma: no cover - CLI
         help="resume the ladder from a checkpoint: skip completed rungs, continue an interrupted one",
     )
     parser.add_argument("--no-warm-start", action="store_true", help="train each rung from scratch")
+    parser.add_argument(
+        "--attention-features", action="store_true",
+        help="tier-A+ ablation (paper §4.4): add the Hawkes attention slots (λ_buy/μ, branching n, "
+        "manipulation suspicion) to the observation; widens the net input — a resume/warm-start "
+        "must use the same flag as the checkpointed run",
+    )
     parser.add_argument("--build", action="store_true", help="build/extend the dataset first, then train")
     parser.add_argument("--target-tokens", type=int, default=1000, help="--build: pools to accumulate")
     parser.add_argument("--max-pages", type=int, default=200, help="--build: REST page budget")
@@ -779,7 +798,10 @@ def main() -> None:  # pragma: no cover - CLI
 
     device = resolve_device(args.device)
     print(f"[device] requested={args.device!r} resolved={device}")
-    cfg = MarketTrainConfig(n_iterations=args.iterations, hidden_dim=args.hidden_dim)
+    cfg = MarketTrainConfig(
+        n_iterations=args.iterations, hidden_dim=args.hidden_dim,
+        attention_features=args.attention_features,
+    )
     checkpoint_dir = Path(args.checkpoint_dir) if args.checkpoint_dir else None
     results = run_ladder(
         tapes, rungs=tuple(args.rungs_list), cfg=cfg, seed=args.seed,

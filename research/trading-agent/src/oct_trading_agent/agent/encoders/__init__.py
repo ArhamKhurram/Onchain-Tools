@@ -54,6 +54,12 @@ from .standalone import (
     evaluate_ignition,
     is_igniting,
 )
+from .tracker import (
+    MISSING_ATTENTION,
+    AttentionFeatures,
+    AttentionTrackerConfig,
+    HawkesAttentionTracker,
+)
 from .transformer import (
     FEATURE_NAMES,
     N_FEATURES,
@@ -78,6 +84,11 @@ __all__ = [
     "breadth_deficit_suspicion",
     "buyer_concentration",
     "herfindahl",
+    # env-facing stride-refit tracker (tier-A+ observation features)
+    "MISSING_ATTENTION",
+    "AttentionFeatures",
+    "AttentionTrackerConfig",
+    "HawkesAttentionTracker",
     # standalone signal
     "IgnitionSignal",
     "IgnitionThresholds",

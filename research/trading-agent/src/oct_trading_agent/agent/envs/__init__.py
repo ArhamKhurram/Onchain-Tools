@@ -41,6 +41,7 @@ from .generic_env import (
     market_sim_config,
 )
 from .observation import (
+    ATTENTION_SLOTS,
     STATE_SLOTS,
     TIER_A_SLOTS,
     AgentState,
@@ -74,6 +75,7 @@ def make_gymnasium_env(*args: object, **kwargs: object) -> object:
 
 
 __all__ = [
+    "ATTENTION_SLOTS",
     "DEFAULT_HARD_CAP",
     "INTENT_ORDER",
     "PUMPFUN_BONDING_FEE_BPS",
