@@ -18,9 +18,11 @@ calls for.
 from __future__ import annotations
 
 from .demos import (
+    CohortAction,
     DemoConfig,
     DemoDataset,
     DemoStep,
+    build_cohort_action_tape,
     build_cohort_tape,
     build_demos,
     demo_matrices,
@@ -28,9 +30,11 @@ from .demos import (
 )
 
 __all__ = [
+    "CohortAction",
     "DemoConfig",
     "DemoDataset",
     "DemoStep",
+    "build_cohort_action_tape",
     "build_cohort_tape",
     "build_demos",
     "demo_matrices",

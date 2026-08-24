@@ -35,14 +35,14 @@ Imitating them clones their behaviour, which is not the same as cloning a proven
 
 from __future__ import annotations
 
-from collections.abc import Sequence
+from collections.abc import Collection, Sequence
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta
 from decimal import Decimal
 
 import numpy as np
 
-from oct_trading_agent.agent.envs.action import INTENT_ORDER, intent_index
+from oct_trading_agent.agent.envs.action import INTENT_ORDER, EnvAction, intent_index
 from oct_trading_agent.agent.envs.observation import (
     AgentState,
     encode,
@@ -157,6 +157,65 @@ def build_cohort_tape(wallets: Sequence[LabeledWallet]) -> list[SwapEvent]:
                 tape.append(event)
     tape.sort(key=lambda e: (e.mint, e.slot, e.block_time))
     return tape
+
+
+# ---------------------------------------------------------------------------
+# Cohort action tape: reconstructed episodes -> a per-mint sequence of env actions
+# ---------------------------------------------------------------------------
+
+
+@dataclass(frozen=True)
+class CohortAction:
+    """One tracked-trader decision on a mint: when it happened, and the env action it maps to.
+
+    ``at`` is the trade's timestamp; ``action`` is the §3.3 hybrid action (intent + size) the trader
+    actually took, sized exactly as the BC demos are (buys as a fraction of the trader's own largest
+    buy in the episode; trims as the fraction of the held position sold; CLOSE carries size 0). A
+    replay policy fires this action at the first env decision instant at/after ``at``.
+    """
+
+    at: datetime
+    action: EnvAction
+
+
+def build_cohort_action_tape(
+    wallets: Sequence[LabeledWallet],
+    *,
+    mints: Collection[str] | None = None,
+) -> dict[str, list[CohortAction]]:
+    """Reconstruct the tracked traders' realized per-mint action sequence (reusing the demos machinery).
+
+    For each wallet the SAME per-token episode reconstruction the BC demos use
+    (:func:`~oct_trading_agent.data.labeling.reconstruct.build_trajectories`) runs; each episode step
+    becomes a :class:`CohortAction` carrying the trader's discrete intent and the demos' [0, 1] size
+    target (:func:`_size_target`). Actions across every wallet on a mint are POOLED into one
+    time-ordered tape — the "cohort as a single trader" a replay baseline drives one env position with.
+
+    ``mints`` (optional) restricts the tape to those mints — the honesty gate the tracked-traders
+    baseline needs: build ONLY from the held-out tokens' cohort trades, so no train-token behaviour
+    can leak into the test comparison. Only the real trades (OPEN_LONG / ADD / TRIM / CLOSE) are
+    emitted; the do-nothing HOLD/NO_OP decisions are the replay policy's job to fill between fires.
+    """
+    allow = set(mints) if mints is not None else None
+    by_mint: dict[str, list[CohortAction]] = {}
+    for wallet in wallets:
+        for trajectory in build_trajectories(wallet):
+            if allow is not None and trajectory.mint not in allow:
+                continue
+            buys = [
+                s.quote_amount for s in trajectory.steps if s.side is Side.BUY and s.quote_amount > 0
+            ]
+            max_buy = max(buys) if buys else Decimal(0)
+            base_before = Decimal(0)
+            for step in trajectory.steps:
+                size = _size_target(step, base_before, max_buy)
+                by_mint.setdefault(trajectory.mint, []).append(
+                    CohortAction(at=step.timestamp, action=EnvAction(intent=step.intent, size=size))
+                )
+                base_before = step.base_qty_after
+    for actions in by_mint.values():
+        actions.sort(key=lambda a: a.at)
+    return by_mint
 
 
 def _evenly_spaced(items: list[SwapEvent], keep: int) -> list[SwapEvent]:
@@ -376,9 +435,11 @@ def intent_distribution(steps: Sequence[DemoStep]) -> dict[str, int]:
 
 
 __all__ = [
+    "CohortAction",
     "DemoConfig",
     "DemoStep",
     "DemoDataset",
+    "build_cohort_action_tape",
     "build_cohort_tape",
     "build_demos",
     "demo_matrices",

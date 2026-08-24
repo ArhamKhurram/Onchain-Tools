@@ -17,6 +17,7 @@ from oct_trading_agent.agent.train_market import (
     prepare_market_tokens,
 )
 from oct_trading_agent.core import Side, SwapEvent
+from oct_trading_agent.data.labeling.schema import LabeledTrade, LabeledWallet
 from oct_trading_agent.eval.baselines import BuyAndHoldPolicy
 from oct_trading_agent.eval.data import TokenTape
 
@@ -105,3 +106,49 @@ def test_evaluate_rung_handles_no_holdout() -> None:
     assert result.n_test == 0
     assert result.verdict is None
     assert result.agent_tokens_traded == 1
+
+
+def _cohort_trading(wf: object) -> list[LabeledWallet]:
+    """One tracked trader that buys early / sells late on each HELD-OUT token (real decision instants)."""
+    trades: list[LabeledTrade] = []
+    for p in wf.test:  # type: ignore[attr-defined]
+        dts = p.regime.decision_times or []
+        if len(dts) < 4:
+            continue
+        trades.append(LabeledTrade(
+            timestamp=dts[1], mint=p.mint, side=Side.BUY,
+            base_amount=Decimal("1000"), quote_amount=Decimal("0.02"), signature=f"{p.mint[:6]}-buy",
+        ))
+        trades.append(LabeledTrade(
+            timestamp=dts[-2], mint=p.mint, side=Side.SELL,
+            base_amount=Decimal("1000"), quote_amount=Decimal("0.02"), signature=f"{p.mint[:6]}-sell",
+        ))
+    return [LabeledWallet(wallet="Wa11etLadderCohort11111111111111111111111111", labels=["tracked"], trades=trades)]
+
+
+def test_evaluate_rung_adds_tracked_traders_baseline_when_cohort_given() -> None:
+    """With a cohort, the rung gains a ``tracked_traders`` baseline scored on the SAME held-out mints."""
+    wf = build_market_walk_forward(_mixed_tapes(), test_fraction=0.4)
+    cohort = _cohort_trading(wf)
+    result = evaluate_rung(
+        BuyAndHoldPolicy(size=1.0), wf, MarketTrainConfig(),
+        n_tokens_requested=10, seed=0, cohort=cohort,
+    )
+    # The fourth baseline is present alongside the three mechanical ones and the agent.
+    assert "tracked_traders" in result.evaluations
+    assert "tracked_traders" in result.edges
+    cohort_eval = result.evaluations["tracked_traders"]
+    assert len(cohort_eval.outcomes) == result.n_test
+    # The cohort actually traded the held-out tokens (it isn't a silent hold-SOL).
+    assert sum(o.n_trades for o in cohort_eval.outcomes) >= 1
+    # The report renders the head-to-head row + edge line.
+    text = format_rung(result)
+    assert "tracked_traders" in text
+
+
+def test_evaluate_rung_without_cohort_keeps_three_baselines() -> None:
+    """No cohort → the tracked_traders baseline is absent (backward-compatible default)."""
+    wf = build_market_walk_forward(_mixed_tapes(), test_fraction=0.4)
+    result = evaluate_rung(BuyAndHoldPolicy(size=1.0), wf, MarketTrainConfig(), n_tokens_requested=10, seed=0)
+    assert "tracked_traders" not in result.evaluations
+    assert "tracked_traders" not in result.edges

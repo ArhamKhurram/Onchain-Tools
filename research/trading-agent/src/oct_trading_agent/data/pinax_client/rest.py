@@ -6,8 +6,13 @@ Mirrors the proven JS reference (``../oct-revival/spike/revival-scanner/src/pina
   polite and under the plan's rate limit.
 * **Disk cache** — successful responses are cached to disk keyed by the full URL, so reruns of a
   backfill cost nothing and the same fixtures replay deterministically.
-* **Retry/backoff** — 429 and 5xx get exponential backoff; genuine transport errors are retried a
-  few times before giving up.
+* **Retry/backoff** — 429 and 5xx (and transient connection errors) get *exponential backoff with
+  full jitter* (base 1 s, ×2 per attempt, capped ~30 s), honouring a ``Retry-After`` header when the
+  server sends one. Non-retryable 4xx (auth/not-found/bad-request) fail fast — retrying them only
+  burns quota. This is what lets a big cohort backfill (dozens of wallets, hundreds of pages) survive
+  a rate-limited window instead of aborting on the first sustained 429.
+* **Pacing** — an optional ``inter_request_delay_s`` adds a deliberate gap before each live request so
+  a large sequential pull does not burst the endpoint (on top of the ``min_interval_s`` throttle).
 
 Auth is the ``X-Api-Key: <PINAX_API_KEY>`` header (config.py proven facts). The key is read from
 :func:`oct_trading_agent.config.get_pinax_credentials` at call time and **never** logged or cached
@@ -22,8 +27,11 @@ from __future__ import annotations
 
 import hashlib
 import json
+import random
 import time
 from collections.abc import Callable, Iterator, Mapping
+from datetime import UTC, datetime
+from email.utils import parsedate_to_datetime
 from pathlib import Path
 from typing import Any
 from urllib.parse import urlencode
@@ -35,7 +43,7 @@ from oct_trading_agent.config import (
     get_pinax_credentials,
 )
 
-from .transport import HttpTransport, UrllibTransport
+from .transport import HttpResponse, HttpTransport, UrllibTransport
 
 # Pinax plan-restricted maximum page size (openapi: limit max 1000; spike used 500).
 PAGE_LIMIT_MAX = 1000
@@ -44,6 +52,42 @@ DEFAULT_PAGE_LIMIT = 500
 # Pinax expects a User-Agent on requests (a bare urllib default is a soft red flag); identify the
 # research client without leaking anything sensitive. Sent on every call alongside the API key.
 PINAX_USER_AGENT = "oct-trading-agent/pinax-client (+research)"
+
+# Retry/backoff defaults. Base 1 s, ×2 per attempt, capped ~30 s, plus full jitter — polite under a
+# rate-limited window and bounded so a wedged endpoint never stalls a cohort pull indefinitely.
+DEFAULT_MAX_RETRIES = 5
+DEFAULT_BASE_DELAY_S = 1.0
+DEFAULT_MAX_BACKOFF_S = 30.0
+# Absolute ceiling on an honoured ``Retry-After`` — the server's hint is respected up to this bound
+# so a hostile/huge value cannot park the whole run (we simply retry again after the ceiling).
+RETRY_AFTER_CEILING_S = 120.0
+
+
+def _retry_after_seconds(resp: HttpResponse, *, now: Callable[[], datetime]) -> float | None:
+    """Parse a ``Retry-After`` header into seconds — integer-seconds or HTTP-date form.
+
+    Returns ``None`` when the header is absent or unparseable (the caller falls back to exponential
+    backoff). A date in the past clamps to ``0``. ``now`` is injected so tests are deterministic.
+    """
+    raw = resp.headers.get("retry-after")
+    if raw is None:
+        return None
+    raw = raw.strip()
+    if not raw:
+        return None
+    try:
+        return max(0.0, float(int(raw)))
+    except ValueError:
+        pass
+    try:
+        when = parsedate_to_datetime(raw)
+    except (TypeError, ValueError):
+        return None
+    if when is None:
+        return None
+    if when.tzinfo is None:
+        when = when.replace(tzinfo=UTC)
+    return max(0.0, (when - now()).total_seconds())
 
 
 class PinaxRestClient:
@@ -58,10 +102,24 @@ class PinaxRestClient:
         The HTTP transport. Defaults to :class:`~.transport.UrllibTransport` (stdlib, zero deps).
         Tests inject a fake.
     min_interval_s:
-        Minimum spacing between live (non-cached) calls, in seconds.
+        Minimum spacing between live (non-cached) calls, in seconds (the base throttle).
+    inter_request_delay_s:
+        Extra deliberate pacing applied before each live request, on top of ``min_interval_s``. Left
+        at ``0`` for single calls; a big cohort pull sets a small value (e.g. 0.25–0.5 s) so a burst
+        of sequential requests does not trip the endpoint's rate limiter.
+    max_retries:
+        How many times a *retryable* failure (429, 5xx, transient connection error) is retried before
+        the request is declared failed. Non-retryable 4xx never retry.
+    base_delay_s / max_backoff_s:
+        Exponential-backoff base and cap: sleep ≈ ``min(max_backoff_s, base_delay_s * 2**attempt)``
+        plus full jitter in ``[0, base_delay_s)``. A ``Retry-After`` header, when present, overrides
+        the exponential term (still jittered and ceiling-bounded).
     api_key_provider:
         Callable returning the API key. Defaults to reading it from config at call time (so the
         key is never captured at construction and never held longer than a request).
+    rng:
+        Source of jitter in ``[0, 1)`` (defaults to :func:`random.random`). Injected so tests get a
+        deterministic backoff schedule.
     """
 
     def __init__(
@@ -71,21 +129,31 @@ class PinaxRestClient:
         transport: HttpTransport | None = None,
         base_url: str = PINAX_REST_BASE,
         min_interval_s: float = 0.35,
-        max_retries: int = 4,
+        inter_request_delay_s: float = 0.0,
+        max_retries: int = DEFAULT_MAX_RETRIES,
+        base_delay_s: float = DEFAULT_BASE_DELAY_S,
+        max_backoff_s: float = DEFAULT_MAX_BACKOFF_S,
         timeout_s: float = 45.0,
         api_key_provider: Callable[[], str] | None = None,
         clock: Callable[[], float] = time.monotonic,
         sleep: Callable[[float], None] = time.sleep,
+        rng: Callable[[], float] = random.random,
+        now: Callable[[], datetime] | None = None,
     ) -> None:
         self._cache_dir = cache_dir
         self._transport: HttpTransport = transport or UrllibTransport()
         self._base_url = base_url.rstrip("/")
         self._min_interval_s = min_interval_s
+        self._inter_request_delay_s = inter_request_delay_s
         self._max_retries = max_retries
+        self._base_delay_s = base_delay_s
+        self._max_backoff_s = max_backoff_s
         self._timeout_s = timeout_s
         self._api_key_provider = api_key_provider or (lambda: get_pinax_credentials().api_key)
         self._clock = clock
         self._sleep = sleep
+        self._rng = rng
+        self._now = now or (lambda: datetime.now(UTC))
         self._last_call = 0.0
 
     # -- URL / cache helpers -------------------------------------------------------------------
@@ -124,6 +192,8 @@ class PinaxRestClient:
         }
         last_error: Exception | None = None
         for attempt in range(self._max_retries + 1):
+            if self._inter_request_delay_s > 0:
+                self._sleep(self._inter_request_delay_s)
             self._throttle()
             try:
                 resp = self._transport.get(url, headers, self._timeout_s)
@@ -131,17 +201,17 @@ class PinaxRestClient:
                 last_error = exc
                 if attempt == self._max_retries:
                     break
-                self._sleep(2.0 * (attempt + 1))
+                self._sleep(self._backoff_delay(attempt))
                 continue
 
             if resp.status == 429 or resp.status >= 500:
                 if attempt == self._max_retries:
                     last_error = RuntimeError(f"Pinax {resp.status} for {path} (retries exhausted)")
                     break
-                backoff = min(10.0, 1.5 * (2**attempt))
-                self._sleep(backoff)
+                retry_after = _retry_after_seconds(resp, now=self._now)
+                self._sleep(self._backoff_delay(attempt, retry_after=retry_after))
                 continue
-            if resp.status >= 400:
+            if resp.status >= 400:  # non-retryable 4xx (auth/not-found/bad-request) — fail fast
                 snippet = resp.body[:300].decode("utf-8", "replace")
                 raise RuntimeError(f"Pinax {resp.status} for {path}: {snippet}")
 
@@ -153,6 +223,15 @@ class PinaxRestClient:
             return result
 
         raise RuntimeError(f"Pinax request failed for {path}") from last_error
+
+    def _backoff_delay(self, attempt: int, *, retry_after: float | None = None) -> float:
+        """Seconds to sleep before the next retry: honoured ``Retry-After`` (ceiling-bounded) or
+        exponential ``base * 2**attempt`` (capped at ``max_backoff_s``), each plus full jitter."""
+        if retry_after is not None:
+            base = min(retry_after, RETRY_AFTER_CEILING_S)
+        else:
+            base = min(self._max_backoff_s, self._base_delay_s * (2**attempt))
+        return base + self._rng() * self._base_delay_s
 
     def _throttle(self) -> None:
         wait = self._last_call + self._min_interval_s - self._clock()
@@ -228,4 +307,12 @@ class PinaxRestClient:
                 return
 
 
-__all__ = ["PinaxRestClient", "PAGE_LIMIT_MAX", "DEFAULT_PAGE_LIMIT", "PINAX_USER_AGENT"]
+__all__ = [
+    "PinaxRestClient",
+    "PAGE_LIMIT_MAX",
+    "DEFAULT_PAGE_LIMIT",
+    "PINAX_USER_AGENT",
+    "DEFAULT_MAX_RETRIES",
+    "DEFAULT_BASE_DELAY_S",
+    "DEFAULT_MAX_BACKOFF_S",
+]

@@ -15,13 +15,22 @@ and after identical costs. Their roles:
 
 The random policy lives in ``agent/policies`` (the actor package); it is re-exported here so the
 three baselines are importable from one place.
+
+A FOURTH baseline is defined here for the operator's actual north-star bar — not "beat hold-SOL" but
+**"out-trade the tracked traders themselves"**: :class:`CohortReplayPolicy` replays the tracked
+traders' OWN realized actions on each held-out mint through the SAME env at the SAME costs, so the
+learned agent is scored head-to-head against the cohort it is meant to beat (paper §8.2 per-token
+edge, now against the cohort rather than a mechanical floor).
 """
 
 from __future__ import annotations
 
+from collections.abc import Mapping, Sequence
+
 from oct_trading_agent.agent.envs import EnvAction, Observation
+from oct_trading_agent.agent.imitation.demos import CohortAction
 from oct_trading_agent.agent.policies import RandomPolicy
-from oct_trading_agent.core import Intent
+from oct_trading_agent.core import Intent, Mint
 
 
 class HoldSolPolicy:
@@ -58,4 +67,51 @@ class BuyAndHoldPolicy:
         return EnvAction(intent=Intent.HOLD, size=0.0)
 
 
-__all__ = ["BuyAndHoldPolicy", "HoldSolPolicy", "RandomPolicy"]
+class CohortReplayPolicy:
+    """Baseline: replay the tracked traders' OWN realized actions on each mint (the north-star bar).
+
+    Constructed with the cohort's per-mint action tape
+    (:func:`~oct_trading_agent.agent.imitation.demos.build_cohort_action_tape`), it runs the tracked
+    traders as a single trader through the *same* :class:`~oct_trading_agent.agent.envs.TradingEnv` as
+    the learned agent: at each env decision instant it FIRES the next tracked-trader decision whose
+    timestamp has come due (the first env step at/after the trade happened), and emits a passive
+    ``HOLD`` (when it holds a position) or ``NO_OP`` (when flat) in between. This makes the comparison
+    apples-to-apples on *decisions* under identical execution and costs — not the traders' real
+    on-chain fills, which no baseline could reproduce.
+
+    A mint the cohort never traded yields all ``NO_OP``/``HOLD`` — the traders did not touch it, so the
+    baseline does NOT fabricate a trade (it degenerates to hold-SOL on that token, honestly).
+
+    Fairness note: the tape MUST be built from ONLY the held-out tokens' cohort trades (pass the test
+    mints to the builder), so the baseline reflects what the cohort did on the exact tokens the agent
+    is scored on — never train-token behaviour leaking into the test comparison.
+    """
+
+    def __init__(self, action_tape: Mapping[Mint, Sequence[CohortAction]]) -> None:
+        self._tape = action_tape
+        self._seq: Sequence[CohortAction] = ()
+        self._cursor = 0
+        self._started = False
+
+    def reset(self) -> None:
+        self._seq = ()
+        self._cursor = 0
+        self._started = False
+
+    def act(self, observation: Observation) -> EnvAction:
+        bundle = observation.bundle
+        if not self._started:
+            # The env drives one mint per episode; resolve its tape on the first observation.
+            self._seq = self._tape.get(bundle.mint, ())
+            self._cursor = 0
+            self._started = True
+        if self._cursor < len(self._seq) and self._seq[self._cursor].at <= bundle.as_of:
+            action = self._seq[self._cursor].action
+            self._cursor += 1
+            return action
+        # No cohort decision is due at this instant: hold if we hold, else stay in SOL.
+        has_position = bool(observation.state[0] > 0.5)  # STATE_SLOTS[0] is has_position
+        return EnvAction(intent=Intent.HOLD if has_position else Intent.NO_OP, size=0.0)
+
+
+__all__ = ["BuyAndHoldPolicy", "CohortReplayPolicy", "HoldSolPolicy", "RandomPolicy"]

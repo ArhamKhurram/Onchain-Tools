@@ -13,21 +13,24 @@ from __future__ import annotations
 
 import urllib.error
 import urllib.request
-from dataclasses import dataclass
+from collections.abc import Mapping
+from dataclasses import dataclass, field
 from typing import Protocol, runtime_checkable
 
 
 @dataclass(frozen=True)
 class HttpResponse:
-    """A minimal HTTP response: status code and raw body bytes.
+    """A minimal HTTP response: status code, raw body bytes, and lower-cased response headers.
 
-    Deliberately tiny — the client only needs the status (for retry/backoff decisions) and the
-    body (JSON to decode). No headers are surfaced; the Pinax REST API does not require them for
-    pagination (it uses an explicit ``page`` query param).
+    Deliberately tiny — the client needs the status (for retry/backoff decisions), the body (JSON
+    to decode), and just enough of the headers to honour a ``Retry-After`` on a 429/5xx. Header
+    keys are normalised to lower-case so lookups are case-insensitive; the map is empty when a
+    transport does not surface headers (older fakes construct ``HttpResponse(status, body)``).
     """
 
     status: int
     body: bytes
+    headers: Mapping[str, str] = field(default_factory=dict)
 
 
 @runtime_checkable
@@ -51,10 +54,12 @@ class UrllibTransport:
         req = urllib.request.Request(url, headers=headers, method="GET")
         try:
             with urllib.request.urlopen(req, timeout=timeout) as resp:
-                return HttpResponse(status=resp.status, body=resp.read())
+                return HttpResponse(
+                    status=resp.status, body=resp.read(), headers=_lower_headers(resp.headers)
+                )
         except urllib.error.HTTPError as exc:  # 4xx/5xx — surface the status for the retry ladder
             body = exc.read() if hasattr(exc, "read") else b""
-            return HttpResponse(status=exc.code, body=body)
+            return HttpResponse(status=exc.code, body=body, headers=_lower_headers(exc.headers))
 
 
 class HttpxTransport:
@@ -74,7 +79,18 @@ class HttpxTransport:
 
     def get(self, url: str, headers: dict[str, str], timeout: float) -> HttpResponse:
         resp = self._httpx.get(url, headers=headers, timeout=timeout)
-        return HttpResponse(status=resp.status_code, body=resp.content)
+        return HttpResponse(
+            status=resp.status_code, body=resp.content, headers=_lower_headers(resp.headers)
+        )
+
+
+def _lower_headers(raw: object) -> dict[str, str]:
+    """Normalise a header container (``http.client.HTTPMessage`` / ``httpx.Headers`` / mapping) to a
+    plain lower-cased ``dict``. Best-effort: anything without ``.items()`` yields an empty map."""
+    items = getattr(raw, "items", None)
+    if items is None:
+        return {}
+    return {str(k).lower(): str(v) for k, v in items()}
 
 
 __all__ = ["HttpResponse", "HttpTransport", "UrllibTransport", "HttpxTransport"]
