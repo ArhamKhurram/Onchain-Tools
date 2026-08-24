@@ -68,17 +68,17 @@ class PinaxWebSocketClient:
         # Token is placed in the query per the endpoint contract; the URL is never logged.
         return f"{self._base_url}/{self._stream}?token={self._token_provider()}"
 
-    async def stream_swap_events(
+    async def stream_frames(
         self,
-        decimals: Mapping[Mint, int],
-        *,
-        quote_mint: str = WSOL,
-    ) -> AsyncIterator[SwapEvent]:  # pragma: no cover - live socket loop, exercised manually only
-        """Connect and yield decoded :class:`SwapEvent`\\ s for tokens present in ``decimals``.
+    ) -> AsyncIterator[dict[str, object]]:  # pragma: no cover - live socket loop, manual only
+        """Connect and yield each raw parsed block frame (``dict``), control frames included.
 
-        ``decimals`` is the ``mint -> token-decimals`` map for the watchlist being tailed; events
-        whose non-quote leg is not a key are skipped (the firehose carries every token). Control
-        frames (``session``) decode to nothing and are ignored.
+        The frame-level tail: it carries the per-event ``protocol`` (venue) and ``amm_pool`` that the
+        decoded :meth:`stream_swap_events` view drops, and it needs no ``decimals`` map up front — so
+        a consumer that DISCOVERS new mints as they launch (the live-capture service) can tail every
+        token and classify it from the frame, rather than pre-declaring a watchlist. Non-object and
+        non-JSON messages are dropped; the ``session`` handshake is passed through unchanged (it has
+        no ``events`` list, so frame decoders treat it as empty).
 
         Requires the ``ws`` extra (``websockets``); raises ``RuntimeError`` with install guidance if
         it is missing.
@@ -93,10 +93,28 @@ class PinaxWebSocketClient:
         async with websockets.connect(self._url(), max_size=None) as socket:
             async for raw in socket:
                 frame = _parse_frame(raw)
-                if frame is None:
-                    continue
-                for event in decode_ws_frame(frame, decimals=decimals, quote_mint=quote_mint):
-                    yield event
+                if frame is not None:
+                    yield frame
+
+    async def stream_swap_events(
+        self,
+        decimals: Mapping[Mint, int],
+        *,
+        quote_mint: str = WSOL,
+    ) -> AsyncIterator[SwapEvent]:  # pragma: no cover - live socket loop, exercised manually only
+        """Connect and yield decoded :class:`SwapEvent`\\ s for tokens present in ``decimals``.
+
+        ``decimals`` is the ``mint -> token-decimals`` map for the watchlist being tailed; events
+        whose non-quote leg is not a key are skipped (the firehose carries every token). Control
+        frames (``session``) decode to nothing and are ignored. Thin decoded view over
+        :meth:`stream_frames` (the socket loop lives there, once).
+
+        Requires the ``ws`` extra (``websockets``); raises ``RuntimeError`` with install guidance if
+        it is missing.
+        """
+        async for frame in self.stream_frames():
+            for event in decode_ws_frame(frame, decimals=decimals, quote_mint=quote_mint):
+                yield event
 
 
 def _parse_frame(raw: object) -> dict[str, object] | None:
