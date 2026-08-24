@@ -14,6 +14,80 @@ program logs reasoning and scoping; once Phase 0 starts, entries carry real numb
 
 ---
 
+## 2026-08-24 (iv) — Wallet census: a data-driven gene pool harvested from the captured tape
+
+The §9.3 cohort-selection caveat now has its designed answer. Until today the imitation cohort was
+**operator-chosen and balance-ranked** — the paper flags that as the honest weakness of the Phase-2
+warm-start. The new `data/census/` module harvests cohorts **from the data itself**: every one of
+the ~1.26M captured swaps carries its `signer`, so the same snap800 capture that feeds the replay
+env is a wallet census waiting to be taken (the operator's "top/bottom 25% of every token we run
+through" gene-pool idea, disciplined by the HALO/satsmonkes rule: rank by REALIZED PnL aggregated
+ACROSS tokens, never single-token peaks).
+
+**Changes**
+- `data/census/fifo.py`: per-(wallet, token) FIFO realized-PnL engine. Buys push lots; sells match
+  oldest-first; partial lots split; **unclosed inventory is never profit** (it surfaces only as the
+  holder dimension: residual base + residual cost). Sell proceeds with **no cost basis** (tokens
+  that arrived by transfer/airdrop) are EXCLUDED from PnL and tallied separately — deliberately
+  stricter than the BC-demo reconstruction, because a *ranking* that credits cost-free proceeds
+  would crown funder-transfer dumpers.
+- `data/census/crawler.py`: polars scan of a dataset's `pools/*.parquet` (READ-ONLY) → WSOL-paired
+  legs only, fills of one signature collapsed into one economic trade (route splits otherwise
+  poison the wash heuristics), then one numpy pass → per-pair stats.
+- `data/census/cohorts.py`: within-token percentile rank of realized PnL (tokens with ≥8 wallets);
+  **winners** = ≥N (default 3) top-quartile placements each with positive realized PnL; **losers**
+  mirror it (bottom quartile, negative); **holders** = top net-accumulators by residual cost, a
+  separate dimension tagged distinctly because their PnL is largely unrealized; one-token wonders
+  recorded + flagged, never cohorted. **Wash/sybil filter** excludes flagged wallets into a
+  `suspects` bucket with reasons: ping-pong (≥20 trades, alternation ≥0.8, buys-only size CV
+  ≤0.05), metronomic inter-arrival (gap CV ≤0.15), single-token hyperactivity (≥100 trades on a
+  sole token), and machine-scale window volume (≥2,000 trades in snap800's ~7h window — the
+  multi-token arb/MEV shape the first three miss; the first census run's "top winner" was a 171k-
+  trade, 6.5-trades/second bot, which forced this fourth flag).
+- `data/census/loader.py`: the gene-pool seam. Exports are in the **operator-export shape**
+  (`parse_tracked_wallets` reads them unchanged; `fundingInfo.nativeBalance` carries the census
+  ranking score, so `select_cohort`'s "top by balance" becomes "top by cross-token realized PnL").
+  Plus an **offline** path that rebuilds each cohort wallet's `LabeledWallet` straight from the
+  capture parquets — BC without re-pulling Pinax.
+- Outputs under `data/wallet_census/` (new, gitignored): `census_pairs.parquet`,
+  `census_wallets.parquet`, `winners/losers/holders/suspects.json`, `summary.json`.
+- Tests: `tests/data/test_wallet_census.py` — FIFO correctness (partial closes, oldest-first,
+  unrealized-never-profit, uncosted-sell exclusion), fill collapsing, cross-token cohort
+  assignment, wash exclusion, one-token-wonder flagging, and export round-trip through the
+  operator-export parser into `build_trajectories`.
+
+**Findings (snap800, first real census — window ≈ 7.3h of live capture)**
+- 1,262,891 swaps → 339,863 (wallet, token) pairs, **94,367 wallets**, 14,897 tokens (4,024 with
+  enough participants to rank). Cohorts at N=3, cap 200: **200 winners, 200 losers, 200 holders,
+  60 suspects** (30 ping-pong, 19 single-token hyperactive, 15 machine-scale, 6 metronomic;
+  overlapping), **11,561 one-token wonders** — the quantified case for the repeated-quartile rule.
+- Top winners after wash-filtering look genuinely imitable: e.g. `22vL..VyjL` +120.4 SOL realized,
+  top-quartile on 22/23 ranked tokens, consistency 0.96, 85 trades; `CyaE..a54o` +116.5 SOL over
+  71/114, 735 trades. Their offline-rebuilt histories reconstruct to full win-AND-loss trajectory
+  sets (23W/3L, 81W/45L) — no survivor-filtering.
+- **Limits, stated plainly:** the wash filter cannot catch fresh-wallet sybils (one entity across
+  many organic-looking signers), cross-wallet wash rings, or fully-laundered cost bases (the
+  uncosted-sell exclusion blunts, does not eliminate, transfer laundering). And a 7-hour window is
+  a *within-window* census — the HALO 30d-realized discipline needs the longer capture the live
+  recorder is accumulating.
+
+**Decisions**
+- **Punishment cohort, first honest uses only:** losers flow through the SAME BC pipeline so
+  loser-clones can serve as **eval-baseline floors** (an admitted agent must beat the loser
+  replay). Naive "invert the losers" is NOT implemented — inverting a losing strategy still pays
+  spread/fees/impact both ways. GAIL-style winner-vs-loser discrimination is deferred to the
+  wallet-flow tier.
+- Post-800 orchestrator invocation to clone the winner gene pool (offline, no network):
+  `run_cohort_imitation(load_cohort_wallets("data/wallet_census/winners.json",
+  "data/market_dataset_snap800", max_wallets=40))`; the live-pull equivalent is the existing CLI:
+  `python -m oct_trading_agent.agent.imitation.cohort --wallets-file data/wallet_census/winners.json`.
+
+**Open**
+- Re-run the census on `market_dataset_large` (and the growing live capture) once the 800-run
+  finishes; longer windows unlock honest hold-time styles and a real 30d-realized ranking.
+- Style labels per cohort wallet (the HALO per-wallet personality tags) can be derived from the
+  census stats (hold time, consistency, size dispersion) — feeds the 54-cell grid seeding.
+
 ## 2026-08-24 (iii) — Trade-flow attention features wired into the observation (tier-A+ ablation ready)
 
 The §4.4 attention model's Hawkes backbone now feeds the AGENT, not just the standalone alert: the
