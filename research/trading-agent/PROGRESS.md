@@ -14,6 +14,64 @@ program logs reasoning and scoping; once Phase 0 starts, entries carry real numb
 
 ---
 
+## 2026-08-24 (vi) — Trade-replay data layer: trade-log substrate, on-demand trace builder, curated showcase
+
+The data layer for the trickshot-style replay browser: pick any actor — an archive champion or a
+harvested census wallet — and watch exactly what it did on a token's chart, trade by trade. Since
+"replay" ultimately means every trade of every actor (potentially 100k+ (actor, token) pairs), the
+core is a scalable substrate + a request-time builder, NOT pre-rendered files per pair.
+
+**Changes**
+- New `traces/` package (contract in [`replay-trace-schema.md`](./replay-trace-schema.md), sibling
+  of the desk-telemetry contract):
+  - `schema.py` — the pure `replay-trace/v1` contract: one `TradeRow` per TRADE (never per hold),
+    nulls mean "source didn't carry it" and are never imputed; shape-preserving price downsampling
+    (first/last + per-bucket extremes always survive) with trickshot's honest sampling label
+    (`downsampled: true` + method string) carried into every trace.
+  - `log.py` — `TradeLogStore`: append-friendly parquet trade log + actors index, ONE segment file
+    per producing run (whole-file atomic, idempotent re-writes, readers lazily scan `*.parquet`) —
+    a future training/eval run appends by importing the writer; no trainer was modified. Plus the
+    cached `mint_index.parquet` (mint → pools) that keeps request-time builds off dataset scans.
+  - `record.py` — recording rollout for any `EnvPolicy` (same loop/trade criterion as the eval
+    runner); a truncation-forced liquidation surfaces as one synthetic `close` row carrying the
+    episode's true realized total (quote left null — never itemized, never fabricated).
+  - `wallets.py` — full-cohort exporter: the census wallets' real captured swaps ARE the log;
+    per-trade `realized_cum` from an incremental FIFO with exactly the census engine's rules
+    (unit-tested to land on `fifo_pair_pnl().realized_pnl`; uncosted transfer-in sells excluded).
+  - `agents.py` — deterministic champion re-eval from a MAP-Elites checkpoint (genome → the exact
+    eval policy; dims inferred from weight shapes; two checkpoint-compat shims: `__main__`-pickled
+    classes, and pre-attention `RunningNormalizer` instances migrated onto the current class).
+  - `build.py` — the on-demand tier: `build_trace(actor_id, mint)` + CLI to stdout; chart from the
+    mint's BUSIEST pool (trickshot's convention), all the actor's trades overlaid.
+  - `curate.py` — the bounded tier-3 JSON showcase both exporters share (per-actor token cap
+    against hyperactive bots; group dirs regenerated from scratch).
+- Tests: `tests/test_replay_traces.py` (11) — schema round-trip, downsampling extremes-preservation,
+  FIFO equivalence vs the census engine, seeded-recording determinism + forced-close honesty, and
+  store→builder end-to-end on a synthetic mini dataset. Suite green; ruff clean; no new mypy errors
+  (a pre-existing baseline of torch-typed errors in 10 untouched files remains).
+
+**Findings (real export, `data/replay_traces/`, fully regenerable — commands in the schema doc)**
+- **Trade log: 50,344 rows / 1.52 MB parquet.** Census winners 32,170 rows (200/200 wallets, 7,869
+  (wallet, token) pairs, 3,272 mints, 1.6 s), losers 15,512 rows (200/200, 3,722 pairs), and 2,662
+  agent rows from re-running all 6 niche champions of `mapelites-800.ckpt.pt`
+  (run `mapelites-2026-08-24-seed0`) on 8 held-out snap800 tokens each (381 s, 1 torch thread, CPU).
+- **On-demand builder is ~0.02–0.05 s per (actor, token)** — busiest real wallet pair (246 trades,
+  7,703-print tape → 500 points) and busiest champion pair (1,765 steps) both build well under the
+  2 s budget, so no request cache is warranted. Actors index: 406 actors. Curated showcase: 227
+  trace JSONs, 5.8 MB (top-10 winners ≤24 tokens each + all champion pairs).
+- **The champions' replay behaviour matches the 08-24 (ii) verdict**: 2 of 6 never trade, the
+  NOODLE (high-turnover) champion burns −1.80 SOL of paper across 2,481 fills, and archive-positive
+  niches replay flat-to-negative on fresh held-out tokens — the replay layer makes the
+  lottery-shaped profile *watchable*, which is its job.
+- Provenance: our price series start from Pinax-decoded swap rows — one level above trickshot's own
+  data acquisition (it derives prices from raw per-pool balance deltas; Pinax pre-decodes that).
+
+**Open**
+- The replay-browser viz itself (next task): actors index + `curated/index.json` are its browsing
+  manifest; the on-demand CLI is its per-click backend (stdout JSON — a subprocess shim suffices).
+- Wallet `bal_after` stays null by design; if the viz wants an equity overlay for wallets, it can
+  plot `realized_cum` (already per-trade).
+
 ## 2026-08-24 (v) — Improvement loop implemented: post-mortem queue + trial harness; Audit Round 1
 
 The §07 adoption is now code. All three transferable pieces from `07-improvement-loop.md` landed:
