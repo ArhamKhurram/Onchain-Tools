@@ -25,6 +25,7 @@ from __future__ import annotations
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass
 
+from oct_trading_agent.console import safe_console_text
 from oct_trading_agent.data.labeling.schema import LabeledWallet
 
 from .bc import BCConfig, BCResult, train_bc
@@ -172,11 +173,16 @@ def load_cohort_from_pinax(
             base_delay_s=base_delay_s,
         )
 
+    def _log(message: str) -> None:
+        # Wallet names and exception text are operator/user-supplied and may carry emoji a cp1252
+        # console cannot encode — sanitise EVERY interpolated line so logging can never raise.
+        log(safe_console_text(message))
+
     candidates = [tw for tw in tracked if isinstance(tw, TrackedWallet)]
     out: list[LabeledWallet] = []
     skipped: list[tuple[str, str]] = []
     for i, tw in enumerate(candidates):
-        log(f"  [{i + 1}/{len(candidates)}] pulling {tw.name} ({tw.address[:8]}...)")
+        _log(f"  [{i + 1}/{len(candidates)}] pulling {tw.name} ({tw.address[:8]}...)")
         try:
             wallet = load_wallet_trades(
                 client,  # type: ignore[arg-type]
@@ -187,7 +193,7 @@ def load_cohort_from_pinax(
             )
         except Exception as exc:  # backoff already exhausted — isolate, count, and keep going
             reason = f"{type(exc).__name__}: {exc}"
-            log(f"      SKIPPED after retries ({reason})")
+            _log(f"      SKIPPED after retries ({reason})")
             skipped.append((f"{tw.name} ({tw.address[:8]}...)", reason))
             continue
         out.append(wallet)
@@ -253,7 +259,7 @@ def main() -> int:  # pragma: no cover - CLI wiring (the pieces it calls are uni
         cache_dir=Path(args.cache_dir) if args.cache_dir else None,
         log=print,
     )
-    print(format_pull_summary(result))
+    print(safe_console_text(format_pull_summary(result)))  # skip lines may carry emoji names
     if not cohort_is_usable(result):
         print("ABORT: cohort pull returned essentially nothing (no wallets with trades); not training.")
         return 1

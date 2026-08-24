@@ -708,27 +708,46 @@ def _load_cohort(args: argparse.Namespace) -> list[LabeledWallet]:  # pragma: no
 
     Reuses the Phase-2 cohort loader: parse the operator's export, take the bounded top-balance cohort,
     and pull each wallet's swap history from Pinax. Returns ``[]`` (baseline OFF) when no file is given
-    or the pull fails — the ladder still runs its three mechanical baselines.
+    or when a **genuine data/network failure** degrades the pull — the ladder still runs its three
+    mechanical baselines, and every degrade prints a loud ``[cohort] baseline OFF:`` line.
+
+    Every print here goes through :func:`safe_print` (wallet names carry emoji the cp1252 Windows
+    console cannot encode), and a ``UnicodeError`` is deliberately re-raised rather than degraded:
+    a LOGGING failure must crash loudly, never silently disable the baseline.
     """
     if not args.wallets_file:
         return []
-    try:
-        from oct_trading_agent.agent.imitation.cohort import load_cohort_from_pinax
-        from oct_trading_agent.data.labeling.wallets_file import (
-            parse_tracked_wallets,
-            select_cohort,
-        )
+    from oct_trading_agent.agent.imitation.cohort import load_cohort_from_pinax
+    from oct_trading_agent.console import safe_print
+    from oct_trading_agent.data.labeling.wallets_file import parse_tracked_wallets, select_cohort
 
+    # Reading + parsing the export: only genuine file/shape errors degrade (OSError covers a
+    # missing/unreadable path; ValueError covers bad JSON — JSONDecodeError subclasses it — and a
+    # malformed top-level shape).
+    try:
         tracked = parse_tracked_wallets(args.wallets_file)
         cohort = select_cohort(tracked, max_wallets=args.max_wallets)
-        print(f"[cohort] selected {len(cohort)} / {len(tracked)} tracked wallets (top by balance)")
-        pull = load_cohort_from_pinax(cohort, max_pages=args.cohort_pages, log=print)
-        if pull.n_skipped:
-            print(f"[cohort] {pull.n_skipped} wallet(s) skipped after retries")
-        return pull.wallets
-    except Exception as exc:
-        print(f"[cohort] load failed ({type(exc).__name__}: {exc}); tracked_traders baseline OFF")
+    except (OSError, ValueError) as exc:
+        safe_print(
+            f"[cohort] baseline OFF: could not read wallets file ({type(exc).__name__}: {exc})"
+        )
         return []
+    safe_print(f"[cohort] selected {len(cohort)} / {len(tracked)} tracked wallets (top by balance)")
+
+    # The live pull: per-wallet failures are already isolated inside load_cohort_from_pinax; what
+    # escapes is setup-level (missing PINAX_API_KEY, client construction, ...). Degrade on those —
+    # but never on a UnicodeError, which would be a logging bug, not a data failure (and the
+    # safe_print log sink means encoding can no longer raise from inside the pull anyway).
+    try:
+        pull = load_cohort_from_pinax(cohort, max_pages=args.cohort_pages, log=safe_print)
+    except UnicodeError:
+        raise  # a logging/encoding bug must be loud, never turn the baseline off
+    except Exception as exc:
+        safe_print(f"[cohort] baseline OFF: cohort pull failed ({type(exc).__name__}: {exc})")
+        return []
+    if pull.n_skipped:
+        safe_print(f"[cohort] {pull.n_skipped} wallet(s) skipped after retries")
+    return pull.wallets
 
 
 def main() -> None:  # pragma: no cover - CLI

@@ -9,9 +9,13 @@ Everything here uses an injected fake client — no network.
 
 from __future__ import annotations
 
+import io
 import json
+import sys
 from pathlib import Path
 from typing import Any
+
+import pytest
 
 from oct_trading_agent.agent.imitation.cohort import (
     CohortPullResult,
@@ -19,6 +23,7 @@ from oct_trading_agent.agent.imitation.cohort import (
     format_pull_summary,
     load_cohort_from_pinax,
 )
+from oct_trading_agent.console import safe_console_text, safe_print
 from oct_trading_agent.data.labeling.wallets_file import TrackedWallet
 
 FIXTURES_DIR = Path(__file__).resolve().parent / "fixtures"
@@ -106,3 +111,76 @@ def test_pull_summary_names_the_skips() -> None:
     assert "1/2 wallets pulled" in summary
     assert "1 skipped after retries" in summary
     assert "Bad (" in summary
+
+
+# ---------------------------------------------------------------------------
+# Encoding safety: emoji wallet names on a cp1252 Windows console.
+#
+# The operator's tracked-wallets export carries names with emoji; a real cp1252 console raises
+# UnicodeEncodeError when print interpolates one — which broad exception handling once mistook for
+# a data failure and silently disabled the tracked_traders baseline. The cohort path must log such
+# names losslessly-degraded (emoji -> '?'), never raise.
+# ---------------------------------------------------------------------------
+
+
+class Cp1252ConsoleStream(io.StringIO):
+    """A StringIO that refuses exactly what a cp1252 Windows console refuses.
+
+    Plain StringIO happily accepts any str, so it cannot reproduce the failure mode. This wrapper
+    advertises ``encoding = "cp1252"`` (what ``safe_console_text`` keys off) and encode-checks every
+    write against cp1252, raising ``UnicodeEncodeError`` exactly like the real console would.
+    """
+
+    encoding = "cp1252"
+
+    def write(self, s: str) -> int:
+        s.encode("cp1252")  # raises UnicodeEncodeError just like a real cp1252 console
+        return super().write(s)
+
+
+class Utf8Stream(io.StringIO):
+    encoding = "utf-8"
+
+
+EMOJI_NAME = "\U0001f433 whale hunter \U0001f680"  # "🐳 whale hunter 🚀"
+
+
+def test_emoji_wallet_name_logs_without_raising_on_cp1252(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The full pull path — pulling line AND skip line — survives a cp1252 stdout with emoji names."""
+    stream = Cp1252ConsoleStream()
+    monkeypatch.setattr(sys, "stdout", stream)
+
+    tracked = [_tracked(EMOJI_NAME, GOOD_A), _tracked(EMOJI_NAME + " (bad)", BAD)]
+    result = load_cohort_from_pinax(tracked, client=FakeCohortClient(bad={BAD}), log=print)
+
+    # The pull ran to completion: no UnicodeEncodeError, good wallet in, bad wallet skip-counted.
+    assert result.n_pulled == 1
+    assert result.n_skipped == 1
+    logged = stream.getvalue()
+    assert "pulling" in logged
+    assert "SKIPPED after retries" in logged
+    # The emoji were replaced for display, not written raw (the stream would have raised).
+    assert "\U0001f433" not in logged
+    assert "whale hunter" in logged
+    assert "?" in logged
+
+
+def test_safe_console_text_passthrough_and_replacement() -> None:
+    # UTF-8-capable stream: text passes through untouched (no lossy replacement when not needed).
+    assert safe_console_text(EMOJI_NAME, Utf8Stream()) == EMOJI_NAME
+    # cp1252 stream: emoji degrade to '?', readable ASCII survives.
+    sanitized = safe_console_text(EMOJI_NAME, Cp1252ConsoleStream())
+    assert "\U0001f433" not in sanitized
+    assert "whale hunter" in sanitized
+    assert "?" in sanitized
+
+
+def test_safe_print_never_raises_on_cp1252_stream() -> None:
+    stream = Cp1252ConsoleStream()
+    safe_print(f"  [1/1] pulling {EMOJI_NAME} (Abcdefgh...)", stream=stream)
+    out = stream.getvalue()
+    assert "pulling" in out
+    assert "whale hunter" in out
+    assert "\U0001f433" not in out
