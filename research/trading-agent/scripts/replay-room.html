@@ -1,0 +1,781 @@
+<title>Replay Room</title>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Press+Start+2P&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+/* ===================== THEME TOKENS =====================
+   Sibling room of desk-console.html: same token structure, same role colors,
+   its own accent (rewind cyan) so the two rooms never get confused. */
+:root{
+  --bg:#e9edec; --panel:#ffffff; --panel-2:#f3f6f5; --panel-3:#eaefee;
+  --border:#d2dbd8; --border-strong:#bcc8c4;
+  --text:#14201d; --text-dim:#4c5d58; --text-faint:#93a29d;
+  --accent:#0b7fa8; --accent-soft:rgba(11,127,168,.12);
+  --pos:#0f9d58; --neg:#d92d43; --warn:#b7791f;
+  --grid:rgba(20,32,29,.05); --scan:rgba(20,32,29,.03); --focus:#0b7fa8;
+  --shadow:0 1px 2px rgba(20,32,29,.06),0 8px 24px rgba(20,32,29,.06);
+  --role-1:#e0483f; --role-2:#1f8fd0; --role-3:#5560e0;
+  --role-4:#c9821f; --role-5:#cf4bb0; --role-6:#0f9d58;
+}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]){
+    --bg:#080b0c; --panel:#0f1517; --panel-2:#0b1113; --panel-3:#121b1d;
+    --border:#1b282c; --border-strong:#2a3d42;
+    --text:#d8e4e0; --text-dim:#87a09a; --text-faint:#465a5c;
+    --accent:#45d4e6; --accent-soft:rgba(69,212,230,.12);
+    --pos:#35e08e; --neg:#ff5c6c; --warn:#ffcf5c;
+    --grid:rgba(120,200,180,.05); --scan:rgba(120,200,180,.035); --focus:#45d4e6;
+    --shadow:0 1px 2px rgba(0,0,0,.4),0 10px 30px rgba(0,0,0,.35);
+    --role-1:#ff6b6b; --role-2:#58c8ff; --role-3:#7c86ff;
+    --role-4:#ffb454; --role-5:#ff7ae0; --role-6:#35e08e;
+  }
+}
+:root[data-theme="dark"]{
+  --bg:#080b0c; --panel:#0f1517; --panel-2:#0b1113; --panel-3:#121b1d;
+  --border:#1b282c; --border-strong:#2a3d42;
+  --text:#d8e4e0; --text-dim:#87a09a; --text-faint:#465a5c;
+  --accent:#45d4e6; --accent-soft:rgba(69,212,230,.12);
+  --pos:#35e08e; --neg:#ff5c6c; --warn:#ffcf5c;
+  --grid:rgba(120,200,180,.05); --scan:rgba(120,200,180,.035); --focus:#45d4e6;
+  --shadow:0 1px 2px rgba(0,0,0,.4),0 10px 30px rgba(0,0,0,.35);
+  --role-1:#ff6b6b; --role-2:#58c8ff; --role-3:#7c86ff;
+  --role-4:#ffb454; --role-5:#ff7ae0; --role-6:#35e08e;
+}
+
+/* ===================== BASE ===================== */
+*{box-sizing:border-box}
+html,body{margin:0}
+body{
+  background:var(--bg); color:var(--text);
+  font-family:"IBM Plex Mono",ui-monospace,SFMono-Regular,Menlo,monospace;
+  font-size:14px; line-height:1.45; letter-spacing:.01em;
+  -webkit-font-smoothing:antialiased;
+  min-height:100vh; overflow-x:hidden;
+}
+.px{font-family:"Press Start 2P",monospace;letter-spacing:.02em}
+.num{font-variant-numeric:tabular-nums;font-feature-settings:"tnum" 1}
+.pos{color:var(--pos)} .neg{color:var(--neg)} .muted{color:var(--text-faint)}
+:focus-visible{outline:2px solid var(--focus);outline-offset:2px;border-radius:3px}
+button{font-family:inherit;color:inherit}
+a{color:var(--accent)}
+.wrap{max-width:1320px;margin:0 auto;padding:14px clamp(10px,2.5vw,22px) 26px}
+
+/* ===================== TOP BAR ===================== */
+.topbar{
+  display:flex;flex-wrap:wrap;align-items:center;gap:12px;
+  background:var(--panel);border:1px solid var(--border);border-radius:10px;
+  padding:12px 14px;box-shadow:var(--shadow);
+}
+.brand{display:flex;align-items:center;gap:10px;min-width:0;cursor:pointer}
+.brand .logo{
+  width:26px;height:26px;border-radius:6px;flex:none;
+  background:linear-gradient(135deg,var(--accent),color-mix(in srgb,var(--accent) 55%,var(--text)));
+  display:grid;place-items:center;color:var(--bg);font-size:10px;box-shadow:var(--shadow);
+}
+.brand .name{font-size:9px;line-height:1.5}
+.brand .sub{font-size:10px;color:var(--text-dim);margin-top:2px}
+.stats{display:flex;flex-wrap:wrap;gap:8px;margin-left:auto}
+.stat{border:1px solid var(--border);border-radius:8px;background:var(--panel-2);padding:7px 12px;min-width:92px}
+.stat .k{font-size:9px;letter-spacing:.14em;color:var(--text-faint);text-transform:uppercase}
+.stat .v{font-size:19px;margin-top:3px;line-height:1}
+.theme-btn{
+  border:1px solid var(--border);background:var(--panel-2);border-radius:8px;
+  padding:8px 10px;cursor:pointer;font-size:14px;line-height:1;color:var(--text-dim);
+}
+.theme-btn:hover{color:var(--text);border-color:var(--border-strong)}
+
+/* ===================== FILTER BAR ===================== */
+.filterbar{
+  display:flex;flex-wrap:wrap;align-items:center;gap:10px 14px;margin-top:14px;
+  background:var(--panel);border:1px solid var(--border);border-radius:10px;
+  padding:10px 14px;box-shadow:var(--shadow);
+}
+.seg{display:inline-flex;background:var(--panel-2);border:1px solid var(--border);
+  border-radius:9px;padding:3px;gap:3px;flex:none;flex-wrap:wrap;max-width:100%}
+.seg-btn{
+  border:0;background:transparent;cursor:pointer;border-radius:6px;
+  padding:8px 14px;font-family:"Press Start 2P",monospace;font-size:8px;
+  letter-spacing:.05em;color:var(--text-dim);
+  transition:background-color .2s ease,color .2s ease;
+}
+.seg-btn:hover{color:var(--text)}
+.seg-btn[aria-selected="true"]{background:var(--accent);color:var(--bg)}
+select.sort,input.search{
+  border:1px solid var(--border);background:var(--panel-2);color:var(--text);
+  border-radius:8px;padding:8px 10px;font-family:inherit;font-size:11px;
+}
+input.search{min-width:180px;flex:1 1 160px}
+.count-note{font-size:10px;color:var(--text-faint);letter-spacing:.05em;margin-left:auto}
+
+/* ===================== ACTOR GRID ===================== */
+.agrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(236px,1fr));gap:10px;margin-top:14px}
+.acard{
+  background:var(--panel);border:1px solid var(--border);border-radius:10px;
+  box-shadow:var(--shadow);padding:11px 12px 10px;cursor:pointer;text-align:left;
+  border-left:3px solid var(--border-strong);
+  display:flex;flex-direction:column;gap:8px;min-width:0;
+  transition:border-color .15s ease,transform .1s ease;
+}
+.acard:hover{border-color:var(--accent);transform:translateY(-1px)}
+.acard .top{display:flex;align-items:center;justify-content:space-between;gap:8px}
+.acard .who{font-size:11px;letter-spacing:.03em;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.acard .who.px{font-size:10px}
+.kind-badge{font-size:8px;letter-spacing:.1em;border:1px solid var(--border);border-radius:999px;
+  padding:2px 7px;background:var(--panel-2);color:var(--text-dim);flex:none}
+.kind-badge.sim{color:var(--warn);border-color:color-mix(in srgb,var(--warn) 40%,var(--border))}
+.kind-badge.real{color:var(--accent);border-color:color-mix(in srgb,var(--accent) 40%,var(--border))}
+.acard .sub{font-size:9px;color:var(--text-faint);letter-spacing:.05em;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.acard .pnl-line{font-size:18px;line-height:1;letter-spacing:-.01em}
+.acard .mini{display:flex;gap:5px}
+.acard .mini>div{flex:1;border:1px solid var(--border);border-radius:6px;background:var(--panel-2);
+  padding:4px 5px;text-align:center;min-width:0}
+.acard .mini .k{display:block;font-size:7px;letter-spacing:.09em;color:var(--text-faint)}
+.acard .mini .v{display:block;font-size:11px;margin-top:2px}
+
+/* ===================== PANELS / TABLES ===================== */
+.panel{background:var(--panel);border:1px solid var(--border);border-radius:10px;box-shadow:var(--shadow)}
+.phead{display:flex;align-items:center;justify-content:space-between;gap:8px;
+  padding:10px 13px;border-bottom:1px solid var(--border);flex-wrap:wrap}
+.phead .t{font-size:9px;letter-spacing:.1em;color:var(--text-dim)}
+.phead .r{font-size:10px;color:var(--text-faint)}
+.crumb{display:flex;align-items:center;gap:8px;margin-top:14px;font-size:11px;color:var(--text-dim);flex-wrap:wrap}
+.crumb button{border:1px solid var(--border);background:var(--panel-2);border-radius:7px;
+  padding:6px 11px;cursor:pointer;font-size:10px;letter-spacing:.05em}
+.crumb button:hover{border-color:var(--accent);color:var(--text)}
+.crumb .sep{color:var(--text-faint)}
+.tbl-wrap{overflow-x:auto}
+table.tokens{width:100%;border-collapse:collapse;font-size:12px;min-width:560px}
+table.tokens th{font-size:9px;letter-spacing:.1em;color:var(--text-faint);text-transform:uppercase;
+  text-align:left;padding:8px 13px;border-bottom:1px solid var(--border)}
+table.tokens td{padding:8px 13px;border-bottom:1px solid color-mix(in srgb,var(--border) 55%,transparent)}
+table.tokens tr:last-child td{border-bottom:0}
+table.tokens tbody tr{cursor:pointer}
+table.tokens tbody tr:hover{background:var(--panel-2)}
+table.tokens .r{text-align:right}
+.go{color:var(--accent);font-size:10px;letter-spacing:.08em;white-space:nowrap}
+
+/* actor header card */
+.actor-head{display:flex;flex-wrap:wrap;gap:12px 20px;align-items:center;padding:13px 15px}
+.actor-head .idblock{min-width:0}
+.actor-head .aid{font-size:14px;letter-spacing:.02em;word-break:break-all}
+.actor-head .aid.px{font-size:13px}
+.actor-head .grp{font-size:10px;color:var(--text-dim);margin-top:4px;letter-spacing:.05em}
+.actor-head .hstats{display:flex;flex-wrap:wrap;gap:8px;margin-left:auto}
+.hstat{border:1px solid var(--border);border-radius:8px;background:var(--panel-2);padding:6px 11px;min-width:86px}
+.hstat .k{font-size:8px;letter-spacing:.12em;color:var(--text-faint);text-transform:uppercase}
+.hstat .v{font-size:15px;margin-top:2px}
+
+/* ===================== REPLAY VIEW ===================== */
+.replay-grid{display:grid;grid-template-columns:minmax(0,1fr) 300px;gap:14px;margin-top:14px}
+@media (max-width:940px){.replay-grid{grid-template-columns:1fr}}
+.chart-wrap{position:relative;padding:10px 12px 6px;overflow:hidden}
+.chart-wrap::before{content:"";position:absolute;inset:0;pointer-events:none;z-index:2;
+  background:repeating-linear-gradient(0deg,transparent,transparent 2px,var(--scan) 2px,var(--scan) 3px);opacity:.7}
+.chart-wrap svg{width:100%;height:auto;display:block}
+.chart-empty{padding:40px 16px;text-align:center;color:var(--text-faint);font-size:11px;letter-spacing:.05em}
+.honesty{padding:9px 13px 11px;font-size:10px;color:var(--text-faint);line-height:1.55;border-top:1px solid var(--border)}
+.honesty b{color:var(--text-dim);font-weight:600}
+.provenance{display:inline-flex;align-items:center;gap:6px;font-size:9px;letter-spacing:.08em;
+  border:1px solid var(--border);border-radius:999px;padding:3px 9px;background:var(--panel-2)}
+.provenance.sim{color:var(--warn)} .provenance.real{color:var(--accent)}
+.provenance .pdot{width:6px;height:6px;border-radius:1px;background:currentColor}
+
+/* scrubber */
+.scrubber{margin-top:14px;padding:13px 15px}
+.scrub-head{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+.play{display:inline-flex;align-items:center;gap:9px;cursor:pointer;
+  border:1px solid var(--border-strong);background:var(--panel-2);border-radius:8px;
+  padding:9px 14px;font-family:"Press Start 2P",monospace;font-size:9px;letter-spacing:.08em;color:var(--text)}
+.play:hover{border-color:var(--accent)}
+.play.on{background:var(--accent-soft);border-color:var(--accent);color:var(--accent)}
+.speed{border:1px solid var(--border);background:var(--panel-2);border-radius:8px;
+  padding:9px 12px;cursor:pointer;font-size:10px;letter-spacing:.06em;color:var(--text-dim)}
+.speed:hover{color:var(--text);border-color:var(--border-strong)}
+.scrub-meta{font-size:10px;color:var(--text-dim);margin-left:auto;letter-spacing:.06em}
+.scrub-meta b{color:var(--text)}
+.track{margin-top:12px}
+input[type=range]{-webkit-appearance:none;appearance:none;width:100%;height:26px;background:transparent;cursor:pointer;margin:0}
+input[type=range]::-webkit-slider-runnable-track{height:8px;border-radius:6px;
+  background:var(--panel-3);border:1px solid var(--border)}
+input[type=range]::-moz-range-track{height:8px;border-radius:6px;background:var(--panel-3);border:1px solid var(--border)}
+input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;appearance:none;width:18px;height:18px;margin-top:-6px;
+  border-radius:4px;background:var(--accent);border:2px solid var(--bg);box-shadow:var(--shadow)}
+input[type=range]::-moz-range-thumb{width:16px;height:16px;border-radius:4px;background:var(--accent);
+  border:2px solid var(--bg);box-shadow:var(--shadow)}
+.kbd-hint{font-size:9px;color:var(--text-faint);margin-top:7px;letter-spacing:.05em}
+.kbd-hint b{color:var(--text-dim);border:1px solid var(--border);border-radius:4px;padding:0 5px;font-weight:500}
+
+/* readout rail */
+.rail{display:flex;flex-direction:column;gap:14px;min-width:0}
+.readout{padding:11px 13px;display:grid;grid-template-columns:1fr 1fr;gap:7px}
+.ro{border:1px solid var(--border);border-radius:7px;background:var(--panel-2);padding:6px 9px;min-width:0}
+.ro .k{font-size:8px;letter-spacing:.12em;color:var(--text-faint);text-transform:uppercase}
+.ro .v{font-size:14px;margin-top:2px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.ro.wide{grid-column:1 / -1}
+.tape{padding:4px 0;max-height:330px;overflow-y:auto}
+.tape-row{display:grid;grid-template-columns:26px 58px 44px 1fr;gap:7px;align-items:baseline;
+  padding:4px 12px;font-size:11px;opacity:.42;cursor:pointer}
+.tape-row .idx{font-size:9px;color:var(--text-faint);text-align:right}
+.tape-row .tt{font-size:10px;color:var(--text-faint)}
+.tape-row .side{font-size:9px;letter-spacing:.08em;font-weight:600}
+.tape-row .amt{text-align:right;color:var(--text-dim);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.tape-row.done{opacity:1}
+.tape-row.cur{opacity:1;background:var(--accent-soft);border-radius:4px}
+.tape-row+.tape-row{border-top:1px solid color-mix(in srgb,var(--border) 40%,transparent)}
+
+.foot{margin-top:18px;font-size:10px;color:var(--text-faint);letter-spacing:.04em;line-height:1.6;text-align:center}
+.loading{padding:50px 16px;text-align:center;color:var(--text-faint);font-size:11px;letter-spacing:.1em}
+.err{padding:30px 16px;text-align:center;color:var(--neg);font-size:12px}
+</style>
+
+<div class="wrap">
+  <div class="topbar">
+    <div class="brand" id="brand" role="button" tabindex="0" aria-label="Replay Room home">
+      <div class="logo px">&#9654;&#9664;</div>
+      <div>
+        <div class="name px">REPLAY ROOM</div>
+        <div class="sub">trade-by-trade replays &middot; agents + census wallets</div>
+      </div>
+    </div>
+    <div class="stats" id="topstats"></div>
+    <button class="theme-btn" id="themeBtn" title="toggle theme" aria-label="toggle theme">&#9680;</button>
+  </div>
+  <div id="app"><div class="loading px">LOADING ACTOR INDEX&hellip;</div></div>
+  <div class="foot">
+    every replay is reconstructed from captured data &mdash; <b>agents: sim fills (paper)</b> &middot; <b>wallets: real on-chain swaps</b>.
+    charts are real trade prints from the token's busiest pool; nothing is averaged or synthesized.
+  </div>
+</div>
+
+<script>
+'use strict';
+
+/* ---------- theme ---------- */
+(function themeInit(){
+  const saved = localStorage.getItem('replay-room-theme');
+  if (saved === 'light' || saved === 'dark') document.documentElement.setAttribute('data-theme', saved);
+  document.getElementById('themeBtn').addEventListener('click', () => {
+    const root = document.documentElement;
+    const dark = window.matchMedia('(prefers-color-scheme: dark)').matches;
+    const cur = root.getAttribute('data-theme') || (dark ? 'dark' : 'light');
+    const next = cur === 'dark' ? 'light' : 'dark';
+    root.setAttribute('data-theme', next);
+    localStorage.setItem('replay-room-theme', next);
+  });
+})();
+
+/* ---------- utils ---------- */
+const ROLE_COLOR = {GOBLIN:'var(--role-1)',GREMLIN:'var(--role-2)',GIZMO:'var(--role-3)',
+                    NOODLE:'var(--role-4)',PICKLE:'var(--role-5)',GECKO:'var(--role-6)'};
+const SUBS = '₀₁₂₃₄₅₆₇₈₉';
+function esc(s){ return String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
+function shortId(id){ return id.length > 14 ? id.slice(0,4) + '…' + id.slice(-4) : id; }
+function fmtSol(x, digits){
+  if (x == null || !isFinite(x)) return '—';
+  const d = digits != null ? digits : (Math.abs(x) >= 100 ? 1 : Math.abs(x) >= 1 ? 2 : 4);
+  const s = x.toFixed(d);
+  return (x > 0 ? '+' : '') + s;
+}
+function fmtPrice(p){
+  if (p == null || !isFinite(p)) return '—';
+  if (p === 0) return '0';
+  if (p >= 0.01) return p.toPrecision(4);
+  const zeros = Math.max(0, -Math.floor(Math.log10(p)) - 1);
+  const mant = Math.round(p * Math.pow(10, zeros + 4));
+  return '0.0' + String(zeros).split('').map(ch => SUBS[+ch]).join('') + String(mant);
+}
+function fmtTime(t){ const d = new Date(t * 1000); return d.toISOString().slice(11,19); }
+function fmtDate(t){ const d = new Date(t * 1000); return d.toISOString().slice(0,10); }
+function fmtDur(s){
+  if (s == null || !isFinite(s)) return '—';
+  if (s < 90) return Math.round(s) + 's';
+  if (s < 5400) return (s/60).toFixed(1) + 'm';
+  return (s/3600).toFixed(1) + 'h';
+}
+function pnlCls(x){ return x > 0 ? 'pos' : x < 0 ? 'neg' : 'muted'; }
+
+async function getJSON(url){
+  const r = await fetch(url);
+  const body = await r.json();
+  if (!r.ok) throw new Error(body && body.error ? body.error : ('HTTP ' + r.status));
+  return body;
+}
+const cache = { actors:null, tokens:new Map(), traces:new Map() };
+async function loadActors(){
+  if (!cache.actors) cache.actors = (await getJSON('/api/actors')).actors;
+  return cache.actors;
+}
+async function loadTokens(actor, group){
+  const k = group + '|' + actor;
+  if (!cache.tokens.has(k))
+    cache.tokens.set(k, await getJSON('/api/actor_tokens?actor=' + encodeURIComponent(actor) + '&group=' + encodeURIComponent(group)));
+  return cache.tokens.get(k);
+}
+async function loadTrace(actor, mint, group){
+  const k = group + '|' + actor + '|' + mint;
+  if (!cache.traces.has(k))
+    cache.traces.set(k, await getJSON('/api/trace?actor=' + encodeURIComponent(actor) +
+      '&mint=' + encodeURIComponent(mint) + '&group=' + encodeURIComponent(group)));
+  return cache.traces.get(k);
+}
+
+/* ---------- routing ---------- */
+const app = document.getElementById('app');
+let ui = { tab:'all', sort:'pnl_desc', q:'' };
+let replayCtl = null; /* active replay controller (for teardown) */
+
+window.addEventListener('hashchange', route);
+document.getElementById('brand').addEventListener('click', () => { location.hash = '#/'; });
+document.getElementById('brand').addEventListener('keydown', e => { if (e.key === 'Enter') location.hash = '#/'; });
+
+function route(){
+  if (replayCtl){ replayCtl.destroy(); replayCtl = null; }
+  const h = location.hash || '#/';
+  const parts = h.replace(/^#\//,'').split('/').filter(Boolean).map(decodeURIComponent);
+  if (parts.length === 0) return viewGrid();
+  if (parts[0] === 'actor' && parts.length === 3) return viewActor(parts[1], parts[2]);
+  if (parts[0] === 'replay' && parts.length === 4) return viewReplay(parts[1], parts[2], parts[3]);
+  viewGrid();
+}
+
+/* ---------- top stats ---------- */
+function renderTopStats(actors){
+  const trades = actors.reduce((a,x) => a + (x.n_trades||0), 0);
+  const agents = actors.filter(a => a.actor_kind === 'agent').length;
+  document.getElementById('topstats').innerHTML =
+    stat('ACTORS', actors.length) + stat('AGENTS', agents) +
+    stat('WALLETS', actors.length - agents) + stat('TRADES', trades.toLocaleString('en-US'));
+  function stat(k,v){ return '<div class="stat"><div class="k">'+k+'</div><div class="v num">'+v+'</div></div>'; }
+}
+
+/* ---------- view: actor grid ---------- */
+async function viewGrid(){
+  app.innerHTML = '<div class="loading px">LOADING ACTOR INDEX&hellip;</div>';
+  let actors;
+  try { actors = await loadActors(); }
+  catch (e){ app.innerHTML = '<div class="err">index load failed: ' + esc(e.message) + '</div>'; return; }
+  renderTopStats(actors);
+
+  app.innerHTML =
+    '<div class="filterbar">' +
+      '<div class="seg" role="tablist" aria-label="actor kind">' +
+        segBtn('all','ALL') + segBtn('agents','AGENTS') + segBtn('winners','WINNERS') + segBtn('losers','LOSERS') +
+      '</div>' +
+      '<select class="sort" id="sortSel" aria-label="sort actors">' +
+        '<option value="pnl_desc">sort: realized PnL ↓</option>' +
+        '<option value="pnl_asc">sort: realized PnL ↑</option>' +
+        '<option value="tokens">sort: tokens touched</option>' +
+        '<option value="trades">sort: trade count</option>' +
+      '</select>' +
+      '<input class="search" id="searchBox" type="search" placeholder="filter by id / role / name…" aria-label="filter actors">' +
+      '<span class="count-note" id="countNote"></span>' +
+    '</div>' +
+    '<div class="agrid" id="agrid"></div>';
+
+  document.getElementById('sortSel').value = ui.sort;
+  document.getElementById('searchBox').value = ui.q;
+  document.getElementById('sortSel').addEventListener('change', e => { ui.sort = e.target.value; paint(); });
+  document.getElementById('searchBox').addEventListener('input', e => { ui.q = e.target.value; paint(); });
+  for (const b of app.querySelectorAll('.seg-btn'))
+    b.addEventListener('click', () => { ui.tab = b.dataset.tab; paint(); });
+  paint();
+
+  function segBtn(tab, label){
+    return '<button class="seg-btn" role="tab" data-tab="'+tab+'" aria-selected="'+(ui.tab===tab)+'">'+label+'</button>';
+  }
+  function paint(){
+    for (const b of app.querySelectorAll('.seg-btn')) b.setAttribute('aria-selected', String(b.dataset.tab === ui.tab));
+    let list = actors.filter(a =>
+      ui.tab === 'all' ? true :
+      ui.tab === 'agents' ? a.actor_kind === 'agent' :
+      ui.tab === 'winners' ? a.group_id === 'census-winners' : a.group_id === 'census-losers');
+    const q = ui.q.trim().toLowerCase();
+    if (q) list = list.filter(a =>
+      a.actor_id.toLowerCase().includes(q) ||
+      (a.meta.role||'').toLowerCase().includes(q) ||
+      (a.meta.name||'').toLowerCase().includes(q) ||
+      (a.meta.style_cell||'').toLowerCase().includes(q));
+    list = list.slice().sort((x,y) =>
+      ui.sort === 'pnl_desc' ? y.realized_pnl_quote - x.realized_pnl_quote :
+      ui.sort === 'pnl_asc'  ? x.realized_pnl_quote - y.realized_pnl_quote :
+      ui.sort === 'tokens'   ? y.tokens_touched - x.tokens_touched : y.n_trades - x.n_trades);
+    document.getElementById('countNote').textContent = list.length + ' of ' + actors.length + ' actors';
+    document.getElementById('agrid').innerHTML = list.map(card).join('') ||
+      '<div class="loading">no actors match</div>';
+    for (const c of app.querySelectorAll('.acard'))
+      c.addEventListener('click', () => { location.hash = '#/actor/' + encodeURIComponent(c.dataset.group) + '/' + encodeURIComponent(c.dataset.id); });
+  }
+  function card(a){
+    const isAgent = a.actor_kind === 'agent';
+    const color = isAgent ? (ROLE_COLOR[a.meta.role] || 'var(--accent)') : 'var(--border-strong)';
+    const pnl = a.realized_pnl_quote;
+    const sub = isAgent
+      ? esc(a.meta.style_cell || a.meta.role || '') + ' &middot; ' + esc(a.group_id)
+      : esc(a.meta.name || '') + (a.meta.suspect ? ' &middot; <span class="neg">suspect</span>' : '');
+    const third = isAgent
+      ? '<span class="k">WIN%</span><span class="v num">' + (a.meta.win_rate != null ? Math.round(a.meta.win_rate*100)+'%' : '—') + '</span>'
+      : '<span class="k">CONSIST</span><span class="v num">' + (a.meta.consistency != null ? Math.round(a.meta.consistency*100)+'%' : '—') + '</span>';
+    return '<button class="acard" data-id="'+esc(a.actor_id)+'" data-group="'+esc(a.group_id)+'" style="border-left-color:'+color+'">' +
+      '<div class="top">' +
+        '<span class="who '+(isAgent?'px':'num')+'" style="'+(isAgent?'color:'+color:'')+'">' +
+          esc(isAgent ? a.actor_id : shortId(a.actor_id)) + '</span>' +
+        '<span class="kind-badge '+(isAgent?'sim':'real')+'">'+(isAgent?'SIM':'REAL')+'</span>' +
+      '</div>' +
+      '<div class="sub">'+sub+'</div>' +
+      '<div class="pnl-line num '+pnlCls(pnl)+'">'+fmtSol(pnl)+' <span style="font-size:10px;color:var(--text-faint)">SOL</span></div>' +
+      '<div class="mini">' +
+        '<div><span class="k">TOKENS</span><span class="v num">'+a.tokens_touched+'</span></div>' +
+        '<div><span class="k">TRADES</span><span class="v num">'+a.n_trades+'</span></div>' +
+        '<div>'+third+'</div>' +
+      '</div></button>';
+  }
+}
+
+/* ---------- view: actor tokens ---------- */
+async function viewActor(group, actorId){
+  app.innerHTML = '<div class="loading px">LOADING TOKENS&hellip;</div>';
+  let actors, tok;
+  try {
+    actors = await loadActors();
+    renderTopStats(actors);
+    tok = await loadTokens(actorId, group);
+  } catch (e){
+    app.innerHTML = crumbs(group, actorId, null) + '<div class="err">' + esc(e.message) + '</div>'; wireCrumbs(); return;
+  }
+  const a = actors.find(x => x.actor_id === actorId && x.group_id === group) || { meta:{}, actor_kind: tok.actor_kind };
+  const isAgent = tok.actor_kind === 'agent';
+  const color = isAgent ? (ROLE_COLOR[a.meta.role] || 'var(--accent)') : 'var(--text)';
+
+  const hstats = isAgent
+    ? hstat('ROLE', esc(a.meta.role||'—')) +
+      hstat('REALIZED', fmtSol(a.realized_pnl_quote), pnlCls(a.realized_pnl_quote)) +
+      hstat('WIN%', a.meta.win_rate != null ? Math.round(a.meta.win_rate*100)+'%' : '—') +
+      hstat('HOLD', fmtDur(a.meta.mean_hold_secs))
+    : hstat('REALIZED', fmtSol(a.realized_pnl_quote), pnlCls(a.realized_pnl_quote)) +
+      hstat('TOKENS', a.tokens_touched != null ? a.tokens_touched : tok.tokens.length) +
+      hstat('CONSIST', a.meta.consistency != null ? Math.round(a.meta.consistency*100)+'%' : '—') +
+      hstat('HOLD', fmtDur(a.meta.mean_hold_s));
+
+  app.innerHTML =
+    crumbs(group, actorId, null) +
+    '<div class="panel actor-head" style="margin-top:10px;border-left:3px solid '+color+'">' +
+      '<div class="idblock">' +
+        '<div class="aid '+(isAgent?'px':'num')+'" style="'+(isAgent?'color:'+color:'')+'">'+esc(actorId)+'</div>' +
+        '<div class="grp"><span class="kind-badge '+(isAgent?'sim':'real')+'">'+(isAgent?'AGENT &middot; SIM FILLS':'WALLET &middot; REAL SWAPS')+'</span> ' +
+        esc(group) + (isAgent && a.meta.style_cell ? ' &middot; ' + esc(a.meta.style_cell) : '') +
+        (!isAgent && a.meta.name ? ' &middot; ' + esc(a.meta.name) : '') + '</div>' +
+      '</div>' +
+      '<div class="hstats">' + hstats + '</div>' +
+    '</div>' +
+    '<div class="panel" style="margin-top:14px">' +
+      '<div class="phead"><span class="t px">TOKENS &middot; ' + tok.tokens.length + '</span>' +
+      '<span class="r">sorted by |realized PnL| &middot; click to replay</span></div>' +
+      '<div class="tbl-wrap"><table class="tokens"><thead><tr>' +
+        '<th>#</th><th>MINT</th><th class="r">TRADES</th><th class="r">REALIZED (SOL)</th><th class="r">SPAN</th><th></th>' +
+      '</tr></thead><tbody>' +
+      tok.tokens.map((t,i) =>
+        '<tr data-mint="'+esc(t.mint)+'" tabindex="0">' +
+          '<td class="muted num">'+(i+1)+'</td>' +
+          '<td class="num" title="'+esc(t.mint)+'">'+esc(shortId(t.mint))+'</td>' +
+          '<td class="r num">'+t.n_trades+'</td>' +
+          '<td class="r num '+pnlCls(t.realized_pnl)+'">'+fmtSol(t.realized_pnl)+'</td>' +
+          '<td class="r num muted">'+fmtDur(t.t_last - t.t_first)+'</td>' +
+          '<td class="r"><span class="go">REPLAY &#9654;</span></td>' +
+        '</tr>').join('') +
+      '</tbody></table></div>' +
+    '</div>';
+  wireCrumbs();
+  for (const tr of app.querySelectorAll('tr[data-mint]')){
+    const go = () => { location.hash = '#/replay/' + encodeURIComponent(group) + '/' + encodeURIComponent(actorId) + '/' + encodeURIComponent(tr.dataset.mint); };
+    tr.addEventListener('click', go);
+    tr.addEventListener('keydown', e => { if (e.key === 'Enter') go(); });
+  }
+  function hstat(k,v,cls){ return '<div class="hstat"><div class="k">'+k+'</div><div class="v num '+(cls||'')+'">'+v+'</div></div>'; }
+}
+
+function crumbs(group, actorId, mint){
+  return '<div class="crumb">' +
+    '<button id="cbHome">&#8962; ACTORS</button>' +
+    (actorId ? '<span class="sep">/</span>' +
+      (mint ? '<button id="cbActor">'+esc(shortId(actorId))+'</button>' : '<span>'+esc(shortId(actorId))+'</span>') : '') +
+    (mint ? '<span class="sep">/</span><span class="num">'+esc(shortId(mint))+'</span>' : '') +
+    '<span class="sep muted" style="margin-left:auto">'+esc(group)+'</span></div>';
+}
+function wireCrumbs(group, actorId){
+  const home = document.getElementById('cbHome');
+  if (home) home.addEventListener('click', () => { location.hash = '#/'; });
+  const ab = document.getElementById('cbActor');
+  if (ab && group && actorId) ab.addEventListener('click', () => {
+    location.hash = '#/actor/' + encodeURIComponent(group) + '/' + encodeURIComponent(actorId); });
+}
+
+/* ---------- view: replay ---------- */
+async function viewReplay(group, actorId, mint){
+  app.innerHTML = '<div class="loading px">RECONSTRUCTING REPLAY&hellip;</div>';
+  let trace;
+  try {
+    const actors = await loadActors(); renderTopStats(actors);
+    trace = await loadTrace(actorId, mint, group);
+  } catch (e){
+    app.innerHTML = crumbs(group, actorId, mint) + '<div class="err">' + esc(e.message) + '</div>';
+    wireCrumbs(group, actorId); return;
+  }
+  const isAgent = trace.actor_kind === 'agent';
+  const color = isAgent ? (ROLE_COLOR[trace.meta.role] || 'var(--accent)') : 'var(--text)';
+  const steps = trace.steps;
+  const pts = trace.price.points;
+
+  app.innerHTML =
+    crumbs(group, actorId, mint) +
+    '<div class="panel actor-head" style="margin-top:10px;border-left:3px solid '+color+'">' +
+      '<div class="idblock">' +
+        '<div class="aid '+(isAgent?'px':'num')+'" style="'+(isAgent?'color:'+color:'')+'">'+esc(isAgent?actorId:shortId(actorId))+'</div>' +
+        '<div class="grp"><span class="provenance '+(isAgent?'sim':'real')+'"><span class="pdot"></span>' +
+          (isAgent ? 'SIM FILLS &mdash; replay env, paper balance' : 'REAL ON-CHAIN SWAPS &mdash; captured tape') + '</span>' +
+          ' &nbsp;token <span class="num" title="'+esc(mint)+'">'+esc(shortId(mint))+'</span> &middot; '+esc(group)+'</div>' +
+      '</div>' +
+      '<div class="hstats">' +
+        '<div class="hstat"><div class="k">TRADES</div><div class="v num">'+steps.length+'</div></div>' +
+        '<div class="hstat"><div class="k">FINAL REALIZED</div><div class="v num '+pnlCls(finalRealized(steps))+'">'+fmtSol(finalRealized(steps))+'</div></div>' +
+        '<div class="hstat"><div class="k">SPAN</div><div class="v num">'+(steps.length ? fmtDur(steps[steps.length-1].t - steps[0].t) : '—')+'</div></div>' +
+      '</div>' +
+    '</div>' +
+    '<div class="replay-grid">' +
+      '<div>' +
+        '<div class="panel">' +
+          '<div class="phead"><span class="t px">CHART &middot; '+esc(shortId(mint))+'</span>' +
+            '<span class="r num">'+(pts.length ? fmtDate(pts[0].t) : '')+'</span></div>' +
+          '<div class="chart-wrap" id="chartWrap"></div>' +
+          '<div class="honesty" id="honesty"></div>' +
+        '</div>' +
+        '<div class="panel scrubber">' +
+          '<div class="scrub-head">' +
+            '<button class="play" id="playBtn" aria-label="play or pause replay"><span class="ico">&#9654;</span><span id="playLbl">PLAY</span></button>' +
+            '<button class="speed" id="speedBtn" aria-label="playback speed">1&times;</button>' +
+            '<span class="scrub-meta" id="scrubMeta"></span>' +
+          '</div>' +
+          '<div class="track">' +
+            '<input type="range" id="scrub" min="0" max="'+steps.length+'" value="0" step="1" aria-label="replay position (trades executed)">' +
+          '</div>' +
+          '<div class="kbd-hint"><b>space</b> play/pause &middot; <b>&larr;</b>/<b>&rarr;</b> step &middot; <b>home</b>/<b>end</b> jump</div>' +
+        '</div>' +
+      '</div>' +
+      '<div class="rail">' +
+        '<div class="panel"><div class="phead"><span class="t px">STATE</span><span class="r" id="stateNote"></span></div>' +
+          '<div class="readout" id="readout"></div></div>' +
+        '<div class="panel"><div class="phead"><span class="t px">TAPE</span><span class="r">'+steps.length+' trades</span></div>' +
+          '<div class="tape" id="tape">' +
+          steps.map((s,i) =>
+            '<div class="tape-row" data-i="'+i+'">' +
+              '<span class="idx num">'+(i+1)+'</span>' +
+              '<span class="tt num">'+fmtTime(s.t)+'</span>' +
+              '<span class="side '+(s.side==='buy'?'pos':'neg')+'">'+s.side.toUpperCase()+(s.intent ? '' : '')+'</span>' +
+              '<span class="amt num">'+(s.intent ? esc(s.intent)+' &middot; ' : '')+(s.quote != null ? Math.abs(s.quote).toFixed(3)+' SOL' : '—')+'</span>' +
+            '</div>').join('') +
+          '</div></div>' +
+      '</div>' +
+    '</div>';
+  wireCrumbs(group, actorId);
+
+  /* honesty notes */
+  const hn = [];
+  hn.push(isAgent
+    ? '<b>simulated:</b> these fills happened in the replay environment against the captured tape (paper balance) &mdash; not on chain.'
+    : '<b>real:</b> every marker is an actual on-chain swap this wallet made, decoded from the captured tape.');
+  if (pts.length){
+    hn.push('chart: <b>' + pts.length + '</b> of <b>' + trace.price.n_source + '</b> real trade prints' +
+      (trace.price.downsampled ? ' (' + esc(trace.price.method) + ')' : ' (every print shown)') + '.');
+    hn.push('busiest pool ' + (trace.price.pool ? '<span class="num">' + esc(shortId(trace.price.pool)) + '</span>' : '?') +
+      ' of ' + trace.price.n_pools + (trace.price.n_pools > 1 ? ' pools; the actor’s trades may span pools and are overlaid in full.' : ' pool.'));
+  }
+  document.getElementById('honesty').innerHTML = hn.join(' ');
+
+  replayCtl = makeReplay(trace, isAgent);
+}
+
+function finalRealized(steps){
+  for (let i = steps.length - 1; i >= 0; i--) if (steps[i].realized_cum != null) return steps[i].realized_cum;
+  return null;
+}
+
+/* ---------- the replay engine ---------- */
+function makeReplay(trace, isAgent){
+  const steps = trace.steps, pts = trace.price.points;
+  const wrap = document.getElementById('chartWrap');
+  const scrub = document.getElementById('scrub');
+  const playBtn = document.getElementById('playBtn');
+  const speedBtn = document.getElementById('speedBtn');
+  const W = 1000, H = 430, PAD = {l:64, r:14, t:16, b:30};
+  let k = 0;                /* trades executed so far (0..steps.length) */
+  let timer = null, speed = 1;
+  const SPEEDS = [1,2,4,8];
+
+  /* scales over the union of chart + trade times */
+  const ts = pts.map(p => p.t).concat(steps.map(s => s.t));
+  const prices = pts.map(p => p.p).concat(steps.filter(s => s.price != null).map(s => s.price));
+  const t0 = Math.min.apply(null, ts), t1 = Math.max.apply(null, ts);
+  const p0 = prices.length ? Math.min.apply(null, prices) : 0;
+  const p1 = prices.length ? Math.max.apply(null, prices) : 1;
+  const tSpan = Math.max(1, t1 - t0), pSpan = Math.max(p1 - p0, p1 * 1e-9 || 1);
+  const X = t => PAD.l + (W - PAD.l - PAD.r) * (t - t0) / tSpan;
+  const Y = p => PAD.t + (H - PAD.t - PAD.b) * (1 - (p - p0 - pSpan*-0.04) / (pSpan * 1.08));
+
+  function priceAt(t){ /* last-trade-print price at time t (for agent markers with no fill price) */
+    if (!pts.length) return null;
+    let lo = 0, hi = pts.length - 1;
+    if (t <= pts[0].t) return pts[0].p;
+    if (t >= pts[hi].t) return pts[hi].p;
+    while (lo + 1 < hi){ const m = (lo + hi) >> 1; if (pts[m].t <= t) lo = m; else hi = m; }
+    return pts[lo].p;
+  }
+
+  const maxQ = Math.max.apply(null, steps.map(s => Math.abs(s.quote || 0)).concat([1e-12]));
+  function markerR(s){ const q = Math.abs(s.quote || 0); return 5 + 6 * Math.sqrt(q / maxQ); }
+
+  if (!pts.length){
+    wrap.innerHTML = '<div class="chart-empty px">NO TAPE FOR THIS MINT IN THE CAPTURED DATASET</div>';
+  } else {
+    const line = pts.map((p,i) => (i ? 'L' : 'M') + X(p.t).toFixed(1) + ' ' + Y(p.p).toFixed(1)).join('');
+    const yticks = [0,1,2,3,4].map(i => {
+      const p = p0 + pSpan * i / 4, y = Y(p);
+      return '<line x1="'+PAD.l+'" x2="'+(W-PAD.r)+'" y1="'+y.toFixed(1)+'" y2="'+y.toFixed(1)+'" stroke="var(--grid)" stroke-width="1"/>' +
+             '<text x="'+(PAD.l-6)+'" y="'+(y+3).toFixed(1)+'" text-anchor="end" font-size="10" fill="var(--text-faint)" font-family="IBM Plex Mono,monospace">'+fmtPrice(p)+'</text>';
+    }).join('');
+    const xticks = [0,0.5,1].map(f => {
+      const t = t0 + tSpan * f, x = X(t);
+      return '<text x="'+x.toFixed(1)+'" y="'+(H-8)+'" text-anchor="'+(f===0?'start':f===1?'end':'middle')+'" font-size="10" fill="var(--text-faint)" font-family="IBM Plex Mono,monospace">'+fmtTime(t)+'</text>';
+    }).join('');
+    const markers = steps.map((s,i) => {
+      const p = s.price != null ? s.price : priceAt(s.t);
+      if (p == null) return '';
+      const x = X(s.t), y = Y(p), r = markerR(s);
+      const c = s.side === 'buy' ? 'var(--pos)' : 'var(--neg)';
+      const shape = s.side === 'buy'
+        ? 'M' + x + ' ' + (y - r) + ' L' + (x - r*0.9) + ' ' + (y + r*0.7) + ' L' + (x + r*0.9) + ' ' + (y + r*0.7) + ' Z'
+        : 'M' + x + ' ' + (y + r) + ' L' + (x - r*0.9) + ' ' + (y - r*0.7) + ' L' + (x + r*0.9) + ' ' + (y - r*0.7) + ' Z';
+      const label = (s.side + (s.intent ? ' (' + s.intent + ')' : '')) +
+        (s.quote != null ? ' · ' + Math.abs(s.quote).toFixed(4) + ' SOL' : '') + ' · ' + fmtTime(s.t);
+      return '<g class="mk" data-i="'+i+'" opacity="0.25">' +
+        '<path d="'+shape+'" fill="'+c+'" stroke="var(--panel)" stroke-width="1"/>' +
+        '<title>'+esc(label)+'</title></g>';
+    }).join('');
+    wrap.innerHTML =
+      '<svg viewBox="0 0 '+W+' '+H+'" role="img" aria-label="price chart with trade markers">' +
+        yticks + xticks +
+        '<path d="'+line+'" fill="none" stroke="var(--text-faint)" stroke-width="1.4" opacity="0.55"/>' +
+        '<clipPath id="doneClip"><rect id="doneRect" x="0" y="0" width="0" height="'+H+'"/></clipPath>' +
+        '<path d="'+line+'" fill="none" stroke="var(--accent)" stroke-width="1.8" clip-path="url(#doneClip)"/>' +
+        '<line id="playhead" x1="0" x2="0" y1="'+PAD.t+'" y2="'+(H-PAD.b)+'" stroke="var(--accent)" stroke-width="1" stroke-dasharray="3 3" opacity="0"/>' +
+        markers +
+        '<circle id="curRing" r="0" fill="none" stroke="var(--text)" stroke-width="1.6" opacity="0"/>' +
+      '</svg>';
+  }
+
+  const mkEls = wrap.querySelectorAll('.mk');
+  const tapeRows = document.getElementById('tape').querySelectorAll('.tape-row');
+  for (const row of tapeRows) row.addEventListener('click', () => setK(+row.dataset.i + 1));
+
+  function setK(next, fromSlider){
+    k = Math.max(0, Math.min(steps.length, next));
+    if (!fromSlider) scrub.value = String(k);
+    const cur = k > 0 ? steps[k-1] : null;
+    const curT = cur ? cur.t : (pts.length ? pts[0].t : t0);
+    /* chart progress */
+    if (pts.length){
+      const xNow = X(curT);
+      document.getElementById('doneRect').setAttribute('width', String(Math.max(0, xNow)));
+      const ph = document.getElementById('playhead');
+      ph.setAttribute('x1', xNow); ph.setAttribute('x2', xNow);
+      ph.setAttribute('opacity', k > 0 ? '0.8' : '0');
+      const ring = document.getElementById('curRing');
+      if (cur){
+        const p = cur.price != null ? cur.price : priceAt(cur.t);
+        if (p != null){
+          ring.setAttribute('cx', X(cur.t)); ring.setAttribute('cy', Y(p));
+          ring.setAttribute('r', markerR(cur) + 4); ring.setAttribute('opacity', '0.9');
+        } else ring.setAttribute('opacity','0');
+      } else ring.setAttribute('opacity','0');
+      mkEls.forEach((m,i) => m.setAttribute('opacity', i < k ? '1' : '0.25'));
+    }
+    /* tape highlight */
+    tapeRows.forEach((row,i) => {
+      row.classList.toggle('done', i < k);
+      row.classList.toggle('cur', i === k - 1);
+    });
+    const curRow = document.querySelector('.tape-row.cur');
+    if (curRow) curRow.scrollIntoView({block:'nearest'});
+    /* readout */
+    const realized = cur && cur.realized_cum != null ? cur.realized_cum
+      : (k === 0 ? 0 : lastRealizedBefore(k));
+    const ro = [];
+    ro.push(roCell('TRADE', k + ' / ' + steps.length));
+    ro.push(roCell('CLOCK', cur ? fmtTime(cur.t) : (pts.length ? fmtTime(pts[0].t) : '—')));
+    ro.push(roCell('SIDE', cur ? cur.side.toUpperCase() + (cur.intent ? ' &middot; ' + esc(cur.intent) : '') : '—',
+      cur ? (cur.side==='buy'?'pos':'neg') : 'muted'));
+    ro.push(roCell('QUOTE MOVED', cur && cur.quote != null ? Math.abs(cur.quote).toFixed(4) + ' SOL' : '—'));
+    if (isAgent){
+      ro.push(roCell('SIZE FRAC', cur && cur.size_frac != null ? (cur.size_frac*100).toFixed(1) + '%' : '—'));
+      ro.push(roCell('PAPER BAL', cur && cur.bal != null ? cur.bal.toFixed(4) + ' SOL' : '—'));
+    } else {
+      ro.push(roCell('FILL PRICE', cur && cur.price != null ? fmtPrice(cur.price) : '—'));
+      ro.push(roCell('TOKENS', cur && cur.base != null ? Math.round(cur.base).toLocaleString('en-US') : '—'));
+    }
+    ro.push(roCell('REALIZED PNL (CUM)', fmtSol(realized, 4) + ' SOL', pnlCls(realized), true));
+    document.getElementById('readout').innerHTML = ro.join('');
+    document.getElementById('scrubMeta').innerHTML =
+      k === 0 ? 'before first trade' : '<b>' + fmtDate(steps[k-1].t) + ' ' + fmtTime(steps[k-1].t) + '</b> UTC';
+    document.getElementById('stateNote').textContent = isAgent ? 'sim ledger' : 'FIFO realized';
+    if (k >= steps.length) stop();
+  }
+  function lastRealizedBefore(kk){
+    for (let i = kk - 1; i >= 0; i--) if (steps[i].realized_cum != null) return steps[i].realized_cum;
+    return 0;
+  }
+  function roCell(kk, vv, cls, wide){
+    return '<div class="ro'+(wide?' wide':'')+'"><div class="k">'+kk+'</div><div class="v num '+(cls||'')+'">'+vv+'</div></div>';
+  }
+
+  function tick(){ if (k >= steps.length){ stop(); return; } setK(k + 1); }
+  function start(){
+    if (timer || !steps.length) return;
+    if (k >= steps.length) setK(0);
+    timer = setInterval(tick, 550 / speed);
+    playBtn.classList.add('on');
+    playBtn.querySelector('.ico').innerHTML = '&#10074;&#10074;';
+    document.getElementById('playLbl').textContent = 'PAUSE';
+  }
+  function stop(){
+    if (timer){ clearInterval(timer); timer = null; }
+    playBtn.classList.remove('on');
+    playBtn.querySelector('.ico').innerHTML = '&#9654;';
+    document.getElementById('playLbl').textContent = 'PLAY';
+  }
+  playBtn.addEventListener('click', () => { timer ? stop() : start(); });
+  speedBtn.addEventListener('click', () => {
+    speed = SPEEDS[(SPEEDS.indexOf(speed) + 1) % SPEEDS.length];
+    speedBtn.textContent = speed + '×';
+    if (timer){ clearInterval(timer); timer = setInterval(tick, 550 / speed); }
+  });
+  scrub.addEventListener('input', () => { stop(); setK(+scrub.value, true); });
+
+  function onKey(e){
+    const tag = (e.target.tagName || '').toLowerCase();
+    if (tag === 'input' && e.target !== scrub) return;
+    if (tag === 'select' || tag === 'textarea') return;
+    if (e.key === ' '){ e.preventDefault(); timer ? stop() : start(); }
+    else if (e.target !== scrub){ /* the range handles its own arrows */
+      if (e.key === 'ArrowRight'){ e.preventDefault(); stop(); setK(k + 1); }
+      else if (e.key === 'ArrowLeft'){ e.preventDefault(); stop(); setK(k - 1); }
+      else if (e.key === 'Home'){ e.preventDefault(); stop(); setK(0); }
+      else if (e.key === 'End'){ e.preventDefault(); stop(); setK(steps.length); }
+    }
+  }
+  document.addEventListener('keydown', onKey);
+  setK(0);
+  return { destroy(){ stop(); document.removeEventListener('keydown', onKey); } };
+}
+
+route();
+</script>

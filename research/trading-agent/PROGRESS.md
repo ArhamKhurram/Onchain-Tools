@@ -14,6 +14,45 @@ program logs reasoning and scoping; once Phase 0 starts, entries carry real numb
 
 ---
 
+## 2026-08-24 (vii) — Replay Room ships: the trade-replay browser over the trace layer
+
+The consumer of the (vi) trace layer: a trickshot-style replay browser. Pick any of the 406 actors
+(6 archive champions + 400 census wallets), open any token they traded, and scrub through their
+trades on the reconstructed chart — balance/realized-PnL readout advancing trade by trade.
+
+**Changes**
+- `scripts/replay_server.py` — stdlib-only HTTP server (no flask/uvicorn), loopback `127.0.0.1:5299`,
+  read-only by construction. Serves the UI at `/` plus three JSON endpoints: `/api/actors` (the
+  full actors index), `/api/actor_tokens?actor=` (per-token trade count + final realized PnL from
+  the trade log), `/api/trace?actor=&mint=` (calls `build_trace` in-process — the tier-2 on-demand
+  builder, ~0.05 s per click). Strict-mypy + ruff clean.
+- `scripts/replay-room.html` — the browser UI (vanilla, no deps): actor grid with kind tabs
+  (All/Agents/Winners/Losers), sort + text filter; actor view (token list by |realized PnL|);
+  replay view — SVG chart of real trade prints with buy/sell markers sized by quote moved, a
+  keyboard-operable play/scrub control (space/arrows/home/end, 1–8× speed), progressive chart
+  reveal, and per-trade readout (side/intent/size-frac/paper-bal for agents; fill-price/tokens for
+  wallets; cumulative realized PnL for both). Honesty is structural: SIM vs REAL provenance chip on
+  every card and replay, the downsampling method string, and the busiest-pool/n-pools disclosure.
+  Sibling aesthetic of desk-console (same tokens/fonts/role colors) with its own rewind-cyan accent.
+- `scripts/replay-showcase.html` — self-contained curated artifact (~0.4 MB, 12 hand-picked
+  replays inlined): the NOODLE champion bleeding −1.73 SOL over 356 fills, GIZMO scalping the same
+  token near-flat, GREMLIN's zero-trade held-out replay shown honestly as a chart it never touched,
+  three winners (incl. two converging on the same runner and the 903-token farm bot), and the
+  losers — a −15.75 SOL bag on the very token the winners farmed, and a −79 SOL catastrophe.
+  Clearly labeled "curated sample — full coverage in the local Replay Room".
+- Repo-root `.claude/launch.json`: new `replay-room` entry (research venv python, port 5299) —
+  "start the replay-room preview".
+
+**Findings**
+- The trade log made the browsing endpoints trivial: per-token realized PnL is just "last
+  `realized_cum` by (t, seq) per mint" — no recomputation, and agent/wallet rows need zero
+  special-casing beyond which readout fields exist.
+- Cross-actor stories fall out of the data: `YwS7…pump` alone carries a winner (+9.3), a loser
+  (−15.8), two agents, and an abstaining champion — the same chart, five fates. That token became
+  the showcase's spine.
+
+---
+
 ## 2026-08-24 (vi) — Trade-replay data layer: trade-log substrate, on-demand trace builder, curated showcase
 
 The data layer for the trickshot-style replay browser: pick any actor — an archive champion or a
