@@ -14,6 +14,84 @@ program logs reasoning and scoping; once Phase 0 starts, entries carry real numb
 
 ---
 
+## 2026-08-24 (v) — Improvement loop implemented: post-mortem queue + trial harness; Audit Round 1
+
+The §07 adoption is now code. All three transferable pieces from `07-improvement-loop.md` landed:
+the read-only post-mortem module (rung 1 of the autonomy ladder), the pre-registered trial-runner
+harness (rung 2, built but idle until the 800-run releases the machine), and the audit-round
+ritual's first numbered entry. Nothing here can write to a config, trainer, or checkpoint — the
+suggestion queue and the trial verdicts are records the operator acts on by hand.
+
+**Changes**
+- New `research_loop/` package (pure, torch-free, strict-mypy clean):
+  - `postmortem.py` — reads `data/desk_telemetry/*.json` (schema-tolerant, read-only), computes
+    cross-run findings (coverage trajectories, champion stagnation, win-rate shape, admission-tally
+    presence — every finding cites files + numbers), and emits **bounded knob suggestions** into
+    `data/postmortem/queue.jsonl` (append-only, idempotent by content id). The knob vocabulary is a
+    closed set (`KNOB_BANDS`): 11 existing CLI flags across map_elites / pbt / admission, each with
+    a conservative declared band bracketing its default; an out-of-band or unknown-knob proposal is
+    refused at construction (`OutOfBandError`) — mechanism proposals are structurally impossible.
+    Operator gate: `--list` / `--accept ID` / `--reject ID --reason ...` record decisions in the
+    queue and do nothing else.
+  - `trial.py` — incumbent-vs-challenger config A/B with the keep/revert criterion **pre-registered
+    in the spec** (JSON: trainer, shared base flags, the ONE knob flag that differs, clause list +
+    criterion text written before any arm runs). Runs both arms sequentially (subprocess,
+    thread-capped), reads both outputs (population trainers: final-generation telemetry;
+    train_market: parsed rung-report log), applies the clauses mechanically, appends a KEEP/REVERT
+    recommendation record to `data/postmortem/trials.jsonl`. `--dry-run` validates + prints the two
+    commands without executing — used today while the 800-run owns the GPU.
+- `scripts/audit/fifo_recheck.py` — the Audit Round 1 script (see below), reusable for later rounds.
+- Tests (29 new, all green with the full suite at 543 passed): band enforcement (out-of-band /
+  unknown-knob / fractional-integer rejected), suggestion rules on synthetic telemetry (collapse →
+  exploit_frac, stagnation → mutation_sigma, healthy runs → zero suggestions), queue idempotence +
+  accept/reject round-trip + double-decision refusal, trial spec validation, mechanical KEEP and
+  REVERT cases on mocked telemetry, ladder-report parsing, dry-run CLI, and the audit recheck logic
+  on synthetic tapes (closed-pair net-flow equality, oversold/uncosted, partial-close residual,
+  injected-bug detection).
+
+**Findings (first real post-mortem, over all 8 desk-telemetry runs)** — 2 suggestions emitted,
+both pending in `data/postmortem/queue.jsonl`:
+- `pm-d6e3659866` — **pbt.exploit_frac 0.25 → 0.15** (band [0.05, 0.5]). Evidence:
+  `pbt-2026-08-23-seed0.json` coverage decayed monotonically 0.667 → 0.333 over 6 generations
+  while mean pnl rose +68.9 → +660.2 bps (homogenization from the exploit-copy step, not failure
+  to train); all 7 map-elites runs held or grew coverage over the same data.
+- `pm-7fffd9d376` — **map_elites.mutation_sigma 0.05 → 0.08** (band [0.01, 0.15]). Evidence: 4 of
+  6 mature (≥6-gen) map-elites runs are stagnant — ≤2 post-seed best-pnl improvements with a
+  trailing flat tail ≥4 gens (the 400-agent run: **zero** improvements in 11 post-seed
+  generations). Rationale notes the chart-only line is closed: this targets the *next* population
+  pass (the attention-features arm), and should go through the trial harness first.
+- Non-knob observations (reported, deliberately not suggested): champion win rates in the final
+  generation are below 0.25 in 7 of 8 runs (the lottery shape behind the NO-GO — no knob fixes
+  that), and **no run's telemetry carries the ruined/curve_rejected tallies** — including the
+  in-flight 800 run — so admission-gate hit rates can't be audited from telemetry yet; worth a
+  look at the writer path before the next gated run.
+
+**Audit Round 1 — census FIFO realized-PnL engine vs independent recheck (2026-08-24)**
+- **Checked:** `data/census/fifo.py` via 3 real snap800 wallets (mid-size, non-suspect,
+  deterministically spanning the PnL range: `Bgsn..v2EJ` −25.6 SOL, `2B93..na2Z` ~0,
+  `22vL..VyjL` +112.6 SOL — the census's top winner). Raw trades rebuilt read-only from the pool
+  parquets through the shared normalizer (the FIFO engine is the isolated variable), then
+  recomputed by a lot-free quantity-conservation walk + net-quote-flow on fully-closed,
+  fully-costed pairs; structural fields (counts, quote_in, residual_base, uncosted_sell_quote)
+  cross-checked on every pair.
+- **Result: AGREEMENT.** 71 (wallet, token) pairs audited, 45 fully-closed+costed pairs hit the
+  exact net-flow check — engine realized PnL matches to float tolerance on all of them
+  (−25.633691 and +112.586395 SOL reproduced independently); zero discrepancies on the structural
+  checks; **0 timestamp-tie buy/sell adjacencies** in the audited set (the one known
+  order-ambiguity risk didn't occur here — worth re-counting on a bigger sample in a later round).
+  Nothing broke; nothing to fix or file. Summary artifact: `data/audit/round1_fifo_recheck.json`.
+- Round count for this subsystem: **1**.
+
+**Open / next**
+- First real trial, post-800 (spec already dry-run-validated at
+  `data/postmortem/specs/trial-mutation-sigma-0.08.json`, pre-registered criterion: KEEP iff
+  challenger best_pnl_bps > incumbent AND coverage >= incumbent, same snapshot/seed/budget):
+  `.venv-cuda\Scripts\python.exe -m oct_trading_agent.research_loop.trial --spec data/postmortem/specs/trial-mutation-sigma-0.08.json`
+- The two pending suggestions await the operator's `--accept`/`--reject`.
+- `make typecheck` is red at the pre-existing branch baseline (50 errors in 10 untouched
+  torch-facing files, surfaced by torch being present in the uv venv); the new code contributes
+  zero of them. Lint and the full test suite are green.
+
 ## 2026-08-24 (iv) — Wallet census: a data-driven gene pool harvested from the captured tape
 
 The §9.3 cohort-selection caveat now has its designed answer. Until today the imitation cohort was
