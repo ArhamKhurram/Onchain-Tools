@@ -25,6 +25,20 @@ export interface UpdateSlide {
  */
 export const UPDATE_SLIDES: UpdateSlide[] = [
   {
+    id: 'slide-2026-08-24-peak-mc',
+    title: 'Peak MC on Every Call',
+    description:
+      'Contract rows now show what a CA actually did after the call — MC at call → the peak observed since, with the multiple: 10K → 104K · ≥10×. Peaks are sampled floors, a run that happened before the call is never credited to it, and rows update live as new highs print.',
+    variant: 'feed',
+  },
+  {
+    id: 'slide-2026-08-24-caller-band-feed',
+    title: 'Caller Strength on the CA Feed',
+    description:
+      'Every contract row now wears its caller’s band — Elite, Solid, Mixed, Slop — or an honest Unrated when there isn’t enough history to judge. Hover the badge for the numbers behind it: 2x and 5x hit rates, scored calls, median reach. No more guessing whether a CA came from someone worth following.',
+    variant: 'feed',
+  },
+  {
     id: 'slide-2026-08-09-pump-holders',
     title: 'Top Holders, Side by Side',
     description:

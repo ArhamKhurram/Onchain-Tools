@@ -7,9 +7,9 @@ import {
   BAND_BADGE_CLASS,
   BAND_REACH_NOTE,
   BAND_TITLE,
-  bandIsNotable,
   callerStatChips,
 } from '../utils/callerBandStyle';
+import { contractPeakView } from '../utils/contractPeak';
 import { buildContractUrl } from '../utils/contractUrl';
 import { contractAttribution, isTelegramContract, openContractSource } from '../utils/contractSource';
 import { stripDiscordCustomEmoji } from '../utils/discordText';
@@ -26,7 +26,6 @@ import {
   filterTopCallerRows,
   groupHistoryOldestFirst,
   groupSummaryItem,
-  isUnratedCaller,
   sortContractGroups,
   type ContractSortMode,
 } from '../utils/contractFeedView';
@@ -493,30 +492,72 @@ interface ContractItemProps {
 const ROW_PILL = 'text-[10px] font-bold px-1.5 py-0.5 rounded-full shrink-0 uppercase font-mono';
 
 /**
- * The caller's band, as a readable word rather than the 6px dot this used to
- * be — the label is the whole point of having bands in the feed. Matches the
- * badge language already used in the chat feed and on the Radar.
+ * The caller's band, always rendered — the CA feed's whole point is telling a
+ * strong caller's scan from a random one at a glance, so every row wears a
+ * label, including an honest dashed UNRATED for callers without enough scored
+ * history (never a fake neutral score). Bands are *reach*, not realized
+ * profit — peak vs MC@call over sampled peaks — and the tooltips keep saying
+ * so. The chat feed keeps its quieter notable-bands-only markers; this feed is
+ * where every row has to answer "who called this, and are they any good?".
  */
 function CallerBandBadge({ quality, markUnrated }: { quality?: CallerQuality; markUnrated?: boolean }) {
   if (!quality) return null;
-  if (bandIsNotable(quality.band)) {
-    return (
-      <span className={`${ROW_PILL} ${BAND_BADGE_CLASS[quality.band]}`} title={BAND_TITLE[quality.band]}>
-        {BAND_LABELS[quality.band]}
-      </span>
-    );
-  }
-  if (markUnrated && isUnratedCaller(quality)) {
+  if (quality.band === 'unrated') {
+    const filterNote = markUnrated
+      ? ' Kept in the filtered feed on purpose — a new caller with a real edge starts here — but unproven, not vetted.'
+      : '';
     return (
       <span
         className={`${ROW_PILL} border border-dashed border-oct-border-bright text-oct-muted`}
-        title={`${BAND_TITLE.unrated} Kept in the filtered feed on purpose — a new caller with a real edge starts here — but unproven, not vetted.`}
+        title={`${BAND_TITLE.unrated}${filterNote}`}
       >
         {BAND_LABELS.unrated}
       </span>
     );
   }
-  return null;
+  // The caller's own numbers ride along in the tooltip, so "how strong?" is
+  // one hover away without costing the row any width.
+  const stats = callerStatChips(quality.score)
+    .map((chip) => chip.label)
+    .join(' · ');
+  const title = `${BAND_TITLE[quality.band]}${stats ? `\n\nThis caller: ${stats}` : ''}`;
+  return (
+    <span className={`${ROW_PILL} ${BAND_BADGE_CLASS[quality.band]}`} title={title}>
+      {BAND_LABELS[quality.band]}
+    </span>
+  );
+}
+
+/**
+ * "MC@call → peak · X" readout for a feed row — what the token did after the
+ * call. Everything here is an observed floor (peaks are sampled), and the
+ * multiple only appears when the peak was seen at-or-after this row's call —
+ * a run that predates the call is never attributed to it (see
+ * `contractPeakView`). Renders nothing when there's nothing honest to say.
+ */
+function PeakReadout({ entry }: { entry: ContractEntry }) {
+  const view = contractPeakView(entry);
+  if (!view) return null;
+  const title = view.belowCall
+    ? 'Highest market cap observed since this call is below the MC at call — as far as sampling saw, it has only bled. Peaks are sampled every few minutes, so this is a floor, not an exact ATH.'
+    : 'Peak market cap observed since this call, against the MC at call. Peaks are sampled every few minutes, so both figures are floors — the true high may be higher, never lower.';
+  return (
+    <span className="font-mono text-[12px] shrink-0 tabular-nums" title={title}>
+      <span className="text-oct-muted">→ </span>
+      <span className={view.belowCall ? 'text-oct-muted' : 'text-oct-green font-semibold'}>
+        {view.peakDisplay}
+      </span>
+      {view.multipleDisplay && (
+        <span
+          className={`ml-1.5 ${
+            view.multiple != null && view.multiple >= 2 ? 'text-oct-green font-bold' : 'text-oct-text/80'
+          }`}
+        >
+          {view.multipleDisplay}
+        </span>
+      )}
+    </span>
+  );
 }
 
 /**
@@ -723,6 +764,7 @@ function ContractRow({
                 FDV {entry.fdvAtCallDisplay}
               </span>
             )}
+            <PeakReadout entry={entry} />
             {entry.liquidityDisplay && (
               <span className="font-mono text-[11px] text-oct-muted">
                 Liq {entry.liquidityDisplay}
@@ -841,6 +883,7 @@ function ContractCard({
           {entry.fdvAtCallDisplay && (
             <span className="font-mono text-[11px] text-oct-live">FDV {entry.fdvAtCallDisplay}</span>
           )}
+          <PeakReadout entry={entry} />
           {entry.liquidityDisplay && (
             <span className="font-mono text-[11px] text-oct-muted">Liq {entry.liquidityDisplay}</span>
           )}

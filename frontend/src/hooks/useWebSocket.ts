@@ -45,6 +45,7 @@ export function useWebSocket() {
   const addContract = useAppStore((s) => s.addContract);
   const enrichContract = useAppStore((s) => s.enrichContract);
   const updateContractChain = useAppStore((s) => s.updateContractChain);
+  const updateTokenPeak = useAppStore((s) => s.updateTokenPeak);
   const fetchGuilds = useAppStore((s) => s.fetchGuilds);
   const fetchDMChannels = useAppStore((s) => s.fetchDMChannels);
   const fetchHistory = useAppStore((s) => s.fetchHistory);
@@ -211,6 +212,12 @@ export function useWebSocket() {
           } else if (incoming.type === 'chain_update') {
             const { address, evmChain } = incoming.data as { address: string; evmChain: string };
             updateContractChain(address, evmChain);
+          } else if (incoming.type === 'token_peak') {
+            // Global market fact (highest MC observed for a token), broadcast
+            // to every client — folds into any feed rows for that address so
+            // the call MC → peak readout moves live.
+            const { address, peakMc, peakAt } = incoming.data as { address: string; peakMc: number; peakAt: string };
+            updateTokenPeak(address, peakMc, peakAt);
           } else if (incoming.type === 'gateway_ready') {
             if (!skipDiscordWs) {
               fetchGuilds();
@@ -592,5 +599,5 @@ export function useWebSocket() {
       clearTimeout(reconnectTimer);
       wsRef.current?.close();
     };
-  }, [addMessage, updateMessage, markMessageDeleted, addAlert, setConnected, updateReaction, addContract, enrichContract, updateContractChain, fetchGuilds, fetchDMChannels, fetchHistory, fetchTelegramChats, checkAuth, setGatewayAuthError, fetchMaskedTokens, addFomoTrade, addPumpCallout, addRevival, bumpJournalRefresh, bumpPriceAlertRefresh]);
+  }, [addMessage, updateMessage, markMessageDeleted, addAlert, setConnected, updateReaction, addContract, enrichContract, updateContractChain, updateTokenPeak, fetchGuilds, fetchDMChannels, fetchHistory, fetchTelegramChats, checkAuth, setGatewayAuthError, fetchMaskedTokens, addFomoTrade, addPumpCallout, addRevival, bumpJournalRefresh, bumpPriceAlertRefresh]);
 }

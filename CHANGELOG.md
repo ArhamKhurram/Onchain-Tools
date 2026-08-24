@@ -4,6 +4,12 @@ All notable changes to Onchain Tools are documented here. Entries before the
 rename still say "Trenchcord" — that was the product's name at the time, and
 they're left as the record of what shipped.
 
+## 2026-08-24
+
+### Added
+- **Peak MC on every call** — contract rows now show what a CA actually did after it was called: the market cap at call, the highest market cap seen since, and the multiple — `FDV 10.2K → 104K · ≥10×`. Check any caller's history at a glance: called at 10K, ran to 100K, that's a caller worth watching. The numbers are honest about how they're gathered — peaks are sampled every few minutes, so every figure is a floor ("at least this high"), a run that happened *before* someone's call is never credited to them, and a token that only bled since the call shows exactly that. Rows update live as new highs print.
+- **Caller strength on the CA feed** — every contract row now wears its caller's band: **Elite**, **Solid**, **Mixed**, **Slop** — or an honest **Unrated** when there isn't enough call history to judge (never a made-up neutral score). No more guessing whether a CA came from someone worth following or a random. Hover the badge for the numbers behind it: 2x and 5x hit rates, how many scored calls they're built from, and median reach. Bands measure reach — how often a caller's calls ran after they posted — not realized profit, and the tooltips say so.
+
 ## 2026-08-12
 
 ### Added

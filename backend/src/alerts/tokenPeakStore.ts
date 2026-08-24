@@ -66,6 +66,37 @@ function saveLocal(): void {
   }
 }
 
+// --- peak-raise listeners ---------------------------------------------------
+
+export type PeakRaisedListener = (peak: TokenPeak) => void;
+
+const peakListeners: PeakRaisedListener[] = [];
+
+/**
+ * Observe every genuine peak raise (a strictly higher MC than any prior
+ * observation of that token). Used by index.ts to push live `token_peak`
+ * frames to the console. Listeners are best-effort: they must never block or
+ * fail the recording path.
+ */
+export function onPeakRaised(listener: PeakRaisedListener): void {
+  peakListeners.push(listener);
+}
+
+function notifyPeakRaised(peak: TokenPeak): void {
+  for (const listener of peakListeners) {
+    try {
+      listener(peak);
+    } catch (err) {
+      console.error('[TokenPeaks] peak listener failed:', (err as Error)?.message);
+    }
+  }
+}
+
+/** Test seam — drops registered peak listeners. */
+export function resetPeakListeners(): void {
+  peakListeners.length = 0;
+}
+
 // --- public API -------------------------------------------------------------
 
 export async function recordPeak(peak: {
@@ -81,16 +112,18 @@ export async function recordPeak(peak: {
   if (!isHostedMode()) {
     const store = loadLocal();
     const prior = store[key];
+    const raised = !prior || peak.mcNow > prior.peakMc;
     store[key] = {
       address: peak.address,
       chain: peak.chain,
       evmChain: peak.evmChain,
       peakMc: Math.max(prior?.peakMc ?? 0, peak.mcNow),
-      peakAt: !prior || peak.mcNow > prior.peakMc ? now : prior.peakAt,
+      peakAt: raised ? now : prior.peakAt,
       lastMc: peak.mcNow,
       updatedAt: now,
     };
     saveLocal();
+    if (raised) notifyPeakRaised(store[key]);
     return;
   }
 
@@ -119,7 +152,21 @@ export async function recordPeak(peak: {
     },
     { onConflict: 'address,chain' },
   );
-  if (error) console.error('[TokenPeaks] upsert failed:', error.message);
+  if (error) {
+    console.error('[TokenPeaks] upsert failed:', error.message);
+    return;
+  }
+  if (isNewPeak) {
+    notifyPeakRaised({
+      address: peak.address,
+      chain: peak.chain,
+      evmChain: peak.evmChain,
+      peakMc: peak.mcNow,
+      peakAt: now,
+      lastMc: peak.mcNow,
+      updatedAt: now,
+    });
+  }
 }
 
 /**
@@ -186,6 +233,56 @@ export async function getPeaks(addresses: string[]): Promise<Map<string, number>
     for (const row of data ?? []) {
       const mc = row.peak_mc != null ? Number(row.peak_mc) : 0;
       if (mc > 0) out.set(String(row.address).toLowerCase(), mc);
+    }
+  }
+  return out;
+}
+
+/** The peak value plus when it was observed — what the contract feed joins in. */
+export interface TokenPeakDetail {
+  peakMc: number;
+  peakAt: string;
+}
+
+/**
+ * Peak + peak-time for a set of addresses, keyed lowercase. Missing addresses
+ * are absent. Same shape of read as `getPeaks`, kept separate so existing
+ * callers that only want the number don't pay for the extra column.
+ */
+export async function getPeakDetails(addresses: string[]): Promise<Map<string, TokenPeakDetail>> {
+  const out = new Map<string, TokenPeakDetail>();
+  const wanted = new Set(addresses.map((a) => a.toLowerCase()));
+  if (wanted.size === 0) return out;
+
+  if (!isHostedMode()) {
+    const store = loadLocal();
+    for (const key of wanted) {
+      const row = store[key];
+      if (row?.peakMc > 0) out.set(key, { peakMc: row.peakMc, peakAt: row.peakAt });
+    }
+    return out;
+  }
+
+  const client = serviceClient();
+  if (!client) return out;
+
+  // Chunked so a long lookback can't blow past the URL length limit on `.in()`.
+  const keys = [...wanted];
+  const CHUNK = 200;
+  for (let i = 0; i < keys.length; i += CHUNK) {
+    const { data, error } = await client
+      .from('token_peaks')
+      .select('address, peak_mc, peak_at')
+      .in('address', keys.slice(i, i + CHUNK));
+    if (error) {
+      console.error('[TokenPeaks] detail read failed:', error.message);
+      continue;
+    }
+    for (const row of data ?? []) {
+      const mc = row.peak_mc != null ? Number(row.peak_mc) : 0;
+      if (mc > 0 && row.peak_at) {
+        out.set(String(row.address).toLowerCase(), { peakMc: mc, peakAt: String(row.peak_at) });
+      }
     }
   }
   return out;
