@@ -54,13 +54,17 @@ export const BAND_REACH_NOTE =
 
 /**
  * Background + text pair for the small badge shown next to a name in the feed.
- * Only defined for the bands worth flagging (see `bandIsNotable`) — `mixed`
- * and `unrated` intentionally render no badge.
+ *
+ * The chat feed and Radar only render badges for the bands worth flagging
+ * (see `bandIsNotable`), so `mixed` is inert there — it exists for the
+ * contract feed, which labels every row so a CA is never of unknown
+ * provenance. `unrated` stays empty: its badge is the dashed outline style,
+ * not a filled pill (see the contract feed's CallerBandBadge).
  */
 export const BAND_BADGE_CLASS: Record<CallerBand, string> = {
   elite: 'bg-oct-green/15 text-oct-green',
   solid: 'bg-oct-live/15 text-oct-live',
-  mixed: '',
+  mixed: 'bg-oct-yellow/15 text-oct-yellow',
   unrated: '',
   slop: 'bg-oct-muted/15 text-oct-muted',
 };
