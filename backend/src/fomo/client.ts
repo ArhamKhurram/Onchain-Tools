@@ -437,11 +437,37 @@ export async function ensureSharedFomoClient(): Promise<FomoClientLike | null> {
   }
 }
 
-/** Boot-time init: warm browser/JWT once. Safe to call multiple times. */
+// After a failed init, don't re-hit the worker on every request — the console
+// polls FOMO routes on load, so an outage would turn into a request storm.
+let sharedClientInitFailedAt = 0;
+const INIT_RETRY_COOLDOWN_MS = 60_000;
+
+/**
+ * Boot-time init: warm browser/JWT once. Safe to call multiple times.
+ *
+ * MUST NOT throw. Four Express routes await this before their try/catch, and
+ * Express 4 doesn't catch async handler rejections — under Node 20's default
+ * unhandled-rejection policy a throw here killed the whole backend (34h prod
+ * outage, 2026-08-20: a dead Privy refresh token made init 503, and every
+ * console load crash-looped the server). A failed init now degrades to null —
+ * the same "not available" path every caller already handles — and retries on
+ * a cooldown so a repaired token is picked up without a redeploy.
+ */
 export async function ensureSharedFomoClientReady(): Promise<FomoClientLike | null> {
   const client = await ensureSharedFomoClient();
   if (!client || sharedClientReady) return client;
-  await client.init();
+  if (Date.now() - sharedClientInitFailedAt < INIT_RETRY_COOLDOWN_MS) return null;
+  try {
+    await client.init();
+  } catch (err) {
+    sharedClientInitFailedAt = Date.now();
+    console.error(
+      '[FOMO] Shared client init failed — FOMO degraded, next retry in 60s:',
+      (err as Error)?.message ?? err,
+    );
+    return null;
+  }
+  sharedClientInitFailedAt = 0;
   sharedClientReady = true;
   return client;
 }

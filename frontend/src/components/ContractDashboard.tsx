@@ -3,9 +3,16 @@ import { ExternalLink, Copy, Check, Trash2, X, MessageSquare, PanelLeftOpen, Sen
 import { BAND_LABELS } from '@oct/shared';
 import { useAppStore } from '../stores/appStore';
 import { useCallerQuality, type CallerQuality } from '../hooks/useCallerQuality';
-import { BAND_BADGE_CLASS, BAND_TITLE, bandIsNotable } from '../utils/callerBandStyle';
+import {
+  BAND_BADGE_CLASS,
+  BAND_REACH_NOTE,
+  BAND_TITLE,
+  callerStatChips,
+} from '../utils/callerBandStyle';
+import { contractPeakView } from '../utils/contractPeak';
 import { buildContractUrl } from '../utils/contractUrl';
 import { contractAttribution, isTelegramContract, openContractSource } from '../utils/contractSource';
+import { stripDiscordCustomEmoji } from '../utils/discordText';
 import ConfirmModal from './ConfirmModal';
 import ContractFeedToolbar, { type ContractViewMode, type ContractChainFilter } from './contract-feed/ContractFeedToolbar';
 import SignalConvergenceBadge from './SignalConvergenceBadge';
@@ -16,9 +23,9 @@ import { colorWithExtraAlpha } from './ColorPickerWithAlpha';
 import { groupContractFeedByAddress } from '../utils/contractFeedGrouping';
 import {
   filterGoodCallerRows,
+  filterTopCallerRows,
   groupHistoryOldestFirst,
   groupSummaryItem,
-  isUnratedCaller,
   sortContractGroups,
   type ContractSortMode,
 } from '../utils/contractFeedView';
@@ -94,9 +101,16 @@ function firstCallerTitle(resolution: FirstCallerResolution): string {
 
 interface ContractDashboardProps {
   embedded?: boolean;
+  /**
+   * "Top Callers Feed" mode. Locks the feed to only the absolute best callers —
+   * earned `elite` band or a manual `trusted` tier — and turns on the per-row
+   * caller analytics readout. A deliberately low-volume, saved-pane variant of
+   * the same feed, so a user can run it alongside their normal Contract Feed.
+   */
+  topOnly?: boolean;
 }
 
-export default function ContractDashboard({ embedded = false }: ContractDashboardProps) {
+export default function ContractDashboard({ embedded = false, topOnly = false }: ContractDashboardProps) {
   const contracts = useAppStore((s) => s.contracts);
   const fetchContracts = useAppStore((s) => s.fetchContracts);
   const deleteContract = useAppStore((s) => s.deleteContract);
@@ -167,7 +181,17 @@ export default function ContractDashboard({ embedded = false }: ContractDashboar
     rows: qualifiedRows,
     unratedShown,
     hidden: goodHidden,
-  } = useMemo(() => filterGoodCallerRows(visible, goodOnly), [visible, goodOnly]);
+    topHidden,
+  } = useMemo(() => {
+    // Top Callers Feed applies its own, far stricter filter (elite + trusted
+    // only) that subsumes both the good-callers filter and the muted collapse —
+    // a muted or unrated caller can never be "the absolute best".
+    if (topOnly) {
+      const { rows, hidden } = filterTopCallerRows(visible);
+      return { rows, unratedShown: 0, hidden: 0, topHidden: hidden };
+    }
+    return { ...filterGoodCallerRows(visible, goodOnly), topHidden: 0 };
+  }, [visible, goodOnly, topOnly]);
 
   const filteredEntries = useMemo(() => qualifiedRows.map((r) => r.entry), [qualifiedRows]);
 
@@ -237,7 +261,9 @@ export default function ContractDashboard({ embedded = false }: ContractDashboar
               <PanelLeftOpen size={18} />
             </button>
           )}
-          <h2 className="oct-section-title uppercase tracking-wide text-base sm:text-lg">Contract Feed</h2>
+          <h2 className="oct-section-title uppercase tracking-wide text-base sm:text-lg">
+            {topOnly ? 'Top Callers' : 'Contract Feed'}
+          </h2>
           <span className="text-oct-muted text-[13px] font-mono font-semibold tabular-nums">{filteredEntries.length}</span>
           <div className="flex-1" />
           {contracts.length > 0 && (
@@ -270,6 +296,7 @@ export default function ContractDashboard({ embedded = false }: ContractDashboar
           mutedCount={mutedCount}
           revealMuted={revealMuted}
           onRevealMuted={setRevealMuted}
+          topOnly={topOnly}
         />
       </div>
 
@@ -279,18 +306,34 @@ export default function ContractDashboard({ embedded = false }: ContractDashboar
         style={{ overflowAnchor: 'none' }}
       >
         {filteredEntries.length === 0 ? (
-          <div className="flex flex-col items-center justify-center h-full text-center px-6">
-            <p className="oct-eyebrow mb-2">Contracts</p>
-            <p className="text-sm text-oct-muted">
-              {contracts.length === 0
-                ? 'No contracts detected yet'
-                : goodOnly && goodHidden > 0
-                  ? `Every match is from a mixed, slop or muted caller — ${goodHidden} hidden by the good-callers filter`
-                  : mutedCount > 0
-                    ? 'Every match is from a muted caller'
-                    : 'No contracts match your filters'}
-            </p>
-          </div>
+          topOnly ? (
+            <div className="flex flex-col items-center justify-center h-full text-center px-6 max-w-md mx-auto">
+              <p className="oct-eyebrow mb-2">Top Callers</p>
+              <p className="text-sm text-oct-text/90 mb-1.5">
+                Only your elite &amp; trusted callers show here — that&rsquo;s the point.
+              </p>
+              <p className="text-xs text-oct-muted leading-relaxed">
+                {contracts.length === 0
+                  ? 'Nothing detected yet. This feed stays quiet on purpose — a call only lands here once it comes from a caller with an earned Elite band or one you’ve marked Trusted.'
+                  : topHidden > 0
+                    ? `${topHidden} recent call${topHidden === 1 ? '' : 's'} came from callers who aren’t elite or trusted, so they’re held out. Mark a caller Trusted, or wait for one to earn an Elite band, to see them here.`
+                    : 'No calls from your best callers right now.'}
+              </p>
+            </div>
+          ) : (
+            <div className="flex flex-col items-center justify-center h-full text-center px-6">
+              <p className="oct-eyebrow mb-2">Contracts</p>
+              <p className="text-sm text-oct-muted">
+                {contracts.length === 0
+                  ? 'No contracts detected yet'
+                  : goodOnly && goodHidden > 0
+                    ? `Every match is from a mixed, slop or muted caller — ${goodHidden} hidden by the good-callers filter`
+                    : mutedCount > 0
+                      ? 'Every match is from a muted caller'
+                      : 'No contracts match your filters'}
+              </p>
+            </div>
+          )
         ) : viewMode === 'table' ? (
           <div className="divide-y divide-oct-border/50">
             {groupedRows.map((group) => {
@@ -323,6 +366,7 @@ export default function ContractDashboard({ embedded = false }: ContractDashboar
                     onToggleExpand={scanCount > 1 ? () => toggleGroupExpanded(group.address) : undefined}
                     firstCall={firstCallerIndex.get(group.address)}
                     markUnrated={goodOnly}
+                    showStats={topOnly}
                   />
                   {isExpanded && (
                     <div className="pl-3 sm:pl-6 border-l-2 border-oct-border/60 ml-3 sm:ml-6">
@@ -373,6 +417,7 @@ export default function ContractDashboard({ embedded = false }: ContractDashboar
                 scanCount={scanCount}
                 firstCall={firstCallerIndex.get(group.address)}
                 markUnrated={goodOnly}
+                showStats={topOnly}
               />
               );
             })}
@@ -435,36 +480,125 @@ interface ContractItemProps {
   markUnrated?: boolean;
   /** Renders as a condensed history row nested under a group's head. */
   isSubRow?: boolean;
+  /**
+   * Show the caller's inline analytics readout (hit rates, scored-call count,
+   * median reach). On in the Top Callers Feed — the "see analytics" half of the
+   * ask — so each row says *why* the caller earned a place in the pane.
+   */
+  showStats?: boolean;
 }
 
 /** Small pill shared by the chain / NEW / band markers on a feed row. */
 const ROW_PILL = 'text-[10px] font-bold px-1.5 py-0.5 rounded-full shrink-0 uppercase font-mono';
 
 /**
- * The caller's band, as a readable word rather than the 6px dot this used to
- * be — the label is the whole point of having bands in the feed. Matches the
- * badge language already used in the chat feed and on the Radar.
+ * The caller's band, always rendered — the CA feed's whole point is telling a
+ * strong caller's scan from a random one at a glance, so every row wears a
+ * label, including an honest dashed UNRATED for callers without enough scored
+ * history (never a fake neutral score). Bands are *reach*, not realized
+ * profit — peak vs MC@call over sampled peaks — and the tooltips keep saying
+ * so. The chat feed keeps its quieter notable-bands-only markers; this feed is
+ * where every row has to answer "who called this, and are they any good?".
  */
 function CallerBandBadge({ quality, markUnrated }: { quality?: CallerQuality; markUnrated?: boolean }) {
   if (!quality) return null;
-  if (bandIsNotable(quality.band)) {
-    return (
-      <span className={`${ROW_PILL} ${BAND_BADGE_CLASS[quality.band]}`} title={BAND_TITLE[quality.band]}>
-        {BAND_LABELS[quality.band]}
-      </span>
-    );
-  }
-  if (markUnrated && isUnratedCaller(quality)) {
+  if (quality.band === 'unrated') {
+    const filterNote = markUnrated
+      ? ' Kept in the filtered feed on purpose — a new caller with a real edge starts here — but unproven, not vetted.'
+      : '';
     return (
       <span
         className={`${ROW_PILL} border border-dashed border-oct-border-bright text-oct-muted`}
-        title={`${BAND_TITLE.unrated} Kept in the filtered feed on purpose — a new caller with a real edge starts here — but unproven, not vetted.`}
+        title={`${BAND_TITLE.unrated}${filterNote}`}
       >
         {BAND_LABELS.unrated}
       </span>
     );
   }
-  return null;
+  // The caller's own numbers ride along in the tooltip, so "how strong?" is
+  // one hover away without costing the row any width.
+  const stats = callerStatChips(quality.score)
+    .map((chip) => chip.label)
+    .join(' · ');
+  const title = `${BAND_TITLE[quality.band]}${stats ? `\n\nThis caller: ${stats}` : ''}`;
+  return (
+    <span className={`${ROW_PILL} ${BAND_BADGE_CLASS[quality.band]}`} title={title}>
+      {BAND_LABELS[quality.band]}
+    </span>
+  );
+}
+
+/**
+ * "MC@call → peak · X" readout for a feed row — what the token did after the
+ * call. Everything here is an observed floor (peaks are sampled), and the
+ * multiple only appears when the peak was seen at-or-after this row's call —
+ * a run that predates the call is never attributed to it (see
+ * `contractPeakView`). Renders nothing when there's nothing honest to say.
+ */
+function PeakReadout({ entry }: { entry: ContractEntry }) {
+  const view = contractPeakView(entry);
+  if (!view) return null;
+  const title = view.belowCall
+    ? 'Highest market cap observed since this call is below the MC at call — as far as sampling saw, it has only bled. Peaks are sampled every few minutes, so this is a floor, not an exact ATH.'
+    : 'Peak market cap observed since this call, against the MC at call. Peaks are sampled every few minutes, so both figures are floors — the true high may be higher, never lower.';
+  return (
+    <span className="font-mono text-[12px] shrink-0 tabular-nums" title={title}>
+      <span className="text-oct-muted">→ </span>
+      <span className={view.belowCall ? 'text-oct-muted' : 'text-oct-green font-semibold'}>
+        {view.peakDisplay}
+      </span>
+      {view.multipleDisplay && (
+        <span
+          className={`ml-1.5 ${
+            view.multiple != null && view.multiple >= 2 ? 'text-oct-green font-bold' : 'text-oct-text/80'
+          }`}
+        >
+          {view.multipleDisplay}
+        </span>
+      )}
+    </span>
+  );
+}
+
+/**
+ * Inline caller analytics for a feed row — the numbers behind the band.
+ *
+ * Reads straight off the persisted `CallerScore` that `useCallerQuality` already
+ * threads onto every row's `quality`, so it needs no extra fetch. A manually
+ * trusted caller with no scored history shows the trust itself rather than a row
+ * of dashes. Every figure is reach, not realized profit — see `BAND_REACH_NOTE`.
+ */
+function CallerStatsReadout({ quality }: { quality?: CallerQuality }) {
+  if (!quality) return null;
+  const chips = callerStatChips(quality.score);
+
+  if (chips.length === 0) {
+    if (quality.tier === 'trusted') {
+      return (
+        <span
+          className="font-mono text-[10px] text-oct-live/90"
+          title="You marked this caller Trusted — shown here by your own choice, not an earned band yet."
+        >
+          Trusted · manual
+        </span>
+      );
+    }
+    return null;
+  }
+
+  return (
+    <span
+      className="flex items-center flex-wrap gap-x-1.5 gap-y-0.5 font-mono text-[10px] text-oct-muted tabular-nums"
+      title={BAND_REACH_NOTE}
+    >
+      {chips.map((chip, i) => (
+        <span key={chip.label} className="flex items-center gap-1.5" title={chip.title}>
+          {i > 0 && <span className="text-oct-border-bright">·</span>}
+          <span>{chip.label}</span>
+        </span>
+      ))}
+    </span>
+  );
 }
 
 function ContractRow({
@@ -486,6 +620,7 @@ function ContractRow({
   firstCall,
   markUnrated,
   isSubRow = false,
+  showStats = false,
 }: ContractItemProps) {
   const color = entry.chain === 'evm' ? evmColor : solColor;
   const isMuted = quality?.tier === 'muted';
@@ -496,6 +631,10 @@ function ContractRow({
 
   const isNew = forceIsNew ?? (entry.firstSeen !== false);
   const { ticker, subtitle } = contractDisplay(entry, showFull);
+  // Rick embed descriptions carry raw Discord custom-emoji markup
+  // (`<:sol:941653282420576296> Solana @ Pump`); strip it for this plain-text
+  // line. Empty after stripping (emoji-only) falls back to the source label.
+  const desc = entry.description ? stripDiscordCustomEmoji(entry.description) : '';
   const { trade: convergenceTrade, windowMinutes } = useConvergenceForContract(entry);
 
   return (
@@ -614,7 +753,7 @@ function ContractRow({
         </button>
       </div>
 
-      {(subtitle || entry.fdvAtCallDisplay || entry.liquidityDisplay || entry.description) && (
+      {(subtitle || entry.fdvAtCallDisplay || entry.liquidityDisplay || desc) && (
         <div className="pl-[4.5rem] sm:pl-24 min-w-0">
           <div className="flex items-baseline gap-2 min-w-0 flex-wrap">
             {subtitle && (
@@ -625,23 +764,33 @@ function ContractRow({
                 FDV {entry.fdvAtCallDisplay}
               </span>
             )}
+            <PeakReadout entry={entry} />
             {entry.liquidityDisplay && (
               <span className="font-mono text-[11px] text-oct-muted">
                 Liq {entry.liquidityDisplay}
               </span>
             )}
           </div>
-          {(entry.description || (!isTelegramContract(entry) && entry.guildName)) && (
+          {(desc || (!isTelegramContract(entry) && entry.guildName)) && (
             <div className="text-xs text-oct-muted truncate mt-0.5">
-              {entry.description ?? `${entry.guildName ?? ''} / #${entry.channelName}`}
+              {desc || `${entry.guildName ?? ''} / #${entry.channelName}`}
             </div>
           )}
         </div>
       )}
 
-      {!subtitle && !entry.fdvAtCallDisplay && !entry.liquidityDisplay && !entry.description && (
+      {!subtitle && !entry.fdvAtCallDisplay && !entry.liquidityDisplay && !desc && (
         <div className="pl-[4.5rem] sm:pl-24 text-xs text-oct-muted truncate">
           {contractAttribution(entry)}
+        </div>
+      )}
+
+      {showStats && (
+        <div className="pl-[4.5rem] sm:pl-24 min-w-0 flex items-center gap-2 flex-wrap">
+          <span className="text-[11px] text-oct-text/80 font-mono truncate max-w-[10rem]" title={entry.authorName}>
+            {entry.authorName}
+          </span>
+          <CallerStatsReadout quality={quality} />
         </div>
       )}
     </div>
@@ -663,6 +812,7 @@ function ContractCard({
   scanCount,
   firstCall,
   markUnrated,
+  showStats = false,
 }: ContractItemProps) {
   const color = entry.chain === 'evm' ? evmColor : solColor;
   const jumpToFirst = firstCallerIsElsewhere(firstCall, entry) ? firstCall : undefined;
@@ -733,6 +883,7 @@ function ContractCard({
           {entry.fdvAtCallDisplay && (
             <span className="font-mono text-[11px] text-oct-live">FDV {entry.fdvAtCallDisplay}</span>
           )}
+          <PeakReadout entry={entry} />
           {entry.liquidityDisplay && (
             <span className="font-mono text-[11px] text-oct-muted">Liq {entry.liquidityDisplay}</span>
           )}
@@ -783,6 +934,15 @@ function ContractCard({
           <span>Holders</span>
         </button>
       </div>
+
+      {showStats && (
+        <div className="flex flex-col gap-0.5 min-w-0">
+          <span className="text-[11px] text-oct-text/80 font-mono truncate" title={entry.authorName}>
+            {entry.authorName}
+          </span>
+          <CallerStatsReadout quality={quality} />
+        </div>
+      )}
 
       <div className="flex items-center gap-2 text-xs text-oct-muted truncate">
         {contractAttribution(entry)}

@@ -666,6 +666,7 @@ export interface PriceAlertData {
 export type WorkspacePanelType =
   | 'room'
   | 'contracts'
+  | 'top-callers-feed'
   | 'radar'
   | 'fomo-feed'
   | 'fomo-leaderboard'
@@ -948,6 +949,13 @@ export interface ContractEntry {
   firstCallMcapUsd?: number;
   /** Absolute timestamp of the global first call (message time minus Rick's relative age). */
   firstCallAt?: string;
+  // ---- Token peak (joined at read time from the global token_peaks store;
+  // ---- never persisted on the contract row itself). The peak is the highest
+  // ---- market cap OCT has *observed* for the token since it was first seen
+  // ---- called — sampled, so a floor for the true ATH, never an exact figure.
+  peakMc?: number;
+  /** ISO timestamp of the observation that set `peakMc`. */
+  peakAt?: string;
 }
 
 // ---------------------------------------------------------------------------

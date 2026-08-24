@@ -2,6 +2,7 @@ import { Router } from 'express';
 import { tryParseTokenEnrichment, buildRickReplyContext } from '../../utils/rickEmbedParser.js';
 import { resolveFallbackTarget, recordFallbackFdv } from '../../utils/dexFallback.js';
 import { enrichToken, getTokenSnapshot, persistEnrichment } from '../../utils/tokenSnapshot.js';
+import { getPeakDetails, type TokenPeakDetail } from '../../alerts/tokenPeakStore.js';
 import { recordScannedContract, scoringExclusions } from '../../callers/callerStatsRecorder.js';
 import type { RouterContext } from '../context.js';
 import { getUserId, safeError } from '../shared.js';
@@ -47,7 +48,20 @@ export function createContractsRoutes(ctx: RouterContext): Router {
       const userId = getUserId(req);
       const limit = parseInt(req.query.limit as string) || 100;
       const since = req.query.since as string | undefined;
-      res.json(await storage.getContracts(userId, limit, since));
+      const entries = await storage.getContracts(userId, limit, since);
+      // Join the global token peaks in at read time (never persisted on the
+      // row): the feed shows call MC → peak MC without a second fetch. A peak
+      // read failure must never blank the feed — the rows just go out bare.
+      const peaks = await getPeakDetails(entries.map((e) => e.address)).catch((err) => {
+        console.error('[API] contract peak join failed:', (err as Error).message);
+        return new Map<string, TokenPeakDetail>();
+      });
+      res.json(
+        entries.map((e) => {
+          const peak = peaks.get(e.address.toLowerCase());
+          return peak ? { ...e, peakMc: peak.peakMc, peakAt: peak.peakAt } : e;
+        }),
+      );
     } catch (err) {
       res.status(500).json({ error: safeError(err, 'Failed to fetch contracts') });
     }

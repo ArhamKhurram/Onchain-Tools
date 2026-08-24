@@ -17,6 +17,7 @@ import { showDesktopNotification } from '../utils/desktopNotification';
 import { buildContractUrl } from '../utils/contractUrl';
 import { queueContractDetection, tryRickEnrich } from '../discord/contractPendingQueue';
 import { cacheDiscordMessage } from '../discord/messageReplyCache';
+import { track } from '../lib/analytics';
 
 function isUserHighlighted(
   discordUserId: string,
@@ -217,8 +218,13 @@ export function useClientGateway() {
     const onReady = async () => {
       console.log('[ClientGW] Ready');
       const store = useAppStore.getState();
+      const wasConnected = store.authStatus?.connected;
       store.setGatewayAuthError(null);
       store.setConnected(true);
+      // Activation milestone: the browser Discord gateway went live. Only the
+      // first connect of a session is the interesting funnel step; a reconnect
+      // isn't. `token_count` is a bare number — never a token value.
+      if (!wasConnected) track('discord_connected', { token_count: tokens.length });
       const manager = getClientGatewayManager();
       if (!manager) return;
       useAppStore.setState({

@@ -106,11 +106,13 @@ export default function PumpWalletPanel({ address }: { address: string }) {
       {/* Callouts (KEYED). */}
       <section className="px-4 py-4 border-b border-oct-border">
         <h3 className="oct-eyebrow mb-2.5">Recent callouts</h3>
-        {profile.disabled || callouts.disabled || callouts.error ? (
+        {profile.disabled || callouts.disabled || callouts.rateLimited || callouts.error ? (
           <PumpStateNotice
             disabled={callouts.disabled || profile.disabled}
             error={callouts.error}
             retryable={callouts.retryable}
+            rateLimited={callouts.rateLimited}
+            retrying={callouts.retrying}
             onRetry={activity.refresh}
             surface="callouts"
           />
@@ -143,11 +145,13 @@ export default function PumpWalletPanel({ address }: { address: string }) {
           </button>
         </div>
 
-        {transactions.error ? (
+        {transactions.rateLimited || transactions.error ? (
           <PumpStateNotice
             disabled={false}
             error={transactions.error}
             retryable={transactions.retryable}
+            rateLimited={transactions.rateLimited}
+            retrying={transactions.retrying}
             onRetry={activity.refresh}
             surface="trades"
           />

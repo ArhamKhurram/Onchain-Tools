@@ -50,6 +50,7 @@ import { startJournalPoller } from './journal/poller.js';
 import { startJournalVolumeDeathPoller } from './journal/volumeDeathPoller.js';
 import { startPriceAlertPoller } from './priceAlerts/poller.js';
 import { startTokenPeakSampler } from './alerts/tokenPeakSampler.js';
+import { onPeakRaised } from './alerts/tokenPeakStore.js';
 import {
   recordScannedContract,
   scoringExclusions,
@@ -765,6 +766,23 @@ httpServer.listen(PORT, HOST, async () => {
   // Runs in both modes — local keeps peaks in a JSON file so the desktop app
   // scores callers too.
   startTokenPeakSampler();
+
+  // Push every genuine peak raise to the console so contract rows update their
+  // "call MC → peak MC" readout live. A peak is a global market fact about a
+  // token — no user data in the frame — so it goes to every connected client
+  // rather than being routed per user.
+  onPeakRaised((peak) => {
+    wsServer.broadcastRaw({
+      type: 'token_peak',
+      data: {
+        address: peak.address,
+        chain: peak.chain,
+        evmChain: peak.evmChain,
+        peakMc: peak.peakMc,
+        peakAt: peak.peakAt,
+      },
+    });
+  });
 
   // Keeps the durable per-caller call record in step with the contract log. The
   // ingest hook writes each call the moment it is scanned; this sweep re-folds

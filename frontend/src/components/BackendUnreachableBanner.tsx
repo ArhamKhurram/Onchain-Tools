@@ -25,14 +25,20 @@ export default function BackendUnreachableBanner() {
   return (
     <div
       role="alert"
-      className="flex items-start gap-3 px-4 py-3 bg-oct-flame text-black border-b-2 border-black"
+      className="relative flex items-start gap-3 px-4 py-3 bg-oct-surface text-oct-text border-b border-oct-border"
     >
-      <AlertTriangle size={18} className="shrink-0 mt-0.5" />
+      {/* Thin red accent stripe rather than a full saturated fill — the alert
+          reads as a controlled signal, not an alarm bar. */}
+      <span
+        aria-hidden
+        className="pointer-events-none absolute inset-y-0 left-0 w-[3px] bg-oct-flame"
+      />
+      <AlertTriangle size={18} className="shrink-0 mt-0.5 text-oct-flame" />
       <div className="font-mono text-xs leading-relaxed">
-        <span className="font-bold uppercase tracking-wider">Backend unreachable.</span>{' '}
+        <span className="font-bold uppercase tracking-wider text-oct-flame">Backend unreachable.</span>{' '}
         Your settings, rooms and contracts cannot load, and changes cannot be saved.
         Nothing has been lost — the console just cannot reach the API.
-        <span className="block mt-1 opacity-80">
+        <span className="block mt-1 text-oct-muted">
           Usually either the API is down, or this origin is missing from the backend&apos;s
           allowed-origins list. Check the browser console for a CORS error.
         </span>

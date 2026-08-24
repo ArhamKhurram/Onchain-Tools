@@ -15,6 +15,8 @@ export interface ContractsSlice {
   addContract: (entry: ContractEntry, opts?: { skipCatalogHydrate?: boolean }) => void;
   persistContract: (entry: ContractEntry) => Promise<void>;
   updateContractChain: (address: string, evmChain: string) => void;
+  /** Fold a live `token_peak` frame into every row of that address. */
+  updateTokenPeak: (address: string, peakMc: number, peakAt: string) => void;
   enrichContract: (entry: ContractEntry) => void;
   deleteContract: (messageId: string, address: string) => Promise<void>;
   deleteAllContracts: () => Promise<void>;
@@ -76,6 +78,23 @@ export const createContractsSlice: StateCreator<AppState, [], [], ContractsSlice
         ),
         addressChains: { ...state.addressChains, [key]: evmChain },
       }));
+    },
+
+    updateTokenPeak: (address, peakMc, peakAt) => {
+      if (!(peakMc > 0)) return;
+      const key = address.toLowerCase();
+      set((state) => {
+        // Peaks are a high-water mark: a frame can only ever raise the value a
+        // row already shows (out-of-order delivery must not lower it).
+        let changed = false;
+        const contracts = state.contracts.map((c) => {
+          if (c.address.toLowerCase() !== key) return c;
+          if (c.peakMc != null && c.peakMc >= peakMc) return c;
+          changed = true;
+          return { ...c, peakMc, peakAt };
+        });
+        return changed ? { contracts } : state;
+      });
     },
 
     enrichContract: (entry) => {

@@ -1,4 +1,4 @@
-import { MIN_RATED_CALLS, type CallerBand } from '@oct/shared';
+import { MIN_RATED_CALLS, type CallerBand, type CallerScore } from '@oct/shared';
 
 /**
  * One place for how a caller band reads across the console, so the chat feed,
@@ -54,13 +54,17 @@ export const BAND_REACH_NOTE =
 
 /**
  * Background + text pair for the small badge shown next to a name in the feed.
- * Only defined for the bands worth flagging (see `bandIsNotable`) — `mixed`
- * and `unrated` intentionally render no badge.
+ *
+ * The chat feed and Radar only render badges for the bands worth flagging
+ * (see `bandIsNotable`), so `mixed` is inert there — it exists for the
+ * contract feed, which labels every row so a CA is never of unknown
+ * provenance. `unrated` stays empty: its badge is the dashed outline style,
+ * not a filled pill (see the contract feed's CallerBandBadge).
  */
 export const BAND_BADGE_CLASS: Record<CallerBand, string> = {
   elite: 'bg-oct-green/15 text-oct-green',
   solid: 'bg-oct-live/15 text-oct-live',
-  mixed: '',
+  mixed: 'bg-oct-yellow/15 text-oct-yellow',
   unrated: '',
   slop: 'bg-oct-muted/15 text-oct-muted',
 };
@@ -103,4 +107,51 @@ export function formatMultipleFloor(value: number | undefined): string {
 export function formatRate(value: number | undefined): string {
   if (value == null || !Number.isFinite(value)) return '—';
   return `${Math.round(value * 100)}%`;
+}
+
+/** One inline analytic on a feed row — a short label plus a hover explanation. */
+export interface CallerStatChip {
+  label: string;
+  title: string;
+}
+
+/**
+ * The compact per-row analytics readout for the Top Callers Feed, e.g.
+ * `42% 2x · 15% 5x · 18 calls · ≥2.5× med`.
+ *
+ * Every figure is honest about being **reach**, not realized return — the same
+ * framing as the band tooltips and the Caller Quality settings panel. Hit rates
+ * are the share of a caller's *scored* calls that touched a multiple at some
+ * point; the median and best are observed floors (`≥`) because peaks are
+ * sampled. Returns an empty list when there's no scored history to show (a
+ * freshly trusted caller with no calls yet), so the caller renders the manual
+ * trust instead of a row of dashes.
+ */
+export function callerStatChips(score: CallerScore | undefined): CallerStatChip[] {
+  if (!score || score.rated <= 0) return [];
+  const chips: CallerStatChip[] = [];
+
+  if (score.hitRate2x != null) {
+    chips.push({
+      label: `${formatRate(score.hitRate2x)} 2x`,
+      title: `${formatRate(score.hitRate2x)} of ${score.rated} scored calls touched 2x at some point after the call — reach, not realized profit.`,
+    });
+  }
+  if (score.hitRate5x != null && score.hitRate5x > 0) {
+    chips.push({
+      label: `${formatRate(score.hitRate5x)} 5x`,
+      title: `${formatRate(score.hitRate5x)} of ${score.rated} scored calls touched 5x at some point after the call.`,
+    });
+  }
+  chips.push({
+    label: `${score.rated} call${score.rated === 1 ? '' : 's'}`,
+    title: `${score.rated} scored call${score.rated === 1 ? '' : 's'} (of ${score.calls} logged) — the sample the band is built from.`,
+  });
+  if (score.medianMultiple != null) {
+    chips.push({
+      label: `${formatMultipleFloor(score.medianMultiple)} med`,
+      title: 'Median reach multiple across scored calls — an observed floor, since peaks are sampled.',
+    });
+  }
+  return chips;
 }

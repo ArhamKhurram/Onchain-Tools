@@ -26,6 +26,13 @@ interface ContractFeedToolbarProps {
   mutedCount: number;
   revealMuted: boolean;
   onRevealMuted: (value: boolean) => void;
+  /**
+   * Top Callers Feed mode. The pane is already locked to elite + trusted
+   * callers, so the "Hide slop" and "muted" controls are meaningless here and
+   * are dropped — showing them would imply the feed could contain slop or muted
+   * rows, which it can't.
+   */
+  topOnly?: boolean;
 }
 
 const SEGMENT_GROUP = 'flex rounded-oct-sm overflow-hidden border border-oct-border text-xs shrink-0';
@@ -70,6 +77,7 @@ export default function ContractFeedToolbar({
   mutedCount,
   revealMuted,
   onRevealMuted,
+  topOnly = false,
 }: ContractFeedToolbarProps) {
   const ranked = sortMode === 'ranked';
 
@@ -138,22 +146,24 @@ export default function ContractFeedToolbar({
           </button>
         </div>
 
-        <button
-          onClick={() => onGoodOnly(!goodOnly)}
-          className={chipClass(goodOnly)}
-          title={
-            goodOnly
-              ? 'Show every caller again'
-              : 'Hide Mixed, Slop and muted callers. Keeps Solid, Elite, Trusted — and new callers not rated yet, so early runners still get through.'
-          }
-        >
-          <BadgeCheck size={12} />
-          {/* "Hide slop", not "Good callers": the filter keeps not-yet-rated
-              callers (MIN_RATED_CALLS = 10 means every new caller is unrated),
-              so a label promising only proven callers would overstate what it
-              does. Naming it for what it removes is exactly true. */}
-          <span>Hide slop</span>
-        </button>
+        {!topOnly && (
+          <button
+            onClick={() => onGoodOnly(!goodOnly)}
+            className={chipClass(goodOnly)}
+            title={
+              goodOnly
+                ? 'Show every caller again'
+                : 'Hide Mixed, Slop and muted callers. Keeps Solid, Elite, Trusted — and new callers not rated yet, so early runners still get through.'
+            }
+          >
+            <BadgeCheck size={12} />
+            {/* "Hide slop", not "Good callers": the filter keeps not-yet-rated
+                callers (MIN_RATED_CALLS = 10 means every new caller is unrated),
+                so a label promising only proven callers would overstate what it
+                does. Naming it for what it removes is exactly true. */}
+            <span>Hide slop</span>
+          </button>
+        )}
 
         <div className="relative flex-1 min-w-[120px]">
           <Search size={14} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-oct-muted" />
@@ -166,7 +176,7 @@ export default function ContractFeedToolbar({
           />
         </div>
 
-        {showMuted && mutedCount > 0 && (
+        {!topOnly && showMuted && mutedCount > 0 && (
           <button
             onClick={() => onRevealMuted(!revealMuted)}
             className={chipClass(revealMuted)}
