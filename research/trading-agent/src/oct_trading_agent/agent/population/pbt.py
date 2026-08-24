@@ -29,7 +29,7 @@ from __future__ import annotations
 
 import argparse
 from collections.abc import Callable
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
@@ -42,6 +42,7 @@ from oct_trading_agent.agent.train_market import (
 )
 from oct_trading_agent.eval.data import TokenTape
 
+from .admission import AdmissionConfig, is_admissible
 from .archive import AgentReport, NicheArchive
 from .checkpoint import load_torch, save_torch
 from .descriptor import profile_policy
@@ -96,7 +97,11 @@ class Hyperparams:
 
 
 def select_exploit_explore(
-    fitnesses: list[float], rng: Any, *, exploit_frac: float = 0.25
+    fitnesses: list[float],
+    rng: Any,
+    *,
+    exploit_frac: float = 0.25,
+    admissible: list[bool] | None = None,
 ) -> list[tuple[int, int]]:
     """The PBT selection rule (pure): which members copy which (loser_idx → winner_idx).
 
@@ -104,14 +109,26 @@ def select_exploit_explore(
     ``exploit_frac`` (weights + hyperparameters), so a losing slot is reseeded from a proven one. A
     member never copies itself; with a tiny population the bands can overlap, in which case a loser
     that also ranks top is left untouched. Returns the (loser, winner) pairs for :func:`apply_exploit`.
+
+    ``admissible`` (the admission-gate mask, :mod:`.admission`) hardens the rule: an INADMISSIBLE
+    member — ruined equity path or undisciplined losses — is never an exploit SOURCE no matter its
+    fitness (a lottery pnl must not be copied), and is always reseeded (added to the losers). With
+    no admissible member at all there is nothing safe to copy and no pairs are returned.
     """
     n = len(fitnesses)
     if n < 2:
         return []
+    ok = admissible if admissible is not None else [True] * n
+    if len(ok) != n:
+        raise ValueError("admissible mask must match fitnesses length")
     k = max(1, int(n * exploit_frac))
     order = sorted(range(n), key=lambda i: fitnesses[i])  # ascending: worst first
-    losers = order[:k]
-    winners = order[-k:]
+    admissible_order = [i for i in order if ok[i]]
+    winners = admissible_order[-k:]
+    if not winners:
+        return []  # every member is inadmissible — nothing proven to copy from
+    # Losers: the bottom band, plus every inadmissible slot (a ruined member is always reseeded).
+    losers = list(dict.fromkeys(order[:k] + [i for i in order if not ok[i]]))
     winner_set = set(winners)
     pairs: list[tuple[int, int]] = []
     for loser in losers:
@@ -154,6 +171,9 @@ class PBTConfig:
     n_quantiles: int = 8
     cvar_alpha: float = 0.05
     torch_threads: int = 2  # be polite: a CPU-heavy ladder run may share this machine
+    #: Admission gates (ruin floor + loss discipline; :mod:`.admission`): bars champions and
+    #: exploit sources. ON by default.
+    admission: AdmissionConfig = field(default_factory=AdmissionConfig)
 
 
 # ---------------------------------------------------------------------------
@@ -430,8 +450,9 @@ def run_pbt(
         # Train + evaluate members in MINI-BATCHES, binning each batch into the niche archive and then
         # dropping it — only the archive (per-niche champion/occupancy) and the light fitness floats
         # persist, so the resident set is one mini-batch, not the whole population (archive scales).
-        archive = NicheArchive()
+        archive = NicheArchive(admission=config.admission)
         fitnesses: list[float] = []
+        admissible: list[bool] = []
         for start in range(0, len(members), batch):
             chunk = members[start : start + batch]
             for member in chunk:
@@ -442,14 +463,18 @@ def run_pbt(
                 for m, p in zip(chunk, profiles, strict=True)
             )
             fitnesses.extend(p.pnl_bps for p in profiles)
+            admissible.extend(is_admissible(p, config.admission) for p in profiles)
         summary = writer.add_generation(archive, gen=gen, population_size=len(members))
         log(
             f"[pbt] gen {gen}: best={summary['best_pnl_bps']:+.1f}bps "
             f"mean={summary['mean_pnl_bps']:+.1f}bps coverage={summary['coverage']:.2f} "
+            f"ruined={summary['ruined']} curve_rejected={summary['curve_rejected']} "
             f"filled={[d['role'] for d in summary['desks'] if d['occupancy'] > 0]}"
         )
         if gen < config.generations - 1:
-            pairs = select_exploit_explore(fitnesses, rng, exploit_frac=config.exploit_frac)
+            pairs = select_exploit_explore(
+                fitnesses, rng, exploit_frac=config.exploit_frac, admissible=admissible
+            )
             apply_exploit(members, pairs, rng, base_cfg, config)
             log(f"[pbt] gen {gen}: exploit/explore reseeded {len(pairs)} member(s)")
         # Checkpoint AFTER exploit: the saved population is the one the next generation would start from.

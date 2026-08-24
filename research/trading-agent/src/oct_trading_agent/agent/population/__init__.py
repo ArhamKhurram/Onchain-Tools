@@ -19,14 +19,19 @@ rule + archive) are torch-free; training/eval is behind the ``learn`` extra. ES 
 
 from __future__ import annotations
 
+from .admission import AdmissionConfig, admission_verdict, is_admissible
 from .archive import AgentReport, NicheArchive
 from .checkpoint import atomic_write, atomic_write_text, load_torch, save_torch
 from .descriptor import (
     BehavioralDescriptor,
     BehaviorProfile,
+    CurveMetrics,
     behavioral_rollout,
     bin_descriptor,
+    bin_style_cell,
+    compute_curve_metrics,
     profile_policy,
+    style_grid,
     summarize_behavior,
 )
 from .map_elites import (
@@ -56,6 +61,9 @@ from .pbt import (
 from .telemetry import DeskTelemetryWriter, aggregate_generation, generation_from_archive
 
 __all__ = [
+    "AdmissionConfig",
+    "admission_verdict",
+    "is_admissible",
     "AgentReport",
     "NicheArchive",
     "atomic_write",
@@ -64,8 +72,12 @@ __all__ = [
     "load_torch",
     "BehavioralDescriptor",
     "BehaviorProfile",
+    "CurveMetrics",
     "behavioral_rollout",
     "bin_descriptor",
+    "bin_style_cell",
+    "compute_curve_metrics",
+    "style_grid",
     "profile_policy",
     "summarize_behavior",
     "Hyperparams",

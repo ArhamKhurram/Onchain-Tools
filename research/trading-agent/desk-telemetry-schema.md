@@ -94,3 +94,67 @@ A real run may hold tens of thousands of agents. The file must NOT enumerate all
 of them — it carries only per-niche **aggregates** (occupancy counts + one
 champion per niche per generation). That aggregation is what keeps the contract
 O(roles × generations), not O(agents), and is exactly what the viz renders.
+
+## Additive fields (2026-08-24): admission gates + fine style grid
+
+All fields in this section are **additive and optional** — the 6-role contract
+above remains valid without them, and a viz that ignores them renders unchanged.
+
+### Generation additions
+
+```jsonc
+{
+  "ruined": 3,          // agents barred by the hard ruin floor (equity path lost ~all the budget)
+  "curve_rejected": 1   // agents barred by loss discipline (drawdown depth / loss escalation)
+}
+```
+
+For MAP-Elites these tallies are **cumulative over the run** (the archive's
+lifetime counters); for PBT they are **per generation** (each generation's census
+is a fresh archive). An inadmissible agent is excluded from `occupancy`,
+`median_pnl_bps`, `champion`, and `best_pnl_bps` entirely — it appears only in
+these tallies — preserving the invariant occupancy > 0 ⇒ champion present.
+
+The gate itself (producer side, `agent/population/admission.py`): a hard **ruin
+floor** (min equity ≤ 0.2 of the starting budget by default), a **max drawdown**
+depth (≤ 0.5 budget units), and a **loss-escalation** ratio (tail-half vs
+early-half mean loss size ≤ 3.0 — the martingale signature). Deliberately no
+smoothness/monotonicity score: flat-or-bleed-then-step-up is a legitimate
+positive-skew shape in a fat-tailed market and must not be filtered.
+
+### Champion additions
+
+```jsonc
+{
+  "style_cell": "GOBLIN:FULL:CLIP", // fine 4-axis style cell (see grid below)
+  "final_equity": 1.04,       // end of held-out realized equity path (start = 1.0 budget unit)
+  "max_drawdown": 0.12,       // deepest peak-to-trough retrace, budget units
+  "loss_escalation": 1.3,     // tail/early mean loss ratio (1.0 = stable "premium" losses)
+  "pnl_share_top": 0.85,      // DIAGNOSTIC: best episode's share of total pnl (null if pnl <= 0)
+  "pnl_split_bps": [12.0, -3.0] // DIAGNOSTIC: mean pnl, first vs second half of held-out episodes
+}
+```
+
+`pnl_share_top` and `pnl_split_bps` are luck-vs-skill diagnostics, recorded so
+concentration and repeatability can be judged across runs — they are **never**
+admission filters (with 40–300 held-out tokens a genuine rare-event strategy may
+catch only 1–2 runners per window; gating on them would false-negative skill).
+
+### The fine style grid (`style_cell`)
+
+Four behavioral axes, `"<ROLE>:<ENTRY>:<EXIT>"` — 3×2 (the role) × 3 × 3 =
+**54 cells**:
+
+| axis | source | bins |
+| --- | --- | --- |
+| turnover × hold | the 3×2 role grid above | `GOBLIN` … `GECKO` (6) |
+| entry sizing | mean size fraction on buy fills | `SMALL` < 0.15 ≤ `MID` < 0.5 ≤ `FULL` |
+| exit style | mean fraction of position sold per exit | `CLIP` ≤ 0.25 < `CHUNK` < 0.75 ≤ `FULL` |
+
+An agent with no self-driven exits realizes its whole book in one forced close —
+economically a single full-stack exit — so it bins `EXIT = FULL`.
+
+**The 6 codename roles remain the coarse projection** the desks render:
+`style_cell.split(":")[0]` is always the champion's `role`. The fine cell
+travels only on the champion payload so the archive can illuminate sizing/exit
+style while the console keeps its 6 desks.

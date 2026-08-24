@@ -19,6 +19,7 @@ import statistics
 from collections.abc import Iterable, Sequence
 from dataclasses import dataclass
 
+from .admission import VERDICT_RUINED, AdmissionConfig, admission_verdict
 from .descriptor import MEMECOIN_ROLES, BehaviorProfile, bin_descriptor
 
 
@@ -44,14 +45,22 @@ class NicheArchive:
     only thing that has to persist.
     """
 
-    def __init__(self, roles: Sequence[str] = MEMECOIN_ROLES) -> None:
+    def __init__(
+        self,
+        roles: Sequence[str] = MEMECOIN_ROLES,
+        *,
+        admission: AdmissionConfig | None = None,
+    ) -> None:
         self._roles: tuple[str, ...] = tuple(roles)
+        self._admission = admission
         self._occupancy: dict[str, int] = {r: 0 for r in self._roles}
         self._champion: dict[str, AgentReport | None] = {r: None for r in self._roles}
         self._pnls: dict[str, list[float]] = {r: [] for r in self._roles}
         self._n = 0
         self._pnl_sum = 0.0
         self._best: float | None = None
+        self._ruined = 0
+        self._curve_rejected = 0
 
     @property
     def roles(self) -> tuple[str, ...]:
@@ -61,8 +70,24 @@ class NicheArchive:
         """Bin one agent into its niche; update that niche's champion/occupancy and the roll-ups.
 
         Returns the role it landed in. The niche is a pure function of the agent's own descriptor.
+        With an :class:`AdmissionConfig` set, an INADMISSIBLE agent (ruined / undisciplined equity
+        curve) is excluded from the desk stats entirely — no occupancy, no median, and above all
+        never a champion or the run's ``best_pnl_bps`` — and is counted in the ``ruined`` /
+        ``curve_rejected`` tallies the telemetry reports instead. Excluding (rather than counting
+        champion-less) preserves the viz contract's invariant that occupancy > 0 ⇒ champion present.
         """
         role = bin_descriptor(report.profile.descriptor)
+        verdict = (
+            admission_verdict(report.profile, self._admission)
+            if self._admission is not None
+            else None
+        )
+        if verdict is not None:
+            if verdict == VERDICT_RUINED:
+                self._ruined += 1
+            else:
+                self._curve_rejected += 1
+            return role
         pnl = report.profile.pnl_bps
         self._occupancy[role] += 1
         self._pnls[role].append(pnl)
@@ -95,8 +120,18 @@ class NicheArchive:
 
     @property
     def total(self) -> int:
-        """Agents binned so far (across all niches)."""
+        """Admissible agents binned so far (across all niches)."""
         return self._n
+
+    @property
+    def ruined(self) -> int:
+        """Agents barred by the hard ruin floor (equity path lost ~all the risk budget)."""
+        return self._ruined
+
+    @property
+    def curve_rejected(self) -> int:
+        """Agents barred by the loss-discipline gates (drawdown depth / loss escalation)."""
+        return self._curve_rejected
 
     @property
     def coverage(self) -> float:

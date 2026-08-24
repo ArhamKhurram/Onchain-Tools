@@ -22,7 +22,7 @@ from typing import Any
 
 from .archive import AgentReport, NicheArchive
 from .checkpoint import atomic_write_text
-from .descriptor import MEMECOIN_ROLES, BehaviorProfile
+from .descriptor import MEMECOIN_ROLES, BehaviorProfile, bin_style_cell
 
 DESK_TYPE = "memecoin"
 ALGO = "pbt"  # default producer label; MAP-Elites passes algo="map_elites" (schema's other value)
@@ -42,6 +42,7 @@ _ROLE_STATUS: dict[str, str] = {
 
 def _champion_payload(report: AgentReport, role: str) -> dict[str, Any]:
     profile: BehaviorProfile = report.profile
+    curve = profile.curve
     return {
         "agent_id": report.agent_id,
         "pnl_bps": round(profile.pnl_bps, 1),
@@ -49,6 +50,14 @@ def _champion_payload(report: AgentReport, role: str) -> dict[str, Any]:
         "win_rate": round(profile.win_rate, 2),
         "hold_secs": round(profile.mean_hold_secs),
         "status": _ROLE_STATUS[role],
+        # -- additive fields (schema §additions; the 6-role viz contract ignores them) ------------
+        "style_cell": bin_style_cell(profile.descriptor),  # fine 54-cell sizing/exit style id
+        "final_equity": round(curve.final_equity, 3),
+        "max_drawdown": round(curve.max_drawdown, 3),
+        "loss_escalation": round(curve.loss_escalation, 2),
+        # Luck-vs-skill DIAGNOSTICS (recorded, never gated on): pnl concentration + repeatability.
+        "pnl_share_top": round(curve.pnl_share_top, 2) if curve.pnl_share_top is not None else None,
+        "pnl_split_bps": [round(curve.pnl_split_bps[0], 1), round(curve.pnl_split_bps[1], 1)],
     }
 
 
@@ -84,6 +93,8 @@ def generation_from_archive(
     gen: int,
     population_size: int,
     prev_generation: dict[str, Any] | None = None,
+    ruined: int | None = None,
+    curve_rejected: int | None = None,
 ) -> dict[str, Any]:
     """Render one generation's :class:`NicheArchive` into the schema's per-niche ``Generation``.
 
@@ -92,6 +103,10 @@ def generation_from_archive(
     ``events``. Population stats (coverage, best/mean pnl) come straight off the archive's roll-ups.
     ``prev_generation`` (the previous rendered generation) lets the events state deltas — champion
     improvement, occupancy change, first-fill; pass ``None`` for a standalone generation.
+
+    ``ruined`` / ``curve_rejected`` (ADDITIVE fields, cumulative for the run) default to the
+    archive's own admission counters; MAP-Elites overrides them with its :class:`EliteArchive`
+    counters, since its rendered snapshot is a fresh archive of already-admitted elites.
     """
     prev_desks: dict[str, dict[str, Any]] = (
         {d["role"]: d for d in prev_generation["desks"]} if prev_generation else {}
@@ -120,6 +135,9 @@ def generation_from_archive(
         "coverage": round(archive.coverage, 3),
         "best_pnl_bps": round(archive.best_pnl_bps, 1),
         "mean_pnl_bps": round(archive.mean_pnl_bps, 1),
+        # Additive admission-gate tallies (cumulative for the run; 0 when gating is off).
+        "ruined": archive.ruined if ruined is None else ruined,
+        "curve_rejected": archive.curve_rejected if curve_rejected is None else curve_rejected,
         "desks": desks,
     }
 
@@ -163,11 +181,18 @@ class DeskTelemetryWriter:
         self._generations: list[dict[str, Any]] = list(generations) if generations else []
 
     def add_generation(
-        self, archive: NicheArchive, *, gen: int, population_size: int
+        self,
+        archive: NicheArchive,
+        *,
+        gen: int,
+        population_size: int,
+        ruined: int | None = None,
+        curve_rejected: int | None = None,
     ) -> dict[str, Any]:
         generation = generation_from_archive(
             archive, gen=gen, population_size=population_size,
             prev_generation=self._generations[-1] if self._generations else None,
+            ruined=ruined, curve_rejected=curve_rejected,
         )
         self._generations.append(generation)
         self.flush()

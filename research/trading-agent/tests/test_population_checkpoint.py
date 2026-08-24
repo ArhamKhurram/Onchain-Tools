@@ -168,7 +168,7 @@ def test_map_elites_resume_continues_from_iteration(tmp_path: Path, monkeypatch:
     wf = _walk_forward()
     ckpt = tmp_path / "me.ckpt.pt"
     base = MarketTrainConfig(hidden_dim=16)
-    common = dict(
+    common: dict[str, Any] = dict(
         init_population=2, batch_size=2, train_steps_per_child=1, episodes_per_iter=1,
         max_train_envs=2, max_test_envs=2, hidden_dim=16, n_quantiles=8, torch_threads=1,
     )
@@ -258,7 +258,7 @@ def test_pbt_resume_continues_from_generation(tmp_path: Path, monkeypatch: Any) 
     wf = _walk_forward()
     ckpt = tmp_path / "pbt.ckpt.pt"
     base = MarketTrainConfig(hidden_dim=16)
-    common = dict(
+    common: dict[str, Any] = dict(
         population_size=2, train_steps_per_gen=1, episodes_per_iter=1, eval_batch_size=2,
         max_train_envs=2, max_test_envs=2, hidden_dim=16, n_quantiles=8, torch_threads=1,
     )

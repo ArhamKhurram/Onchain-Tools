@@ -34,7 +34,7 @@ from __future__ import annotations
 
 import argparse
 from collections.abc import Callable
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
@@ -47,6 +47,7 @@ from oct_trading_agent.agent.train_market import (
 )
 from oct_trading_agent.eval.data import TokenTape
 
+from .admission import VERDICT_RUINED, AdmissionConfig, admission_verdict
 from .archive import AgentReport, NicheArchive
 from .checkpoint import load_torch, save_torch
 from .descriptor import MEMECOIN_ROLES, BehaviorProfile, bin_descriptor, profile_policy
@@ -97,11 +98,21 @@ class EliteArchive:
     the current elites into a fresh :class:`NicheArchive`, so the viz contract is reused unchanged.
     """
 
-    def __init__(self, roles: tuple[str, ...] = MEMECOIN_ROLES) -> None:
+    def __init__(
+        self,
+        roles: tuple[str, ...] = MEMECOIN_ROLES,
+        *,
+        admission: AdmissionConfig | None = None,
+    ) -> None:
         self._roles = tuple(roles)
+        # The admission gate is ON by default (operator directive): a ruined or loss-undisciplined
+        # agent must never hold a niche. Pass AdmissionConfig(enabled=False) to disable explicitly.
+        self._admission = admission if admission is not None else AdmissionConfig()
         self._elites: dict[str, Elite] = {}
         self._considered = 0
         self._admitted = 0
+        self._ruined = 0
+        self._curve_rejected = 0
 
     @classmethod
     def restore(
@@ -110,7 +121,10 @@ class EliteArchive:
         *,
         considered: int,
         admitted: int,
+        ruined: int = 0,
+        curve_rejected: int = 0,
         roles: tuple[str, ...] = MEMECOIN_ROLES,
+        admission: AdmissionConfig | None = None,
     ) -> EliteArchive:
         """Rebuild an archive from a checkpoint's elites + counters (the exact inverse of what is saved).
 
@@ -118,11 +132,13 @@ class EliteArchive:
         are restored verbatim so the resumed run's admitted/considered accounting continues unbroken. Pure
         and torch-free — the genome payload is placed back untouched, exactly as the archive keeps it.
         """
-        archive = cls(roles)
+        archive = cls(roles, admission=admission)
         for elite in elites:
             archive._elites[bin_descriptor(elite.profile.descriptor)] = elite
         archive._considered = considered
         archive._admitted = admitted
+        archive._ruined = ruined
+        archive._curve_rejected = curve_rejected
         return archive
 
     @property
@@ -130,9 +146,21 @@ class EliteArchive:
         return self._roles
 
     def try_add(self, elite: Elite) -> tuple[str, bool]:
-        """Bin ``elite`` into its niche and admit it if it beats the incumbent. Returns (role, took_cell)."""
+        """Bin ``elite`` into its niche and admit it if it beats the incumbent. Returns (role, took_cell).
+
+        The admission gate runs FIRST and is unconditional: an inadmissible challenger (ruined equity
+        path, deep drawdown, or escalating losses — :mod:`.admission`) never takes a cell no matter
+        how large its pnl, so a lottery curve can't sit in the archive the deliverable ships.
+        """
         role = bin_descriptor(elite.profile.descriptor)
         self._considered += 1
+        verdict = admission_verdict(elite.profile, self._admission)
+        if verdict is not None:
+            if verdict == VERDICT_RUINED:
+                self._ruined += 1
+            else:
+                self._curve_rejected += 1
+            return role, False
         incumbent = self._elites.get(role)
         if elite_beats(elite.profile, incumbent.profile if incumbent is not None else None):
             self._elites[role] = elite
@@ -168,6 +196,16 @@ class EliteArchive:
     @property
     def admitted(self) -> int:
         return self._admitted
+
+    @property
+    def ruined(self) -> int:
+        """Challengers barred by the hard ruin floor (never admitted, whatever their pnl)."""
+        return self._ruined
+
+    @property
+    def curve_rejected(self) -> int:
+        """Challengers barred by the loss-discipline gates (drawdown depth / loss escalation)."""
+        return self._curve_rejected
 
     def sample_parent(self, rng: Any) -> Elite | None:
         """Draw a random parent uniformly from the filled niches (``None`` if the archive is empty)."""
@@ -212,6 +250,11 @@ class MapElitesConfig:
     n_quantiles: int = 8
     cvar_alpha: float = 0.05
     torch_threads: int = 2  # be polite: a CPU-heavy ladder run may share this machine
+    # Tier-A+ ablation flag (paper §4.4): attention slots in the obs + a matching net input width.
+    # A resume must use the same flag as the checkpointed run (the genome shapes encode it).
+    attention_features: bool = False
+    #: Archive admission gates (ruin floor + loss discipline; :mod:`.admission`). ON by default.
+    admission: AdmissionConfig = field(default_factory=AdmissionConfig)
 
 
 # ---------------------------------------------------------------------------
@@ -243,6 +286,9 @@ class MapElitesCheckpoint:
     rng_state: dict[str, Any]
     np_state: Any
     torch_state: Any
+    # Admission-gate tallies (defaults keep pre-gate checkpoints loadable).
+    ruined: int = 0
+    curve_rejected: int = 0
 
 
 def save_map_elites_checkpoint(
@@ -269,6 +315,7 @@ def save_map_elites_checkpoint(
         elites=archive.elites(), generations=list(generations),
         rng_state=rng.bit_generator.state,
         np_state=np.random.get_state(), torch_state=torch.get_rng_state(),
+        ruined=archive.ruined, curve_rejected=archive.curve_rejected,
     )
     save_torch(path, ckpt)
 
@@ -301,10 +348,14 @@ class EliteGenome:
 
 
 def _build_model(cfg: MapElitesConfig, *, device: Any = None) -> Any:  # pragma: no cover - torch
+    from oct_trading_agent.agent.envs import vector_length
     from oct_trading_agent.agent.policies.torch_actor import ActorConfig, build_actor_critic
 
     return build_actor_critic(
-        ActorConfig(hidden_dim=cfg.hidden_dim, n_quantiles=cfg.n_quantiles, cvar_alpha=cfg.cvar_alpha),
+        ActorConfig(
+            hidden_dim=cfg.hidden_dim, n_quantiles=cfg.n_quantiles, cvar_alpha=cfg.cvar_alpha,
+            d_in=vector_length(attention=cfg.attention_features),
+        ),
         device=device,
     )
 
@@ -451,7 +502,9 @@ def run_map_elites(
     import torch
 
     config = cfg or MapElitesConfig()
-    base_cfg = base or MarketTrainConfig(hidden_dim=config.hidden_dim)
+    base_cfg = base or MarketTrainConfig(
+        hidden_dim=config.hidden_dim, attention_features=config.attention_features
+    )
     torch.set_num_threads(max(1, config.torch_threads))
 
     state = load_map_elites_checkpoint(resume, device=device) if resume is not None else None
@@ -463,7 +516,10 @@ def run_map_elites(
         np.random.set_state(state.np_state)
         torch.set_rng_state(state.torch_state.cpu())
         archive = EliteArchive.restore(
-            state.elites, considered=state.considered, admitted=state.admitted
+            state.elites, considered=state.considered, admitted=state.admitted,
+            ruined=getattr(state, "ruined", 0),  # pre-gate checkpoints lack the tallies
+            curve_rejected=getattr(state, "curve_rejected", 0),
+            admission=config.admission,
         )
         writer = DeskTelemetryWriter(
             out_path, run_id=run_id, algo=ALGO, generations=state.generations
@@ -475,7 +531,7 @@ def run_map_elites(
         rng = np.random.default_rng(seed)
         run_id = run_id or f"mapelites-{datetime.now(UTC):%Y-%m-%d}-seed{seed}"
         writer = DeskTelemetryWriter(out_path, run_id=run_id, algo=ALGO)
-        archive = EliteArchive()
+        archive = EliteArchive(admission=config.admission)
         gen = n_eval = seed_done = iter_done = 0
 
     ckpt_path = checkpoint_path or out_path.with_name(out_path.stem + ".ckpt.pt")
@@ -497,11 +553,15 @@ def run_map_elites(
 
     def _flush(g: int) -> None:
         snap = archive.to_niche_archive()
-        summary = writer.add_generation(snap, gen=g, population_size=archive.size)
+        summary = writer.add_generation(
+            snap, gen=g, population_size=archive.size,
+            ruined=archive.ruined, curve_rejected=archive.curve_rejected,
+        )
         log(
             f"[mapelites] gen {g}: coverage={summary['coverage']:.2f} "
             f"best={summary['best_pnl_bps']:+.1f}bps size={archive.size}/6 "
             f"admitted={archive.admitted}/{archive.considered} "
+            f"ruined={archive.ruined} curve_rejected={archive.curve_rejected} "
             f"filled={[d['role'] for d in summary['desks'] if d['occupancy'] > 0]}"
         )
 
@@ -606,6 +666,24 @@ def main() -> None:  # pragma: no cover - CLI
         "--resume", type=str, default=None,
         help="resume from a checkpoint file and continue the run from where it stopped",
     )
+    parser.add_argument(
+        "--ruin-floor", type=float, default=AdmissionConfig().ruin_floor,
+        help="equity floor (fraction of the risk budget) below which an agent is RUINED, never admitted",
+    )
+    parser.add_argument(
+        "--max-drawdown", type=float, default=AdmissionConfig().max_drawdown,
+        help="max tolerated peak-to-trough equity retrace, in budget units",
+    )
+    parser.add_argument(
+        "--max-loss-escalation", type=float, default=AdmissionConfig().max_loss_escalation,
+        help="max tail/early mean-loss ratio before the martingale signature bars admission",
+    )
+    parser.add_argument(
+        "--attention-features", action="store_true",
+        help="tier-A+ ablation (paper §4.4): add the Hawkes attention slots (λ_buy/μ, branching n, "
+        "manipulation suspicion) to the observation; widens the genome nets — a resume must use "
+        "the same flag as the checkpointed run",
+    )
     args = parser.parse_args()
 
     tapes = _load_tapes(args)
@@ -629,6 +707,12 @@ def main() -> None:  # pragma: no cover - CLI
         max_test_envs=args.max_test_envs,
         hidden_dim=args.hidden_dim,
         torch_threads=args.torch_threads,
+        attention_features=args.attention_features,
+        admission=AdmissionConfig(
+            ruin_floor=args.ruin_floor,
+            max_drawdown=args.max_drawdown,
+            max_loss_escalation=args.max_loss_escalation,
+        ),
     )
     from oct_trading_agent.agent.device import resolve_device
 

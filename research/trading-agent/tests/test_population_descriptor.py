@@ -11,7 +11,10 @@ from __future__ import annotations
 from datetime import UTC, datetime, timedelta
 from decimal import Decimal
 
+import pytest
+
 from oct_trading_agent.agent.envs import (
+    EnvAction,
     EnvConfig,
     MarketReplayEnv,
     TradingEnv,
@@ -22,10 +25,11 @@ from oct_trading_agent.agent.population.descriptor import (
     BehavioralDescriptor,
     behavioral_rollout,
     bin_descriptor,
+    bin_style_cell,
     profile_policy,
     summarize_behavior,
 )
-from oct_trading_agent.core import Side, SwapEvent
+from oct_trading_agent.core import Intent, Side, SwapEvent
 from oct_trading_agent.eval.baselines import BuyAndHoldPolicy, HoldSolPolicy
 
 T0 = datetime(2026, 8, 22, tzinfo=UTC)
@@ -147,3 +151,40 @@ def test_hold_sol_profile_bins_to_gremlin() -> None:
     profile = profile_policy(envs, HoldSolPolicy())
     assert profile.descriptor.trade_frequency == 0.0
     assert bin_descriptor(profile.descriptor) == "GREMLIN"
+
+
+class _ClipPolicy:
+    """Scripted stream: open 0.6, trim 0.2 three times, close — a mid-entry, chunking exit style."""
+
+    def __init__(self) -> None:
+        self._step = 0
+
+    def reset(self) -> None:
+        self._step = 0
+
+    def act(self, observation: object) -> EnvAction:
+        step = self._step
+        self._step += 1
+        if step == 0:
+            return EnvAction(intent=Intent.OPEN_LONG, size=0.6)
+        if step in (1, 2, 3):
+            return EnvAction(intent=Intent.TRIM, size=0.2)
+        if step == 4:
+            return EnvAction(intent=Intent.CLOSE)
+        return EnvAction(intent=Intent.HOLD)
+
+
+def test_behavioral_rollout_records_sizing_exit_and_equity_streams() -> None:
+    """The new style/curve streams: buy sizes, per-exit clip fractions, realized equity marks."""
+    env = _env()
+    sample = behavioral_rollout(env, _ClipPolicy())
+    assert sample.entry_sizes == (0.6,)
+    assert sample.exit_clips == (0.2, 0.2, 0.2, 1.0)  # three trims then the full close
+    assert len(sample.equity_marks) > 0  # sells realize pnl -> the equity path moved
+    assert sample.equity_marks[-1] == pytest.approx(sample.return_pct)  # path ends at the truth
+    profile = summarize_behavior([sample])
+    assert profile.descriptor.mean_entry_size == pytest.approx(0.6)
+    assert profile.descriptor.mean_exit_clip == pytest.approx(0.4)
+    cell = bin_style_cell(profile.descriptor)
+    assert cell.split(":")[0] == bin_descriptor(profile.descriptor)  # role projection preserved
+    assert cell.endswith(":FULL:CHUNK")
