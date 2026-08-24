@@ -5,6 +5,7 @@
 import type { TokenEnrichment } from './rickEmbedParser.js';
 import { parseCompactUsd } from './rickEmbedParser.js';
 import { enrichFromGmgn, resolveGmgnChain } from './gmgnEnrichment.js';
+import { dexScreenerBreaker } from './circuitBreaker.js';
 
 function formatCompact(n: number): string {
   if (n >= 1e9) return `${(n / 1e9).toFixed(1)}B`;
@@ -24,10 +25,15 @@ const CHAIN_MAP: Record<string, string> = {
 };
 
 export async function enrichFromDexScreener(address: string): Promise<TokenEnrichment | null> {
+  // Breaker open: DexScreener is down — return partial (GMGN-only) enrichment
+  // immediately instead of queueing every call on the per-request timeout.
+  if (!dexScreenerBreaker.shouldAllow()) return null;
   try {
     const res = await fetch(`https://api.dexscreener.com/latest/dex/search?q=${encodeURIComponent(address)}`, {
       signal: AbortSignal.timeout(8000),
     });
+    // Any HTTP response means the API is answering — non-ok is not an outage.
+    dexScreenerBreaker.recordSuccess();
     if (!res.ok) return null;
     const data = await res.json() as {
       pairs?: {
@@ -82,6 +88,7 @@ export async function enrichFromDexScreener(address: string): Promise<TokenEnric
       enrichmentSource: 'dexscreener',
     };
   } catch (err) {
+    dexScreenerBreaker.recordFailure();
     console.error('[enrich] DexScreener failed:', (err as Error).message);
     return null;
   }
