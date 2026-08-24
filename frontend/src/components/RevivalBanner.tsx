@@ -1,4 +1,5 @@
-import { Flame, X } from 'lucide-react';
+import { useCallback, useState } from 'react';
+import { Check, Copy, Flame, X } from 'lucide-react';
 import { useAppStore } from '../stores/appStore';
 import {
   buildRevivalContractUrl,
@@ -17,6 +18,15 @@ export default function RevivalBanner() {
   const activeRevivals = useAppStore((s) => s.activeRevivals);
   const dismissRevival = useAppStore((s) => s.dismissRevival);
   const config = useAppStore((s) => s.config);
+
+  // Which mint's CA was just copied — drives the transient ✓ on its button.
+  const [copiedMint, setCopiedMint] = useState<string | null>(null);
+
+  const copyMint = useCallback((mint: string) => {
+    void navigator.clipboard?.writeText(mint);
+    setCopiedMint(mint);
+    setTimeout(() => setCopiedMint((m) => (m === mint ? null : m)), 1200);
+  }, []);
 
   if (activeRevivals.length === 0) return null;
 
@@ -53,6 +63,17 @@ export default function RevivalBanner() {
               <span className="hidden sm:inline font-normal normal-case tracking-normal opacity-80">
                 {' '}· ATR z {r.atrZ.toFixed(1)}{typeof r.price === 'number' ? ` · $${r.price.toPrecision(3)}` : ''}
               </span>
+            </button>
+            {/* Copy the raw CA — the text opens the platform, but you often
+                just want the address to paste into a terminal. */}
+            <button
+              type="button"
+              onClick={() => copyMint(r.mint)}
+              className="shrink-0 p-1 rounded hover:bg-red-700 transition-colors"
+              title={copiedMint === r.mint ? 'Copied' : `Copy CA (${r.mint})`}
+              aria-label="Copy contract address"
+            >
+              {copiedMint === r.mint ? <Check size={16} className="text-green-300" /> : <Copy size={16} />}
             </button>
             <button
               type="button"
