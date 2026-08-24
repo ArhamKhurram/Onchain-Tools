@@ -1,0 +1,4844 @@
+<title>Desk Console</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Press+Start+2P&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+/* ===================== THEME TOKENS ===================== */
+/* Light palette lives on bare :root. Dark redefines the same tokens. */
+:root{
+  --bg:#e9edec; --panel:#ffffff; --panel-2:#f3f6f5; --panel-3:#eaefee;
+  --border:#d2dbd8; --border-strong:#bcc8c4;
+  --text:#14201d; --text-dim:#4c5d58; --text-faint:#93a29d;
+  --accent:#0f9d58; --accent-soft:rgba(15,157,88,.12);
+  --pos:#0f9d58; --neg:#d92d43; --warn:#b7791f; --live:#d92d43;
+  --grid:rgba(20,32,29,.05); --scan:rgba(20,32,29,.03); --focus:#0f9d58;
+  --shadow:0 1px 2px rgba(20,32,29,.06),0 8px 24px rgba(20,32,29,.06);
+  --role-1:#e0483f; --role-2:#1f8fd0; --role-3:#5560e0;
+  --role-4:#c9821f; --role-5:#cf4bb0; --role-6:#0f9d58;
+}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]){
+    --bg:#080b0c; --panel:#0f1517; --panel-2:#0b1113; --panel-3:#121b1d;
+    --border:#1b282c; --border-strong:#2a3d42;
+    --text:#d8e4e0; --text-dim:#87a09a; --text-faint:#465a5c;
+    --accent:#35e08e; --accent-soft:rgba(53,224,142,.12);
+    --pos:#35e08e; --neg:#ff5c6c; --warn:#ffcf5c; --live:#ff4d5e;
+    --grid:rgba(120,200,180,.05); --scan:rgba(120,200,180,.035); --focus:#35e08e;
+    --shadow:0 1px 2px rgba(0,0,0,.4),0 10px 30px rgba(0,0,0,.35);
+    --role-1:#ff6b6b; --role-2:#58c8ff; --role-3:#7c86ff;
+    --role-4:#ffb454; --role-5:#ff7ae0; --role-6:#35e08e;
+  }
+}
+:root[data-theme="dark"]{
+  --bg:#080b0c; --panel:#0f1517; --panel-2:#0b1113; --panel-3:#121b1d;
+  --border:#1b282c; --border-strong:#2a3d42;
+  --text:#d8e4e0; --text-dim:#87a09a; --text-faint:#465a5c;
+  --accent:#35e08e; --accent-soft:rgba(53,224,142,.12);
+  --pos:#35e08e; --neg:#ff5c6c; --warn:#ffcf5c; --live:#ff4d5e;
+  --grid:rgba(120,200,180,.05); --scan:rgba(120,200,180,.035); --focus:#35e08e;
+  --shadow:0 1px 2px rgba(0,0,0,.4),0 10px 30px rgba(0,0,0,.35);
+  --role-1:#ff6b6b; --role-2:#58c8ff; --role-3:#7c86ff;
+  --role-4:#ffb454; --role-5:#ff7ae0; --role-6:#35e08e;
+}
+
+/* ===================== BASE ===================== */
+*{box-sizing:border-box}
+html,body{margin:0}
+body{
+  background:var(--bg); color:var(--text);
+  font-family:"IBM Plex Mono",ui-monospace,SFMono-Regular,Menlo,monospace;
+  font-size:14px; line-height:1.45; letter-spacing:.01em;
+  -webkit-font-smoothing:antialiased;
+  min-height:100vh; overflow-x:hidden;
+}
+.px{font-family:"Press Start 2P",monospace;letter-spacing:.02em}
+.num{font-variant-numeric:tabular-nums;font-feature-settings:"tnum" 1}
+.pos{color:var(--pos)} .neg{color:var(--neg)} .muted{color:var(--text-faint)}
+:focus-visible{outline:2px solid var(--focus);outline-offset:2px;border-radius:3px}
+canvas{image-rendering:pixelated;image-rendering:crisp-edges}
+button{font-family:inherit;color:inherit}
+
+.wrap{max-width:1320px;margin:0 auto;padding:14px clamp(10px,2.5vw,22px) 26px}
+
+/* ===================== STATUS BAR ===================== */
+.topbar{
+  display:flex;flex-wrap:wrap;align-items:center;gap:12px;
+  background:var(--panel);border:1px solid var(--border);border-radius:10px;
+  padding:12px 14px;box-shadow:var(--shadow);
+}
+.brand{display:flex;align-items:center;gap:10px;min-width:0}
+.brand .logo{
+  width:26px;height:26px;border-radius:6px;flex:none;
+  background:linear-gradient(135deg,var(--accent),color-mix(in srgb,var(--accent) 55%,var(--text)));
+  display:grid;place-items:center;color:var(--bg);font-size:8px;box-shadow:var(--shadow);
+}
+.brand .name{font-size:9px;line-height:1.5}
+.brand .sub{font-size:10px;color:var(--text-dim);margin-top:2px}
+.live{
+  display:inline-flex;align-items:center;gap:7px;margin-left:2px;
+  border:1px solid var(--border);border-radius:999px;padding:5px 10px;
+  background:var(--panel-2);font-size:10px;letter-spacing:.12em;color:var(--text-dim);
+}
+.live .dot{width:8px;height:8px;border-radius:50%;background:var(--text-dim);opacity:.6}
+.live .ep{color:var(--text);letter-spacing:.16em}
+
+.stats{display:flex;flex-wrap:wrap;gap:8px;margin-left:auto}
+.stat{
+  border:1px solid var(--border);border-radius:8px;background:var(--panel-2);
+  padding:7px 12px;min-width:96px;
+}
+.stat .k{font-size:9px;letter-spacing:.14em;color:var(--text-faint);text-transform:uppercase}
+.stat .v{font-size:19px;margin-top:3px;line-height:1}
+.stat .vs{font-size:10px;color:var(--text-dim);margin-top:3px}
+.theme-btn{
+  border:1px solid var(--border);background:var(--panel-2);border-radius:8px;
+  padding:8px 10px;cursor:pointer;font-size:14px;line-height:1;color:var(--text-dim);
+}
+.theme-btn:hover{color:var(--text);border-color:var(--border-strong)}
+
+/* ===================== RUN TOGGLE BAR ===================== */
+.runbar{
+  display:flex;flex-wrap:wrap;align-items:center;gap:12px 16px;margin-top:14px;
+  background:var(--panel);border:1px solid var(--border);border-radius:10px;
+  padding:10px 14px;box-shadow:var(--shadow);
+}
+.seg{
+  display:inline-flex;background:var(--panel-2);border:1px solid var(--border);
+  border-radius:9px;padding:3px;gap:3px;flex:none;flex-wrap:wrap;max-width:100%;
+}
+.seg-btn{
+  border:0;background:transparent;cursor:pointer;border-radius:6px;
+  padding:9px 16px;font-family:"Press Start 2P",monospace;font-size:9px;
+  letter-spacing:.05em;color:var(--text-dim);
+  transition:background-color .2s ease,color .2s ease;
+}
+.seg-btn:hover{color:var(--text)}
+.seg-btn[aria-selected="true"]{background:var(--accent);color:var(--bg)}
+.run-caption{font-size:12px;color:var(--text);letter-spacing:.02em;min-width:0}
+.run-hint{font-size:10px;color:var(--text-faint);letter-spacing:.04em;margin-left:auto;text-align:right}
+.run-hint b{color:var(--text-dim)}
+.run-subnote{font-size:10px;color:var(--warn);letter-spacing:.02em;
+  border:1px solid var(--border);border-radius:999px;padding:3px 9px;background:var(--panel-2);flex:none}
+.run-subnote.hidden{display:none}
+@media (max-width:560px){.run-hint{margin-left:0}.seg{flex:1 1 100%;flex-wrap:wrap}.seg-btn{flex:1 1 auto;text-align:center}}
+
+/* ===================== LAYOUT ===================== */
+.grid{display:grid;grid-template-columns:minmax(0,1fr) 320px;gap:14px;margin-top:14px}
+@media (max-width:940px){.grid{grid-template-columns:1fr}}
+.panel{
+  background:var(--panel);border:1px solid var(--border);border-radius:10px;
+  box-shadow:var(--shadow);
+}
+.phead{
+  display:flex;align-items:center;justify-content:space-between;gap:8px;
+  padding:10px 13px;border-bottom:1px solid var(--border);
+}
+.phead .t{font-size:9px;letter-spacing:.1em;color:var(--text-dim)}
+.phead .r{font-size:10px;color:var(--text-faint)}
+
+/* ===================== FLOOR ===================== */
+.floor-wrap{position:relative;overflow:hidden;border-radius:0 0 10px 10px}
+.floor-wrap::before{
+  content:"";position:absolute;inset:0;pointer-events:none;z-index:2;
+  background:
+    repeating-linear-gradient(0deg,transparent,transparent 2px,var(--scan) 2px,var(--scan) 3px);
+  opacity:.7;
+}
+#floor{
+  display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:1px;
+  background:var(--border);padding:1px;position:relative;
+}
+@media (max-width:720px){#floor{grid-template-columns:repeat(2,minmax(0,1fr))}}
+@media (max-width:460px){#floor{grid-template-columns:1fr}}
+.desk{
+  background:
+    linear-gradient(var(--grid) 1px,transparent 1px) 0 0/100% 22px,
+    var(--panel);
+  padding:12px 13px 11px;min-height:172px;
+  display:flex;flex-direction:column;position:relative;
+  transition:background-color .35s ease;
+}
+.desk.empty{background:var(--panel-2);opacity:.72}
+.desk-top{display:flex;align-items:center;justify-content:space-between;gap:8px}
+.desk-role{font-family:"Press Start 2P",monospace;font-size:11px;letter-spacing:.02em}
+.desk.empty .desk-role{color:var(--text-faint)!important}
+.occ{
+  font-size:10px;color:var(--text-dim);border:1px solid var(--border);
+  border-radius:999px;padding:2px 7px;background:var(--panel-2);
+}
+.desk-body{display:flex;gap:11px;align-items:flex-start;margin-top:9px;flex:1}
+.fig{width:46px;height:auto;flex:none;margin-top:2px}
+.desk.empty .fig{opacity:.5}
+.desk-main{min-width:0}
+.pnl{font-size:26px;line-height:1;letter-spacing:-.02em;
+  font-variant-numeric:tabular-nums;transition:color .35s ease}
+.median{font-size:10px;color:var(--text-dim);margin-top:5px;font-variant-numeric:tabular-nums}
+.desk-stats{display:flex;gap:6px;margin-top:9px}
+.desk-stats>div{
+  flex:1;border:1px solid var(--border);border-radius:6px;background:var(--panel-2);
+  padding:5px 6px;text-align:center;min-width:0;
+}
+.desk.empty .desk-stats>div{background:transparent}
+.desk-stats .k{display:block;font-size:8px;letter-spacing:.1em;color:var(--text-faint)}
+.desk-stats .v{display:block;font-size:13px;margin-top:2px;font-variant-numeric:tabular-nums}
+.desk-foot{display:flex;justify-content:space-between;gap:8px;margin-top:9px;
+  font-size:10px;color:var(--text-dim);align-items:baseline}
+.desk-foot .agent{color:var(--text-faint);font-variant-numeric:tabular-nums}
+.desk-foot .status{text-align:right;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:1}
+
+/* ===================== RIGHT RAIL ===================== */
+.rail{display:flex;flex-direction:column;gap:14px;min-width:0}
+.roster{padding:8px 12px 12px}
+.rrow{display:grid;grid-template-columns:14px 62px 1fr 52px;align-items:center;gap:9px;
+  padding:6px 0;border-bottom:1px dashed var(--border)}
+.rrow:last-child{border-bottom:0}
+.rrow.dim{opacity:.5}
+.rrow .rank{font-size:10px;color:var(--text-faint);text-align:right}
+.rrow .role{font-size:10px;letter-spacing:.04em;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.rrow .val{font-size:12px;text-align:right;font-variant-numeric:tabular-nums}
+.rbar{position:relative;height:9px;background:var(--panel-2);border:1px solid var(--border);
+  border-radius:3px;overflow:hidden}
+.rbar .zero{position:absolute;left:50%;top:0;bottom:0;width:1px;background:var(--text-faint);opacity:.6}
+.rbar .fill{position:absolute;top:0;bottom:0;transition:width .4s ease,left .4s ease;border-radius:2px}
+.rbar .fill.pos{background:var(--pos)} .rbar .fill.neg{background:var(--neg)}
+
+/* feed */
+.feed{padding:6px 0;max-height:300px;overflow-y:auto}
+.feed-row{display:grid;grid-template-columns:64px 52px 1fr;gap:8px;align-items:baseline;
+  padding:4px 12px;font-size:11px}
+.feed-row+.feed-row{border-top:1px solid color-mix(in srgb,var(--border) 55%,transparent)}
+.feed-t{color:var(--text-faint);font-variant-numeric:tabular-nums;font-size:10px}
+.feed-row .tag{font-size:9px;letter-spacing:.06em;font-weight:600}
+.feed-x{color:var(--text-dim);min-width:0;overflow:hidden;text-overflow:ellipsis}
+.feed-row.cursor .feed-x{color:var(--text)}
+.blink{color:var(--accent);animation:blink 1s step-end infinite}
+@keyframes blink{50%{opacity:0}}
+
+/* recorded market firehose feed (real captured launches — distinct from SQUAWK) */
+.recbadge{display:inline-flex;align-items:center;gap:6px;font-size:9px;letter-spacing:.06em;
+  color:var(--warn);border:1px solid var(--border);border-radius:999px;padding:2px 8px;background:var(--panel-2)}
+.recbadge .rdot{width:6px;height:6px;border-radius:1px;background:var(--warn)}
+.mkt{padding:6px 0;max-height:302px;overflow-y:auto}
+.mkt-row{display:grid;grid-template-columns:58px 1fr;gap:8px;align-items:baseline;
+  padding:5px 12px;font-size:11px}
+.mkt-row+.mkt-row{border-top:1px solid color-mix(in srgb,var(--border) 55%,transparent)}
+.mkt-t{color:var(--text-faint);font-variant-numeric:tabular-nums;font-size:10px}
+.mkt-x{color:var(--text-dim);min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.mkt-x .new{color:var(--accent);font-size:9px;letter-spacing:.06em;margin-right:6px;font-weight:600}
+.mkt-x .mint{color:var(--text);letter-spacing:.02em}
+.mkt-x .sw{color:var(--text-faint);font-variant-numeric:tabular-nums}
+.mkt-foot{padding:9px 12px 11px;font-size:10px;color:var(--text-faint);line-height:1.5;
+  border-top:1px solid var(--border)}
+
+/* sparkline */
+.spark-wrap{padding:12px 13px 14px}
+.spark-wrap svg{width:100%;height:96px;display:block;overflow:visible}
+.spark-legend{display:flex;justify-content:space-between;font-size:9px;color:var(--text-faint);
+  margin-top:6px;letter-spacing:.06em}
+
+/* ===================== SCRUBBER ===================== */
+.scrubber{margin-top:14px;padding:13px 15px}
+.scrub-head{display:flex;align-items:center;gap:12px;flex-wrap:wrap}
+.play{
+  display:inline-flex;align-items:center;gap:9px;cursor:pointer;
+  border:1px solid var(--border-strong);background:var(--panel-2);border-radius:8px;
+  padding:9px 14px;font-size:9px;letter-spacing:.08em;color:var(--text);
+}
+.play:hover{border-color:var(--accent)}
+.play.on{background:var(--accent-soft);border-color:var(--accent);color:var(--accent)}
+.play .ico{font-size:11px;width:12px;text-align:center}
+.scrub-meta{font-size:10px;color:var(--text-dim);margin-left:auto;letter-spacing:.06em}
+.scrub-meta b{color:var(--text)}
+.track{margin-top:14px;position:relative}
+.ticks{display:flex;justify-content:space-between;margin:0 2px 6px;font-size:9px;color:var(--text-faint)}
+.ticks span{font-variant-numeric:tabular-nums}
+input[type=range]{
+  -webkit-appearance:none;appearance:none;width:100%;height:26px;background:transparent;cursor:pointer;margin:0
+}
+input[type=range]::-webkit-slider-runnable-track{height:8px;border-radius:6px;
+  background:linear-gradient(90deg,var(--neg),var(--warn),var(--accent));border:1px solid var(--border)}
+input[type=range]::-moz-range-track{height:8px;border-radius:6px;
+  background:linear-gradient(90deg,var(--neg),var(--warn),var(--accent));border:1px solid var(--border)}
+input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;appearance:none;
+  width:16px;height:20px;margin-top:-7px;border-radius:4px;background:var(--panel);
+  border:2px solid var(--accent);box-shadow:var(--shadow)}
+input[type=range]::-moz-range-thumb{width:14px;height:18px;border-radius:4px;background:var(--panel);
+  border:2px solid var(--accent);box-shadow:var(--shadow)}
+.foot-note{margin-top:11px;font-size:10px;color:var(--text-faint);line-height:1.5}
+
+@media (prefers-reduced-motion: reduce){
+  *{transition:none!important;animation:none!important}
+}
+</style>
+
+<div class="wrap">
+
+  <!-- ===================== TOP STATUS BAR ===================== -->
+  <header class="topbar">
+    <div class="brand">
+      <div class="logo px">QD</div>
+      <div>
+        <div class="name px">DESK&nbsp;CONSOLE</div>
+        <div class="sub num" id="runline">run · —</div>
+      </div>
+    </div>
+    <div class="live" title="Static demo data — not a live feed">
+      <span class="dot" aria-hidden="true"></span>
+      <span>DEMO DATA</span>
+      <span class="ep num" id="epochLabel">EPOCH 00</span>
+    </div>
+
+    <div class="stats num" role="group" aria-label="population statistics">
+      <div class="stat"><div class="k">Population</div><div class="v" id="pop">—</div><div class="vs" id="popSub">agents</div></div>
+      <div class="stat"><div class="k">Coverage</div><div class="v" id="cov">—</div><div class="vs" id="covSub">— niches</div></div>
+      <div class="stat"><div class="k">Best PnL</div><div class="v" id="best">—</div><div class="vs">bps · held-out</div></div>
+      <div class="stat"><div class="k">Mean PnL</div><div class="v" id="mean">—</div><div class="vs">bps · population</div></div>
+    </div>
+    <button class="theme-btn" id="themeBtn" title="Toggle light / dark" aria-label="Toggle light or dark theme">◐</button>
+  </header>
+
+  <!-- ===================== RUN TOGGLE (4-way progression) ===================== -->
+  <div class="runbar">
+    <div class="seg" role="tablist" aria-label="Training algorithm run">
+      <button class="seg-btn" id="run_pbt" role="tab" aria-selected="false" aria-controls="floor">PBT</button>
+      <button class="seg-btn" id="run_mapelites" role="tab" aria-selected="false" aria-controls="floor">MAP-ELITES ·120</button>
+      <button class="seg-btn" id="run_mapelites_scaled" role="tab" aria-selected="false" aria-controls="floor">MAP-ELITES ·131 lucky</button>
+      <button class="seg-btn" id="run_mapelites_scale" role="tab" aria-selected="true" aria-controls="floor">AT SCALE</button>
+    </div>
+    <div class="run-caption" id="runCaption">quality-diversity — every niche kept alive</div>
+    <div class="run-subnote hidden" id="runSubnote"></div>
+    <div class="run-hint">same held-out tokens · scrub each run and watch <b>Coverage</b></div>
+  </div>
+
+  <!-- ===================== MAIN ===================== -->
+  <div class="grid">
+
+    <!-- FLOOR -->
+    <section class="panel" aria-label="Trading floor by archetype niche">
+      <div class="phead">
+        <span class="t px">THE FLOOR</span>
+        <span class="r num" id="floorMeta">6 stations</span>
+      </div>
+      <div class="floor-wrap">
+        <div id="floor"></div>
+      </div>
+    </section>
+
+    <!-- RIGHT RAIL -->
+    <aside class="rail">
+      <section class="panel">
+        <div class="phead"><span class="t px">ROLE ROSTER</span><span class="r">champion PnL ▾</span></div>
+        <div class="roster" id="roster"></div>
+      </section>
+
+      <section class="panel">
+        <div class="phead"><span class="t px">SQUAWK FEED</span><span class="r" id="feedMeta">—</span></div>
+        <div class="feed" id="feed" aria-live="polite"></div>
+      </section>
+
+      <section class="panel" aria-label="Recorded market firehose — real captured token launches">
+        <div class="phead">
+          <span class="t px">RECORDED FIREHOSE</span>
+          <span class="recbadge" title="Real Pinax capture, replayed — not a live stream">
+            <span class="rdot" aria-hidden="true"></span>recorded · not live
+          </span>
+        </div>
+        <div class="mkt" id="mktFeed"></div>
+        <div class="mkt-foot" id="mktFoot">—</div>
+      </section>
+
+      <section class="panel">
+        <div class="phead"><span class="t px">BEST PnL / GEN</span><span class="r num" id="sparkNow">—</span></div>
+        <div class="spark-wrap">
+          <svg id="spark" viewBox="0 0 120 46" preserveAspectRatio="none" role="img" aria-label="Best PnL across generations"></svg>
+          <div class="spark-legend"><span>GEN 0</span><span id="sparkArc">the improvement arc</span><span id="sparkLast">GEN —</span></div>
+        </div>
+      </section>
+    </aside>
+  </div>
+
+  <!-- ===================== SCRUBBER ===================== -->
+  <section class="panel scrubber" aria-label="Epoch scrubber">
+    <div class="scrub-head">
+      <button class="play" id="play" aria-pressed="false" aria-label="Play through generations">
+        <span class="ico" id="playIcon" aria-hidden="true">►</span><span id="playLabel">PLAY</span>
+      </button>
+      <div class="scrub-meta num">GEN <b id="genNow">00</b> / <span id="genTotal">00</span> &nbsp;·&nbsp; watching the population evolve</div>
+    </div>
+    <div class="track">
+      <div class="ticks num" id="ticks"></div>
+      <input type="range" id="scrub" min="0" max="0" step="1" value="0" aria-label="Generation" aria-valuetext="Generation 0">
+    </div>
+    <div class="foot-note" id="footNote">Quality-diversity training telemetry. Each desk is a behavioral niche; occupancy 0 = an archetype the population has not discovered yet.</div>
+  </section>
+
+</div>
+
+<script>
+/* ===================== TELEMETRY RUNS (four swappable literals) =====================
+   Four real training exports of the same schema (desk-telemetry-schema.md) — a
+   progression story. The console renders exactly one at a time; the 4-way toggle flips
+   `currentRun` and re-derives everything (desks, stats, scrubber, sparkline, SQUAWK
+   feed). Swap any object for a fresh export of the same schema and nothing else changes.
+     · pbt              — fitness-only: the population collapses into one niche (coverage 0.67 -> 0.33)
+     · mapelites        — quality-diversity on 120 tokens: four of six niches held (coverage 0.667)
+     · mapelites_scaled — quality-diversity on 131 fresh tokens: all six niches filled (coverage 1.000)
+     · mapelites_scale  — quality-diversity at data scale: coverage holds, edge ≈ breakeven (best single-digit bps) */
+const RUNS = {
+  "mapelites": {
+  "desk_type": "memecoin",
+  "run_id": "mapelites-2026-08-23-seed0",
+  "algo": "map_elites",
+  "roles": [
+    "GOBLIN",
+    "GREMLIN",
+    "GIZMO",
+    "NOODLE",
+    "PICKLE",
+    "GECKO"
+  ],
+  "cost_bps": 125,
+  "generations": [
+    {
+      "gen": 0,
+      "population_size": 4,
+      "coverage": 0.667,
+      "best_pnl_bps": 12.9,
+      "mean_pnl_bps": 1.7,
+      "desks": [
+        {
+          "role": "GOBLIN",
+          "occupancy": 0,
+          "median_pnl_bps": null,
+          "champion": null,
+          "events": []
+        },
+        {
+          "role": "GREMLIN",
+          "occupancy": 1,
+          "median_pnl_bps": 0.0,
+          "champion": {
+            "agent_id": "seed001",
+            "pnl_bps": 0.0,
+            "trades": 0,
+            "win_rate": 0.0,
+            "hold_secs": 0,
+            "status": "gnawing on a cable"
+          },
+          "events": [
+            "niche filled at gen 0",
+            "champion +0 bps · 0 trades"
+          ]
+        },
+        {
+          "role": "GIZMO",
+          "occupancy": 1,
+          "median_pnl_bps": -4.4,
+          "champion": {
+            "agent_id": "seed005",
+            "pnl_bps": -4.4,
+            "trades": 8,
+            "win_rate": 0.08,
+            "hold_secs": 484,
+            "status": "whirring quietly"
+          },
+          "events": [
+            "niche filled at gen 0",
+            "champion -4 bps · 8 trades"
+          ]
+        },
+        {
+          "role": "NOODLE",
+          "occupancy": 1,
+          "median_pnl_bps": 12.9,
+          "champion": {
+            "agent_id": "seed003",
+            "pnl_bps": 12.9,
+            "trades": 39,
+            "win_rate": 0.17,
+            "hold_secs": 150,
+            "status": "doing the wiggle"
+          },
+          "events": [
+            "niche filled at gen 0",
+            "champion +13 bps · 39 trades"
+          ]
+        },
+        {
+          "role": "PICKLE",
+          "occupancy": 1,
+          "median_pnl_bps": -1.6,
+          "champion": {
+            "agent_id": "seed008",
+            "pnl_bps": -1.6,
+            "trades": 33,
+            "win_rate": 0.08,
+            "hold_secs": 242,
+            "status": "brined and waiting"
+          },
+          "events": [
+            "niche filled at gen 0",
+            "champion -2 bps · 33 trades"
+          ]
+        },
+        {
+          "role": "GECKO",
+          "occupancy": 0,
+          "median_pnl_bps": null,
+          "champion": null,
+          "events": []
+        }
+      ]
+    },
+    {
+      "gen": 1,
+      "population_size": 4,
+      "coverage": 0.667,
+      "best_pnl_bps": 63.7,
+      "mean_pnl_bps": 14.4,
+      "desks": [
+        {
+          "role": "GOBLIN",
+          "occupancy": 0,
+          "median_pnl_bps": null,
+          "champion": null,
+          "events": []
+        },
+        {
+          "role": "GREMLIN",
+          "occupancy": 1,
+          "median_pnl_bps": 0.0,
+          "champion": {
+            "agent_id": "seed001",
+            "pnl_bps": 0.0,
+            "trades": 0,
+            "win_rate": 0.0,
+            "hold_secs": 0,
+            "status": "gnawing on a cable"
+          },
+          "events": [
+            "champion +0 bps · 0 trades"
+          ]
+        },
+        {
+          "role": "GIZMO",
+          "occupancy": 1,
+          "median_pnl_bps": -4.4,
+          "champion": {
+            "agent_id": "seed005",
+            "pnl_bps": -4.4,
+            "trades": 8,
+            "win_rate": 0.08,
+            "hold_secs": 484,
+            "status": "whirring quietly"
+          },
+          "events": [
+            "champion -4 bps · 8 trades"
+          ]
+        },
+        {
+          "role": "NOODLE",
+          "occupancy": 1,
+          "median_pnl_bps": 63.7,
+          "champion": {
+            "agent_id": "c0003",
+            "pnl_bps": 63.7,
+            "trades": 97,
+            "win_rate": 0.17,
+            "hold_secs": 867,
+            "status": "doing the wiggle"
+          },
+          "events": [
+            "new champion, +51 bps over prior",
+            "champion +64 bps · 97 trades"
+          ]
+        },
+        {
+          "role": "PICKLE",
+          "occupancy": 1,
+          "median_pnl_bps": -1.6,
+          "champion": {
+            "agent_id": "seed008",
+            "pnl_bps": -1.6,
+            "trades": 33,
+            "win_rate": 0.08,
+            "hold_secs": 242,
+            "status": "brined and waiting"
+          },
+          "events": [
+            "champion -2 bps · 33 trades"
+          ]
+        },
+        {
+          "role": "GECKO",
+          "occupancy": 0,
+          "median_pnl_bps": null,
+          "champion": null,
+          "events": []
+        }
+      ]
+    },
+    {
+      "gen": 2,
+      "population_size": 4,
+      "coverage": 0.667,
+      "best_pnl_bps": 63.7,
+      "mean_pnl_bps": 14.4,
+      "desks": [
+        {
+          "role": "GOBLIN",
+          "occupancy": 0,
+          "median_pnl_bps": null,
+          "champion": null,
+          "events": []
+        },
+        {
+          "role": "GREMLIN",
+          "occupancy": 1,
+          "median_pnl_bps": 0.0,
+          "champion": {
+            "agent_id": "seed001",
+            "pnl_bps": 0.0,
+            "trades": 0,
+            "win_rate": 0.0,
+            "hold_secs": 0,
+            "status": "gnawing on a cable"
+          },
+          "events": [
+            "champion +0 bps · 0 trades"
+          ]
+        },
+        {
+          "role": "GIZMO",
+          "occupancy": 1,
+          "median_pnl_bps": -4.4,
+          "champion": {
+            "agent_id": "seed005",
+            "pnl_bps": -4.4,
+            "trades": 8,
+            "win_rate": 0.08,
+            "hold_secs": 484,
+            "status": "whirring quietly"
+          },
+          "events": [
+            "champion -4 bps · 8 trades"
+          ]
+        },
+        {
+          "role": "NOODLE",
+          "occupancy": 1,
+          "median_pnl_bps": 63.7,
+          "champion": {
+            "agent_id": "c0003",
+            "pnl_bps": 63.7,
+            "trades": 97,
+            "win_rate": 0.17,
+            "hold_secs": 867,
+            "status": "doing the wiggle"
+          },
+          "events": [
+            "champion +64 bps · 97 trades"
+          ]
+        },
+        {
+          "role": "PICKLE",
+          "occupancy": 1,
+          "median_pnl_bps": -1.6,
+          "champion": {
+            "agent_id": "seed008",
+            "pnl_bps": -1.6,
+            "trades": 33,
+            "win_rate": 0.08,
+            "hold_secs": 242,
+            "status": "brined and waiting"
+          },
+          "events": [
+            "champion -2 bps · 33 trades"
+          ]
+        },
+        {
+          "role": "GECKO",
+          "occupancy": 0,
+          "median_pnl_bps": null,
+          "champion": null,
+          "events": []
+        }
+      ]
+    },
+    {
+      "gen": 3,
+      "population_size": 4,
+      "coverage": 0.667,
+      "best_pnl_bps": 63.7,
+      "mean_pnl_bps": 33.8,
+      "desks": [
+        {
+          "role": "GOBLIN",
+          "occupancy": 0,
+          "median_pnl_bps": null,
+          "champion": null,
+          "events": []
+        },
+        {
+          "role": "GREMLIN",
+          "occupancy": 1,
+          "median_pnl_bps": 0.0,
+          "champion": {
+            "agent_id": "seed001",
+            "pnl_bps": 0.0,
+            "trades": 0,
+            "win_rate": 0.0,
+            "hold_secs": 0,
+            "status": "gnawing on a cable"
+          },
+          "events": [
+            "champion +0 bps · 0 trades"
+          ]
+        },
+        {
+          "role": "GIZMO",
+          "occupancy": 1,
+          "median_pnl_bps": 23.2,
+          "champion": {
+            "agent_id": "c0013",
+            "pnl_bps": 23.2,
+            "trades": 18,
+            "win_rate": 0.08,
+            "hold_secs": 334,
+            "status": "whirring quietly"
+          },
+          "events": [
+            "new champion, +28 bps over prior",
+            "champion +23 bps · 18 trades"
+          ]
+        },
+        {
+          "role": "NOODLE",
+          "occupancy": 1,
+          "median_pnl_bps": 63.7,
+          "champion": {
+            "agent_id": "c0003",
+            "pnl_bps": 63.7,
+            "trades": 97,
+            "win_rate": 0.17,
+            "hold_secs": 867,
+            "status": "doing the wiggle"
+          },
+          "events": [
+            "champion +64 bps · 97 trades"
+          ]
+        },
+        {
+          "role": "PICKLE",
+          "occupancy": 1,
+          "median_pnl_bps": 48.4,
+          "champion": {
+            "agent_id": "c0012",
+            "pnl_bps": 48.4,
+            "trades": 45,
+            "win_rate": 0.08,
+            "hold_secs": 123,
+            "status": "brined and waiting"
+          },
+          "events": [
+            "new champion, +50 bps over prior",
+            "champion +48 bps · 45 trades"
+          ]
+        },
+        {
+          "role": "GECKO",
+          "occupancy": 0,
+          "median_pnl_bps": null,
+          "champion": null,
+          "events": []
+        }
+      ]
+    },
+    {
+      "gen": 4,
+      "population_size": 4,
+      "coverage": 0.667,
+      "best_pnl_bps": 63.7,
+      "mean_pnl_bps": 33.8,
+      "desks": [
+        {
+          "role": "GOBLIN",
+          "occupancy": 0,
+          "median_pnl_bps": null,
+          "champion": null,
+          "events": []
+        },
+        {
+          "role": "GREMLIN",
+          "occupancy": 1,
+          "median_pnl_bps": 0.0,
+          "champion": {
+            "agent_id": "seed001",
+            "pnl_bps": 0.0,
+            "trades": 0,
+            "win_rate": 0.0,
+            "hold_secs": 0,
+            "status": "gnawing on a cable"
+          },
+          "events": [
+            "champion +0 bps · 0 trades"
+          ]
+        },
+        {
+          "role": "GIZMO",
+          "occupancy": 1,
+          "median_pnl_bps": 23.2,
+          "champion": {
+            "agent_id": "c0013",
+            "pnl_bps": 23.2,
+            "trades": 18,
+            "win_rate": 0.08,
+            "hold_secs": 334,
+            "status": "whirring quietly"
+          },
+          "events": [
+            "champion +23 bps · 18 trades"
+          ]
+        },
+        {
+          "role": "NOODLE",
+          "occupancy": 1,
+          "median_pnl_bps": 63.7,
+          "champion": {
+            "agent_id": "c0003",
+            "pnl_bps": 63.7,
+            "trades": 97,
+            "win_rate": 0.17,
+            "hold_secs": 867,
+            "status": "doing the wiggle"
+          },
+          "events": [
+            "champion +64 bps · 97 trades"
+          ]
+        },
+        {
+          "role": "PICKLE",
+          "occupancy": 1,
+          "median_pnl_bps": 48.4,
+          "champion": {
+            "agent_id": "c0012",
+            "pnl_bps": 48.4,
+            "trades": 45,
+            "win_rate": 0.08,
+            "hold_secs": 123,
+            "status": "brined and waiting"
+          },
+          "events": [
+            "champion +48 bps · 45 trades"
+          ]
+        },
+        {
+          "role": "GECKO",
+          "occupancy": 0,
+          "median_pnl_bps": null,
+          "champion": null,
+          "events": []
+        }
+      ]
+    },
+    {
+      "gen": 5,
+      "population_size": 4,
+      "coverage": 0.667,
+      "best_pnl_bps": 63.7,
+      "mean_pnl_bps": 33.8,
+      "desks": [
+        {
+          "role": "GOBLIN",
+          "occupancy": 0,
+          "median_pnl_bps": null,
+          "champion": null,
+          "events": []
+        },
+        {
+          "role": "GREMLIN",
+          "occupancy": 1,
+          "median_pnl_bps": 0.0,
+          "champion": {
+            "agent_id": "seed001",
+            "pnl_bps": 0.0,
+            "trades": 0,
+            "win_rate": 0.0,
+            "hold_secs": 0,
+            "status": "gnawing on a cable"
+          },
+          "events": [
+            "champion +0 bps · 0 trades"
+          ]
+        },
+        {
+          "role": "GIZMO",
+          "occupancy": 1,
+          "median_pnl_bps": 23.2,
+          "champion": {
+            "agent_id": "c0013",
+            "pnl_bps": 23.2,
+            "trades": 18,
+            "win_rate": 0.08,
+            "hold_secs": 334,
+            "status": "whirring quietly"
+          },
+          "events": [
+            "champion +23 bps · 18 trades"
+          ]
+        },
+        {
+          "role": "NOODLE",
+          "occupancy": 1,
+          "median_pnl_bps": 63.7,
+          "champion": {
+            "agent_id": "c0003",
+            "pnl_bps": 63.7,
+            "trades": 97,
+            "win_rate": 0.17,
+            "hold_secs": 867,
+            "status": "doing the wiggle"
+          },
+          "events": [
+            "champion +64 bps · 97 trades"
+          ]
+        },
+        {
+          "role": "PICKLE",
+          "occupancy": 1,
+          "median_pnl_bps": 48.4,
+          "champion": {
+            "agent_id": "c0012",
+            "pnl_bps": 48.4,
+            "trades": 45,
+            "win_rate": 0.08,
+            "hold_secs": 123,
+            "status": "brined and waiting"
+          },
+          "events": [
+            "champion +48 bps · 45 trades"
+          ]
+        },
+        {
+          "role": "GECKO",
+          "occupancy": 0,
+          "median_pnl_bps": null,
+          "champion": null,
+          "events": []
+        }
+      ]
+    },
+    {
+      "gen": 6,
+      "population_size": 4,
+      "coverage": 0.667,
+      "best_pnl_bps": 63.7,
+      "mean_pnl_bps": 33.8,
+      "desks": [
+        {
+          "role": "GOBLIN",
+          "occupancy": 0,
+          "median_pnl_bps": null,
+          "champion": null,
+          "events": []
+        },
+        {
+          "role": "GREMLIN",
+          "occupancy": 1,
+          "median_pnl_bps": 0.0,
+          "champion": {
+            "agent_id": "seed001",
+            "pnl_bps": 0.0,
+            "trades": 0,
+            "win_rate": 0.0,
+            "hold_secs": 0,
+            "status": "gnawing on a cable"
+          },
+          "events": [
+            "champion +0 bps · 0 trades"
+          ]
+        },
+        {
+          "role": "GIZMO",
+          "occupancy": 1,
+          "median_pnl_bps": 23.2,
+          "champion": {
+            "agent_id": "c0013",
+            "pnl_bps": 23.2,
+            "trades": 18,
+            "win_rate": 0.08,
+            "hold_secs": 334,
+            "status": "whirring quietly"
+          },
+          "events": [
+            "champion +23 bps · 18 trades"
+          ]
+        },
+        {
+          "role": "NOODLE",
+          "occupancy": 1,
+          "median_pnl_bps": 63.7,
+          "champion": {
+            "agent_id": "c0003",
+            "pnl_bps": 63.7,
+            "trades": 97,
+            "win_rate": 0.17,
+            "hold_secs": 867,
+            "status": "doing the wiggle"
+          },
+          "events": [
+            "champion +64 bps · 97 trades"
+          ]
+        },
+        {
+          "role": "PICKLE",
+          "occupancy": 1,
+          "median_pnl_bps": 48.4,
+          "champion": {
+            "agent_id": "c0012",
+            "pnl_bps": 48.4,
+            "trades": 45,
+            "win_rate": 0.08,
+            "hold_secs": 123,
+            "status": "brined and waiting"
+          },
+          "events": [
+            "champion +48 bps · 45 trades"
+          ]
+        },
+        {
+          "role": "GECKO",
+          "occupancy": 0,
+          "median_pnl_bps": null,
+          "champion": null,
+          "events": []
+        }
+      ]
+    }
+  ]
+  },
+  "pbt": {
+  "desk_type": "memecoin",
+  "run_id": "pbt-2026-08-23-seed0",
+  "algo": "pbt",
+  "roles": [
+    "GOBLIN",
+    "GREMLIN",
+    "GIZMO",
+    "NOODLE",
+    "PICKLE",
+    "GECKO"
+  ],
+  "cost_bps": 125,
+  "generations": [
+    {
+      "gen": 0,
+      "population_size": 24,
+      "coverage": 0.667,
+      "best_pnl_bps": 692.0,
+      "mean_pnl_bps": 68.9,
+      "desks": [
+        {
+          "role": "GOBLIN",
+          "occupancy": 0,
+          "median_pnl_bps": null,
+          "champion": null,
+          "events": []
+        },
+        {
+          "role": "GREMLIN",
+          "occupancy": 7,
+          "median_pnl_bps": 0.0,
+          "champion": {
+            "agent_id": "g00a002",
+            "pnl_bps": 0.0,
+            "trades": 0,
+            "win_rate": 0.0,
+            "hold_secs": 0,
+            "status": "new mint detected"
+          },
+          "events": [
+            "niche filled at gen 0",
+            "champion +0 bps \u00b7 0 trades"
+          ]
+        },
+        {
+          "role": "GIZMO",
+          "occupancy": 3,
+          "median_pnl_bps": -2.4,
+          "champion": {
+            "agent_id": "g00a004",
+            "pnl_bps": 106.2,
+            "trades": 22,
+            "win_rate": 0.17,
+            "hold_secs": 755,
+            "status": "following flow"
+          },
+          "events": [
+            "niche filled at gen 0",
+            "champion +106 bps \u00b7 22 trades"
+          ]
+        },
+        {
+          "role": "NOODLE",
+          "occupancy": 12,
+          "median_pnl_bps": 9.5,
+          "champion": {
+            "agent_id": "g00a021",
+            "pnl_bps": 692.0,
+            "trades": 178,
+            "win_rate": 0.08,
+            "hold_secs": 408,
+            "status": "flagged a rug"
+          },
+          "events": [
+            "niche filled at gen 0",
+            "champion +692 bps \u00b7 178 trades"
+          ]
+        },
+        {
+          "role": "PICKLE",
+          "occupancy": 2,
+          "median_pnl_bps": -38.4,
+          "champion": {
+            "agent_id": "g00a007",
+            "pnl_bps": -8.7,
+            "trades": 146,
+            "win_rate": 0.08,
+            "hold_secs": 961,
+            "status": "kol posted"
+          },
+          "events": [
+            "niche filled at gen 0",
+            "champion -9 bps \u00b7 146 trades"
+          ]
+        },
+        {
+          "role": "GECKO",
+          "occupancy": 0,
+          "median_pnl_bps": null,
+          "champion": null,
+          "events": []
+        }
+      ]
+    },
+    {
+      "gen": 1,
+      "population_size": 24,
+      "coverage": 0.667,
+      "best_pnl_bps": 742.5,
+      "mean_pnl_bps": 218.5,
+      "desks": [
+        {
+          "role": "GOBLIN",
+          "occupancy": 0,
+          "median_pnl_bps": null,
+          "champion": null,
+          "events": []
+        },
+        {
+          "role": "GREMLIN",
+          "occupancy": 6,
+          "median_pnl_bps": 0.0,
+          "champion": {
+            "agent_id": "g01a002",
+            "pnl_bps": 0.0,
+            "trades": 0,
+            "win_rate": 0.0,
+            "hold_secs": 0,
+            "status": "new mint detected"
+          },
+          "events": [
+            "champion +0 bps \u00b7 0 trades",
+            "occupancy 7 -> 6"
+          ]
+        },
+        {
+          "role": "GIZMO",
+          "occupancy": 4,
+          "median_pnl_bps": -1.7,
+          "champion": {
+            "agent_id": "g01a004",
+            "pnl_bps": 176.2,
+            "trades": 32,
+            "win_rate": 0.17,
+            "hold_secs": 882,
+            "status": "following flow"
+          },
+          "events": [
+            "new champion, +70 bps over prior",
+            "champion +176 bps \u00b7 32 trades",
+            "occupancy 3 -> 4"
+          ]
+        },
+        {
+          "role": "NOODLE",
+          "occupancy": 13,
+          "median_pnl_bps": 540.1,
+          "champion": {
+            "agent_id": "g01a021",
+            "pnl_bps": 742.5,
+            "trades": 230,
+            "win_rate": 0.08,
+            "hold_secs": 418,
+            "status": "flagged a rug"
+          },
+          "events": [
+            "new champion, +50 bps over prior",
+            "champion +742 bps \u00b7 230 trades",
+            "occupancy 12 -> 13"
+          ]
+        },
+        {
+          "role": "PICKLE",
+          "occupancy": 1,
+          "median_pnl_bps": -10.1,
+          "champion": {
+            "agent_id": "g01a007",
+            "pnl_bps": -10.1,
+            "trades": 142,
+            "win_rate": 0.08,
+            "hold_secs": 900,
+            "status": "kol posted"
+          },
+          "events": [
+            "champion -10 bps \u00b7 142 trades",
+            "occupancy 2 -> 1"
+          ]
+        },
+        {
+          "role": "GECKO",
+          "occupancy": 0,
+          "median_pnl_bps": null,
+          "champion": null,
+          "events": []
+        }
+      ]
+    },
+    {
+      "gen": 2,
+      "population_size": 24,
+      "coverage": 0.667,
+      "best_pnl_bps": 913.8,
+      "mean_pnl_bps": 358.8,
+      "desks": [
+        {
+          "role": "GOBLIN",
+          "occupancy": 0,
+          "median_pnl_bps": null,
+          "champion": null,
+          "events": []
+        },
+        {
+          "role": "GREMLIN",
+          "occupancy": 5,
+          "median_pnl_bps": 0.0,
+          "champion": {
+            "agent_id": "g02a002",
+            "pnl_bps": 0.0,
+            "trades": 0,
+            "win_rate": 0.0,
+            "hold_secs": 0,
+            "status": "new mint detected"
+          },
+          "events": [
+            "champion +0 bps \u00b7 0 trades",
+            "occupancy 6 -> 5"
+          ]
+        },
+        {
+          "role": "GIZMO",
+          "occupancy": 2,
+          "median_pnl_bps": -4.8,
+          "champion": {
+            "agent_id": "g02a010",
+            "pnl_bps": -0.1,
+            "trades": 7,
+            "win_rate": 0.0,
+            "hold_secs": 424,
+            "status": "following flow"
+          },
+          "events": [
+            "champion -0 bps \u00b7 7 trades",
+            "occupancy 4 -> 2"
+          ]
+        },
+        {
+          "role": "NOODLE",
+          "occupancy": 15,
+          "median_pnl_bps": 552.6,
+          "champion": {
+            "agent_id": "g02a014",
+            "pnl_bps": 913.8,
+            "trades": 248,
+            "win_rate": 0.08,
+            "hold_secs": 411,
+            "status": "flagged a rug"
+          },
+          "events": [
+            "new champion, +171 bps over prior",
+            "champion +914 bps \u00b7 248 trades",
+            "occupancy 13 -> 15"
+          ]
+        },
+        {
+          "role": "PICKLE",
+          "occupancy": 2,
+          "median_pnl_bps": 307.1,
+          "champion": {
+            "agent_id": "g02a006",
+            "pnl_bps": 418.9,
+            "trades": 103,
+            "win_rate": 0.08,
+            "hold_secs": 395,
+            "status": "kol posted"
+          },
+          "events": [
+            "new champion, +429 bps over prior",
+            "champion +419 bps \u00b7 103 trades",
+            "occupancy 1 -> 2"
+          ]
+        },
+        {
+          "role": "GECKO",
+          "occupancy": 0,
+          "median_pnl_bps": null,
+          "champion": null,
+          "events": []
+        }
+      ]
+    },
+    {
+      "gen": 3,
+      "population_size": 24,
+      "coverage": 0.5,
+      "best_pnl_bps": 946.0,
+      "mean_pnl_bps": 528.6,
+      "desks": [
+        {
+          "role": "GOBLIN",
+          "occupancy": 0,
+          "median_pnl_bps": null,
+          "champion": null,
+          "events": []
+        },
+        {
+          "role": "GREMLIN",
+          "occupancy": 1,
+          "median_pnl_bps": 0.0,
+          "champion": {
+            "agent_id": "g03a023",
+            "pnl_bps": 0.0,
+            "trades": 0,
+            "win_rate": 0.0,
+            "hold_secs": 0,
+            "status": "new mint detected"
+          },
+          "events": [
+            "champion +0 bps \u00b7 0 trades",
+            "occupancy 5 -> 1"
+          ]
+        },
+        {
+          "role": "GIZMO",
+          "occupancy": 0,
+          "median_pnl_bps": null,
+          "champion": null,
+          "events": []
+        },
+        {
+          "role": "NOODLE",
+          "occupancy": 21,
+          "median_pnl_bps": 554.2,
+          "champion": {
+            "agent_id": "g03a004",
+            "pnl_bps": 946.0,
+            "trades": 287,
+            "win_rate": 0.08,
+            "hold_secs": 509,
+            "status": "flagged a rug"
+          },
+          "events": [
+            "new champion, +32 bps over prior",
+            "champion +946 bps \u00b7 287 trades",
+            "occupancy 15 -> 21"
+          ]
+        },
+        {
+          "role": "PICKLE",
+          "occupancy": 2,
+          "median_pnl_bps": 188.5,
+          "champion": {
+            "agent_id": "g03a007",
+            "pnl_bps": 190.3,
+            "trades": 102,
+            "win_rate": 0.08,
+            "hold_secs": 514,
+            "status": "kol posted"
+          },
+          "events": [
+            "champion +190 bps \u00b7 102 trades"
+          ]
+        },
+        {
+          "role": "GECKO",
+          "occupancy": 0,
+          "median_pnl_bps": null,
+          "champion": null,
+          "events": []
+        }
+      ]
+    },
+    {
+      "gen": 4,
+      "population_size": 24,
+      "coverage": 0.333,
+      "best_pnl_bps": 976.8,
+      "mean_pnl_bps": 574.4,
+      "desks": [
+        {
+          "role": "GOBLIN",
+          "occupancy": 0,
+          "median_pnl_bps": null,
+          "champion": null,
+          "events": []
+        },
+        {
+          "role": "GREMLIN",
+          "occupancy": 0,
+          "median_pnl_bps": null,
+          "champion": null,
+          "events": []
+        },
+        {
+          "role": "GIZMO",
+          "occupancy": 0,
+          "median_pnl_bps": null,
+          "champion": null,
+          "events": []
+        },
+        {
+          "role": "NOODLE",
+          "occupancy": 21,
+          "median_pnl_bps": 560.3,
+          "champion": {
+            "agent_id": "g04a007",
+            "pnl_bps": 976.8,
+            "trades": 281,
+            "win_rate": 0.08,
+            "hold_secs": 509,
+            "status": "flagged a rug"
+          },
+          "events": [
+            "new champion, +31 bps over prior",
+            "champion +977 bps \u00b7 281 trades"
+          ]
+        },
+        {
+          "role": "PICKLE",
+          "occupancy": 3,
+          "median_pnl_bps": 286.0,
+          "champion": {
+            "agent_id": "g04a009",
+            "pnl_bps": 496.0,
+            "trades": 100,
+            "win_rate": 0.08,
+            "hold_secs": 229,
+            "status": "kol posted"
+          },
+          "events": [
+            "new champion, +306 bps over prior",
+            "champion +496 bps \u00b7 100 trades",
+            "occupancy 2 -> 3"
+          ]
+        },
+        {
+          "role": "GECKO",
+          "occupancy": 0,
+          "median_pnl_bps": null,
+          "champion": null,
+          "events": []
+        }
+      ]
+    },
+    {
+      "gen": 5,
+      "population_size": 24,
+      "coverage": 0.333,
+      "best_pnl_bps": 995.6,
+      "mean_pnl_bps": 660.2,
+      "desks": [
+        {
+          "role": "GOBLIN",
+          "occupancy": 0,
+          "median_pnl_bps": null,
+          "champion": null,
+          "events": []
+        },
+        {
+          "role": "GREMLIN",
+          "occupancy": 0,
+          "median_pnl_bps": null,
+          "champion": null,
+          "events": []
+        },
+        {
+          "role": "GIZMO",
+          "occupancy": 0,
+          "median_pnl_bps": null,
+          "champion": null,
+          "events": []
+        },
+        {
+          "role": "NOODLE",
+          "occupancy": 23,
+          "median_pnl_bps": 656.3,
+          "champion": {
+            "agent_id": "g05a007",
+            "pnl_bps": 995.6,
+            "trades": 328,
+            "win_rate": 0.17,
+            "hold_secs": 625,
+            "status": "flagged a rug"
+          },
+          "events": [
+            "new champion, +19 bps over prior",
+            "champion +996 bps \u00b7 328 trades",
+            "occupancy 21 -> 23"
+          ]
+        },
+        {
+          "role": "PICKLE",
+          "occupancy": 1,
+          "median_pnl_bps": 192.4,
+          "champion": {
+            "agent_id": "g05a015",
+            "pnl_bps": 192.4,
+            "trades": 145,
+            "win_rate": 0.08,
+            "hold_secs": 670,
+            "status": "kol posted"
+          },
+          "events": [
+            "champion +192 bps \u00b7 145 trades",
+            "occupancy 3 -> 1"
+          ]
+        },
+        {
+          "role": "GECKO",
+          "occupancy": 0,
+          "median_pnl_bps": null,
+          "champion": null,
+          "events": []
+        }
+      ]
+    }
+  ]
+  },
+  "mapelites_scaled": {
+  "desk_type": "memecoin",
+  "run_id": "mapelites-2026-08-23-seed0",
+  "algo": "map_elites",
+  "roles": [
+    "GOBLIN",
+    "GREMLIN",
+    "GIZMO",
+    "NOODLE",
+    "PICKLE",
+    "GECKO"
+  ],
+  "cost_bps": 125,
+  "generations": [
+    {
+      "gen": 0,
+      "population_size": 6,
+      "coverage": 1.0,
+      "best_pnl_bps": 0.0,
+      "mean_pnl_bps": -40.2,
+      "desks": [
+        {
+          "role": "GOBLIN",
+          "occupancy": 1,
+          "median_pnl_bps": -2.1,
+          "champion": {
+            "agent_id": "seed036",
+            "pnl_bps": -2.1,
+            "trades": 311,
+            "win_rate": 0.03,
+            "hold_secs": 73,
+            "status": "cackling in the mempool"
+          },
+          "events": [
+            "niche filled at gen 0",
+            "champion -2 bps \u00b7 311 trades"
+          ]
+        },
+        {
+          "role": "GREMLIN",
+          "occupancy": 1,
+          "median_pnl_bps": 0.0,
+          "champion": {
+            "agent_id": "seed010",
+            "pnl_bps": 0.0,
+            "trades": 0,
+            "win_rate": 0.0,
+            "hold_secs": 0,
+            "status": "gnawing on a cable"
+          },
+          "events": [
+            "niche filled at gen 0",
+            "champion +0 bps \u00b7 0 trades"
+          ]
+        },
+        {
+          "role": "GIZMO",
+          "occupancy": 1,
+          "median_pnl_bps": -16.8,
+          "champion": {
+            "agent_id": "seed031",
+            "pnl_bps": -16.8,
+            "trades": 19,
+            "win_rate": 0.03,
+            "hold_secs": 91,
+            "status": "whirring quietly"
+          },
+          "events": [
+            "niche filled at gen 0",
+            "champion -17 bps \u00b7 19 trades"
+          ]
+        },
+        {
+          "role": "NOODLE",
+          "occupancy": 1,
+          "median_pnl_bps": -155.3,
+          "champion": {
+            "agent_id": "seed016",
+            "pnl_bps": -155.3,
+            "trades": 902,
+            "win_rate": 0.1,
+            "hold_secs": 112,
+            "status": "doing the wiggle"
+          },
+          "events": [
+            "niche filled at gen 0",
+            "champion -155 bps \u00b7 902 trades"
+          ]
+        },
+        {
+          "role": "PICKLE",
+          "occupancy": 1,
+          "median_pnl_bps": -20.8,
+          "champion": {
+            "agent_id": "seed003",
+            "pnl_bps": -20.8,
+            "trades": 232,
+            "win_rate": 0.1,
+            "hold_secs": 101,
+            "status": "brined and waiting"
+          },
+          "events": [
+            "niche filled at gen 0",
+            "champion -21 bps \u00b7 232 trades"
+          ]
+        },
+        {
+          "role": "GECKO",
+          "occupancy": 1,
+          "median_pnl_bps": -46.0,
+          "champion": {
+            "agent_id": "seed028",
+            "pnl_bps": -46.0,
+            "trades": 107,
+            "win_rate": 0.05,
+            "hold_secs": 12,
+            "status": "stuck to the glass"
+          },
+          "events": [
+            "niche filled at gen 0",
+            "champion -46 bps \u00b7 107 trades"
+          ]
+        }
+      ]
+    },
+    {
+      "gen": 1,
+      "population_size": 6,
+      "coverage": 1.0,
+      "best_pnl_bps": 0.0,
+      "mean_pnl_bps": -14.2,
+      "desks": [
+        {
+          "role": "GOBLIN",
+          "occupancy": 1,
+          "median_pnl_bps": -2.1,
+          "champion": {
+            "agent_id": "seed036",
+            "pnl_bps": -2.1,
+            "trades": 311,
+            "win_rate": 0.03,
+            "hold_secs": 73,
+            "status": "cackling in the mempool"
+          },
+          "events": [
+            "champion -2 bps \u00b7 311 trades"
+          ]
+        },
+        {
+          "role": "GREMLIN",
+          "occupancy": 1,
+          "median_pnl_bps": 0.0,
+          "champion": {
+            "agent_id": "seed010",
+            "pnl_bps": 0.0,
+            "trades": 0,
+            "win_rate": 0.0,
+            "hold_secs": 0,
+            "status": "gnawing on a cable"
+          },
+          "events": [
+            "champion +0 bps \u00b7 0 trades"
+          ]
+        },
+        {
+          "role": "GIZMO",
+          "occupancy": 1,
+          "median_pnl_bps": -16.8,
+          "champion": {
+            "agent_id": "seed031",
+            "pnl_bps": -16.8,
+            "trades": 19,
+            "win_rate": 0.03,
+            "hold_secs": 91,
+            "status": "whirring quietly"
+          },
+          "events": [
+            "champion -17 bps \u00b7 19 trades"
+          ]
+        },
+        {
+          "role": "NOODLE",
+          "occupancy": 1,
+          "median_pnl_bps": -9.7,
+          "champion": {
+            "agent_id": "c0000",
+            "pnl_bps": -9.7,
+            "trades": 791,
+            "win_rate": 0.03,
+            "hold_secs": 126,
+            "status": "doing the wiggle"
+          },
+          "events": [
+            "new champion, +146 bps over prior",
+            "champion -10 bps \u00b7 791 trades"
+          ]
+        },
+        {
+          "role": "PICKLE",
+          "occupancy": 1,
+          "median_pnl_bps": -10.7,
+          "champion": {
+            "agent_id": "c0008",
+            "pnl_bps": -10.7,
+            "trades": 193,
+            "win_rate": 0.03,
+            "hold_secs": 116,
+            "status": "brined and waiting"
+          },
+          "events": [
+            "new champion, +10 bps over prior",
+            "champion -11 bps \u00b7 193 trades"
+          ]
+        },
+        {
+          "role": "GECKO",
+          "occupancy": 1,
+          "median_pnl_bps": -46.0,
+          "champion": {
+            "agent_id": "seed028",
+            "pnl_bps": -46.0,
+            "trades": 107,
+            "win_rate": 0.05,
+            "hold_secs": 12,
+            "status": "stuck to the glass"
+          },
+          "events": [
+            "champion -46 bps \u00b7 107 trades"
+          ]
+        }
+      ]
+    },
+    {
+      "gen": 2,
+      "population_size": 6,
+      "coverage": 1.0,
+      "best_pnl_bps": 0.0,
+      "mean_pnl_bps": -6.3,
+      "desks": [
+        {
+          "role": "GOBLIN",
+          "occupancy": 1,
+          "median_pnl_bps": -2.1,
+          "champion": {
+            "agent_id": "seed036",
+            "pnl_bps": -2.1,
+            "trades": 311,
+            "win_rate": 0.03,
+            "hold_secs": 73,
+            "status": "cackling in the mempool"
+          },
+          "events": [
+            "champion -2 bps \u00b7 311 trades"
+          ]
+        },
+        {
+          "role": "GREMLIN",
+          "occupancy": 1,
+          "median_pnl_bps": 0.0,
+          "champion": {
+            "agent_id": "seed010",
+            "pnl_bps": 0.0,
+            "trades": 0,
+            "win_rate": 0.0,
+            "hold_secs": 0,
+            "status": "gnawing on a cable"
+          },
+          "events": [
+            "champion +0 bps \u00b7 0 trades"
+          ]
+        },
+        {
+          "role": "GIZMO",
+          "occupancy": 1,
+          "median_pnl_bps": -1.9,
+          "champion": {
+            "agent_id": "c0017",
+            "pnl_bps": -1.9,
+            "trades": 5,
+            "win_rate": 0.0,
+            "hold_secs": 190,
+            "status": "whirring quietly"
+          },
+          "events": [
+            "new champion, +15 bps over prior",
+            "champion -2 bps \u00b7 5 trades"
+          ]
+        },
+        {
+          "role": "NOODLE",
+          "occupancy": 1,
+          "median_pnl_bps": -9.7,
+          "champion": {
+            "agent_id": "c0000",
+            "pnl_bps": -9.7,
+            "trades": 791,
+            "win_rate": 0.03,
+            "hold_secs": 126,
+            "status": "doing the wiggle"
+          },
+          "events": [
+            "champion -10 bps \u00b7 791 trades"
+          ]
+        },
+        {
+          "role": "PICKLE",
+          "occupancy": 1,
+          "median_pnl_bps": -10.7,
+          "champion": {
+            "agent_id": "c0008",
+            "pnl_bps": -10.7,
+            "trades": 193,
+            "win_rate": 0.03,
+            "hold_secs": 116,
+            "status": "brined and waiting"
+          },
+          "events": [
+            "champion -11 bps \u00b7 193 trades"
+          ]
+        },
+        {
+          "role": "GECKO",
+          "occupancy": 1,
+          "median_pnl_bps": -13.7,
+          "champion": {
+            "agent_id": "c0015",
+            "pnl_bps": -13.7,
+            "trades": 74,
+            "win_rate": 0.08,
+            "hold_secs": 14,
+            "status": "stuck to the glass"
+          },
+          "events": [
+            "new champion, +32 bps over prior",
+            "champion -14 bps \u00b7 74 trades"
+          ]
+        }
+      ]
+    },
+    {
+      "gen": 3,
+      "population_size": 6,
+      "coverage": 1.0,
+      "best_pnl_bps": 0.0,
+      "mean_pnl_bps": -4.8,
+      "desks": [
+        {
+          "role": "GOBLIN",
+          "occupancy": 1,
+          "median_pnl_bps": -2.1,
+          "champion": {
+            "agent_id": "seed036",
+            "pnl_bps": -2.1,
+            "trades": 311,
+            "win_rate": 0.03,
+            "hold_secs": 73,
+            "status": "cackling in the mempool"
+          },
+          "events": [
+            "champion -2 bps \u00b7 311 trades"
+          ]
+        },
+        {
+          "role": "GREMLIN",
+          "occupancy": 1,
+          "median_pnl_bps": 0.0,
+          "champion": {
+            "agent_id": "seed010",
+            "pnl_bps": 0.0,
+            "trades": 0,
+            "win_rate": 0.0,
+            "hold_secs": 0,
+            "status": "gnawing on a cable"
+          },
+          "events": [
+            "champion +0 bps \u00b7 0 trades"
+          ]
+        },
+        {
+          "role": "GIZMO",
+          "occupancy": 1,
+          "median_pnl_bps": 0.0,
+          "champion": {
+            "agent_id": "c0022",
+            "pnl_bps": 0.0,
+            "trades": 1,
+            "win_rate": 0.0,
+            "hold_secs": 275,
+            "status": "whirring quietly"
+          },
+          "events": [
+            "new champion, +2 bps over prior",
+            "champion +0 bps \u00b7 1 trades"
+          ]
+        },
+        {
+          "role": "NOODLE",
+          "occupancy": 1,
+          "median_pnl_bps": -9.7,
+          "champion": {
+            "agent_id": "c0000",
+            "pnl_bps": -9.7,
+            "trades": 791,
+            "win_rate": 0.03,
+            "hold_secs": 126,
+            "status": "doing the wiggle"
+          },
+          "events": [
+            "champion -10 bps \u00b7 791 trades"
+          ]
+        },
+        {
+          "role": "PICKLE",
+          "occupancy": 1,
+          "median_pnl_bps": -10.7,
+          "champion": {
+            "agent_id": "c0008",
+            "pnl_bps": -10.7,
+            "trades": 193,
+            "win_rate": 0.03,
+            "hold_secs": 116,
+            "status": "brined and waiting"
+          },
+          "events": [
+            "champion -11 bps \u00b7 193 trades"
+          ]
+        },
+        {
+          "role": "GECKO",
+          "occupancy": 1,
+          "median_pnl_bps": -6.4,
+          "champion": {
+            "agent_id": "c0021",
+            "pnl_bps": -6.4,
+            "trades": 60,
+            "win_rate": 0.18,
+            "hold_secs": 3,
+            "status": "stuck to the glass"
+          },
+          "events": [
+            "new champion, +7 bps over prior",
+            "champion -6 bps \u00b7 60 trades"
+          ]
+        }
+      ]
+    },
+    {
+      "gen": 4,
+      "population_size": 6,
+      "coverage": 1.0,
+      "best_pnl_bps": 111.3,
+      "mean_pnl_bps": 13.7,
+      "desks": [
+        {
+          "role": "GOBLIN",
+          "occupancy": 1,
+          "median_pnl_bps": -2.1,
+          "champion": {
+            "agent_id": "seed036",
+            "pnl_bps": -2.1,
+            "trades": 311,
+            "win_rate": 0.03,
+            "hold_secs": 73,
+            "status": "cackling in the mempool"
+          },
+          "events": [
+            "champion -2 bps \u00b7 311 trades"
+          ]
+        },
+        {
+          "role": "GREMLIN",
+          "occupancy": 1,
+          "median_pnl_bps": 111.3,
+          "champion": {
+            "agent_id": "c0036",
+            "pnl_bps": 111.3,
+            "trades": 37,
+            "win_rate": 0.03,
+            "hold_secs": 53,
+            "status": "gnawing on a cable"
+          },
+          "events": [
+            "new champion, +111 bps over prior",
+            "champion +111 bps \u00b7 37 trades"
+          ]
+        },
+        {
+          "role": "GIZMO",
+          "occupancy": 1,
+          "median_pnl_bps": 0.0,
+          "champion": {
+            "agent_id": "c0022",
+            "pnl_bps": 0.0,
+            "trades": 1,
+            "win_rate": 0.0,
+            "hold_secs": 275,
+            "status": "whirring quietly"
+          },
+          "events": [
+            "champion +0 bps \u00b7 1 trades"
+          ]
+        },
+        {
+          "role": "NOODLE",
+          "occupancy": 1,
+          "median_pnl_bps": -9.7,
+          "champion": {
+            "agent_id": "c0000",
+            "pnl_bps": -9.7,
+            "trades": 791,
+            "win_rate": 0.03,
+            "hold_secs": 126,
+            "status": "doing the wiggle"
+          },
+          "events": [
+            "champion -10 bps \u00b7 791 trades"
+          ]
+        },
+        {
+          "role": "PICKLE",
+          "occupancy": 1,
+          "median_pnl_bps": -10.7,
+          "champion": {
+            "agent_id": "c0008",
+            "pnl_bps": -10.7,
+            "trades": 193,
+            "win_rate": 0.03,
+            "hold_secs": 116,
+            "status": "brined and waiting"
+          },
+          "events": [
+            "champion -11 bps \u00b7 193 trades"
+          ]
+        },
+        {
+          "role": "GECKO",
+          "occupancy": 1,
+          "median_pnl_bps": -6.4,
+          "champion": {
+            "agent_id": "c0021",
+            "pnl_bps": -6.4,
+            "trades": 60,
+            "win_rate": 0.18,
+            "hold_secs": 3,
+            "status": "stuck to the glass"
+          },
+          "events": [
+            "champion -6 bps \u00b7 60 trades"
+          ]
+        }
+      ]
+    },
+    {
+      "gen": 5,
+      "population_size": 6,
+      "coverage": 1.0,
+      "best_pnl_bps": 111.3,
+      "mean_pnl_bps": 19.6,
+      "desks": [
+        {
+          "role": "GOBLIN",
+          "occupancy": 1,
+          "median_pnl_bps": -2.1,
+          "champion": {
+            "agent_id": "seed036",
+            "pnl_bps": -2.1,
+            "trades": 311,
+            "win_rate": 0.03,
+            "hold_secs": 73,
+            "status": "cackling in the mempool"
+          },
+          "events": [
+            "champion -2 bps \u00b7 311 trades"
+          ]
+        },
+        {
+          "role": "GREMLIN",
+          "occupancy": 1,
+          "median_pnl_bps": 111.3,
+          "champion": {
+            "agent_id": "c0036",
+            "pnl_bps": 111.3,
+            "trades": 37,
+            "win_rate": 0.03,
+            "hold_secs": 53,
+            "status": "gnawing on a cable"
+          },
+          "events": [
+            "champion +111 bps \u00b7 37 trades"
+          ]
+        },
+        {
+          "role": "GIZMO",
+          "occupancy": 1,
+          "median_pnl_bps": 35.1,
+          "champion": {
+            "agent_id": "c0045",
+            "pnl_bps": 35.1,
+            "trades": 54,
+            "win_rate": 0.05,
+            "hold_secs": 169,
+            "status": "whirring quietly"
+          },
+          "events": [
+            "new champion, +35 bps over prior",
+            "champion +35 bps \u00b7 54 trades"
+          ]
+        },
+        {
+          "role": "NOODLE",
+          "occupancy": 1,
+          "median_pnl_bps": -9.7,
+          "champion": {
+            "agent_id": "c0000",
+            "pnl_bps": -9.7,
+            "trades": 791,
+            "win_rate": 0.03,
+            "hold_secs": 126,
+            "status": "doing the wiggle"
+          },
+          "events": [
+            "champion -10 bps \u00b7 791 trades"
+          ]
+        },
+        {
+          "role": "PICKLE",
+          "occupancy": 1,
+          "median_pnl_bps": -10.7,
+          "champion": {
+            "agent_id": "c0008",
+            "pnl_bps": -10.7,
+            "trades": 193,
+            "win_rate": 0.03,
+            "hold_secs": 116,
+            "status": "brined and waiting"
+          },
+          "events": [
+            "champion -11 bps \u00b7 193 trades"
+          ]
+        },
+        {
+          "role": "GECKO",
+          "occupancy": 1,
+          "median_pnl_bps": -6.4,
+          "champion": {
+            "agent_id": "c0021",
+            "pnl_bps": -6.4,
+            "trades": 60,
+            "win_rate": 0.18,
+            "hold_secs": 3,
+            "status": "stuck to the glass"
+          },
+          "events": [
+            "champion -6 bps \u00b7 60 trades"
+          ]
+        }
+      ]
+    },
+    {
+      "gen": 6,
+      "population_size": 6,
+      "coverage": 1.0,
+      "best_pnl_bps": 111.3,
+      "mean_pnl_bps": 21.1,
+      "desks": [
+        {
+          "role": "GOBLIN",
+          "occupancy": 1,
+          "median_pnl_bps": -2.1,
+          "champion": {
+            "agent_id": "seed036",
+            "pnl_bps": -2.1,
+            "trades": 311,
+            "win_rate": 0.03,
+            "hold_secs": 73,
+            "status": "cackling in the mempool"
+          },
+          "events": [
+            "champion -2 bps \u00b7 311 trades"
+          ]
+        },
+        {
+          "role": "GREMLIN",
+          "occupancy": 1,
+          "median_pnl_bps": 111.3,
+          "champion": {
+            "agent_id": "c0036",
+            "pnl_bps": 111.3,
+            "trades": 37,
+            "win_rate": 0.03,
+            "hold_secs": 53,
+            "status": "gnawing on a cable"
+          },
+          "events": [
+            "champion +111 bps \u00b7 37 trades"
+          ]
+        },
+        {
+          "role": "GIZMO",
+          "occupancy": 1,
+          "median_pnl_bps": 35.1,
+          "champion": {
+            "agent_id": "c0045",
+            "pnl_bps": 35.1,
+            "trades": 54,
+            "win_rate": 0.05,
+            "hold_secs": 169,
+            "status": "whirring quietly"
+          },
+          "events": [
+            "champion +35 bps \u00b7 54 trades"
+          ]
+        },
+        {
+          "role": "NOODLE",
+          "occupancy": 1,
+          "median_pnl_bps": -0.4,
+          "champion": {
+            "agent_id": "c0054",
+            "pnl_bps": -0.4,
+            "trades": 406,
+            "win_rate": 0.08,
+            "hold_secs": 113,
+            "status": "doing the wiggle"
+          },
+          "events": [
+            "new champion, +9 bps over prior",
+            "champion -0 bps \u00b7 406 trades"
+          ]
+        },
+        {
+          "role": "PICKLE",
+          "occupancy": 1,
+          "median_pnl_bps": -10.7,
+          "champion": {
+            "agent_id": "c0008",
+            "pnl_bps": -10.7,
+            "trades": 193,
+            "win_rate": 0.03,
+            "hold_secs": 116,
+            "status": "brined and waiting"
+          },
+          "events": [
+            "champion -11 bps \u00b7 193 trades"
+          ]
+        },
+        {
+          "role": "GECKO",
+          "occupancy": 1,
+          "median_pnl_bps": -6.4,
+          "champion": {
+            "agent_id": "c0021",
+            "pnl_bps": -6.4,
+            "trades": 60,
+            "win_rate": 0.18,
+            "hold_secs": 3,
+            "status": "stuck to the glass"
+          },
+          "events": [
+            "champion -6 bps \u00b7 60 trades"
+          ]
+        }
+      ]
+    },
+    {
+      "gen": 7,
+      "population_size": 6,
+      "coverage": 1.0,
+      "best_pnl_bps": 111.3,
+      "mean_pnl_bps": 23.1,
+      "desks": [
+        {
+          "role": "GOBLIN",
+          "occupancy": 1,
+          "median_pnl_bps": -2.1,
+          "champion": {
+            "agent_id": "seed036",
+            "pnl_bps": -2.1,
+            "trades": 311,
+            "win_rate": 0.03,
+            "hold_secs": 73,
+            "status": "cackling in the mempool"
+          },
+          "events": [
+            "champion -2 bps \u00b7 311 trades"
+          ]
+        },
+        {
+          "role": "GREMLIN",
+          "occupancy": 1,
+          "median_pnl_bps": 111.3,
+          "champion": {
+            "agent_id": "c0036",
+            "pnl_bps": 111.3,
+            "trades": 37,
+            "win_rate": 0.03,
+            "hold_secs": 53,
+            "status": "gnawing on a cable"
+          },
+          "events": [
+            "champion +111 bps \u00b7 37 trades"
+          ]
+        },
+        {
+          "role": "GIZMO",
+          "occupancy": 1,
+          "median_pnl_bps": 47.0,
+          "champion": {
+            "agent_id": "c0064",
+            "pnl_bps": 47.0,
+            "trades": 54,
+            "win_rate": 0.03,
+            "hold_secs": 154,
+            "status": "whirring quietly"
+          },
+          "events": [
+            "new champion, +12 bps over prior",
+            "champion +47 bps \u00b7 54 trades"
+          ]
+        },
+        {
+          "role": "NOODLE",
+          "occupancy": 1,
+          "median_pnl_bps": -0.4,
+          "champion": {
+            "agent_id": "c0054",
+            "pnl_bps": -0.4,
+            "trades": 406,
+            "win_rate": 0.08,
+            "hold_secs": 113,
+            "status": "doing the wiggle"
+          },
+          "events": [
+            "champion -0 bps \u00b7 406 trades"
+          ]
+        },
+        {
+          "role": "PICKLE",
+          "occupancy": 1,
+          "median_pnl_bps": -10.7,
+          "champion": {
+            "agent_id": "c0008",
+            "pnl_bps": -10.7,
+            "trades": 193,
+            "win_rate": 0.03,
+            "hold_secs": 116,
+            "status": "brined and waiting"
+          },
+          "events": [
+            "champion -11 bps \u00b7 193 trades"
+          ]
+        },
+        {
+          "role": "GECKO",
+          "occupancy": 1,
+          "median_pnl_bps": -6.4,
+          "champion": {
+            "agent_id": "c0021",
+            "pnl_bps": -6.4,
+            "trades": 60,
+            "win_rate": 0.18,
+            "hold_secs": 3,
+            "status": "stuck to the glass"
+          },
+          "events": [
+            "champion -6 bps \u00b7 60 trades"
+          ]
+        }
+      ]
+    },
+    {
+      "gen": 8,
+      "population_size": 6,
+      "coverage": 1.0,
+      "best_pnl_bps": 111.3,
+      "mean_pnl_bps": 23.1,
+      "desks": [
+        {
+          "role": "GOBLIN",
+          "occupancy": 1,
+          "median_pnl_bps": -2.1,
+          "champion": {
+            "agent_id": "seed036",
+            "pnl_bps": -2.1,
+            "trades": 311,
+            "win_rate": 0.03,
+            "hold_secs": 73,
+            "status": "cackling in the mempool"
+          },
+          "events": [
+            "champion -2 bps \u00b7 311 trades"
+          ]
+        },
+        {
+          "role": "GREMLIN",
+          "occupancy": 1,
+          "median_pnl_bps": 111.3,
+          "champion": {
+            "agent_id": "c0036",
+            "pnl_bps": 111.3,
+            "trades": 37,
+            "win_rate": 0.03,
+            "hold_secs": 53,
+            "status": "gnawing on a cable"
+          },
+          "events": [
+            "champion +111 bps \u00b7 37 trades"
+          ]
+        },
+        {
+          "role": "GIZMO",
+          "occupancy": 1,
+          "median_pnl_bps": 47.0,
+          "champion": {
+            "agent_id": "c0064",
+            "pnl_bps": 47.0,
+            "trades": 54,
+            "win_rate": 0.03,
+            "hold_secs": 154,
+            "status": "whirring quietly"
+          },
+          "events": [
+            "champion +47 bps \u00b7 54 trades"
+          ]
+        },
+        {
+          "role": "NOODLE",
+          "occupancy": 1,
+          "median_pnl_bps": -0.4,
+          "champion": {
+            "agent_id": "c0054",
+            "pnl_bps": -0.4,
+            "trades": 406,
+            "win_rate": 0.08,
+            "hold_secs": 113,
+            "status": "doing the wiggle"
+          },
+          "events": [
+            "champion -0 bps \u00b7 406 trades"
+          ]
+        },
+        {
+          "role": "PICKLE",
+          "occupancy": 1,
+          "median_pnl_bps": -10.7,
+          "champion": {
+            "agent_id": "c0008",
+            "pnl_bps": -10.7,
+            "trades": 193,
+            "win_rate": 0.03,
+            "hold_secs": 116,
+            "status": "brined and waiting"
+          },
+          "events": [
+            "champion -11 bps \u00b7 193 trades"
+          ]
+        },
+        {
+          "role": "GECKO",
+          "occupancy": 1,
+          "median_pnl_bps": -6.4,
+          "champion": {
+            "agent_id": "c0021",
+            "pnl_bps": -6.4,
+            "trades": 60,
+            "win_rate": 0.18,
+            "hold_secs": 3,
+            "status": "stuck to the glass"
+          },
+          "events": [
+            "champion -6 bps \u00b7 60 trades"
+          ]
+        }
+      ]
+    },
+    {
+      "gen": 9,
+      "population_size": 6,
+      "coverage": 1.0,
+      "best_pnl_bps": 111.3,
+      "mean_pnl_bps": 41.7,
+      "desks": [
+        {
+          "role": "GOBLIN",
+          "occupancy": 1,
+          "median_pnl_bps": -2.1,
+          "champion": {
+            "agent_id": "seed036",
+            "pnl_bps": -2.1,
+            "trades": 311,
+            "win_rate": 0.03,
+            "hold_secs": 73,
+            "status": "cackling in the mempool"
+          },
+          "events": [
+            "champion -2 bps \u00b7 311 trades"
+          ]
+        },
+        {
+          "role": "GREMLIN",
+          "occupancy": 1,
+          "median_pnl_bps": 111.3,
+          "champion": {
+            "agent_id": "c0036",
+            "pnl_bps": 111.3,
+            "trades": 37,
+            "win_rate": 0.03,
+            "hold_secs": 53,
+            "status": "gnawing on a cable"
+          },
+          "events": [
+            "champion +111 bps \u00b7 37 trades"
+          ]
+        },
+        {
+          "role": "GIZMO",
+          "occupancy": 1,
+          "median_pnl_bps": 47.0,
+          "champion": {
+            "agent_id": "c0064",
+            "pnl_bps": 47.0,
+            "trades": 54,
+            "win_rate": 0.03,
+            "hold_secs": 154,
+            "status": "whirring quietly"
+          },
+          "events": [
+            "champion +47 bps \u00b7 54 trades"
+          ]
+        },
+        {
+          "role": "NOODLE",
+          "occupancy": 1,
+          "median_pnl_bps": -0.4,
+          "champion": {
+            "agent_id": "c0054",
+            "pnl_bps": -0.4,
+            "trades": 406,
+            "win_rate": 0.08,
+            "hold_secs": 113,
+            "status": "doing the wiggle"
+          },
+          "events": [
+            "champion -0 bps \u00b7 406 trades"
+          ]
+        },
+        {
+          "role": "PICKLE",
+          "occupancy": 1,
+          "median_pnl_bps": 100.5,
+          "champion": {
+            "agent_id": "c0083",
+            "pnl_bps": 100.5,
+            "trades": 201,
+            "win_rate": 0.03,
+            "hold_secs": 155,
+            "status": "brined and waiting"
+          },
+          "events": [
+            "new champion, +111 bps over prior",
+            "champion +100 bps \u00b7 201 trades"
+          ]
+        },
+        {
+          "role": "GECKO",
+          "occupancy": 1,
+          "median_pnl_bps": -6.4,
+          "champion": {
+            "agent_id": "c0021",
+            "pnl_bps": -6.4,
+            "trades": 60,
+            "win_rate": 0.18,
+            "hold_secs": 3,
+            "status": "stuck to the glass"
+          },
+          "events": [
+            "champion -6 bps \u00b7 60 trades"
+          ]
+        }
+      ]
+    },
+    {
+      "gen": 10,
+      "population_size": 6,
+      "coverage": 1.0,
+      "best_pnl_bps": 111.3,
+      "mean_pnl_bps": 41.7,
+      "desks": [
+        {
+          "role": "GOBLIN",
+          "occupancy": 1,
+          "median_pnl_bps": -2.1,
+          "champion": {
+            "agent_id": "seed036",
+            "pnl_bps": -2.1,
+            "trades": 311,
+            "win_rate": 0.03,
+            "hold_secs": 73,
+            "status": "cackling in the mempool"
+          },
+          "events": [
+            "champion -2 bps \u00b7 311 trades"
+          ]
+        },
+        {
+          "role": "GREMLIN",
+          "occupancy": 1,
+          "median_pnl_bps": 111.3,
+          "champion": {
+            "agent_id": "c0036",
+            "pnl_bps": 111.3,
+            "trades": 37,
+            "win_rate": 0.03,
+            "hold_secs": 53,
+            "status": "gnawing on a cable"
+          },
+          "events": [
+            "champion +111 bps \u00b7 37 trades"
+          ]
+        },
+        {
+          "role": "GIZMO",
+          "occupancy": 1,
+          "median_pnl_bps": 47.0,
+          "champion": {
+            "agent_id": "c0064",
+            "pnl_bps": 47.0,
+            "trades": 54,
+            "win_rate": 0.03,
+            "hold_secs": 154,
+            "status": "whirring quietly"
+          },
+          "events": [
+            "champion +47 bps \u00b7 54 trades"
+          ]
+        },
+        {
+          "role": "NOODLE",
+          "occupancy": 1,
+          "median_pnl_bps": -0.4,
+          "champion": {
+            "agent_id": "c0054",
+            "pnl_bps": -0.4,
+            "trades": 406,
+            "win_rate": 0.08,
+            "hold_secs": 113,
+            "status": "doing the wiggle"
+          },
+          "events": [
+            "champion -0 bps \u00b7 406 trades"
+          ]
+        },
+        {
+          "role": "PICKLE",
+          "occupancy": 1,
+          "median_pnl_bps": 100.5,
+          "champion": {
+            "agent_id": "c0083",
+            "pnl_bps": 100.5,
+            "trades": 201,
+            "win_rate": 0.03,
+            "hold_secs": 155,
+            "status": "brined and waiting"
+          },
+          "events": [
+            "champion +100 bps \u00b7 201 trades"
+          ]
+        },
+        {
+          "role": "GECKO",
+          "occupancy": 1,
+          "median_pnl_bps": -6.4,
+          "champion": {
+            "agent_id": "c0021",
+            "pnl_bps": -6.4,
+            "trades": 60,
+            "win_rate": 0.18,
+            "hold_secs": 3,
+            "status": "stuck to the glass"
+          },
+          "events": [
+            "champion -6 bps \u00b7 60 trades"
+          ]
+        }
+      ]
+    },
+    {
+      "gen": 11,
+      "population_size": 6,
+      "coverage": 1.0,
+      "best_pnl_bps": 111.3,
+      "mean_pnl_bps": 42.4,
+      "desks": [
+        {
+          "role": "GOBLIN",
+          "occupancy": 1,
+          "median_pnl_bps": -2.1,
+          "champion": {
+            "agent_id": "seed036",
+            "pnl_bps": -2.1,
+            "trades": 311,
+            "win_rate": 0.03,
+            "hold_secs": 73,
+            "status": "cackling in the mempool"
+          },
+          "events": [
+            "champion -2 bps \u00b7 311 trades"
+          ]
+        },
+        {
+          "role": "GREMLIN",
+          "occupancy": 1,
+          "median_pnl_bps": 111.3,
+          "champion": {
+            "agent_id": "c0036",
+            "pnl_bps": 111.3,
+            "trades": 37,
+            "win_rate": 0.03,
+            "hold_secs": 53,
+            "status": "gnawing on a cable"
+          },
+          "events": [
+            "champion +111 bps \u00b7 37 trades"
+          ]
+        },
+        {
+          "role": "GIZMO",
+          "occupancy": 1,
+          "median_pnl_bps": 47.0,
+          "champion": {
+            "agent_id": "c0064",
+            "pnl_bps": 47.0,
+            "trades": 54,
+            "win_rate": 0.03,
+            "hold_secs": 154,
+            "status": "whirring quietly"
+          },
+          "events": [
+            "champion +47 bps \u00b7 54 trades"
+          ]
+        },
+        {
+          "role": "NOODLE",
+          "occupancy": 1,
+          "median_pnl_bps": -0.4,
+          "champion": {
+            "agent_id": "c0054",
+            "pnl_bps": -0.4,
+            "trades": 406,
+            "win_rate": 0.08,
+            "hold_secs": 113,
+            "status": "doing the wiggle"
+          },
+          "events": [
+            "champion -0 bps \u00b7 406 trades"
+          ]
+        },
+        {
+          "role": "PICKLE",
+          "occupancy": 1,
+          "median_pnl_bps": 100.5,
+          "champion": {
+            "agent_id": "c0083",
+            "pnl_bps": 100.5,
+            "trades": 201,
+            "win_rate": 0.03,
+            "hold_secs": 155,
+            "status": "brined and waiting"
+          },
+          "events": [
+            "champion +100 bps \u00b7 201 trades"
+          ]
+        },
+        {
+          "role": "GECKO",
+          "occupancy": 1,
+          "median_pnl_bps": -1.9,
+          "champion": {
+            "agent_id": "c0106",
+            "pnl_bps": -1.9,
+            "trades": 188,
+            "win_rate": 0.1,
+            "hold_secs": 73,
+            "status": "stuck to the glass"
+          },
+          "events": [
+            "new champion, +4 bps over prior",
+            "champion -2 bps \u00b7 188 trades"
+          ]
+        }
+      ]
+    },
+    {
+      "gen": 12,
+      "population_size": 6,
+      "coverage": 1.0,
+      "best_pnl_bps": 130.3,
+      "mean_pnl_bps": 56.3,
+      "desks": [
+        {
+          "role": "GOBLIN",
+          "occupancy": 1,
+          "median_pnl_bps": -2.1,
+          "champion": {
+            "agent_id": "seed036",
+            "pnl_bps": -2.1,
+            "trades": 311,
+            "win_rate": 0.03,
+            "hold_secs": 73,
+            "status": "cackling in the mempool"
+          },
+          "events": [
+            "champion -2 bps \u00b7 311 trades"
+          ]
+        },
+        {
+          "role": "GREMLIN",
+          "occupancy": 1,
+          "median_pnl_bps": 111.3,
+          "champion": {
+            "agent_id": "c0036",
+            "pnl_bps": 111.3,
+            "trades": 37,
+            "win_rate": 0.03,
+            "hold_secs": 53,
+            "status": "gnawing on a cable"
+          },
+          "events": [
+            "champion +111 bps \u00b7 37 trades"
+          ]
+        },
+        {
+          "role": "GIZMO",
+          "occupancy": 1,
+          "median_pnl_bps": 130.3,
+          "champion": {
+            "agent_id": "c0116",
+            "pnl_bps": 130.3,
+            "trades": 118,
+            "win_rate": 0.03,
+            "hold_secs": 114,
+            "status": "whirring quietly"
+          },
+          "events": [
+            "new champion, +83 bps over prior",
+            "champion +130 bps \u00b7 118 trades"
+          ]
+        },
+        {
+          "role": "NOODLE",
+          "occupancy": 1,
+          "median_pnl_bps": -0.4,
+          "champion": {
+            "agent_id": "c0054",
+            "pnl_bps": -0.4,
+            "trades": 406,
+            "win_rate": 0.08,
+            "hold_secs": 113,
+            "status": "doing the wiggle"
+          },
+          "events": [
+            "champion -0 bps \u00b7 406 trades"
+          ]
+        },
+        {
+          "role": "PICKLE",
+          "occupancy": 1,
+          "median_pnl_bps": 100.5,
+          "champion": {
+            "agent_id": "c0083",
+            "pnl_bps": 100.5,
+            "trades": 201,
+            "win_rate": 0.03,
+            "hold_secs": 155,
+            "status": "brined and waiting"
+          },
+          "events": [
+            "champion +100 bps \u00b7 201 trades"
+          ]
+        },
+        {
+          "role": "GECKO",
+          "occupancy": 1,
+          "median_pnl_bps": -1.9,
+          "champion": {
+            "agent_id": "c0106",
+            "pnl_bps": -1.9,
+            "trades": 188,
+            "win_rate": 0.1,
+            "hold_secs": 73,
+            "status": "stuck to the glass"
+          },
+          "events": [
+            "champion -2 bps \u00b7 188 trades"
+          ]
+        }
+      ]
+    },
+    {
+      "gen": 13,
+      "population_size": 6,
+      "coverage": 1.0,
+      "best_pnl_bps": 130.3,
+      "mean_pnl_bps": 56.3,
+      "desks": [
+        {
+          "role": "GOBLIN",
+          "occupancy": 1,
+          "median_pnl_bps": -2.1,
+          "champion": {
+            "agent_id": "seed036",
+            "pnl_bps": -2.1,
+            "trades": 311,
+            "win_rate": 0.03,
+            "hold_secs": 73,
+            "status": "cackling in the mempool"
+          },
+          "events": [
+            "champion -2 bps \u00b7 311 trades"
+          ]
+        },
+        {
+          "role": "GREMLIN",
+          "occupancy": 1,
+          "median_pnl_bps": 111.3,
+          "champion": {
+            "agent_id": "c0036",
+            "pnl_bps": 111.3,
+            "trades": 37,
+            "win_rate": 0.03,
+            "hold_secs": 53,
+            "status": "gnawing on a cable"
+          },
+          "events": [
+            "champion +111 bps \u00b7 37 trades"
+          ]
+        },
+        {
+          "role": "GIZMO",
+          "occupancy": 1,
+          "median_pnl_bps": 130.3,
+          "champion": {
+            "agent_id": "c0116",
+            "pnl_bps": 130.3,
+            "trades": 118,
+            "win_rate": 0.03,
+            "hold_secs": 114,
+            "status": "whirring quietly"
+          },
+          "events": [
+            "champion +130 bps \u00b7 118 trades"
+          ]
+        },
+        {
+          "role": "NOODLE",
+          "occupancy": 1,
+          "median_pnl_bps": -0.4,
+          "champion": {
+            "agent_id": "c0054",
+            "pnl_bps": -0.4,
+            "trades": 406,
+            "win_rate": 0.08,
+            "hold_secs": 113,
+            "status": "doing the wiggle"
+          },
+          "events": [
+            "champion -0 bps \u00b7 406 trades"
+          ]
+        },
+        {
+          "role": "PICKLE",
+          "occupancy": 1,
+          "median_pnl_bps": 100.5,
+          "champion": {
+            "agent_id": "c0083",
+            "pnl_bps": 100.5,
+            "trades": 201,
+            "win_rate": 0.03,
+            "hold_secs": 155,
+            "status": "brined and waiting"
+          },
+          "events": [
+            "champion +100 bps \u00b7 201 trades"
+          ]
+        },
+        {
+          "role": "GECKO",
+          "occupancy": 1,
+          "median_pnl_bps": -1.9,
+          "champion": {
+            "agent_id": "c0106",
+            "pnl_bps": -1.9,
+            "trades": 188,
+            "win_rate": 0.1,
+            "hold_secs": 73,
+            "status": "stuck to the glass"
+          },
+          "events": [
+            "champion -2 bps \u00b7 188 trades"
+          ]
+        }
+      ]
+    },
+    {
+      "gen": 14,
+      "population_size": 6,
+      "coverage": 1.0,
+      "best_pnl_bps": 130.3,
+      "mean_pnl_bps": 56.3,
+      "desks": [
+        {
+          "role": "GOBLIN",
+          "occupancy": 1,
+          "median_pnl_bps": -2.1,
+          "champion": {
+            "agent_id": "seed036",
+            "pnl_bps": -2.1,
+            "trades": 311,
+            "win_rate": 0.03,
+            "hold_secs": 73,
+            "status": "cackling in the mempool"
+          },
+          "events": [
+            "champion -2 bps \u00b7 311 trades"
+          ]
+        },
+        {
+          "role": "GREMLIN",
+          "occupancy": 1,
+          "median_pnl_bps": 111.3,
+          "champion": {
+            "agent_id": "c0036",
+            "pnl_bps": 111.3,
+            "trades": 37,
+            "win_rate": 0.03,
+            "hold_secs": 53,
+            "status": "gnawing on a cable"
+          },
+          "events": [
+            "champion +111 bps \u00b7 37 trades"
+          ]
+        },
+        {
+          "role": "GIZMO",
+          "occupancy": 1,
+          "median_pnl_bps": 130.3,
+          "champion": {
+            "agent_id": "c0116",
+            "pnl_bps": 130.3,
+            "trades": 118,
+            "win_rate": 0.03,
+            "hold_secs": 114,
+            "status": "whirring quietly"
+          },
+          "events": [
+            "champion +130 bps \u00b7 118 trades"
+          ]
+        },
+        {
+          "role": "NOODLE",
+          "occupancy": 1,
+          "median_pnl_bps": -0.4,
+          "champion": {
+            "agent_id": "c0054",
+            "pnl_bps": -0.4,
+            "trades": 406,
+            "win_rate": 0.08,
+            "hold_secs": 113,
+            "status": "doing the wiggle"
+          },
+          "events": [
+            "champion -0 bps \u00b7 406 trades"
+          ]
+        },
+        {
+          "role": "PICKLE",
+          "occupancy": 1,
+          "median_pnl_bps": 100.5,
+          "champion": {
+            "agent_id": "c0083",
+            "pnl_bps": 100.5,
+            "trades": 201,
+            "win_rate": 0.03,
+            "hold_secs": 155,
+            "status": "brined and waiting"
+          },
+          "events": [
+            "champion +100 bps \u00b7 201 trades"
+          ]
+        },
+        {
+          "role": "GECKO",
+          "occupancy": 1,
+          "median_pnl_bps": -1.9,
+          "champion": {
+            "agent_id": "c0106",
+            "pnl_bps": -1.9,
+            "trades": 188,
+            "win_rate": 0.1,
+            "hold_secs": 73,
+            "status": "stuck to the glass"
+          },
+          "events": [
+            "champion -2 bps \u00b7 188 trades"
+          ]
+        }
+      ]
+    },
+    {
+      "gen": 15,
+      "population_size": 6,
+      "coverage": 1.0,
+      "best_pnl_bps": 130.3,
+      "mean_pnl_bps": 56.3,
+      "desks": [
+        {
+          "role": "GOBLIN",
+          "occupancy": 1,
+          "median_pnl_bps": -2.1,
+          "champion": {
+            "agent_id": "seed036",
+            "pnl_bps": -2.1,
+            "trades": 311,
+            "win_rate": 0.03,
+            "hold_secs": 73,
+            "status": "cackling in the mempool"
+          },
+          "events": [
+            "champion -2 bps \u00b7 311 trades"
+          ]
+        },
+        {
+          "role": "GREMLIN",
+          "occupancy": 1,
+          "median_pnl_bps": 111.3,
+          "champion": {
+            "agent_id": "c0036",
+            "pnl_bps": 111.3,
+            "trades": 37,
+            "win_rate": 0.03,
+            "hold_secs": 53,
+            "status": "gnawing on a cable"
+          },
+          "events": [
+            "champion +111 bps \u00b7 37 trades"
+          ]
+        },
+        {
+          "role": "GIZMO",
+          "occupancy": 1,
+          "median_pnl_bps": 130.3,
+          "champion": {
+            "agent_id": "c0116",
+            "pnl_bps": 130.3,
+            "trades": 118,
+            "win_rate": 0.03,
+            "hold_secs": 114,
+            "status": "whirring quietly"
+          },
+          "events": [
+            "champion +130 bps \u00b7 118 trades"
+          ]
+        },
+        {
+          "role": "NOODLE",
+          "occupancy": 1,
+          "median_pnl_bps": -0.4,
+          "champion": {
+            "agent_id": "c0054",
+            "pnl_bps": -0.4,
+            "trades": 406,
+            "win_rate": 0.08,
+            "hold_secs": 113,
+            "status": "doing the wiggle"
+          },
+          "events": [
+            "champion -0 bps \u00b7 406 trades"
+          ]
+        },
+        {
+          "role": "PICKLE",
+          "occupancy": 1,
+          "median_pnl_bps": 100.5,
+          "champion": {
+            "agent_id": "c0083",
+            "pnl_bps": 100.5,
+            "trades": 201,
+            "win_rate": 0.03,
+            "hold_secs": 155,
+            "status": "brined and waiting"
+          },
+          "events": [
+            "champion +100 bps \u00b7 201 trades"
+          ]
+        },
+        {
+          "role": "GECKO",
+          "occupancy": 1,
+          "median_pnl_bps": -1.9,
+          "champion": {
+            "agent_id": "c0106",
+            "pnl_bps": -1.9,
+            "trades": 188,
+            "win_rate": 0.1,
+            "hold_secs": 73,
+            "status": "stuck to the glass"
+          },
+          "events": [
+            "champion -2 bps \u00b7 188 trades"
+          ]
+        }
+      ]
+    }
+  ]
+},
+  "mapelites_scale": {
+  "desk_type": "memecoin",
+  "run_id": "mapelites-2026-08-23-seed0",
+  "algo": "map_elites",
+  "roles": [
+    "GOBLIN",
+    "GREMLIN",
+    "GIZMO",
+    "NOODLE",
+    "PICKLE",
+    "GECKO"
+  ],
+  "cost_bps": 125,
+  "generations": [
+    {
+      "gen": 0,
+      "population_size": 6,
+      "coverage": 1.0,
+      "best_pnl_bps": 0.9,
+      "mean_pnl_bps": -23.5,
+      "desks": [
+        {
+          "role": "GOBLIN",
+          "occupancy": 1,
+          "median_pnl_bps": -25.6,
+          "champion": {
+            "agent_id": "seed084",
+            "pnl_bps": -25.6,
+            "trades": 195,
+            "win_rate": 0.11,
+            "hold_secs": 14,
+            "status": "cackling in the mempool"
+          },
+          "events": [
+            "niche filled at gen 0",
+            "champion -26 bps \u00b7 195 trades"
+          ]
+        },
+        {
+          "role": "GREMLIN",
+          "occupancy": 1,
+          "median_pnl_bps": 0.9,
+          "champion": {
+            "agent_id": "seed054",
+            "pnl_bps": 0.9,
+            "trades": 8,
+            "win_rate": 0.04,
+            "hold_secs": 1,
+            "status": "gnawing on a cable"
+          },
+          "events": [
+            "niche filled at gen 0",
+            "champion +1 bps \u00b7 8 trades"
+          ]
+        },
+        {
+          "role": "GIZMO",
+          "occupancy": 1,
+          "median_pnl_bps": 0.0,
+          "champion": {
+            "agent_id": "seed083",
+            "pnl_bps": 0.0,
+            "trades": 7,
+            "win_rate": 0.0,
+            "hold_secs": 686,
+            "status": "whirring quietly"
+          },
+          "events": [
+            "niche filled at gen 0",
+            "champion +0 bps \u00b7 7 trades"
+          ]
+        },
+        {
+          "role": "NOODLE",
+          "occupancy": 1,
+          "median_pnl_bps": -27.3,
+          "champion": {
+            "agent_id": "seed072",
+            "pnl_bps": -27.3,
+            "trades": 2336,
+            "win_rate": 0.16,
+            "hold_secs": 563,
+            "status": "doing the wiggle"
+          },
+          "events": [
+            "niche filled at gen 0",
+            "champion -27 bps \u00b7 2336 trades"
+          ]
+        },
+        {
+          "role": "PICKLE",
+          "occupancy": 1,
+          "median_pnl_bps": -73.7,
+          "champion": {
+            "agent_id": "seed077",
+            "pnl_bps": -73.7,
+            "trades": 218,
+            "win_rate": 0.11,
+            "hold_secs": 101,
+            "status": "brined and waiting"
+          },
+          "events": [
+            "niche filled at gen 0",
+            "champion -74 bps \u00b7 218 trades"
+          ]
+        },
+        {
+          "role": "GECKO",
+          "occupancy": 1,
+          "median_pnl_bps": -15.2,
+          "champion": {
+            "agent_id": "seed043",
+            "pnl_bps": -15.2,
+            "trades": 146,
+            "win_rate": 0.11,
+            "hold_secs": 7,
+            "status": "stuck to the glass"
+          },
+          "events": [
+            "niche filled at gen 0",
+            "champion -15 bps \u00b7 146 trades"
+          ]
+        }
+      ]
+    },
+    {
+      "gen": 1,
+      "population_size": 6,
+      "coverage": 1.0,
+      "best_pnl_bps": 0.9,
+      "mean_pnl_bps": -23.5,
+      "desks": [
+        {
+          "role": "GOBLIN",
+          "occupancy": 1,
+          "median_pnl_bps": -25.6,
+          "champion": {
+            "agent_id": "seed084",
+            "pnl_bps": -25.6,
+            "trades": 195,
+            "win_rate": 0.11,
+            "hold_secs": 14,
+            "status": "cackling in the mempool"
+          },
+          "events": [
+            "champion -26 bps \u00b7 195 trades"
+          ]
+        },
+        {
+          "role": "GREMLIN",
+          "occupancy": 1,
+          "median_pnl_bps": 0.9,
+          "champion": {
+            "agent_id": "seed054",
+            "pnl_bps": 0.9,
+            "trades": 8,
+            "win_rate": 0.04,
+            "hold_secs": 1,
+            "status": "gnawing on a cable"
+          },
+          "events": [
+            "champion +1 bps \u00b7 8 trades"
+          ]
+        },
+        {
+          "role": "GIZMO",
+          "occupancy": 1,
+          "median_pnl_bps": 0.0,
+          "champion": {
+            "agent_id": "seed083",
+            "pnl_bps": 0.0,
+            "trades": 7,
+            "win_rate": 0.0,
+            "hold_secs": 686,
+            "status": "whirring quietly"
+          },
+          "events": [
+            "champion +0 bps \u00b7 7 trades"
+          ]
+        },
+        {
+          "role": "NOODLE",
+          "occupancy": 1,
+          "median_pnl_bps": -27.3,
+          "champion": {
+            "agent_id": "seed072",
+            "pnl_bps": -27.3,
+            "trades": 2336,
+            "win_rate": 0.16,
+            "hold_secs": 563,
+            "status": "doing the wiggle"
+          },
+          "events": [
+            "champion -27 bps \u00b7 2336 trades"
+          ]
+        },
+        {
+          "role": "PICKLE",
+          "occupancy": 1,
+          "median_pnl_bps": -73.7,
+          "champion": {
+            "agent_id": "seed077",
+            "pnl_bps": -73.7,
+            "trades": 218,
+            "win_rate": 0.11,
+            "hold_secs": 101,
+            "status": "brined and waiting"
+          },
+          "events": [
+            "champion -74 bps \u00b7 218 trades"
+          ]
+        },
+        {
+          "role": "GECKO",
+          "occupancy": 1,
+          "median_pnl_bps": -15.2,
+          "champion": {
+            "agent_id": "seed043",
+            "pnl_bps": -15.2,
+            "trades": 146,
+            "win_rate": 0.11,
+            "hold_secs": 7,
+            "status": "stuck to the glass"
+          },
+          "events": [
+            "champion -15 bps \u00b7 146 trades"
+          ]
+        }
+      ]
+    },
+    {
+      "gen": 2,
+      "population_size": 6,
+      "coverage": 1.0,
+      "best_pnl_bps": 0.9,
+      "mean_pnl_bps": -8.4,
+      "desks": [
+        {
+          "role": "GOBLIN",
+          "occupancy": 1,
+          "median_pnl_bps": -25.6,
+          "champion": {
+            "agent_id": "seed084",
+            "pnl_bps": -25.6,
+            "trades": 195,
+            "win_rate": 0.11,
+            "hold_secs": 14,
+            "status": "cackling in the mempool"
+          },
+          "events": [
+            "champion -26 bps \u00b7 195 trades"
+          ]
+        },
+        {
+          "role": "GREMLIN",
+          "occupancy": 1,
+          "median_pnl_bps": 0.9,
+          "champion": {
+            "agent_id": "seed054",
+            "pnl_bps": 0.9,
+            "trades": 8,
+            "win_rate": 0.04,
+            "hold_secs": 1,
+            "status": "gnawing on a cable"
+          },
+          "events": [
+            "champion +1 bps \u00b7 8 trades"
+          ]
+        },
+        {
+          "role": "GIZMO",
+          "occupancy": 1,
+          "median_pnl_bps": 0.0,
+          "champion": {
+            "agent_id": "seed083",
+            "pnl_bps": 0.0,
+            "trades": 7,
+            "win_rate": 0.0,
+            "hold_secs": 686,
+            "status": "whirring quietly"
+          },
+          "events": [
+            "champion +0 bps \u00b7 7 trades"
+          ]
+        },
+        {
+          "role": "NOODLE",
+          "occupancy": 1,
+          "median_pnl_bps": -9.3,
+          "champion": {
+            "agent_id": "c0012",
+            "pnl_bps": -9.3,
+            "trades": 2024,
+            "win_rate": 0.11,
+            "hold_secs": 392,
+            "status": "doing the wiggle"
+          },
+          "events": [
+            "new champion, +18 bps over prior",
+            "champion -9 bps \u00b7 2024 trades"
+          ]
+        },
+        {
+          "role": "PICKLE",
+          "occupancy": 1,
+          "median_pnl_bps": -1.1,
+          "champion": {
+            "agent_id": "c0019",
+            "pnl_bps": -1.1,
+            "trades": 461,
+            "win_rate": 0.0,
+            "hold_secs": 703,
+            "status": "brined and waiting"
+          },
+          "events": [
+            "new champion, +73 bps over prior",
+            "champion -1 bps \u00b7 461 trades"
+          ]
+        },
+        {
+          "role": "GECKO",
+          "occupancy": 1,
+          "median_pnl_bps": -15.2,
+          "champion": {
+            "agent_id": "seed043",
+            "pnl_bps": -15.2,
+            "trades": 146,
+            "win_rate": 0.11,
+            "hold_secs": 7,
+            "status": "stuck to the glass"
+          },
+          "events": [
+            "champion -15 bps \u00b7 146 trades"
+          ]
+        }
+      ]
+    },
+    {
+      "gen": 3,
+      "population_size": 6,
+      "coverage": 1.0,
+      "best_pnl_bps": 0.9,
+      "mean_pnl_bps": -5.4,
+      "desks": [
+        {
+          "role": "GOBLIN",
+          "occupancy": 1,
+          "median_pnl_bps": -7.5,
+          "champion": {
+            "agent_id": "c0026",
+            "pnl_bps": -7.5,
+            "trades": 1004,
+            "win_rate": 0.19,
+            "hold_secs": 70,
+            "status": "cackling in the mempool"
+          },
+          "events": [
+            "new champion, +18 bps over prior",
+            "champion -8 bps \u00b7 1004 trades"
+          ]
+        },
+        {
+          "role": "GREMLIN",
+          "occupancy": 1,
+          "median_pnl_bps": 0.9,
+          "champion": {
+            "agent_id": "seed054",
+            "pnl_bps": 0.9,
+            "trades": 8,
+            "win_rate": 0.04,
+            "hold_secs": 1,
+            "status": "gnawing on a cable"
+          },
+          "events": [
+            "champion +1 bps \u00b7 8 trades"
+          ]
+        },
+        {
+          "role": "GIZMO",
+          "occupancy": 1,
+          "median_pnl_bps": 0.0,
+          "champion": {
+            "agent_id": "seed083",
+            "pnl_bps": 0.0,
+            "trades": 7,
+            "win_rate": 0.0,
+            "hold_secs": 686,
+            "status": "whirring quietly"
+          },
+          "events": [
+            "champion +0 bps \u00b7 7 trades"
+          ]
+        },
+        {
+          "role": "NOODLE",
+          "occupancy": 1,
+          "median_pnl_bps": -9.3,
+          "champion": {
+            "agent_id": "c0012",
+            "pnl_bps": -9.3,
+            "trades": 2024,
+            "win_rate": 0.11,
+            "hold_secs": 392,
+            "status": "doing the wiggle"
+          },
+          "events": [
+            "champion -9 bps \u00b7 2024 trades"
+          ]
+        },
+        {
+          "role": "PICKLE",
+          "occupancy": 1,
+          "median_pnl_bps": -1.1,
+          "champion": {
+            "agent_id": "c0019",
+            "pnl_bps": -1.1,
+            "trades": 461,
+            "win_rate": 0.0,
+            "hold_secs": 703,
+            "status": "brined and waiting"
+          },
+          "events": [
+            "champion -1 bps \u00b7 461 trades"
+          ]
+        },
+        {
+          "role": "GECKO",
+          "occupancy": 1,
+          "median_pnl_bps": -15.2,
+          "champion": {
+            "agent_id": "seed043",
+            "pnl_bps": -15.2,
+            "trades": 146,
+            "win_rate": 0.11,
+            "hold_secs": 7,
+            "status": "stuck to the glass"
+          },
+          "events": [
+            "champion -15 bps \u00b7 146 trades"
+          ]
+        }
+      ]
+    },
+    {
+      "gen": 4,
+      "population_size": 6,
+      "coverage": 1.0,
+      "best_pnl_bps": 0.9,
+      "mean_pnl_bps": -5.4,
+      "desks": [
+        {
+          "role": "GOBLIN",
+          "occupancy": 1,
+          "median_pnl_bps": -7.5,
+          "champion": {
+            "agent_id": "c0026",
+            "pnl_bps": -7.5,
+            "trades": 1004,
+            "win_rate": 0.19,
+            "hold_secs": 70,
+            "status": "cackling in the mempool"
+          },
+          "events": [
+            "champion -8 bps \u00b7 1004 trades"
+          ]
+        },
+        {
+          "role": "GREMLIN",
+          "occupancy": 1,
+          "median_pnl_bps": 0.9,
+          "champion": {
+            "agent_id": "seed054",
+            "pnl_bps": 0.9,
+            "trades": 8,
+            "win_rate": 0.04,
+            "hold_secs": 1,
+            "status": "gnawing on a cable"
+          },
+          "events": [
+            "champion +1 bps \u00b7 8 trades"
+          ]
+        },
+        {
+          "role": "GIZMO",
+          "occupancy": 1,
+          "median_pnl_bps": 0.0,
+          "champion": {
+            "agent_id": "seed083",
+            "pnl_bps": 0.0,
+            "trades": 7,
+            "win_rate": 0.0,
+            "hold_secs": 686,
+            "status": "whirring quietly"
+          },
+          "events": [
+            "champion +0 bps \u00b7 7 trades"
+          ]
+        },
+        {
+          "role": "NOODLE",
+          "occupancy": 1,
+          "median_pnl_bps": -9.3,
+          "champion": {
+            "agent_id": "c0012",
+            "pnl_bps": -9.3,
+            "trades": 2024,
+            "win_rate": 0.11,
+            "hold_secs": 392,
+            "status": "doing the wiggle"
+          },
+          "events": [
+            "champion -9 bps \u00b7 2024 trades"
+          ]
+        },
+        {
+          "role": "PICKLE",
+          "occupancy": 1,
+          "median_pnl_bps": -1.1,
+          "champion": {
+            "agent_id": "c0019",
+            "pnl_bps": -1.1,
+            "trades": 461,
+            "win_rate": 0.0,
+            "hold_secs": 703,
+            "status": "brined and waiting"
+          },
+          "events": [
+            "champion -1 bps \u00b7 461 trades"
+          ]
+        },
+        {
+          "role": "GECKO",
+          "occupancy": 1,
+          "median_pnl_bps": -15.2,
+          "champion": {
+            "agent_id": "seed043",
+            "pnl_bps": -15.2,
+            "trades": 146,
+            "win_rate": 0.11,
+            "hold_secs": 7,
+            "status": "stuck to the glass"
+          },
+          "events": [
+            "champion -15 bps \u00b7 146 trades"
+          ]
+        }
+      ]
+    },
+    {
+      "gen": 5,
+      "population_size": 6,
+      "coverage": 1.0,
+      "best_pnl_bps": 7.2,
+      "mean_pnl_bps": -2.4,
+      "desks": [
+        {
+          "role": "GOBLIN",
+          "occupancy": 1,
+          "median_pnl_bps": -7.5,
+          "champion": {
+            "agent_id": "c0026",
+            "pnl_bps": -7.5,
+            "trades": 1004,
+            "win_rate": 0.19,
+            "hold_secs": 70,
+            "status": "cackling in the mempool"
+          },
+          "events": [
+            "champion -8 bps \u00b7 1004 trades"
+          ]
+        },
+        {
+          "role": "GREMLIN",
+          "occupancy": 1,
+          "median_pnl_bps": 2.5,
+          "champion": {
+            "agent_id": "c0048",
+            "pnl_bps": 2.5,
+            "trades": 37,
+            "win_rate": 0.05,
+            "hold_secs": 20,
+            "status": "gnawing on a cable"
+          },
+          "events": [
+            "new champion, +2 bps over prior",
+            "champion +2 bps \u00b7 37 trades"
+          ]
+        },
+        {
+          "role": "GIZMO",
+          "occupancy": 1,
+          "median_pnl_bps": 0.0,
+          "champion": {
+            "agent_id": "seed083",
+            "pnl_bps": 0.0,
+            "trades": 7,
+            "win_rate": 0.0,
+            "hold_secs": 686,
+            "status": "whirring quietly"
+          },
+          "events": [
+            "champion +0 bps \u00b7 7 trades"
+          ]
+        },
+        {
+          "role": "NOODLE",
+          "occupancy": 1,
+          "median_pnl_bps": 7.2,
+          "champion": {
+            "agent_id": "c0049",
+            "pnl_bps": 7.2,
+            "trades": 1493,
+            "win_rate": 0.15,
+            "hold_secs": 332,
+            "status": "doing the wiggle"
+          },
+          "events": [
+            "new champion, +16 bps over prior",
+            "champion +7 bps \u00b7 1493 trades"
+          ]
+        },
+        {
+          "role": "PICKLE",
+          "occupancy": 1,
+          "median_pnl_bps": -1.1,
+          "champion": {
+            "agent_id": "c0019",
+            "pnl_bps": -1.1,
+            "trades": 461,
+            "win_rate": 0.0,
+            "hold_secs": 703,
+            "status": "brined and waiting"
+          },
+          "events": [
+            "champion -1 bps \u00b7 461 trades"
+          ]
+        },
+        {
+          "role": "GECKO",
+          "occupancy": 1,
+          "median_pnl_bps": -15.2,
+          "champion": {
+            "agent_id": "seed043",
+            "pnl_bps": -15.2,
+            "trades": 146,
+            "win_rate": 0.11,
+            "hold_secs": 7,
+            "status": "stuck to the glass"
+          },
+          "events": [
+            "champion -15 bps \u00b7 146 trades"
+          ]
+        }
+      ]
+    },
+    {
+      "gen": 6,
+      "population_size": 6,
+      "coverage": 1.0,
+      "best_pnl_bps": 7.2,
+      "mean_pnl_bps": -1.9,
+      "desks": [
+        {
+          "role": "GOBLIN",
+          "occupancy": 1,
+          "median_pnl_bps": -7.5,
+          "champion": {
+            "agent_id": "c0026",
+            "pnl_bps": -7.5,
+            "trades": 1004,
+            "win_rate": 0.19,
+            "hold_secs": 70,
+            "status": "cackling in the mempool"
+          },
+          "events": [
+            "champion -8 bps \u00b7 1004 trades"
+          ]
+        },
+        {
+          "role": "GREMLIN",
+          "occupancy": 1,
+          "median_pnl_bps": 2.5,
+          "champion": {
+            "agent_id": "c0048",
+            "pnl_bps": 2.5,
+            "trades": 37,
+            "win_rate": 0.05,
+            "hold_secs": 20,
+            "status": "gnawing on a cable"
+          },
+          "events": [
+            "champion +2 bps \u00b7 37 trades"
+          ]
+        },
+        {
+          "role": "GIZMO",
+          "occupancy": 1,
+          "median_pnl_bps": 0.0,
+          "champion": {
+            "agent_id": "seed083",
+            "pnl_bps": 0.0,
+            "trades": 7,
+            "win_rate": 0.0,
+            "hold_secs": 686,
+            "status": "whirring quietly"
+          },
+          "events": [
+            "champion +0 bps \u00b7 7 trades"
+          ]
+        },
+        {
+          "role": "NOODLE",
+          "occupancy": 1,
+          "median_pnl_bps": 7.2,
+          "champion": {
+            "agent_id": "c0049",
+            "pnl_bps": 7.2,
+            "trades": 1493,
+            "win_rate": 0.15,
+            "hold_secs": 332,
+            "status": "doing the wiggle"
+          },
+          "events": [
+            "champion +7 bps \u00b7 1493 trades"
+          ]
+        },
+        {
+          "role": "PICKLE",
+          "occupancy": 1,
+          "median_pnl_bps": 1.5,
+          "champion": {
+            "agent_id": "c0053",
+            "pnl_bps": 1.5,
+            "trades": 781,
+            "win_rate": 0.05,
+            "hold_secs": 854,
+            "status": "brined and waiting"
+          },
+          "events": [
+            "new champion, +3 bps over prior",
+            "champion +2 bps \u00b7 781 trades"
+          ]
+        },
+        {
+          "role": "GECKO",
+          "occupancy": 1,
+          "median_pnl_bps": -15.2,
+          "champion": {
+            "agent_id": "seed043",
+            "pnl_bps": -15.2,
+            "trades": 146,
+            "win_rate": 0.11,
+            "hold_secs": 7,
+            "status": "stuck to the glass"
+          },
+          "events": [
+            "champion -15 bps \u00b7 146 trades"
+          ]
+        }
+      ]
+    },
+    {
+      "gen": 7,
+      "population_size": 6,
+      "coverage": 1.0,
+      "best_pnl_bps": 7.2,
+      "mean_pnl_bps": -0.6,
+      "desks": [
+        {
+          "role": "GOBLIN",
+          "occupancy": 1,
+          "median_pnl_bps": -7.5,
+          "champion": {
+            "agent_id": "c0026",
+            "pnl_bps": -7.5,
+            "trades": 1004,
+            "win_rate": 0.19,
+            "hold_secs": 70,
+            "status": "cackling in the mempool"
+          },
+          "events": [
+            "champion -8 bps \u00b7 1004 trades"
+          ]
+        },
+        {
+          "role": "GREMLIN",
+          "occupancy": 1,
+          "median_pnl_bps": 2.5,
+          "champion": {
+            "agent_id": "c0048",
+            "pnl_bps": 2.5,
+            "trades": 37,
+            "win_rate": 0.05,
+            "hold_secs": 20,
+            "status": "gnawing on a cable"
+          },
+          "events": [
+            "champion +2 bps \u00b7 37 trades"
+          ]
+        },
+        {
+          "role": "GIZMO",
+          "occupancy": 1,
+          "median_pnl_bps": 0.2,
+          "champion": {
+            "agent_id": "c0066",
+            "pnl_bps": 0.2,
+            "trades": 22,
+            "win_rate": 0.01,
+            "hold_secs": 244,
+            "status": "whirring quietly"
+          },
+          "events": [
+            "new champion, +0 bps over prior",
+            "champion +0 bps \u00b7 22 trades"
+          ]
+        },
+        {
+          "role": "NOODLE",
+          "occupancy": 1,
+          "median_pnl_bps": 7.2,
+          "champion": {
+            "agent_id": "c0049",
+            "pnl_bps": 7.2,
+            "trades": 1493,
+            "win_rate": 0.15,
+            "hold_secs": 332,
+            "status": "doing the wiggle"
+          },
+          "events": [
+            "champion +7 bps \u00b7 1493 trades"
+          ]
+        },
+        {
+          "role": "PICKLE",
+          "occupancy": 1,
+          "median_pnl_bps": 1.5,
+          "champion": {
+            "agent_id": "c0053",
+            "pnl_bps": 1.5,
+            "trades": 781,
+            "win_rate": 0.05,
+            "hold_secs": 854,
+            "status": "brined and waiting"
+          },
+          "events": [
+            "champion +2 bps \u00b7 781 trades"
+          ]
+        },
+        {
+          "role": "GECKO",
+          "occupancy": 1,
+          "median_pnl_bps": -7.6,
+          "champion": {
+            "agent_id": "c0065",
+            "pnl_bps": -7.6,
+            "trades": 318,
+            "win_rate": 0.17,
+            "hold_secs": 39,
+            "status": "stuck to the glass"
+          },
+          "events": [
+            "new champion, +8 bps over prior",
+            "champion -8 bps \u00b7 318 trades"
+          ]
+        }
+      ]
+    },
+    {
+      "gen": 8,
+      "population_size": 6,
+      "coverage": 1.0,
+      "best_pnl_bps": 7.2,
+      "mean_pnl_bps": -0.6,
+      "desks": [
+        {
+          "role": "GOBLIN",
+          "occupancy": 1,
+          "median_pnl_bps": -7.5,
+          "champion": {
+            "agent_id": "c0026",
+            "pnl_bps": -7.5,
+            "trades": 1004,
+            "win_rate": 0.19,
+            "hold_secs": 70,
+            "status": "cackling in the mempool"
+          },
+          "events": [
+            "champion -8 bps \u00b7 1004 trades"
+          ]
+        },
+        {
+          "role": "GREMLIN",
+          "occupancy": 1,
+          "median_pnl_bps": 2.5,
+          "champion": {
+            "agent_id": "c0048",
+            "pnl_bps": 2.5,
+            "trades": 37,
+            "win_rate": 0.05,
+            "hold_secs": 20,
+            "status": "gnawing on a cable"
+          },
+          "events": [
+            "champion +2 bps \u00b7 37 trades"
+          ]
+        },
+        {
+          "role": "GIZMO",
+          "occupancy": 1,
+          "median_pnl_bps": 0.2,
+          "champion": {
+            "agent_id": "c0066",
+            "pnl_bps": 0.2,
+            "trades": 22,
+            "win_rate": 0.01,
+            "hold_secs": 244,
+            "status": "whirring quietly"
+          },
+          "events": [
+            "champion +0 bps \u00b7 22 trades"
+          ]
+        },
+        {
+          "role": "NOODLE",
+          "occupancy": 1,
+          "median_pnl_bps": 7.2,
+          "champion": {
+            "agent_id": "c0049",
+            "pnl_bps": 7.2,
+            "trades": 1493,
+            "win_rate": 0.15,
+            "hold_secs": 332,
+            "status": "doing the wiggle"
+          },
+          "events": [
+            "champion +7 bps \u00b7 1493 trades"
+          ]
+        },
+        {
+          "role": "PICKLE",
+          "occupancy": 1,
+          "median_pnl_bps": 1.5,
+          "champion": {
+            "agent_id": "c0053",
+            "pnl_bps": 1.5,
+            "trades": 781,
+            "win_rate": 0.05,
+            "hold_secs": 854,
+            "status": "brined and waiting"
+          },
+          "events": [
+            "champion +2 bps \u00b7 781 trades"
+          ]
+        },
+        {
+          "role": "GECKO",
+          "occupancy": 1,
+          "median_pnl_bps": -7.6,
+          "champion": {
+            "agent_id": "c0065",
+            "pnl_bps": -7.6,
+            "trades": 318,
+            "win_rate": 0.17,
+            "hold_secs": 39,
+            "status": "stuck to the glass"
+          },
+          "events": [
+            "champion -8 bps \u00b7 318 trades"
+          ]
+        }
+      ]
+    },
+    {
+      "gen": 9,
+      "population_size": 6,
+      "coverage": 1.0,
+      "best_pnl_bps": 7.2,
+      "mean_pnl_bps": -0.4,
+      "desks": [
+        {
+          "role": "GOBLIN",
+          "occupancy": 1,
+          "median_pnl_bps": -7.5,
+          "champion": {
+            "agent_id": "c0026",
+            "pnl_bps": -7.5,
+            "trades": 1004,
+            "win_rate": 0.19,
+            "hold_secs": 70,
+            "status": "cackling in the mempool"
+          },
+          "events": [
+            "champion -8 bps \u00b7 1004 trades"
+          ]
+        },
+        {
+          "role": "GREMLIN",
+          "occupancy": 1,
+          "median_pnl_bps": 2.5,
+          "champion": {
+            "agent_id": "c0048",
+            "pnl_bps": 2.5,
+            "trades": 37,
+            "win_rate": 0.05,
+            "hold_secs": 20,
+            "status": "gnawing on a cable"
+          },
+          "events": [
+            "champion +2 bps \u00b7 37 trades"
+          ]
+        },
+        {
+          "role": "GIZMO",
+          "occupancy": 1,
+          "median_pnl_bps": 1.5,
+          "champion": {
+            "agent_id": "c0087",
+            "pnl_bps": 1.5,
+            "trades": 147,
+            "win_rate": 0.03,
+            "hold_secs": 799,
+            "status": "whirring quietly"
+          },
+          "events": [
+            "new champion, +1 bps over prior",
+            "champion +2 bps \u00b7 147 trades"
+          ]
+        },
+        {
+          "role": "NOODLE",
+          "occupancy": 1,
+          "median_pnl_bps": 7.2,
+          "champion": {
+            "agent_id": "c0049",
+            "pnl_bps": 7.2,
+            "trades": 1493,
+            "win_rate": 0.15,
+            "hold_secs": 332,
+            "status": "doing the wiggle"
+          },
+          "events": [
+            "champion +7 bps \u00b7 1493 trades"
+          ]
+        },
+        {
+          "role": "PICKLE",
+          "occupancy": 1,
+          "median_pnl_bps": 1.5,
+          "champion": {
+            "agent_id": "c0053",
+            "pnl_bps": 1.5,
+            "trades": 781,
+            "win_rate": 0.05,
+            "hold_secs": 854,
+            "status": "brined and waiting"
+          },
+          "events": [
+            "champion +2 bps \u00b7 781 trades"
+          ]
+        },
+        {
+          "role": "GECKO",
+          "occupancy": 1,
+          "median_pnl_bps": -7.6,
+          "champion": {
+            "agent_id": "c0065",
+            "pnl_bps": -7.6,
+            "trades": 318,
+            "win_rate": 0.17,
+            "hold_secs": 39,
+            "status": "stuck to the glass"
+          },
+          "events": [
+            "champion -8 bps \u00b7 318 trades"
+          ]
+        }
+      ]
+    },
+    {
+      "gen": 10,
+      "population_size": 6,
+      "coverage": 1.0,
+      "best_pnl_bps": 7.2,
+      "mean_pnl_bps": 0.6,
+      "desks": [
+        {
+          "role": "GOBLIN",
+          "occupancy": 1,
+          "median_pnl_bps": -7.5,
+          "champion": {
+            "agent_id": "c0026",
+            "pnl_bps": -7.5,
+            "trades": 1004,
+            "win_rate": 0.19,
+            "hold_secs": 70,
+            "status": "cackling in the mempool"
+          },
+          "events": [
+            "champion -8 bps \u00b7 1004 trades"
+          ]
+        },
+        {
+          "role": "GREMLIN",
+          "occupancy": 1,
+          "median_pnl_bps": 2.5,
+          "champion": {
+            "agent_id": "c0048",
+            "pnl_bps": 2.5,
+            "trades": 37,
+            "win_rate": 0.05,
+            "hold_secs": 20,
+            "status": "gnawing on a cable"
+          },
+          "events": [
+            "champion +2 bps \u00b7 37 trades"
+          ]
+        },
+        {
+          "role": "GIZMO",
+          "occupancy": 1,
+          "median_pnl_bps": 1.5,
+          "champion": {
+            "agent_id": "c0087",
+            "pnl_bps": 1.5,
+            "trades": 147,
+            "win_rate": 0.03,
+            "hold_secs": 799,
+            "status": "whirring quietly"
+          },
+          "events": [
+            "champion +2 bps \u00b7 147 trades"
+          ]
+        },
+        {
+          "role": "NOODLE",
+          "occupancy": 1,
+          "median_pnl_bps": 7.2,
+          "champion": {
+            "agent_id": "c0049",
+            "pnl_bps": 7.2,
+            "trades": 1493,
+            "win_rate": 0.15,
+            "hold_secs": 332,
+            "status": "doing the wiggle"
+          },
+          "events": [
+            "champion +7 bps \u00b7 1493 trades"
+          ]
+        },
+        {
+          "role": "PICKLE",
+          "occupancy": 1,
+          "median_pnl_bps": 1.5,
+          "champion": {
+            "agent_id": "c0053",
+            "pnl_bps": 1.5,
+            "trades": 781,
+            "win_rate": 0.05,
+            "hold_secs": 854,
+            "status": "brined and waiting"
+          },
+          "events": [
+            "champion +2 bps \u00b7 781 trades"
+          ]
+        },
+        {
+          "role": "GECKO",
+          "occupancy": 1,
+          "median_pnl_bps": -1.5,
+          "champion": {
+            "agent_id": "c0098",
+            "pnl_bps": -1.5,
+            "trades": 242,
+            "win_rate": 0.19,
+            "hold_secs": 79,
+            "status": "stuck to the glass"
+          },
+          "events": [
+            "new champion, +6 bps over prior",
+            "champion -2 bps \u00b7 242 trades"
+          ]
+        }
+      ]
+    }
+  ]
+}
+};
+/* ===================== MARKET_TICKS (second swappable literal) =====================
+   REAL new-token launches captured live from the Pinax solana@swaps firehose on
+   2026-08-23 and replayed here (recorded history, NOT a live stream). Each entry is a
+   fresh pump.fun bonding-curve mint: `mint` = full address (kept for reference),
+   `short` = display id, `birth` = first observed swap (unix s, UTC), `venue` = protocol,
+   `swaps` = swaps captured for that token, `first_price` = SOL/token of its first swap.
+   Extracted offline by scripts/extract_market_ticks.py from data/live_capture_probe/
+   (322 fresh mints total; a 48-token sample spread across the ~3-min capture window). */
+const MARKET_TICKS = [{"mint":"7WZbamf55hD9hMFv5L5QZyT6ui9ebGQQfBpb2m3tpump","short":"7WZb…pump","pool":"3f8bRyxQd7pK3Mo5kKX9rSkjBaLGoLVz4wui8iCVKqMZ","birth":1787496559,"venue":"pumpfun","swaps":45,"first_price":2.8025562533634954e-08},{"mint":"BE2m6EaHexxRPRKMBsg42WqppGnXFSBejZEWJZxUpump","short":"BE2m…pump","pool":"5WLNjGUuyRpomKRiL1ihgPRnLd256Kjov67ej2EgyAJj","birth":1787496559,"venue":"pumpfun","swaps":114,"first_price":4.798747650046639e-08},{"mint":"CaT9f9adS6RdWKSWuSGBhwt531QePvzfBobds1HJrSTL","short":"CaT9…rSTL","pool":"89UUrteaZWPRUpkr8QGNDMJFYyeKdfsiBiU6dZghTC4o","birth":1787496559,"venue":"pumpfun","swaps":38,"first_price":2.7988637914283902e-08},{"mint":"Gomzo6UD7daJ2L2LadB7WocwH4bVgqJgmwaNDDY5DZyh","short":"Gomz…DZyh","pool":"B5TH47EQ1xYUgVuwzrrSTVZLSdHTVgfHSYJhjZnXb3jt","birth":1787496559,"venue":"pumpfun","swaps":317,"first_price":7.417780113286089e-08},{"mint":"2CBN4Es1GxLhi8vPnKXzDb4anX7fkd7Vvji4ERejrrdn","short":"2CBN…rrdn","pool":"CipUCUfRZHVTeZaFgZnoeoE2jK4ubwKnvjiS2QnwvtLk","birth":1787496559,"venue":"pumpfun","swaps":8,"first_price":3.248652334510876e-08},{"mint":"33tgb8zYAnZgx2t4XtTX1ChEzb6rA3edZc8mRqompump","short":"33tg…pump","pool":"F4BFwPCtKL6QKDwzJMWc9RzGFSdG7DnvnwwW9KwdActj","birth":1787496559,"venue":"pumpfun","swaps":36,"first_price":1.0546351095158059e-07},{"mint":"FfpS6akVDXVWUtaz9dGvgao2nm6ShXnYoVQJrjv2QmAB","short":"FfpS…QmAB","pool":"HJQyyxUs2mLqWoUom1Shd8LzVkFW263t65yUHzLY1yBv","birth":1787496559,"venue":"pumpfun","swaps":11,"first_price":4.368869345716671e-08},{"mint":"HTPZ8KgU2TAXKc72iGyYWTpMCDw5gYp4hjEdgVsLpump","short":"HTPZ…pump","pool":"4zFgDL2CvTfdd6r2KEfz9TcodJV7dg7oAJu1c73XD4Xf","birth":1787496560,"venue":"pumpfun","swaps":18,"first_price":2.2526488362744095e-07},{"mint":"3UokYThybJW92YRNd8yZXesgJDKrrGpagdfkACH3pump","short":"3Uok…pump","pool":"BGApSGSS1uN9jtt7ndMLiRnirdMj2rajHmLp7jHTiXRA","birth":1787496560,"venue":"pumpfun","swaps":44,"first_price":2.915999187050933e-08},{"mint":"4dsYDw52hAM2wNZYXUS4L9KMSaek8cRnPPLHGGMCpump","short":"4dsY…pump","pool":"FERNijsMwhQ2CGj32riXDp8SvmLqtiWdhcM7zuxdw9Yq","birth":1787496560,"venue":"pumpfun","swaps":37,"first_price":2.7997601781377986e-08},{"mint":"24wEdraYqXRQax9KLnbDnsEe23wVsDZ4r7oA4GCypump","short":"24wE…pump","pool":"4BqvXHGR9XffZfLvDHy9AB3ySkyoXb47wCfA7yUSyNsA","birth":1787496561,"venue":"pumpfun","swaps":34,"first_price":2.8479107276037953e-08},{"mint":"DeR6oX9dwAt3aUyoFupwiPbyxsWsC6MdzJHaTAfZpump","short":"DeR6…pump","pool":"BxUZVemQK3SQNDrnFFJdLNyh99entJ9RzXv3xBbJjYBT","birth":1787496561,"venue":"pumpfun","swaps":36,"first_price":2.9067873039048767e-08},{"mint":"2sUvETDkmtRWAhR9c2cN9z92iPLoSdJ4vCtLDkkipump","short":"2sUv…pump","pool":"F7h76sjdN7VMokiVp5MhAjApBTTPvdci4twV2SBYGJZF","birth":1787496561,"venue":"pumpfun","swaps":71,"first_price":2.897586734029357e-08},{"mint":"9ftgKKSxFr6EcQFYvaBxhRtofJVg1XRP5BUVrwLWpump","short":"9ftg…pump","pool":"GfVC8hJWZhUi1jLS6UjGuuGKPA9DLju1xsLKpPrajNv","birth":1787496561,"venue":"pumpfun","swaps":65,"first_price":2.801108536038094e-08},{"mint":"7Qx8qgA2kPm6uukaEM7t1f5pBUnxtfgTxNwGj2EneUUf","short":"7Qx8…eUUf","pool":"73hKdAhLD5uDsPEgd7LUCXEtCC1kNAEabsePfS4CyEHM","birth":1787496562,"venue":"pumpfun","swaps":16,"first_price":2.7995772999655216e-08},{"mint":"RJQY5Agvk1WccaDDAiMLBv7mx3wz1VYiSG7Ndcjpump","short":"RJQY…pump","pool":"E8K8wC6DWzcR7Ewk3R7ex9qK1gz88TJp549g5Subt5C9","birth":1787496562,"venue":"pumpfun","swaps":33,"first_price":2.898636525998137e-08},{"mint":"EhGXTc8AKQCpoxqnrNUN4ytRSJZUVeCf3W5oXcRGpump","short":"EhGX…pump","pool":"J8uigEBimfs7rKwV2X8AumvBbph4RpYwMKLeuqPVuXKn","birth":1787496562,"venue":"pumpfun","swaps":19,"first_price":2.7995751817633663e-08},{"mint":"8vJ6T78sia8uEgmdCMMctBzMvKRx4aS4X6kEXw4Apump","short":"8vJ6…pump","pool":"HfmuLsfxy6HoCyXH1PoYxbTc2cgLyRb6ie8Xkd3vsvxj","birth":1787496563,"venue":"pumpfun","swaps":42,"first_price":2.872253586330187e-08},{"mint":"GSqKQ5S4i3YmjrLpmSgzhjPqcfQJm9dycW4HFpvopump","short":"GSqK…pump","pool":"6AoHhxrBDjYRkojHctngiSNnUdfKz46wwVS9sskj95Qu","birth":1787496564,"venue":"pumpfun","swaps":33,"first_price":2.897634569485299e-08},{"mint":"3L1u9qDBkiY4CmcuNQXCz7Fs7BBa3PRu2DPNa8E52uMS","short":"3L1u…2uMS","pool":"DaN9fGreud7phLcEEn8eUoV8WHCmhdCriwefNH5fMviL","birth":1787496564,"venue":"pumpfun","swaps":8,"first_price":2.367413221312392e-07},{"mint":"Hd8HxfJX72ccQY5rs268kHXL22xoa2LgskYArttKpump","short":"Hd8H…pump","pool":"94iuXsiReaGWYkGewwqth9mzozgr2vdnqg3dpqN6UgH4","birth":1787496565,"venue":"pumpfun","swaps":97,"first_price":3.37470759246754e-08},{"mint":"GmPMqzjtpZsPMudrUGh1P96sKwSBVNQvt9yKpJS3pump","short":"GmPM…pump","pool":"BzmtthVPLo2imvhnNUvXwXRthE9d3HtWjb25EN942x67","birth":1787496565,"venue":"pumpfun","swaps":28,"first_price":2.7986810304299558e-08},{"mint":"Fs389jXNeNVAxocb42HmBLPYyBq6XuScVqFrLaYr5Wx2","short":"Fs38…5Wx2","pool":"4airbBbPHcmtT1KeBkGtPhqHVZdKPLayNv8JMPwV6bn7","birth":1787496566,"venue":"pumpfun","swaps":15,"first_price":3.238741404323627e-08},{"mint":"74kEu8pWt76jvrTzGUo4HR18FonZ8NuB3v2WxHLdpump","short":"74kE…pump","pool":"GaqJnaR68td1WEgJB22AWBx4yT5SLq1ZdQNqD2z7x6c5","birth":1787496566,"venue":"pumpfun","swaps":12,"first_price":3.291864349126982e-08},{"mint":"3iGgVxMnwQpDERVQYa5fcdLrJDWUcXiHqoTzawjDpump","short":"3iGg…pump","pool":"39mva9LmLu8pGpa1NATszxZq9KsDhAo5zRSozi1sdFVo","birth":1787496567,"venue":"pumpfun","swaps":17,"first_price":3.831691396707469e-07},{"mint":"Dz6WZ2A8rMnpMyGa4vzG7Fo3BGP5wzwnDByrfyVYpump","short":"Dz6W…pump","pool":"3soVUeGkk5MZpLZkiYtJzG9tbUSs2AC5e5RUGpBbx9Um","birth":1787496568,"venue":"pumpfun","swaps":89,"first_price":1.8185686805826272e-07},{"mint":"Htr4wVL5V4yvBMKDNBK5P2WfapucoKZAyGMguP1Zpump","short":"Htr4…pump","pool":"CjdBcZpb1ys7MzZEkAGWXDJmH6U7MNKk4HPhQ3j4vN5A","birth":1787496568,"venue":"pumpfun","swaps":8,"first_price":4.732735596895871e-08},{"mint":"ubtieiETHjFQg7ioRWgs8xGs78TCgBfhjsDrZMMpump","short":"ubti…pump","pool":"B1Q5DVSkT3x6WNk3YfoddW9SBuYwZ8wdMQpumGF8o9ev","birth":1787496571,"venue":"pumpfun","swaps":34,"first_price":3.692192850272779e-08},{"mint":"CrnhowixWwwsZbjqkYy1yHXcUVKXwrMULxZ4Ex3Xpump","short":"Crnh…pump","pool":"3dpTpQsQxE1sokHFUuV9GPW4AjEK6FdiNTTP9N2r2iev","birth":1787496574,"venue":"pumpfun","swaps":11,"first_price":3.77320160067235e-08},{"mint":"4vswioFW8B66YqKCAgHb2JpwomHPjZyzWXfs4Zvbpump","short":"4vsw…pump","pool":"Gki7fYpiN3AcYtmiBisUhSbdPrHxN1LmSG3R7aXcShz5","birth":1787496575,"venue":"pumpfun","swaps":13,"first_price":6.449214763394817e-08},{"mint":"3VECNruhGYX4cugGbc23SafBdjPm2nRCfZxRNud3pump","short":"3VEC…pump","pool":"4WdEGhg6gJ7DeKMm6tW3oeVey1Sa2obbpeqyT6ugHMdQ","birth":1787496580,"venue":"pumpfun","swaps":19,"first_price":2.7995751317882364e-08},{"mint":"7EBFeiw5NebTWU4fxUDDLiBfREcbVfT5bHWwUkXnpump","short":"7EBF…pump","pool":"6jWwWSgV2m6Tgu1bViwGnkQvrFhWCcD28La9psZvu7XP","birth":1787496582,"venue":"pumpfun","swaps":29,"first_price":6.340766050451497e-08},{"mint":"CxmzrynPEdYxUQCt8ZvvfwqTNAyZ22tq6YUK9wyQpump","short":"Cxmz…pump","pool":"Gj9onbVbDnDCNzDv3fRdx9LSf3KkX6oU9HZp4Z65ZZPw","birth":1787496589,"venue":"pumpfun","swaps":11,"first_price":3.6559793285282134e-08},{"mint":"LPqjg6km98k8SYBYxKC4f6UyfL7jMBQsttNLewcpump","short":"LPqj…pump","pool":"CXWLBBotUZ4PcjLM1oDRmBZopYDAC8JkcnR2efXgP7bY","birth":1787496591,"venue":"pumpfun","swaps":10,"first_price":5.809745868185613e-08},{"mint":"3wE3PWzFHMXLz6KiSws7niPLVWrgNn8b3uZ9QJejpump","short":"3wE3…pump","pool":"j5rHRrmfj2JsaeXP6JmwWUc6tGVUKoHCXuJG6g4hKYZ","birth":1787496599,"venue":"pumpfun","swaps":36,"first_price":2.9486324880532906e-08},{"mint":"AgGAgfPCTfGzJtF4qS9QCMU6nHdeZFsb4FnLv8TUpump","short":"AgGA…pump","pool":"FoNZp9HGToFQ8raBYEb6TZbG765tqAR6QdJFWvLjpNj6","birth":1787496600,"venue":"pumpfun","swaps":11,"first_price":2.807295901562246e-08},{"mint":"BAEpwdk5gBm5uEnN3qUo4AcD1FwNhuX8pMgbMZ2Spump","short":"BAEp…pump","pool":"8FdJzRvhTtY8gpkyrjcsq1JJvDYwFjcDjLJaRT5A5ZQ4","birth":1787496604,"venue":"pumpfun","swaps":301,"first_price":5.2063517360267554e-08},{"mint":"4XWPT4DdycgGXPZxBfPXhqfidwr5Gpqv46rkFMkB2MVA","short":"4XWP…2MVA","pool":"4Qu4TH4uU4S8KpZ5yhE5RwfCs7pNCVHoksfLfdw1vC2A","birth":1787496608,"venue":"pumpfun","swaps":13,"first_price":3.168685927306618e-08},{"mint":"DU9tm9SSYYNkAj8VqyX14qx9nzwJnrZ7pz9npHWPpump","short":"DU9t…pump","pool":"4YSPTyz5nwvC6VbYDfHVfnvgSmcKsUGr7qYz36Yr4FnT","birth":1787496624,"venue":"pumpfun","swaps":9,"first_price":1.525859823722266e-07},{"mint":"34SJbsiV838vWN66Uquvn5TjDxzTMxffxiqbTg6dpump","short":"34SJ…pump","pool":"43bui7BBPsuMCg3F88DNWoTgo6a3athdvJrGewwDkXsr","birth":1787496629,"venue":"pumpfun","swaps":269,"first_price":7.932802713152534e-08},{"mint":"AbdNY7PZj1WdX1U3tNnXUZXY1ihhR2rgH3rw8d5Mpump","short":"AbdN…pump","pool":"8uyi2LeHWpn8g36mARztmZmASiBM5uTatXLu3xfYEy5T","birth":1787496633,"venue":"pumpfun","swaps":201,"first_price":3.869544376198379e-08},{"mint":"tV7deBbhygcu9trVCqm7pani2iUqaVcrM4ftUiGpump","short":"tV7d…pump","pool":"8dSoUH4X1uRBPJFW6Z3cDrmqzhq2LaVaf7qzW7XvkPz4","birth":1787496636,"venue":"pumpfun","swaps":28,"first_price":1.2226142434622326e-10},{"mint":"JE2yfcJM43viD1u4Z6Hsv8EaVTkkYc2yqkadZJonpump","short":"JE2y…pump","pool":"DkaMX2GV8AfKCuQM1Qtv7X89zkLLt2TJP6G215V5bVD8","birth":1787496642,"venue":"pumpfun","swaps":10,"first_price":4.8699835142857384e-08},{"mint":"8uJ5vWi7bD9eiuqc5K4PSTRBxWSYRwNdypxB8G66pump","short":"8uJ5…pump","pool":"B3DE6JHZQrP4ZyFWC9fvwzDbjYmWw83ZqAU9vCvKqEoZ","birth":1787496647,"venue":"pumpfun","swaps":26,"first_price":7.960854459269882e-08},{"mint":"EAp6eALPC8wPmWwQSqu3PmkDaQ1wbtn2yQd2ih3wpump","short":"EAp6…pump","pool":"Es3TfdnniETuPR6bmjtwmu1YVhwifsZg52PRMZ1ewALG","birth":1787496671,"venue":"pumpfun","swaps":51,"first_price":6.47393051703798e-08},{"mint":"5vv5p1bc8Rhto3psb3r58zHhFt51v7uXCketQphupump","short":"5vv5…pump","pool":"544f8XorcTri1sAoqxhvW3L48UuXVD5aMb7a8j5aSNJE","birth":1787496677,"venue":"pumpfun","swaps":10,"first_price":3.012187873004127e-08},{"mint":"HvKus2JPJ4PP4zRz27FX1AUBBmHTKw8gJzTpHZwBpump","short":"HvKu…pump","pool":"12f6LrkqUEqehUGnGGUmD6TEmYbGLRwcidnDf5m1dJEN","birth":1787496708,"venue":"pumpfun","swaps":10,"first_price":3.547648934458217e-08},{"mint":"2u72KogNYt8TaENw5SYZgPGH1GJaBUfnTp8hhDgopump","short":"2u72…pump","pool":"Ea2m4E84SjampRj17JAe72W8zWDdab4HRyUHmPNX7SWu","birth":1787496724,"venue":"pumpfun","swaps":12,"first_price":6.425148730925095e-08}];
+
+/* Per-run chrome: display label + one honest, factual caption each, plus an optional
+   sub-note used to keep a two-sided result honest (the ·131 and at-scale runs carry one). */
+const RUN_META = {
+  pbt:              { label:'PBT',             caption:'fitness-only — diversity collapses to one desk' },
+  mapelites:        { label:'MAP-ELITES ·120', caption:'quality-diversity on 120 tokens — four of six niches held' },
+  mapelites_scaled: { label:'MAP-ELITES ·131', caption:'quality-diversity on 131 fresh tokens — all six niches filled, best +130 bps',
+                      subnote:'all niches filled, but 3–10% win rates — lottery-shaped, not proven edge' },
+  mapelites_scale:  { label:'AT SCALE',        caption:'quality-diversity at data scale — coverage holds, edge regresses to ~breakeven',
+                      subnote:'the small-run +130 bps was survivor luck — at ~1000 tokens, best ≈ single-digit bps, win rates 3–19%. price-only tops out.' }
+};
+const RUN_ORDER = ['pbt','mapelites','mapelites_scaled','mapelites_scale'];   // segmented-control order — the progression story
+let currentRun = 'mapelites_scale';                         // default: the newest result — the honest at-scale punchline
+
+/* Run-derived globals — recomputed by recomputeRunDerived() whenever the toggle flips.
+   The RECORDED FIREHOSE (MARKET_TICKS) is market data and stays shared across runs. */
+let TELEMETRY, gens, roles, N, roleVarMap, PNL_MAX;
+function recomputeRunDerived(){
+  TELEMETRY = RUNS[currentRun];
+  gens  = TELEMETRY.generations;
+  roles = TELEMETRY.roles;
+  N = gens.length;
+  roleVarMap = {};
+  roles.forEach((r,i)=>roleVarMap[r] = '--role-' + ((i % 6) + 1));
+  // stable scaling for bars / sparkline across the whole selected run
+  PNL_MAX = 1;
+  gens.forEach(g=>{
+    PNL_MAX = Math.max(PNL_MAX, Math.abs(g.best_pnl_bps), Math.abs(g.mean_pnl_bps));
+    g.desks.forEach(d=>{ if(d.champion) PNL_MAX = Math.max(PNL_MAX, Math.abs(d.champion.pnl_bps)); });
+  });
+}
+recomputeRunDerived();
+
+const state = { gen: 0, playing: false, timer: null };
+const el = id => document.getElementById(id);
+const cssVar = name => getComputedStyle(document.documentElement).getPropertyValue(name).trim();
+const esc = s => String(s).replace(/[&<>]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;'}[c]));
+const signed = v => (v >= 0 ? '+' : '') + Math.round(v);
+
+function setBps(elm, v){
+  elm.textContent = signed(v);
+  elm.classList.remove('muted');
+  elm.classList.toggle('pos', v >= 0);
+  elm.classList.toggle('neg', v < 0);
+}
+function setMuted(elm){
+  elm.textContent = '—';
+  elm.classList.add('muted');
+  elm.classList.remove('pos','neg');
+}
+function shade(hex, pct){ // pct<0 darkens
+  hex = hex.replace('#','');
+  if(hex.length === 3) hex = hex.split('').map(c=>c+c).join('');
+  const r=parseInt(hex.slice(0,2),16), g=parseInt(hex.slice(2,4),16), b=parseInt(hex.slice(4,6),16);
+  const f=c=>Math.max(0,Math.min(255,Math.round(c + c*pct)));
+  return `rgb(${f(r)},${f(g)},${f(b)})`;
+}
+function fmtClock(sec){
+  sec = Math.floor(sec) % 86400;
+  const h=Math.floor(sec/3600), m=Math.floor(sec%3600/60), s=sec%60, p=n=>String(n).padStart(2,'0');
+  return p(h)+':'+p(m)+':'+p(s);
+}
+
+/* ===================== PIXEL FIGURE ===================== */
+const FIG = [
+  "  HHHHH  ",
+  " HHHHHHH ",
+  " KSSSSSK ",
+  " SESSSES ",
+  " SSSSSSS ",
+  "BBBBBBBBB",
+  "ABBBBBBBA",
+  "ABBBBBBBA",
+  " BBBBBBB ",
+  " DD   DD ",
+  " DD   DD "
+];
+const CELL = 6;
+function drawFigure(canvas, roleVar){
+  const ctx = canvas.getContext('2d');
+  ctx.clearRect(0,0,canvas.width,canvas.height);
+  const body = cssVar(roleVar) || '#888';
+  const map = { H:'#3a2d20', K:'#241b12', S:'#e8b98f', E:'#1a1109', B:body, A:shade(body,-0.32), D:'#243240' };
+  for(let y=0;y<FIG.length;y++){
+    const row = FIG[y];
+    for(let x=0;x<row.length;x++){
+      const c = row[x];
+      if(c === ' ') continue;
+      ctx.fillStyle = map[c] || body;
+      ctx.fillRect(x*CELL, y*CELL, CELL, CELL);
+    }
+  }
+}
+function drawEmpty(canvas){
+  const ctx = canvas.getContext('2d');
+  ctx.clearRect(0,0,canvas.width,canvas.height);
+  ctx.fillStyle = cssVar('--text-faint') || '#889';
+  ctx.globalAlpha = 0.55;
+  // a dim empty stool: seat + post + base
+  ctx.fillRect(18,30,20,6);   // seat
+  ctx.fillRect(25,36,6,18);   // post
+  ctx.fillRect(16,54,24,5);   // base
+  ctx.globalAlpha = 1;
+}
+
+/* ===================== BUILD DESKS ===================== */
+const deskEls = {};
+(function buildDesks(){
+  const floor = el('floor');
+  roles.forEach((role,i)=>{
+    const d = document.createElement('div');
+    d.className = 'desk';
+    d.dataset.role = role;
+    d.innerHTML = `
+      <div class="desk-top">
+        <span class="desk-role" style="color:var(--role-${i+1})">${esc(role)}</span>
+        <span class="occ" title="agents occupying this niche">×0</span>
+      </div>
+      <div class="desk-body">
+        <canvas class="fig" width="54" height="66" aria-hidden="true"></canvas>
+        <div class="desk-main">
+          <div class="pnl muted" data-pnl>—</div>
+          <div class="median" data-median></div>
+        </div>
+      </div>
+      <div class="desk-stats num">
+        <div><span class="k">TR</span><span class="v" data-trades>—</span></div>
+        <div><span class="k">WR</span><span class="v" data-win>—</span></div>
+        <div><span class="k">HOLD</span><span class="v" data-hold>—</span></div>
+      </div>
+      <div class="desk-foot">
+        <span class="agent num" data-agent></span>
+        <span class="status" data-status>unmanned</span>
+      </div>`;
+    floor.appendChild(d);
+    deskEls[role] = {
+      root:d, canvas:d.querySelector('.fig'),
+      pnl:d.querySelector('[data-pnl]'), median:d.querySelector('[data-median]'),
+      occ:d.querySelector('.occ'), trades:d.querySelector('[data-trades]'),
+      win:d.querySelector('[data-win]'), hold:d.querySelector('[data-hold]'),
+      agent:d.querySelector('[data-agent]'), status:d.querySelector('[data-status]')
+    };
+  });
+})();
+
+function updateDesk(role, desk){
+  const d = deskEls[role];
+  if(!desk || desk.occupancy === 0 || !desk.champion){
+    d.root.classList.add('empty');
+    drawEmpty(d.canvas);
+    setMuted(d.pnl);
+    d.median.textContent = 'niche undiscovered';
+    d.occ.textContent = '×0';
+    d.trades.textContent = '—'; d.win.textContent = '—'; d.hold.textContent = '—';
+    d.agent.textContent = ''; d.status.textContent = 'unmanned';
+    return;
+  }
+  d.root.classList.remove('empty');
+  const c = desk.champion;
+  drawFigure(d.canvas, roleVarMap[role]);
+  setBps(d.pnl, c.pnl_bps);
+  d.median.textContent = 'niche med ' + signed(desk.median_pnl_bps) + ' bps';
+  d.occ.textContent = '×' + desk.occupancy;
+  d.trades.textContent = c.trades;
+  d.win.textContent = Math.round(c.win_rate*100) + '%';
+  d.hold.textContent = c.hold_secs + 's';
+  d.agent.textContent = c.agent_id;
+  d.status.textContent = c.status;
+}
+
+/* ===================== ROSTER ===================== */
+function renderRoster(g){
+  const rows = g.desks.map(dk => ({
+    role: dk.role, occ: dk.occupancy,
+    pnl: dk.champion ? dk.champion.pnl_bps : null
+  }));
+  rows.sort((a,b)=>{
+    if(a.pnl === null && b.pnl === null) return roles.indexOf(a.role) - roles.indexOf(b.role);
+    if(a.pnl === null) return 1;
+    if(b.pnl === null) return -1;
+    return b.pnl - a.pnl;
+  });
+  el('roster').innerHTML = rows.map((r,i)=>{
+    const v = roleVarMap[r.role];
+    if(r.pnl === null){
+      return `<div class="rrow dim">
+        <span class="rank num">${i+1}</span>
+        <span class="role" style="color:var(${v})">${esc(r.role)}</span>
+        <span class="rbar"><span class="zero"></span></span>
+        <span class="val muted">—</span></div>`;
+    }
+    const w = Math.min(Math.abs(r.pnl)/PNL_MAX, 1) * 50;
+    const pos = r.pnl >= 0;
+    const fill = pos
+      ? `left:50%;width:${w}%`
+      : `left:${50-w}%;width:${w}%`;
+    return `<div class="rrow">
+      <span class="rank num">${i+1}</span>
+      <span class="role" style="color:var(${v})">${esc(r.role)}</span>
+      <span class="rbar"><span class="zero"></span><span class="fill ${pos?'pos':'neg'}" style="${fill}"></span></span>
+      <span class="val ${pos?'pos':'neg'} num">${signed(r.pnl)}</span></div>`;
+  }).join('');
+}
+
+/* ===================== FEED ===================== */
+function renderFeed(g){
+  const items = [];
+  roles.forEach(role=>{
+    const dk = g.desks.find(x=>x.role===role);
+    if(dk) dk.events.forEach(ev=>items.push({role, text:ev}));
+  });
+  let t = 9*3600 + 32*60 + 11 + state.gen*94;
+  const rows = items.map((it,i)=>{
+    t += 6 + (i % 5);
+    return `<div class="feed-row">
+      <span class="feed-t">${fmtClock(t)}</span>
+      <span class="tag" style="color:var(${roleVarMap[it.role]})">${esc(it.role)}</span>
+      <span class="feed-x">${esc(it.text)}</span></div>`;
+  });
+  rows.push(`<div class="feed-row">
+    <span class="feed-t">${fmtClock(t+4)}</span>
+    <span class="tag" style="color:var(--accent)">SYS</span>
+    <span class="feed-x">epoch ${String(g.gen).padStart(2,'0')} · pop ${g.population_size} · demo fixture, not a live feed</span></div>`);
+  el('feed').innerHTML = rows.join('');
+  el('feedMeta').textContent = items.length + ' ticks';
+}
+
+/* ===================== SPARKLINE ===================== */
+let sparkPts = [];
+function buildSpark(){
+  const svg = el('spark');
+  const W=120, H=46, padX=3, padTop=5, padBot=6;
+  const bests = gens.map(g=>g.best_pnl_bps);
+  let lo = Math.min(0, ...bests), hi = Math.max(0, ...bests);
+  const pad = (hi-lo)*0.12 || 1; lo -= pad; hi += pad;
+  const xFor = i => padX + (N>1 ? i/(N-1) : 0) * (W - padX*2);
+  const yFor = v => padTop + (1 - (v-lo)/(hi-lo)) * (H - padTop - padBot);
+  sparkPts = bests.map((v,i)=>({x:xFor(i), y:yFor(v), v}));
+  const zeroY = yFor(0);
+  const line = sparkPts.map(p=>`${p.x.toFixed(2)},${p.y.toFixed(2)}`).join(' ');
+  const area = `${padX},${zeroY.toFixed(2)} ${line} ${xFor(N-1).toFixed(2)},${zeroY.toFixed(2)}`;
+  let dots = sparkPts.map((p,i)=>`<circle cx="${p.x.toFixed(2)}" cy="${p.y.toFixed(2)}" r="1.4" fill="${p.v>=0?'var(--pos)':'var(--neg)'}"/>`).join('');
+  svg.innerHTML = `
+    <line x1="${padX}" y1="${zeroY.toFixed(2)}" x2="${W-padX}" y2="${zeroY.toFixed(2)}" stroke="var(--text-faint)" stroke-width="0.4" stroke-dasharray="2 2" opacity="0.7"/>
+    <polygon points="${area}" fill="var(--accent-soft)"/>
+    <polyline points="${line}" fill="none" stroke="var(--accent)" stroke-width="1.2" stroke-linejoin="round" stroke-linecap="round"/>
+    ${dots}
+    <line id="sparkGuide" x1="0" y1="${padTop}" x2="0" y2="${H-padBot}" stroke="var(--text-dim)" stroke-width="0.5" opacity="0.5"/>
+    <circle id="sparkMarker" r="2.6" fill="var(--bg)" stroke="var(--accent)" stroke-width="1.4"/>`;
+}
+function updateSpark(gi){
+  const p = sparkPts[gi];
+  const m = el('sparkMarker'), guide = el('sparkGuide');
+  if(m){ m.setAttribute('cx', p.x.toFixed(2)); m.setAttribute('cy', p.y.toFixed(2));
+    m.setAttribute('stroke', p.v>=0?'var(--pos)':'var(--neg)'); }
+  if(guide){ guide.setAttribute('x1', p.x.toFixed(2)); guide.setAttribute('x2', p.x.toFixed(2)); }
+  const sn = el('sparkNow'); sn.textContent = signed(p.v) + ' bps';
+  sn.classList.toggle('pos', p.v>=0); sn.classList.toggle('neg', p.v<0);
+}
+
+/* ===================== RECORDED MARKET FIREHOSE (static, real captured data) =====
+   Recorded history — rendered once, independent of the epoch scrubber. Every line is a
+   true fact from data/live_capture_probe (short mint · venue · swap count · birth clock). */
+function fmtDate(sec){
+  const d = new Date(sec*1000), p = n => String(n).padStart(2,'0');
+  return d.getUTCFullYear()+'-'+p(d.getUTCMonth()+1)+'-'+p(d.getUTCDate());
+}
+(function buildMarketFeed(){
+  const feed = el('mktFeed');
+  if(!feed || !Array.isArray(MARKET_TICKS) || !MARKET_TICKS.length){ return; }
+  feed.innerHTML = MARKET_TICKS.map(t=>{
+    const price = (typeof t.first_price === 'number')
+      ? ' · first ◎'+t.first_price.toExponential(1) : '';
+    const title = esc(t.mint) + ' · ' + esc(t.venue) + ' · ' + t.swaps + ' swaps' + price;
+    return `<div class="mkt-row" title="${title}">
+      <span class="mkt-t">${fmtClock(t.birth)}</span>
+      <span class="mkt-x"><span class="new">NEW MINT</span>`+
+      `<span class="mint">${esc(t.short)}</span> · ${esc(t.venue)} · `+
+      `<span class="sw">${t.swaps} swaps</span></span>
+    </div>`;
+  }).join('');
+  const first = MARKET_TICKS[0].birth, last = MARKET_TICKS[MARKET_TICKS.length-1].birth;
+  const totalSwaps = MARKET_TICKS.reduce((a,t)=>a+t.swaps,0);
+  el('mktFoot').innerHTML =
+    `${MARKET_TICKS.length} fresh bonding-curve mints · ${totalSwaps.toLocaleString()} swaps · `+
+    `Pinax <b>solana@swaps</b> capture ${fmtDate(first)} `+
+    `${fmtClock(first)}–${fmtClock(last)} UTC. Recorded and replayed — not a live feed.`;
+})();
+
+/* ===================== MASTER RENDER ===================== */
+function render(){
+  const gi = state.gen, g = gens[gi];
+  el('genNow').textContent = String(g.gen).padStart(2,'0');
+  el('epochLabel').textContent = 'EPOCH ' + String(g.gen).padStart(2,'0');
+  el('pop').textContent = g.population_size.toLocaleString();
+  el('cov').textContent = Math.round(g.coverage*100) + '%';
+  setBps(el('best'), g.best_pnl_bps);
+  setBps(el('mean'), g.mean_pnl_bps);
+  const occupied = g.desks.filter(d=>d.occupancy>0).length;
+  el('covSub').textContent = occupied + '/' + roles.length + ' niches live';
+
+  roles.forEach(role => updateDesk(role, g.desks.find(d=>d.role===role)));
+  renderRoster(g);
+  renderFeed(g);
+  updateSpark(gi);
+
+  const scrub = el('scrub');
+  scrub.value = String(gi);
+  scrub.setAttribute('aria-valuetext', 'Generation ' + g.gen);
+}
+
+/* ===================== PLAY CONTROL ===================== */
+function startPlay(){
+  if(state.gen >= N-1) state.gen = 0;
+  state.playing = true;
+  const b = el('play');
+  b.classList.add('on'); b.setAttribute('aria-pressed','true');
+  el('playIcon').textContent = '❚❚'; el('playLabel').textContent = 'PAUSE';
+  render();
+  state.timer = setInterval(()=>{
+    if(state.gen >= N-1){ stopPlay(); return; }
+    state.gen++; render();
+  }, 1150);
+}
+function stopPlay(){
+  state.playing = false;
+  const b = el('play');
+  b.classList.remove('on'); b.setAttribute('aria-pressed','false');
+  el('playIcon').textContent = '►'; el('playLabel').textContent = 'PLAY';
+  if(state.timer){ clearInterval(state.timer); state.timer = null; }
+}
+el('play').addEventListener('click', ()=> state.playing ? stopPlay() : startPlay());
+el('scrub').addEventListener('input', e=>{
+  if(state.playing) stopPlay();
+  state.gen = +e.target.value;
+  render();
+});
+
+/* ===================== THEME TOGGLE (canvas redraw needs re-render) ===== */
+el('themeBtn').addEventListener('click', ()=>{
+  const root = document.documentElement;
+  const dark = window.matchMedia('(prefers-color-scheme: dark)').matches;
+  const cur = root.getAttribute('data-theme') || (dark ? 'dark' : 'light');
+  root.setAttribute('data-theme', cur === 'dark' ? 'light' : 'dark');
+  render(); // recolor canvases + spark markers from the new tokens
+});
+
+/* ===================== RUN TOGGLE (4-way progression) =====================
+   Flips the whole console between the three telemetry runs. The FLOOR desks are
+   built once (all runs share the same six roles); everything else — stats,
+   scrubber range, sparkline, SQUAWK feed, captions, sub-note — re-derives here. */
+function loadRun(key){
+  if(!RUNS[key]) return;
+  currentRun = key;
+  stopPlay();
+  recomputeRunDerived();
+  if(state.gen > N-1) state.gen = N-1;   // clamp scrub position into the new run's range
+
+  el('runline').textContent = `run · ${TELEMETRY.run_id} · ${RUN_META[currentRun].label} · ${TELEMETRY.desk_type}`;
+  el('popSub').textContent = 'agents · net ' + TELEMETRY.cost_bps + ' bps';
+  el('floorMeta').textContent = roles.length + ' stations';
+  el('genTotal').textContent = String(N-1).padStart(2,'0');
+  el('sparkLast').textContent = 'GEN ' + (N-1);
+  el('runCaption').textContent = RUN_META[currentRun].caption;
+  const sub = el('runSubnote');
+  if(sub){
+    const note = RUN_META[currentRun].subnote;
+    sub.textContent = note || '';
+    sub.classList.toggle('hidden', !note);
+  }
+  el('footNote').innerHTML =
+    `Quality-diversity training telemetry · <b>${TELEMETRY.run_id}</b> (${RUN_META[currentRun].label}). Each desk is a behavioral niche `+
+    `(binned from trade-frequency × hold-duration); occupancy 0 = an archetype the population has not discovered yet. `+
+    `All PnL is bps net of the ${TELEMETRY.cost_bps} bps cost model, on held-out tokens.`;
+
+  const scrub = el('scrub');
+  scrub.max = String(N-1);
+  el('ticks').innerHTML = gens.map(g=>`<span>G${g.gen}</span>`).join('');
+
+  RUN_ORDER.forEach(k=>{
+    const b = el('run_'+k);
+    if(b) b.setAttribute('aria-selected', String(k===currentRun));
+  });
+
+  buildSpark();   // rebuild the sparkline geometry for the new run
+  render();
+}
+RUN_ORDER.forEach(k=>{
+  const b = el('run_'+k);
+  if(b) b.addEventListener('click', ()=>loadRun(k));
+});
+
+/* ===================== INIT ===================== */
+loadRun(currentRun);
+</script>

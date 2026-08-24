@@ -1,7 +1,7 @@
 # 05 — Evaluation & Benchmarks
 
 **Program:** OCT Autonomous Trading Agent
-**Status:** Proposal / pre-Phase-0
+**Status:** In execution — first exercised for real at the Phase-1 gate (NO-GO, 2026-08-24; see the §1.1 field note and §5)
 **Source of truth:** [`00-paper.md`](./00-paper.md) §8. This doc pins the metrics, the promotion gate, the ablation protocol, and the statistical-rigor rules into an executable evaluation contract.
 
 **Governing principle:** the evaluation exists to answer the go/no-go question (charter §2) *honestly* —
@@ -19,6 +19,14 @@ its job is to stop us fooling ourselves, not to make the agent look good. Metric
 - **Hit-rate and expectancy** (avg win × win-rate − avg loss × loss-rate) — **never reported alone**: a low hit-rate can still be highly profitable via a few tail winners, so hit-rate in isolation is misleading.
 - **Turnover, fees paid, realized slippage** — to catch strategies that only "work" under unrealistic costs.
 - **Capacity** — performance as a function of deployed size (does the edge survive *real* position sizes given liquidity?). A capacity-blind edge is not a shippable edge.
+
+> **Field note (2026-08-24) — best-PnL alone is as misleading as hit-rate alone.** The first real
+> population runs made the converse of the hit-rate rule concrete: across four MAP-Elites scale runs
+> the best-niche held-out PnL bounced +130 → +7 → +3 → +90 bps between runs — pure lottery variance
+> on fat-tailed survivor tokens, where a bigger population just holds more tickets — while the stable,
+> informative statistic was the **win-rate distribution** (0.00–0.22, mostly ≤0.10, in every run:
+> lottery-shaped, no skill). Rule adopted: headline PnL is never read without the win-rate/expectancy
+> shape behind it, and a "best agent" whose win rate sits in lottery territory is a ticket, not an edge.
 
 ### 1.2 Per-token outperformance vs labeled traders (paper §8.2 — the operator's explicit objective)
 For each token the agent traded, measure realized edge vs the labeled-trader cohort on that **same**
@@ -104,3 +112,8 @@ Every headline number carries its caveats attached (paper §10.6):
 
 A defensible, caveated **"no"** at any gate is a successful outcome of this evaluation — it answers the
 open question and prevents lighting real capital on fire (charter §2, paper §11).
+
+*This clause has now been exercised for real: on 2026-08-24 the Phase-1 chart-only gate returned a
+defensible, caveated NO-GO — replicated across two independent methods (a PPO token-count ladder and
+MAP-Elites population search), leakage guard passed, caveats attached (paper §12.1,
+`03-experiment-plan.md` Phase 1). The evaluation did its job.*

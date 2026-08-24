@@ -14,6 +14,351 @@ program logs reasoning and scoping; once Phase 0 starts, entries carry real numb
 
 ---
 
+## 2026-08-24 (ii) — OVERNIGHT VERDICT: chart-only has no durable edge — two independent methods converge
+
+The synthesis of the overnight escalation campaign. This is the program's most important result to
+date, and it is a **negative** one, delivered exactly the way the charter said a "no" should be.
+
+**Findings**
+- **MAP-Elites escalation (four GPU runs, populations 12 → 100 → 200 → 400 agents on 131 → 987 →
+  1,312 → ~2,600 tokens;** `data/desk_telemetry/mapelites-gpu-{large,huge,mega,400}-seed0.json`):
+  coverage reached and held **1.000 (6/6 niches)** in every run — the anti-collapse property proven on
+  the small run scales cleanly. But the *performance* story is the finding:
+  - **Best-niche held-out pnl BOUNCES with scale, trendlessly: +130.3 → +7.2 → +3.0 → +90.4 bps.**
+    That bounce is not signal — it is lottery variance on fat-tailed survivor tokens (a bigger
+    population buys more tickets and sometimes holds a luckier one).
+  - **The invariant across ALL four runs is the win-rate distribution: champion win rates 0.00–0.22,
+    mostly ≤0.10, in every niche of every run.** A profile of rare large winners carrying a mean —
+    lottery-shaped, not skill-shaped. No niche, at any scale, learned to win often.
+- **Independent confirmation — the single-agent PPO token-count ladder** (rungs 10 / 100 / 149; the
+  1,000-token rung truncates to the 149 trainable ≥24-swap tokens the base dataset holds): **NO-GO at
+  every rung.** Held-out edge vs hold-SOL shrank toward zero as tokens grew — **+0.60 (noise) →
+  +0.074 → +0.0023** — and went **negative vs buy-and-hold at 149 tokens**. More data made the honest
+  number smaller, which is what "no edge" looks like when variance stops flattering you.
+- **Two independent methods — QD population search and single-agent PPO — arrive at the same verdict:
+  price-chart-only trading has no durable edge after 125 bps modeled costs.** This extends the
+  2026-08-23 (e) 24-token NO-GO to every scale we can currently reach, and it **confirms the paper's
+  curriculum hypothesis rather than refuting the program**: the edge, if it exists, must come from the
+  information tiers (wallet flows → metadata → narrative/social), not from the chart. Phase B is the
+  pre-registered next step, and it is now the *only* justified next step.
+- **Live capture shipped and ran overnight** (`data/capture/` — Pinax WS `solana@swaps` firehose →
+  the resumable `MarketSwapDataset` store; `tests/data/test_live_capture.py`): the overnight store
+  (`data/market_dataset_large`) holds **23,310 fresh tokens / 2.30M swap rows**, but only **6,046
+  (~26%) clear the ≥24-swap trainable-depth floor**, and the median token prints only a handful of
+  swaps (2 in the smaller probe, 5 in the overnight store) — **most launches are stillborn.** The
+  higher ladder rungs are a capture-duration problem now, not a code problem — but "100k tokens"
+  really means "100k mostly-dead tokens" unless the floor is applied first.
+
+**Decisions**
+- **Win-rate shape, not best-PnL, is the primary read on population runs.** Best pnl_bps on
+  fat-tailed survivor tokens is a lottery draw (it bounced 130 → 7 → 3 → 90 across scales); the
+  win-rate distribution is what stayed invariant and carried the verdict. Folded into
+  `05-evaluation-plan.md` as a field note — the mirror image of its existing "hit-rate is never
+  reported alone" rule.
+- **The Phase-1 / chart-only line is closed as NO-GO.** No more chart-only scaling runs unless a
+  future claim can clear the win-rate bar; compute moves to the wallet-flow tier (Phase B), where the
+  BC seam (85% held-out intent accuracy — behaviour cloned, profit explicitly unmeasured) is the
+  warm start.
+
+**Changes**
+- Docs brought current: `00-paper.md` gains an empirical addendum (§12) carrying these results with
+  caveats attached (plus status notes on §9.11 and the §10 roadmap); `03-experiment-plan.md` Phase 1
+  marked answered-NO-GO and Phase 2 marked machinery-landed; `05-evaluation-plan.md` gains the
+  best-PnL-is-a-lottery-draw field note.
+
+**Open**
+- The 400-agent run's +90.4 bps is the standing reminder that scale does not monotonically shrink the
+  lottery — larger populations find luckier tickets. Any future chart-only positive must show a
+  win-rate distribution that isn't lottery-shaped before it is believed.
+- The cloned cohort's own profitability (replayed at our costs, per the `tracked_traders` baseline)
+  is still unmeasured — it is the natural bridge between the Phase-2 imitation work and the Phase-B
+  gate, and the next heavy run to schedule.
+- Capture keeps running; the trainable-depth floor (~26%) sets the real token-accumulation rate for
+  the upper rungs (~6k trainable per 23k captured).
+
+## 2026-08-24 — Checkpoint + resume: overnight population runs survive interruption
+
+**Decisions**
+- **One atomic-write primitive, reused everywhere.** New torch-free `agent/population/checkpoint.py`:
+  `atomic_write(path, write_fn)` fills a sibling temp file and `os.replace`s it into place (atomic on
+  POSIX *and* Windows), removing the temp on failure — so a kill mid-write can never truncate a good
+  checkpoint or the telemetry JSON. `atomic_write_text` backs the telemetry flush; `save_torch` /
+  `load_torch` (lazy torch import, `weights_only=False`) back the trainer checkpoints. The telemetry
+  writer now flushes atomically and accepts a `generations=` seed so a resumed run CONTINUES the growing
+  viz timeline instead of restarting it at gen 0.
+- **Checkpoint = enough state to reproduce the uninterrupted run, saved every N.** Each trainer persists
+  its archive/population + the loop counter + all three RNG streams (numpy `Generator`, numpy legacy
+  global, torch) + the telemetry timeline. Resume restores those and continues from the exact step, so a
+  killed run loses at most `--checkpoint-every` units of work, not the whole run.
+
+**Changes**
+- **MAP-Elites** (`map_elites.py`): `MapElitesCheckpoint` + `save_/load_map_elites_checkpoint`;
+  `EliteArchive.restore(elites, considered, admitted)` (pure inverse of what's saved). `run_map_elites`
+  gains `--checkpoint-every N` (evaluations), `--checkpoint-path`, `--resume`; the seed/illumination
+  loops resume from `seed_done`/`iter_done`. The old post-loop "trailing partial batch" flush folded into
+  an `is_last` flush inside the loop (behaviour-preserving, resume-safe).
+- **PBT** (`pbt.py`): `PBTMemberState` / `PBTCheckpoint` + `save_/load_pbt_checkpoint` +
+  `_rebuild_member`; `run_pbt` gains the same three flags. Checkpoints AFTER exploit/explore with
+  `gen = next generation`, so resume starts the next generation from the post-exploit population. (The
+  Adam optimizer is intentionally NOT persisted — a resumed member gets a fresh trainer, matching how
+  exploit already rebuilds it at a generation boundary.)
+- **Ladder** (`train_market.py`): `RungTrainState` (mid-rung: weights + optimizer + iteration + RNG) and
+  `LadderCheckpoint` (completed rungs + warm-start weights + any in-progress rung). `train_market_policy`
+  gains `resume_state` / `on_checkpoint` / `checkpoint_every` — a single 1000+-iter rung now checkpoints
+  every N iterations and resumes at its iteration (the entropy schedule is a pure function of the
+  iteration, so it needs nothing extra). `run_ladder` gains `--checkpoint-every`, `--checkpoint-path`,
+  `--resume`: completed rungs are skipped, an interrupted rung continues, and per-rung `.pt` saves are
+  now atomic. `PPOTrainer.optimizer` exposed so the state can be persisted/restored.
+
+**Findings** (gates, on `.venv-cuda`)
+- ruff clean; strict mypy unchanged at the 50 pre-existing torch-installed errors (torch-distribution
+  stub noise) — **none in any touched/added file**; pytest **471 passed, 3 pre-existing skips** in ~25s.
+- Resume is proven, not assumed: a MAP-Elites run stopped after 1 illumination step and resumed to 3 runs
+  exactly the 2 remaining evaluations (a restart would re-run 5); the same for PBT at generation
+  granularity (4 train calls, not 6) and for a mid-rung `RungTrainState` (one remaining iteration, not
+  two). Atomic-write is tested against a simulated mid-write crash (original file intact, no temp litter).
+
+**Open**
+- Recommended resume commands (checkpoint path defaults to `<out>.ckpt.pt`, ladder to
+  `<checkpoint-dir>/ladder.ckpt.pt`):
+  - MAP-Elites: add `--checkpoint-every 8` to the launch; resume with
+    `... map_elites --dataset data/market_dataset --resume <out>.ckpt.pt --iterations <same-or-larger>`.
+  - PBT: `--checkpoint-every 1`; resume with `... pbt --dataset ... --resume <out>.ckpt.pt`.
+  - Ladder: `--checkpoint-dir <dir> --checkpoint-every 50`; resume with
+    `... train_market --dataset ... --checkpoint-dir <dir> --resume <dir>/ladder.ckpt.pt`.
+- The in-flight 100-agent GPU MAP-Elites run predates this and has no checkpoint; the NEXT overnight
+  launch should add `--checkpoint-every`.
+
+## 2026-08-23 (v) — GPU device support: training now actually runs on the RTX 3080
+
+**Decisions**
+- **One device seam, no scattered `.cuda()`.** A single `resolve_device(spec)` helper
+  (`agent/device.py`) maps `auto|cuda|cpu` → a `torch.device` (`auto` = cuda iff
+  `torch.cuda.is_available()`, else cpu; explicit `cuda` with no GPU raises rather than silently
+  degrading). The device is chosen ONCE at the CLI and threaded into model construction
+  (`build_actor_critic(..., device=...)`). Every downstream tensor-building site — rollout collection,
+  the PPO update, the eval `TorchPolicy` — reads the device back off the model's own parameters
+  (`next(model.parameters()).device`), so there is exactly one place a device is picked.
+
+**Changes**
+- `--device auto|cuda|cpu` (default `auto`) added to the three entry points: `train_market`,
+  `population/pbt`, `population/map_elites`. Threaded through `train_market_policy` / `run_ladder`,
+  `_init_member` / `run_pbt`, and `_build_model` / `_random_genome` / `_polish_and_evaluate` /
+  `run_map_elites` as a keyword-only `device` (default `None` = CPU, so every existing call and the
+  CPU-only path are unchanged).
+- Tensors move to the device at the numpy→torch boundary: `collect.py` (obs + truncation-bootstrap
+  tensors), `ppo.py` (the six batch tensors + the minibatch index), `torch_actor.py`
+  (`TorchPolicy.act` / `value_distribution`). Env/sim stay CPU-numpy; results already come back via
+  `.cpu().numpy()`/`.item()`. Seeds (`torch.manual_seed`/`np.random.seed`/`random.seed`) untouched.
+- Tests: `tests/test_device.py` — `resolve_device` mapping (auto/cpu/cuda via monkeypatched
+  `torch.cuda.is_available`, junk raises, cuda-unavailable raises) and that a constructed model's params
+  AND the critic's `taus` buffer land on the requested device (cuda assertion `skipif` no GPU).
+
+**Findings** (real GPU smoke: tiny MAP-Elites, init_pop 4 / iters 4 / batch 4 on `data/market_dataset`)
+- Proof it trained on the GPU: model param `is_cuda=True` (`cuda:0`) and critic `taus.is_cuda=True` at
+  train time; `torch.cuda.max_memory_allocated() = 17,214,464 bytes (~16.4 MiB)` after the run (0 before).
+- CLI paths all verified: `--device cpu` → cpu, `--device auto` → cuda (on the `.venv-cuda` box),
+  `--device cuda` → cuda across `map_elites`, `pbt`, and `train_market` (rung 10 ladder completed, agent
+  TRADES: 63 trades / 3-of-3 tokens).
+- Gates: ruff clean; full pytest green on `.venv-cuda` (472 passed, 3 pre-existing skips); strict mypy in
+  the canonical **lean** (torch-absent) config is unchanged at 35 pre-existing errors, **none in any of the
+  8 touched/added files** (the ~50 errors mypy reports when torch IS installed are pre-existing
+  torch-distribution stub noise on untouched lines, not from this change).
+
+**Open**
+- Full GPU MAP-Elites launch command (for the orchestrator):
+  `.venv-cuda\Scripts\python.exe -m oct_trading_agent.agent.population.map_elites --dataset data/market_dataset --tokens 120 --init-population 24 --iterations 96 --batch-size 8 --device auto`.
+
+## 2026-08-23 (iv) — MAP-Elites lands: diversity SURVIVES where PBT collapsed; roles renamed to goofy codenames
+
+**Decisions**
+- **Role vocabulary is now goofy codenames** (`GOBLIN/GREMLIN/GIZMO/NOODLE/PICKLE/GECKO`), replacing the
+  functional names (`SNIPER/SCAN/WHALE/RUG/SHILL/EXIT`) that misled — "RUG" read as a rug-checker when it
+  is just a niche label. The rename is **cell-for-cell** (the descriptor grid `trade_frequency ×
+  mean_hold_secs` is unchanged), so PBT, MAP-Elites, and the viz stay comparable. Shared population code
+  (`descriptor.py`, `telemetry.py`) carries the change; every consumer of `MEMECOIN_ROLES` follows.
+
+**Changes**
+- **MAP-Elites trainer shipped** (`agent/population/map_elites.py`): an `EliteArchive` holding one elite
+  per behavioral niche, illuminated by sample-parent → mutate (Gaussian weight-perturbation +
+  hyperparameter explore) → short PPO polish → held-out eval → try-take-cell. The cell-replacement rule
+  (`elite_beats`): a challenger takes a niche iff it is **empty** or its held-out `pnl_bps` **strictly
+  exceeds** the incumbent's — so a filled niche never empties and only ever improves (the monotonicity PBT
+  lacked). Reuses the descriptor→niche seam, env/sim/eval, PPO update, policy, and telemetry contract
+  verbatim; `DeskTelemetryWriter` gained an `algo` param so the file reports `algo:"map_elites"`. Archive +
+  rule are pure/torch-free (unit-tested without `learn`); mutation/train/eval are `learn`-gated.
+- Tests: `test_population_map_elites.py` (elite-replacement rule, niche stays filled once landed, coverage
+  monotone, snapshot renders schema-valid, torch-gated mutate + smoke run). Existing population tests
+  updated to the new role names. Full suite green (456 passed, 3 pre-existing skips); ruff + strict mypy
+  clean on the touched files.
+
+**Findings** (real run: `data/desk_telemetry/mapelites-2026-08-23-seed0.json`; 120 tokens, train=84/test=36,
+init_population=12, iterations=48, batch_size=8, 1 PPO polish step, seed 0)
+- **Diversity survived.** Coverage held **flat at 0.667 (4/6 niches)** across all 7 generations — it never
+  fell. Contrast the PBT 24×6 run (`pbt-2026-08-23-seed0.json`), which started at the same **0.667 and
+  COLLAPSED to 0.333** (four niches → two) as fitness pressure piled the population into `NOODLE`/`PICKLE`.
+  MAP-Elites is archive-centric, so a niche once filled cannot be evicted — exactly the fix the program
+  thesis demanded.
+- **Champions improved per niche** (held-out bps, gen0→gen6): GIZMO −4.4 → **+23.2**, NOODLE +12.9 →
+  **+63.7**, PICKLE −1.6 → **+48.4**; GREMLIN sat at 0.0 (its champion is a non-trader — the LOW-freq/
+  SHORT-hold cell). 10 of 56 evaluated children were admitted.
+
+**Open**
+- Coverage **held but did not grow** past the seed's 0.667: the two SHORT-hold niches (`GOBLIN`, `GECKO`)
+  stayed empty — mutation off long-hold parents never produced short-hold high/med-freq behavior on this
+  data. To animate coverage *climbing* we'd want a lower-diversity seed and/or descriptor-aware mutation
+  (biasing children toward empty cells). The anti-collapse property is proven; illuminating the last two
+  cells is the next tuning pass. ES remains the other unbuilt population trainer.
+
+## 2026-08-23 (iii) — Cohort backfill made survivable at scale: real backoff + per-wallet fault isolation
+
+**Findings**
+- The Phase-2 cohort pull (`imitation.cohort`) fell over at ~80 wallets: sustained load on the Pinax
+  REST endpoint (`/v1/svm/swaps`) drove 429/5xx, and the client's old retry ladder was too weak to ride
+  it out — capped at 10 s, no jitter, no `Retry-After` — so requests exhausted their retries and a hard
+  failure could abort the whole run. An 8-wallet pull survived; 80 did not.
+
+**Changes**
+- **REST client backoff hardened** (`data/pinax_client/rest.py`): retryable failures (429, 5xx, and
+  transient `OSError` connection errors) now get **exponential backoff with full jitter** — base **1 s**,
+  ×2 per attempt, capped at **~30 s**, plus jitter in `[0, base)` — and **honour a `Retry-After`** header
+  when present (integer-seconds or HTTP-date), ceiling-bounded at 120 s so a hostile value can't park the
+  run. Default `max_retries` raised 4→**5**. Non-retryable 4xx (auth/not-found/bad-request) still **fail
+  fast** — no wasted quota. New knobs surfaced on the client: `inter_request_delay_s` (deliberate pacing
+  before each live request), `base_delay_s`, `max_backoff_s`, injectable `rng`/`now` for deterministic
+  tests. `transport.py` now surfaces lower-cased response headers (needed for `Retry-After`); the field
+  is optional so existing `HttpResponse(status, body)` fakes keep working.
+- **Per-wallet fault isolation** (`imitation/cohort.py`): `load_cohort_from_pinax` now returns a
+  `CohortPullResult` (`wallets`, `n_requested`, `skipped[(name, reason)]`). A wallet that still fails
+  **after** the client's backoff is caught, counted, and **skipped — never fatal**; the run continues and
+  reports the skips (`format_pull_summary`). `cohort_is_usable` is the exit-code contract: the CLI exits
+  **0** with a summary when ≥1 wallet came back with trades, and only **exits 1** ("essentially nothing")
+  when the pull is empty. Pacing/backoff knobs (`--inter-request-delay`, `--max-retries`, `--base-delay`)
+  are now CLI flags with safe defaults. `train_market._load_cohort` updated for the new return type.
+- **Tests** (mock the HTTP layer, never the real API): backoff schedule is exponential + jittered, gives
+  up after N and raises, transient `OSError` retried-then-succeeds, non-retryable 4xx fails fast (one
+  call), `Retry-After` respected; and cohort-level — a failing wallet is skipped-not-fatal, an all-skip
+  pull is not-usable, a summary names the skips. `make check`: ruff clean, mypy clean on all touched
+  files (pre-existing errors remain only in other agents' in-flight population/torch files), and the full
+  pytest suite passes bar one unrelated pre-existing failure in `population/map_elites.py`.
+
+**Open**
+- Recommended safe invocation once Pinax is quiet: 80 wallets →
+  `python -m oct_trading_agent.agent.imitation.cohort --wallets-file <export> --max-wallets 80 --max-pages 4 --inter-request-delay 0.5 --max-retries 6 --cache-dir .cache/pinax`;
+  the full ~969-wallet roster → bump `--max-wallets 969` and lean on `--cache-dir` so reruns are free
+  (raise `--inter-request-delay` to ~1.0 if 429s reappear). Not run live here — Pinax is under load from
+  other jobs and hammering it is the exact failure mode this fixes.
+
+## 2026-08-23 (ii) — Phase-D first pass: PBT population trainer + archetype-niche archive + desk telemetry
+
+**Decisions**
+- Stood up the **first real population trainer** (`agent/population/pbt.py`): PBT over N clones of the
+  Phase-1 hybrid actor-critic, each with perturbed hyperparameters (LR, entropy coef, and the
+  risk-weighting β — an explicit PBT dimension, paper §3.5.3-B). Fitness is the honest held-out-token
+  pnl in bps, net of the sim's modeled costs — same eval discipline as the ladder. Reuses the env,
+  sim, PPO update, and policy verbatim; nothing reinvented.
+- **Exploit/explore rule:** each generation the bottom `exploit_frac` (default 25%) of the population
+  by fitness copies a RANDOM top-`exploit_frac` member's **weights + observation-normalizer + hyperparams**
+  (deep-copied so slots evolve independently), then perturbs the inherited hyperparams (×0.8/×1.2 for
+  LR & entropy, additive jitter for β, all clamped). A slot that ranks both top and bottom (tiny-pop
+  overlap) is left untouched.
+- **Descriptor→niche mapping** (`agent/population/descriptor.py`) is a fixed, documented **3×2
+  MAP-Elites-style grid** over the two axes the telemetry contract mandates — turnover
+  `trade_frequency` (LOW `<0.08` / MED / HIGH `>=0.20` fills-per-step) × `mean_hold_secs`
+  (SHORT `<90s` / LONG). Cells: (SHORT: SCAN, EXIT, SNIPER) / (LONG: WHALE, SHILL, RUG). The niche is a
+  **pure function of the agent's own behaviour**, never hand-assigned; a non-trader (freq 0, hold 0)
+  lands in SCAN. Extra axes (entry-latency, sell-ratio, mean-size) are recorded for flavour but don't
+  bin — the clean seam a full CVT/adaptive MAP-Elites archive replaces later.
+- **Archive accumulates from mini-batches** (`agent/population/archive.py`, operator steer): a
+  `NicheArchive` keeps only per-niche **occupancy + one champion + a pnl summary** — the durable
+  O(roles) state. A mini-batch of trained agents is binned in (`add_batch`) and dropped, so the
+  resident set is one mini-batch, never the whole population. The trainer trains+evals in mini-batches
+  and feeds the archive incrementally; this is what lets the population scale past memory.
+- **Telemetry exporter** (`agent/population/telemetry.py`) renders the archive to the
+  `desk-telemetry-schema.md` contract — per-niche aggregates only, `O(roles × generations)`, growing
+  JSON re-written each generation. `cost_bps=125` declares the modeled-cost regime pnl is net of.
+
+**Findings (real run — `--population 24 --generations 6` on `data/market_dataset`, 140 pumpfun_amm
+tokens, held-out-by-token split, torch `learn` extra)**
+- **Fitness climbed monotonically:** best `+692 → +995 bps`, population mean `+69 → +660 bps` across
+  gens 0–5. Exploit propagated the winners as designed.
+- **PBT ate the diversity:** coverage `0.67 → 0.33`; the population collapsed from a SCAN/WHALE/RUG/SHILL
+  spread into RUG (23/24) + SHILL (1) by gen 5. This is the canonical "PBT maximizes fitness and
+  destroys behavioural diversity" result — and exactly the motivation for the MAP-Elites archive the
+  descriptor→niche seam is built for. Pure PBT is the fitness engine; QD is what preserves the ensemble.
+- **Only LONG-hold niches filled** (SNIPER/EXIT/SCAN-trading stayed empty at convergence): full-life
+  pumpfun_amm episodes drive multi-minute holds (champion `hold_secs` 400–960s), so no short-flip
+  sniper archetype emerged under this reward/data. Honest, not a bug.
+- **Caveat (honest):** pnl_bps are large-positive because long-only exposure on survivor pumpfun
+  tokens is strongly positively skewed (win-rates are low, 0.08–0.17 — a few big winners carry the
+  mean). Median-per-niche is reported alongside so the skew is visible. The dataset only holds tokens
+  with `>=24` swaps (survivor bias), same as the ladder's denominator.
+- Telemetry JSON validates against the schema; artifact at `data/desk_telemetry/pbt-2026-08-23-seed0.json`
+  (gitignored `data/`).
+
+**Changes (code)**
+- New `agent/population/{descriptor,archive,telemetry,pbt}.py` + package `__init__` exports. Pure
+  pieces (descriptor→niche, archive accumulation, telemetry aggregation, hyperparam perturbation,
+  exploit/explore selection) are torch-free; training/eval is `learn`-gated exactly as the Phase-1
+  learner. CLI: `python -m oct_trading_agent.agent.population.pbt --dataset … --population … --generations …`.
+- 30 new tests (`tests/test_population_{descriptor,telemetry,pbt}.py`): grid binning, real-rollout
+  descriptors, streaming-archive equivalence, schema-shape validation, hyperparam bounds/perturb,
+  exploit/explore selection, torch-gated weight-copy + end-to-end smoke (all `importorskip` for torch).
+- `make check`: ruff clean; mypy unchanged from baseline (50 pre-existing torch/test-stub errors, ZERO
+  added); pytest **434 passed**, 3 skips (2 pre-existing CLMM-fixture, 1 reference-fixture-absent).
+
+**Open**
+- Pure PBT's diversity collapse is the headline gap: swap the fixed-grid archive for real MAP-Elites
+  (elitism-per-niche selection, CVT/adaptive bins) so diversity is *preserved*, not just measured. The
+  `NicheArchive` + descriptor seam is already the interface for it.
+- Short-hold niches (SNIPER/EXIT) never populate under full-life pumpfun episodes; exercising them may
+  need a shorter episode horizon or a reward that rewards fast flips — a data/reward question, not a
+  trainer one.
+
+## 2026-08-23 (i) — North-star baseline: score the agent against the tracked traders THEMSELVES
+
+**Decisions**
+- The operator's real bar is NOT "beat hold-SOL" — it is **"out-trade the tracked traders
+  themselves."** So the eval battery gains a FOURTH baseline, `tracked_traders`, run through the
+  SAME env at the SAME costs as the learned agent and the three mechanical floors. The Phase-1 GATE
+  is untouched (still keyed on hold-SOL / buy-and-hold — a separate, mechanical question); the
+  cohort comparison is an ADDITIONAL head-to-head reported per rung, not a gate input.
+- The comparison is on **decisions under identical execution**, not the traders' real on-chain
+  fills (which no baseline could reproduce). Replaying the cohort's intents into our sim and paying
+  our fills/costs is the apples-to-apples the battery demands.
+
+**Changes (code)**
+- `agent/imitation/demos.py` — `build_cohort_action_tape(wallets, *, mints=None)` + `CohortAction`.
+  REUSES the demos machinery (`build_trajectories` per-token reconstruction + `_size_target`): each
+  reconstructed episode step becomes a timestamped env action (OPEN_LONG/ADD/TRIM/CLOSE with the
+  demos' [0,1] size), pooled per mint into one time-ordered "cohort as a single trader" tape. The
+  `mints=` filter is the honesty gate — build ONLY from the held-out tokens' cohort trades so no
+  train-token behaviour can leak into the test comparison.
+- `eval/baselines.py` — `CohortReplayPolicy` (an `EnvPolicy`). Reads `observation.bundle.mint`/
+  `as_of`; FIRES the next due cohort decision at the first env instant at/after its timestamp and
+  emits passive HOLD (holding) / NO_OP (flat) in between. A mint the cohort never traded yields all
+  NO_OP/HOLD — it degenerates to hold-SOL on that token honestly, never fabricating a trade. Pure
+  numpy, no torch (stays in the base suite).
+- `agent/train_market.py` — `evaluate_rung` / `run_ladder` take an optional `cohort`; when given,
+  the rung scores `tracked_traders` on the held-out mints (tape restricted to those mints), records
+  its per-token edge, and `format_rung` prints the head-to-head row + edge line. Backward-compatible:
+  no cohort → the three-baseline report is unchanged. CLI gained opt-in `--wallets-file`
+  (`--max-wallets`, `--cohort-pages`), loaded via the existing Phase-2 Pinax cohort loader.
+
+**Findings (validated offline, torch-free)**
+- Unit + end-to-end: the replay fires the traders' real intents/sizes at the right instants, an
+  untouched token books ZERO trades (honest hold-SOL fallback), and a real `MarketReplayEnv` rollout
+  under the shared eval battery shows the cohort actually trades the tokens it touched. 15 new tests.
+- `make check`: ruff clean; mypy unchanged from stock main (50 pre-existing torch/test-stub errors,
+  ZERO added by this work); pytest 403 passed, 2 pre-existing CLMM-fixture skips.
+
+**Open**
+- Cohort-as-one-trader pools multiple wallets onto one env position, so per-wallet OPEN vs ADD and
+  TRIM fractions are approximations against the single aggregate book (documented on the policy). A
+  future refinement could weight the pooled tape by conviction or run a per-wallet ensemble.
+- The heavy ladder run that actually prints `learned_agent` vs `tracked_traders` numbers is deferred
+  (a separate run is in progress; not re-run here to avoid Pinax rate-limits).
+
 ## 2026-08-23 (h) — Full-chart MULTI-VENUE env + token-count ladder trainer (unblocks migrated tokens)
 
 **Decisions**

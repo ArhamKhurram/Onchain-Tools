@@ -1,7 +1,7 @@
 # 03 — Experiment Plan / Research Roadmap
 
 **Program:** OCT Autonomous Trading Agent
-**Status:** Proposal / pre-Phase-0
+**Status:** In execution — Phase-1 gate answered **NO-GO** (2026-08-24); Phase-2 machinery landed, tier-B measurement pending. Outcome notes inline; results detail in paper §12 and `PROGRESS.md`.
 **Source of truth:** [`00-paper.md`](./00-paper.md) §10 (phased roadmap) and §5–§8. This is the executable version — each phase as a runnable experiment with a hypothesis, method, dataset, primary metric, go/no-go gate, exit milestone, and rough effort/compute.
 
 **Governing rules (apply to every phase):**
@@ -72,6 +72,19 @@ tolerance — i.e. it is faithful enough that exploits found in it will transfer
 
 **Exit milestone (paper §10.2).** As the GO gate.
 
+**Outcome (2026-08-24): NO-GO, at every scale tested.** First run: 3 seeds × 24 live bonding-curve
+tokens, agent −24 to −47 bps/episode vs hold-SOL, leakage guard passed (so the null is honest).
+Escalation converged from two independent directions: the single-agent PPO **token-count ladder**
+(10 → 100 → 149 tokens — the 1k rung truncated to every trainable token the dataset held) saw the
+held-out edge vs hold-SOL shrink toward zero (+0.60 noise → +0.074 → +0.0023) and go negative vs
+buy-and-hold at 149 tokens; independently, **MAP-Elites populations of 12 → 400 agents on
+131 → ~2,600 tokens** produced champion win rates of 0.00–0.22 (mostly ≤0.10) in every niche of every
+run, with best-PnL bouncing trendlessly (+130 → +7 → +3 → +90 bps) on lottery variance — the win-rate
+shape, not the PnL, is the read (see `05-evaluation-plan.md` §1.1). Two methods, same verdict: no
+durable chart-only edge after 125 bps modeled costs. Reported per the governing rules as a valid gate
+answer; per the curriculum's design the program proceeds to Phase 2 (wallet flows first) rather than
+ending — the chart tier is priced at ~zero and dropped as an edge source. Full detail: paper §12.1.
+
 **Effort / compute.** Meaningful but single-node-feasible RL training; distributed rollout optional.
 
 ---
@@ -92,6 +105,17 @@ tolerance — i.e. it is faithful enough that exploits found in it will transfer
 - **NO-GO** if: no tier adds credible edge and the population is a set of correlated overfits (100 ways to fail together).
 
 **Exit milestone (paper §10.3).** Each gate's ablation shows credible marginal edge (or an honest tier-dropped report); an OOS-validated diverse population of individually edge-positive archetypes exists.
+
+**Status (2026-08-24): machinery landed; the tier-B marginal-edge measurement is the next gate to run.**
+The imitation warm-start is live — 85.0% held-out-by-token intent accuracy cloning a first 8-wallet
+tracked-trader cohort (2,006 swaps → 2,058 demos); it clones *behaviour*, not proven profit, and the
+selection-bias caveat (paper §9.3) stays attached. The population stack shipped and produced its
+predicted result pair: plain PBT climbed fitness (+692 → +996 bps best) while collapsing coverage
+0.67 → 0.33 — the correlated-collapse failure this phase's gate warns against — and MAP-Elites held
+coverage (0.667 small-run; 1.000 in every scaled run), proving the anti-collapse mechanism the
+archetype deliverable depends on. Note the standing caveat from Phase 1: the archive currently
+preserves a diverse set of *lottery-shaped* chart-only players; diversity is proven, edge is not.
+Detail: paper §12.2–§12.3.
 
 **Effort / compute.** Higher — text encoders, retrieval, and the population multiply cost. Distributed rollout / PBT orchestration becomes necessary here.
 

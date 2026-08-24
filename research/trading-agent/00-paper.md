@@ -1,9 +1,9 @@
 # An Autonomous Reinforcement-Learning Agent for New-Pair Memecoin Trading: A Progressive-Information Curriculum, Design Specification, and Research Program
 
 **Onchain Tools (OCT) — Research & Specification Paper**
-**Status:** Proposal / specification (not a results paper)
-**Version:** 0.1 (draft for internal review)
-**Date:** 2026-08-22
+**Status:** Proposal / specification, now carrying a first empirical addendum (§12)
+**Version:** 0.2 (draft for internal review)
+**Date:** 2026-08-22 (specification) · 2026-08-24 (empirical addendum)
 
 ---
 
@@ -49,7 +49,7 @@ We argue four things:
 - A rigorous threats-to-validity analysis, including the catastrophic-risk and ethics dimensions of releasing an autonomous money-spending agent (§9).
 - A phased roadmap with compute/data/engineering requirements and measurable milestones (§10).
 
-We stress throughout: this is a *specification and research program*, not a results report. We report no returns, no Sharpe ratios, no win rates. Any number in this document is a target, a threshold, or an illustrative parameter, never a claimed outcome.
+We stress throughout: this is a *specification and research program*, not a results report. Within the specification sections (§1–§11) we report no returns, no Sharpe ratios, no win rates; any number there is a target, a threshold, or an illustrative parameter, never a claimed outcome. *(Update, 2026-08-24: the program now has first empirical results. They are quarantined in the empirical addendum, §12 — reported with their caveats attached, per §10.6 — so that the specification retains its original no-claims discipline.)*
 
 ---
 
@@ -490,6 +490,8 @@ The honest posture, which the subsystem is built around, is therefore: **the att
 
 The strongest form of the vision — *from-scratch self-play* RL reaching a reliable 100× — is, in our assessment, **not achievable as literally stated**, for the structural reasons in §6.1: markets aren't self-playable, so self-play is the wrong data-generation strategy, and the goal-as-reward is pathological. Note what is *not* on this list: aggressive exploitation of asymmetric opportunity is not a barrier but the objective — the barrier is only building a simulator faithful enough that its exploits transfer. Nor is survivorship a fatal barrier: labeling active daily traders by their full win-and-loss histories defuses most of it (§9.3), leaving a minor residual. The *achievable* program is the realistic path in this paper: bootstrap from real data and demonstrations, train against a high-fidelity replay sim with honest execution and then exploit it aggressively, breed a diverse population of profitable archetypes, optimize risk-adjusted benchmark-relative rewards under hard constraints, learn continually online against the shifting meta, and prove edge through strict gating and ablations. Whether *any* durable, capacity-respecting edge exists in new-pairs after realistic costs is the open empirical question (§11).
 
+*Update (2026-08-24).* The open question now has its first partial answer, and for the raw-chart tier the answer is **no**: at every scale tested — single-agent PPO on 10 → 149 tokens and MAP-Elites populations of 12 → 400 agents on 131 → ~2,600 tokens — no chart-only policy showed a durable edge after modeled costs, with the invariant signature (win rates of 0–22%, mostly below 10%) of a lottery, not a skill (§12.1). This is precisely the outcome the curriculum was designed to detect cleanly: it prices the naked chart at approximately zero and moves the burden of the open question, undiminished, to the information tiers that follow. The feasibility assessment of this section is unchanged — sharpened, if anything, since the first tier has now been honestly eliminated rather than assumed away.
+
 ---
 
 ## 10. Phased Roadmap & Requirements
@@ -509,6 +511,7 @@ Each phase lists its purpose, what must be built, the compute/data footprint, an
 **Build:** offline-RL pretraining (IQL/CQL) on historical tape + trader demonstrations; distributional critic; PPO online fine-tune against the sim; the evaluation battery (§8) and walk-forward harness; the short-horizon scalper episode (§3.4).
 **Compute:** meaningful but single-node-feasible RL training; distributed rollout optional.
 **Exit milestone:** on held-out time periods, the raw-chart agent clears a pre-registered risk-adjusted bar and beats the buy-and-hold and hold-SOL baselines *after realistic costs*; leakage-guard ablation passes.
+**Status (2026-08-24): gate run and answered — NO-GO at every scale tested** (§12.1). No chart-only configuration beat hold-SOL after costs out-of-sample; the leakage guard passed, so the null is honest. Per the curriculum's own logic this closes the tier and hands the question to Phase 2, rather than ending the program.
 
 ### 10.3 Phase 2 — Wallet flows + metadata + social + chatter (Curriculum Phases B–E)
 
@@ -516,6 +519,7 @@ Each phase lists its purpose, what must be built, the compute/data footprint, an
 **Build:** wallet-flow features (smart-money/fresh-bot tagging, concentration, creator behavior); metadata features; social connectors + web-search harness (sandboxed, injection-safe); chatter attribution features; text encoders; per-gate ablation reporting; **population/evolutionary + quality-diversity (MAP-Elites) orchestration** for the diverse-archetype "personality" population.
 **Compute:** higher — text encoders, retrieval, and the population multiply cost.
 **Exit milestone:** each of the five gates' ablations shows a statistically credible marginal edge (or we honestly report a tier that does *not* help and drop it); an out-of-sample-validated, diverse population of individually edge-positive archetypes exists.
+**Status (2026-08-24): machinery landed, tier-B measurement not yet run** (§12.2–§12.3). The imitation warm-start is live (85.0% held-out-by-token intent accuracy on a first tracked-trader cohort — behaviour cloned, profit explicitly not established), and the quality-diversity stack is proven: MAP-Elites preserves the behavioural coverage that plain PBT demonstrably collapses. The wallet-flow marginal-edge ablation is the next gate to run, and — after §12.1 — the first place any edge could now appear.
 
 ### 10.4 Phase 3 — Traders-as-opponents + paper-live + the safety envelope
 
@@ -546,6 +550,35 @@ We have specified an autonomous RL agent for new-pair memecoin trading and, equa
 The paper's distinctive contribution is the **progressive-information curriculum** — raw chart → wallet flows → metadata → narrative/social → crowd chatter — which starts from a genuinely information-free baseline and is at once a training device, a built-in ablation that measures the marginal edge of each information tier (wallet flows first among them), and a testable hypothesis that information *flow* drives memecoin price formation. If any tier fails to add edge, the curriculum will tell us so cleanly, and we will report it.
 
 **The single most important open research question** — the one that determines whether this whole program is worth building — is: **After realistic execution costs (slippage, impact, MEV) and after honestly correcting for survivorship bias in the labeled-trader benchmark, does a durable, capacity-respecting predictive edge in new-pair memecoins actually exist and persist out-of-sample across regime shifts?** Every technique here is in service of answering that question rigorously rather than fooling ourselves. If the answer is yes, the curriculum and the online loop are how we capture it safely; if the answer is no, the same rigorous gating is what stops us from lighting real capital on fire to find out the hard way.
+
+---
+
+## 12. Empirical Addendum — Results to Date (2026-08-24)
+
+This section is the canonical home of the paper's measured outcomes; the specification (§1–§11) carries at most brief status notes that point here. The split exists so the specification keeps its no-claims discipline while the program's real results are stated plainly, with their caveats attached (§10.6). Everything here is reproducible from the repository's run artifacts (`data/desk_telemetry/`, `PROGRESS.md`); all pnl figures are net of the simulator's modeled costs (125 bps regime).
+
+### 12.1 Phase 1 (raw chart): no durable edge, at any scale tested — NO-GO
+
+The Phase-1 gate question — does *any* edge survive realistic costs from the chart alone (§10.2) — has been answered by two independent methods, and both say no.
+
+- **Single-agent PPO, token-count ladder.** Trained with warm-started rungs on 10 → 100 → 149 tokens (the 1,000-token rung truncates to the 149 tokens in the base dataset deep enough to train on), the held-out edge versus hold-SOL *shrank* as data grew — +0.60 (indistinguishable from noise) → +0.074 → +0.0023 — and was negative versus buy-and-hold at 149 tokens. The verdict was NO-GO at every rung. An earlier bounded run (3 seeds × 24 live bonding-curve tokens, −24 to −47 bps per episode versus hold-SOL, leakage guard passed) had already pointed the same way.
+- **Quality-diversity population search.** Four MAP-Elites runs escalating from 12 to 100, 200, and 400 agents over 131 → 987 → 1,312 → ~2,600 tokens. The best-niche held-out pnl **bounced trendlessly with scale — +130.3 → +7.2 → +3.0 → +90.4 bps — and that bounce is the caveat, not the signal**: on fat-tailed survivor tokens, a larger population simply holds more lottery tickets, and the best ticket's value is a draw, not a discovery. The *invariant* across every niche of every run is the win-rate distribution: **0.00–0.22, mostly at or below 0.10** — the signature of rare large winners carrying a mean. That is a lottery profile, not skill, and it did not improve with population size, token count, or training budget.
+
+**Interpretation, stated carefully.** The claim is "no durable chart-only edge was found under an honest, cost-realistic setup at any scale we can currently reach" — *not* "no chart edge can ever exist." The runs used bounded networks and budgets, datasets floored at ≥24 swaps per token (a survivor filter), one chain, and a simulator whose fidelity limits are catalogued in §9.4. Within those bounds, though, the result is consistent, replicated across two unrelated methods, and exactly what the progressive-information curriculum (§5) predicts: the naked chart prices at approximately zero, and the edge, if it exists, must come from the tiers that follow — wallet flows first (§5.2). The curriculum's first ablation has functioned as designed: it returned a clean, reportable null.
+
+**A measurement lesson worth recording:** headline best-PnL proved as misleading in isolation as §8.3 warned hit-rate would be. The stable, informative statistic across these runs was the shape of the win-rate distribution; evaluation practice has been updated accordingly (`05-evaluation-plan.md`).
+
+### 12.2 Phase-2 imitation warm-start: behavioural cloning works — and clones behaviour, not proven profit
+
+The imitation seam of §6.5 is live. From 8 tracked-trader wallets: 2,006 real swaps → 283 per-token episodes (wins **and** losses, per the full-history design) → 2,058 env-aligned demonstrations. Behavioural cloning of the hybrid policy reached **85.0% held-out-by-token intent accuracy**, and the cloned policy exhibits a genuine trading mix (opens, adds, trims, closes) where the untrained network degenerates. Two caveats travel with the number, per §9.3: the cohort is operator-chosen and balance-ranked (the residual selection effect), and BC establishes that the policy *imitates* the cohort — whether the cohort's behaviour is *profitable* under our costs is a separate measurement (the `tracked_traders` replay baseline) not yet made.
+
+### 12.3 The population machinery: MAP-Elites preserves the diversity PBT destroys
+
+The §6.4 design argued that plain fitness pressure collapses behavioural diversity and that a quality-diversity archive is the fix. Both halves are now demonstrated. PBT (population 24, 6 generations) climbed fitness monotonically (best +692 → +996 bps) while its behavioural coverage collapsed from 0.67 to 0.33 — the textbook failure. MAP-Elites on the same descriptor grid held coverage flat at 0.667 on the small run and reached and held **1.000 (all six niches)** in every scaled run, because a filled niche can never be evicted, only improved. The anti-collapse property the deliverable depends on is proven mechanism, no longer design intent — with the honest note that, per §12.1, the diverse archive it currently maintains is a diverse archive of *lottery players*; diversity is necessary for the deliverable, not sufficient.
+
+### 12.4 Data reality: most launches are stillborn
+
+The live Pinax WebSocket capture of fresh bonding-curve tokens ran overnight: **23,310 tokens / 2.30M swap rows captured**, of which only **~26% (6,046)** reach the ≥24-swap depth floor that makes a token trainable; the median captured token prints only a handful of swaps (2–5). This is itself a finding about the market the agent inhabits — the overwhelming majority of new pairs die essentially untraded — and it calibrates the token-count ladder honestly: "100,000 tokens" of raw capture yields roughly a quarter of that in trainable episodes, and the fat-tailed, mostly-dead distribution the reward design assumes (§3.5) is measurably the true one.
 
 ---
 
@@ -590,4 +623,4 @@ The paper's distinctive contribution is the **progressive-information curriculum
 - Zhang, Zohren & Roberts (2019). *DeepLOB: Deep Convolutional Neural Networks for Limit Order Books* (learned, transferable microstructure features).
 - Cong, Li, Tang & Yang. *Crypto Wash Trading* (NBER w30783) (fake-volume detection tests; the >70% wash-volume estimate cited as motivating context).
 
-*Note: citations are to real, well-known prior work identified by name and year for the reader to locate; this proposal reports no experimental results and cites no numeric findings from these works — the single exception being Cong et al.'s estimate that wash trading has averaged >70% of reported volume on unregulated venues, cited as motivating context (§4.4, §9.10), not as a result of this project.*
+*Note: citations are to real, well-known prior work identified by name and year for the reader to locate; the specification (§1–§11) reports no experimental results and cites no numeric findings from these works — the single exception being Cong et al.'s estimate that wash trading has averaged >70% of reported volume on unregulated venues, cited as motivating context (§4.4, §9.10), not as a result of this project. The program's own measured results live exclusively in the empirical addendum (§12).*
