@@ -58,6 +58,9 @@ def collect_rollouts(
     _require_torch()
     from oct_trading_agent.agent.critics.quantile import risk_blended_value
 
+    # The model carries the device; observation tensors are moved onto it so the forward runs there.
+    device = next(model.parameters()).device
+
     for env in envs:
         obs = env.reset()
         transitions: list[Transition] = []
@@ -68,7 +71,7 @@ def collect_rollouts(
             if update_normalizer:
                 normalizer.update(obs)
             vec = normalizer.normalize(obs)
-            obs_t = torch.from_numpy(np.asarray(vec, dtype=np.float32)).unsqueeze(0)
+            obs_t = torch.from_numpy(np.asarray(vec, dtype=np.float32)).unsqueeze(0).to(device)
             with torch.no_grad():
                 out = model.forward(obs_t)
                 cat = Categorical(logits=out.intent_logits)
@@ -100,7 +103,7 @@ def collect_rollouts(
             if done and result.truncated and not result.terminated:
                 nxt = normalizer.normalize(result.observation)
                 with torch.no_grad():
-                    nxt_t = torch.from_numpy(np.asarray(nxt, dtype=np.float32)).unsqueeze(0)
+                    nxt_t = torch.from_numpy(np.asarray(nxt, dtype=np.float32)).unsqueeze(0).to(device)
                     nxt_q = model.forward(nxt_t).quantiles.squeeze(0).cpu().numpy()
                     last_value = risk_blended_value(nxt_q, risk_beta, cvar_alpha)
             obs = result.observation

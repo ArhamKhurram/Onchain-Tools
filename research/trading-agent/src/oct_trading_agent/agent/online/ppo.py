@@ -88,10 +88,17 @@ class PPOTrainer:
         _require_torch()
         self.model = model
         self.config = config or PPOConfig()
+        # The model carries the device; the batch tensors below are moved onto it before the update.
+        self._device = next(model.parameters()).device
         self._optimizer = torch.optim.Adam(
             model.parameters(),
             lr=self.config.learning_rate,
         )
+
+    @property
+    def optimizer(self) -> Any:
+        """The Adam optimizer — exposed so a checkpoint can persist/restore its state mid-run."""
+        return self._optimizer
 
     def update(self, batch: RolloutBatch) -> PPOUpdateStats:
         """Run ``n_epochs`` of minibatched clipped-PPO on ``batch``; return aggregated stats."""
@@ -101,12 +108,13 @@ class PPOTrainer:
         if n == 0:
             return PPOUpdateStats(0.0, 0.0, 0.0, 0.0, 0.0, 0)
 
-        obs = torch.from_numpy(batch.obs).float()
-        intents = torch.from_numpy(batch.intents).long()
-        sizes = torch.from_numpy(batch.sizes).float()
-        old_logp = torch.from_numpy(batch.log_probs).float()
-        advantages = torch.from_numpy(batch.advantages).float()
-        returns = torch.from_numpy(batch.returns).float()
+        dev = self._device
+        obs = torch.from_numpy(batch.obs).float().to(dev)
+        intents = torch.from_numpy(batch.intents).long().to(dev)
+        sizes = torch.from_numpy(batch.sizes).float().to(dev)
+        old_logp = torch.from_numpy(batch.log_probs).float().to(dev)
+        advantages = torch.from_numpy(batch.advantages).float().to(dev)
+        returns = torch.from_numpy(batch.returns).float().to(dev)
 
         cfg = self.config
         taus = self.model.critic.taus
@@ -125,7 +133,7 @@ class PPOTrainer:
                 mb = idx_all[start : start + cfg.minibatch_size]
                 if mb.size == 0:
                     continue
-                mb_t = torch.from_numpy(mb).long()
+                mb_t = torch.from_numpy(mb).long().to(dev)
                 out = self.model.forward(obs[mb_t])
                 cat = Categorical(logits=out.intent_logits)
                 beta_d = Beta(out.size_alpha, out.size_beta)

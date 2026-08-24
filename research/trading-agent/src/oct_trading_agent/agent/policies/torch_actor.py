@@ -144,9 +144,20 @@ if TORCH_AVAILABLE:
             entropy = cat.entropy() + beta.entropy()
             return logp, entropy, out.quantiles
 
-    def build_actor_critic(config: ActorConfig | None = None) -> HybridActorCritic:
-        """Construct a :class:`HybridActorCritic` (requires the ``learn`` extra)."""
-        return HybridActorCritic(config)
+    def build_actor_critic(
+        config: ActorConfig | None = None, *, device: torch.device | None = None
+    ) -> HybridActorCritic:
+        """Construct a :class:`HybridActorCritic` (requires the ``learn`` extra).
+
+        ``device`` (a :class:`torch.device` from :func:`~oct_trading_agent.agent.device.resolve_device`)
+        places the whole network — torso, both action heads, and the quantile critic's registered
+        ``taus`` buffer — on that device at construction, so the forward/backward run there. ``None``
+        leaves it on the default (CPU) device, so existing callers are unchanged.
+        """
+        model = HybridActorCritic(config)
+        if device is not None:
+            model.to(device)  # in-place; nn.Module.to also returns self (device carried by params)
+        return model
 
 
 class TorchPolicy:
@@ -170,6 +181,8 @@ class TorchPolicy:
         self._model = model
         self._normalizer = normalizer
         self._deterministic = deterministic
+        # Follow the model onto whatever device it was built on, so observation tensors land there too.
+        self._device = next(model.parameters()).device
 
     def reset(self) -> None:
         return None
@@ -185,7 +198,7 @@ class TorchPolicy:
         assert TORCH_AVAILABLE  # constructor enforced this
         vec = self._obs_vector(observation)
         with torch.no_grad():
-            obs_t = torch.from_numpy(vec).float().unsqueeze(0)
+            obs_t = torch.from_numpy(vec).float().unsqueeze(0).to(self._device)
             out = self._model.forward(obs_t)
             if self._deterministic:
                 idx = int(torch.argmax(out.intent_logits, dim=-1).item())
@@ -205,7 +218,7 @@ class TorchPolicy:
         assert TORCH_AVAILABLE
         vec = self._obs_vector(observation)
         with torch.no_grad():
-            obs_t = torch.from_numpy(vec).float().unsqueeze(0)
+            obs_t = torch.from_numpy(vec).float().unsqueeze(0).to(self._device)
             q = self._model.forward(obs_t).quantiles.squeeze(0).cpu().numpy()
         return distribution_mean(q), distribution_cvar(q, self._model.config.cvar_alpha)
 

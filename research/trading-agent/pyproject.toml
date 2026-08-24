@@ -61,9 +61,23 @@ http = ["httpx>=0.27"]
 ws = ["websockets>=12"]
 
 [tool.uv]
-# Nothing to pin here yet; groups above carry the intent. Kept as an explicit anchor
-# so Wave-1 agents know this project is uv-managed.
+# Kept as an explicit anchor so agents know this project is uv-managed.
 package = true
+
+# Pin torch to PyTorch's CUDA 12.6 wheel index so `uv sync` installs the GPU build
+# (torch 2.13.0+cu126) instead of silently resolving the CPU-only wheel from PyPI —
+# which is what left the RTX 3080 idle. cu126 is deliberate: it is the ONLY CUDA index
+# whose latest torch equals the pinned 2.13.0 (cu124 downgrades to 2.6.0, cu128 to 2.11.0),
+# and it matches the dev box's driver (591.86). The cu126 wheels still run CPU-only on a
+# machine without an NVIDIA GPU (just larger); for a lean CPU-only install, override with
+#   uv sync --extra learn --index-url https://download.pytorch.org/whl/cpu
+[[tool.uv.index]]
+name = "pytorch-cu126"
+url = "https://download.pytorch.org/whl/cu126"
+explicit = true
+
+[tool.uv.sources]
+torch = { index = "pytorch-cu126" }
 
 [build-system]
 requires = ["hatchling"]
