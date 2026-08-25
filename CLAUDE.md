@@ -65,9 +65,12 @@ npm run build:railway    # backend only
 
 Per-workspace: `npm run <script> -w <workspace>` (e.g. `npm run typecheck -w landing`).
 **Always run `npm run typecheck` and `npm run test` before considering a change
-done.** `strict: true` is on everywhere. Coverage is unit tests over pure functions
-only — there are no integration or end-to-end tests, so the compiler still carries
-most of the weight on anything involving I/O.
+done.** `strict: true` is on everywhere. ~90 test files, mostly unit tests over pure
+functions, plus a handful of real integration tests that mount an Express app and
+drive it end-to-end (`backend/test/sniperRoutes.test.ts` is the largest). There is
+still no browser/E2E layer, so the compiler carries most of the weight on anything
+involving I/O — but do check for an existing integration test before assuming a path
+is uncovered.
 
 **LP automation is retired.** It lived only on `dev`, never shipped, and was
 deleted in #80 — workspace, dashboard page, `/api/lp` routes and Foundry CI job.
@@ -264,14 +267,16 @@ has fully shipped.** `api/routes.ts` → `routes/*.ts`, `storage/supabase.ts` �
 → `message/*`. Don't re-plan those; the structure that landed is documented on
 the linked page.
 
-`Message.tsx` still measures ~910 lines. That is the plan's intended end state,
-not leftover debt — the three render branches share ~15 derived values and were
-deliberately kept together rather than threaded through as props.
+`frontend/src/components/Message.tsx` still measures ~910 lines. That is the plan's
+intended end state, not leftover debt — the three render branches share ~15 derived
+values and were deliberately kept together rather than threaded through as props.
 
-Two files have since grown past the threshold and are **not** covered by any
-plan. Prefer extracting from them over adding more:
+Three files have since grown past the threshold and are **not** covered by any
+plan. Prefer extracting from them over adding more (line counts measured 2026-08-26):
 
-- `frontend/src/components/ChatPane.tsx` (~960) · `callers/RadarTable.tsx` (~880)
+- `frontend/src/components/callers/RadarTable.tsx` — 1,012
+- `frontend/src/components/ChatPane.tsx` — 985
+- `frontend/src/components/ContractDashboard.tsx` — 909
 
 (`packages/shared/src/database.types.ts` is ~1k but generated — never hand-edit.)
 
