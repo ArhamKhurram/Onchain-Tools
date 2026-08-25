@@ -14,6 +14,67 @@ program logs reasoning and scoping; once Phase 0 starts, entries carry real numb
 
 ---
 
+## 2026-08-26 (c) — Attention-features ablation PRE-REGISTERED (not yet run)
+
+The §4.4 tier-A+ attention slots (λ_buy/μ, branching ratio n, manipulation suspicion) have been
+wired behind `--attention-features` since 2026-08-24 (iii) and have **never been tested
+empirically**. This is the trial that decides whether they earn their place. Spec written and
+committed *before* either arm runs; the operator starts it.
+
+**Changes**
+- `research_loop/trial.py` — the harness assumed a knob that takes a VALUE (`--mutation-sigma 0.08`),
+  which cannot express a `store_true` ablation flag: `--attention-features off` is an argparse error,
+  not a no-op. New `knob_kind: "value" | "boolean"` (defaulting to `"value"`, so every existing spec
+  means exactly what it meant before). A boolean knob's arms are `"off"`/`"on"` and the difference
+  between the two commands is the **presence of the bare flag** — the off arm emits nothing at all,
+  so its command is byte-identical to running the trainer with no knob. 6 new tests; `Clause.describe`
+  now renders a negative margin as a subtraction rather than `+ -0.05`, because a pre-registration is
+  read by people.
+- `data/postmortem/specs/trial-attention-features.json` — the pre-registration itself.
+
+**Decisions**
+- **The criterion binds on RATES, not on mean edge.** Primary clause:
+  `edge_vs_hold_sol_beaten` must improve by **more than 10 percentage points**; guard clause:
+  `edge_vs_buy_and_hold_beaten` may give back at most 5. hold-SOL is the binding baseline (rung 100
+  beat buy-and-hold on 76.7% of tokens but could not beat *doing nothing*), and 2026-08-24 (ii)
+  already established that the fat-tailed per-token mean is a lottery draw while the win-rate
+  distribution is the invariant. The means are still recorded for both arms — non-binding, not
+  hidden. Sizing: ~90 held-out tokens put the single-arm binomial sd at ~0.053, so +0.10 is ~1.9 sd,
+  i.e. 9 tokens flipped from worse-than-doing-nothing to better. Ties REVERT: the features cost a
+  Hawkes refit per token, a 15→21 wide observation, and a channel §9.10 says wash trading can
+  manufacture.
+- **No post-mortem queue entry.** The queue is a closed vocabulary of bounded *numeric* knobs
+  (`KNOB_BANDS`; `make_suggestion` refuses anything else), and §07 §1 reserves mechanism changes for
+  human work. Adding a boolean mechanism flag there would have meant widening the band table to say
+  something it was built not to say. The spec + `trials.jsonl` are the right home.
+- **Substrate is `--protocols pumpfun`, not the CLI default `pumpfun_amm`.** snap800 holds 3,340
+  bonding-curve pools ≥24 swaps but only **234** AMM ones, and those average 2,188 rows against 208
+  — and `env.step` is quadratic in tape depth, so the AMM subset is both too small to measure a rate
+  on and ~10x deeper per episode. It is also the more honest substrate for an attention experiment:
+  the bonding curve *is* the new-pair regime. Transfer to the AMM ladder is not assumed.
+- **One seed, 13% of the production iteration budget — a SCREENING trial, and the spec says so.**
+  A REVERT will mean "not decisive at this budget on this slice", never "the mechanism is dead"; a
+  KEEP must replicate at seeds 1 and 2 before it changes the pipeline. Pre-registering the scope is
+  what stops it being claimed afterwards.
+- **No `--wallets-file`, no `--checkpoint-dir`.** The cohort pull would make each arm hit Pinax, and
+  because the cohort cache *ratchets* (2026-08-26 (a)) the second arm could legitimately resolve a
+  larger cohort than the first — an undeclared difference between arms. Shared checkpoint paths are
+  the same hazard in another form. The arms must share nothing writable.
+
+**Expected compute (CPU, both arms sequential)**
+Projected off db2685d's measured depth curve rather than guessed: ~20 s/iteration at mean episode
+length L=30 → **~1.15 h per arm, ~2.3 h for the pair**; ~4.1 h if the policy learns to hold and L
+drifts to 50; ~45 min if it stays at L=10. Plus ~4-6 min per arm decoding 1.26M rows (train_market
+has no tape cache) and ~2 min of eval. The ON arm carries the Hawkes fits (~19 per token, cached per
+env instance) plus an O(events) λ re-evaluation per step — expected +10-20% on top, and *that number
+is itself a finding*: it is the standing compute price of keeping the features.
+
+**Open**
+- Rung 1000 on the vs-traders ladder still has no verdict; this trial is deliberately sized to run
+  beside it rather than compete with it (CPU, 2 threads, a different dataset directory).
+
+---
+
 ## 2026-08-26 (b) — Rollout collection vectorized: the batch-1 forward was the tax, and `env.step` is what's left
 
 Collection, not the gradient step, is the ladder's budget. It is now **one batched forward per

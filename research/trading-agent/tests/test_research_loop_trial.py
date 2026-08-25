@@ -9,6 +9,8 @@ from typing import Any
 import pytest
 
 from oct_trading_agent.research_loop.trial import (
+    KNOB_BOOLEAN,
+    KNOB_VALUE,
     Clause,
     TrialSpec,
     apply_criterion,
@@ -34,6 +36,24 @@ def _spec(**overrides: Any) -> TrialSpec:
             {"metric": "coverage", "op": ">=", "margin": 0.0},
         ],
         "criterion_text": "keep iff challenger best_pnl_bps beats incumbent AND coverage >= incumbent",
+    }
+    doc.update(overrides)
+    return TrialSpec.from_dict(doc)
+
+
+def _bool_spec(**overrides: Any) -> TrialSpec:
+    """The attention-features shape: a store_true ablation flag, arms = presence/absence."""
+    doc: dict[str, Any] = {
+        "name": "attention-features",
+        "trainer": "train_market",
+        "base_args": ["--dataset", "data/market_dataset_snap800", "--rungs", "300", "--seed", "0"],
+        "knob_flag": "--attention-features",
+        "knob_kind": KNOB_BOOLEAN,
+        "incumbent": "off",
+        "challenger": "on",
+        "out_dir": "data/postmortem/trials/attention-features",
+        "criterion": [{"metric": "edge_vs_hold_sol_beaten", "op": ">", "margin": 0.10}],
+        "criterion_text": "keep iff attention ON beats hold-SOL on >= 10 more points of held-out tokens",
     }
     doc.update(overrides)
     return TrialSpec.from_dict(doc)
@@ -67,6 +87,48 @@ def test_unknown_metric_rejected_per_trainer() -> None:
 
 def test_missing_criterion_rejected() -> None:
     assert any("pre-registered" in p for p in validate_spec(_spec(criterion=[])))
+
+
+# ---------------------------------------------------------------------------
+# Boolean (store_true) knobs — the attention-features ablation shape
+# ---------------------------------------------------------------------------
+
+
+def test_boolean_spec_passes() -> None:
+    assert validate_spec(_bool_spec()) == []
+
+
+def test_knob_kind_defaults_to_value() -> None:
+    # Specs written before boolean knobs existed carry no knob_kind and must still mean "value".
+    assert _spec().knob_kind == KNOB_VALUE
+    assert TrialSpec.from_dict(_spec().to_dict()).knob_kind == KNOB_VALUE
+
+
+def test_boolean_arms_must_be_off_or_on() -> None:
+    problems = validate_spec(_bool_spec(incumbent="false", challenger="true"))
+    assert any("switched by presence" in p for p in problems)
+
+
+def test_unknown_knob_kind_rejected() -> None:
+    assert any("knob_kind" in p for p in validate_spec(_bool_spec(knob_kind="flag")))
+
+
+def test_boolean_arm_commands_differ_only_by_the_bare_flag() -> None:
+    spec = _bool_spec()
+    off = arm_command(spec, "incumbent", python="py")
+    on = arm_command(spec, "challenger", python="py")
+    # OFF emits nothing at all — a store_true flag takes no value, so absence IS the off arm.
+    assert "--attention-features" not in off
+    assert on == [*off, "--attention-features"]
+    assert off[:3] == ["py", "-m", "oct_trading_agent.agent.train_market"]
+
+
+def test_boolean_knob_round_trips_through_the_record() -> None:
+    # The verdict record embeds spec.to_dict(); a re-read of it must rebuild the same commands.
+    spec = _bool_spec()
+    rebuilt = TrialSpec.from_dict(spec.to_dict())
+    assert rebuilt.knob_kind == KNOB_BOOLEAN
+    assert arm_command(rebuilt, "challenger", python="py") == arm_command(spec, "challenger", python="py")
 
 
 # ---------------------------------------------------------------------------
@@ -137,6 +199,13 @@ def test_criterion_revert_when_any_clause_fails() -> None:
     )
     assert verdict == "REVERT"
     assert [c["holds"] for c in clauses] == [True, False]
+
+
+def test_negative_margin_is_a_do_no_harm_tolerance() -> None:
+    clause = Clause(metric="edge_vs_buy_and_hold_beaten", op=">=", margin=-0.05)
+    assert clause.holds(0.72, 0.767)  # gave back 4.7 points — inside the tolerance
+    assert not clause.holds(0.71, 0.767)  # gave back 5.7 — outside
+    assert clause.describe().endswith("- 0.05")  # read as a subtraction, never "+ -0.05"
 
 
 def test_criterion_margin_and_op_are_mechanical() -> None:

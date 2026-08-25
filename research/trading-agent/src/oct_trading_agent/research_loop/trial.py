@@ -15,6 +15,7 @@ A trial spec is a small JSON file::
                      "--seed", "0", "--init-population", "12", "--iterations", "48",
                      "--device", "cuda", "--torch-threads", "2"],
       "knob_flag": "--mutation-sigma",               // the ONE difference between the arms
+      "knob_kind": "value",                          // "value" (default) | "boolean" — see below
       "incumbent": "0.05",
       "challenger": "0.08",
       "out_dir": "data/postmortem/trials/mutation-sigma-0.08",
@@ -24,6 +25,16 @@ A trial spec is a small JSON file::
       ],
       "criterion_text": "keep iff challenger held-out best_pnl_bps beats incumbent AND coverage >= incumbent"
     }
+
+Two kinds of knob
+-----------------
+Most knobs take a value, and the arms differ by that value (``--mutation-sigma 0.05`` vs ``0.08``).
+An **ablation flag** does not: ``--attention-features`` is argparse ``store_true``, so it carries no
+value and passing one is an error, not a no-op. Such a knob is declared ``"knob_kind": "boolean"``
+with arms ``"off"``/``"on"``, and the difference between the two commands is the *presence* of the
+bare flag — the off arm emits nothing at all. Everything downstream (the criterion, the metric
+extraction, the verdict) is unchanged: a boolean knob is still exactly one difference between two
+otherwise byte-identical commands, which is the whole discipline.
 
 Metric sources are trainer-specific: the population trainers (``map_elites``, ``pbt``) are read
 from their desk-telemetry JSON's FINAL generation (``best_pnl_bps``, ``mean_pnl_bps``,
@@ -72,6 +83,18 @@ _OPS = (">", ">=")
 #: Arms run with conservative thread caps so a trial never monopolizes a shared machine.
 _THREAD_CAP_ENV = {"OMP_NUM_THREADS": "2", "MKL_NUM_THREADS": "2"}
 
+#: How the single knob reaches the arms' command line. ``value`` appends ``<flag> <value>``;
+#: ``boolean`` is for argparse ``store_true`` ablation flags, which have no value to pass and are
+#: switched by the flag's presence alone.
+KNOB_VALUE = "value"
+KNOB_BOOLEAN = "boolean"
+KNOB_KINDS = (KNOB_VALUE, KNOB_BOOLEAN)
+#: The only two arm values a boolean knob accepts. "off"/"on" rather than "false"/"true" so the
+#: recorded verdict reads as the ablation it is — ``attention-features: off -> on``.
+BOOLEAN_OFF = "off"
+BOOLEAN_ON = "on"
+BOOLEAN_ARMS = (BOOLEAN_OFF, BOOLEAN_ON)
+
 
 @dataclass(frozen=True)
 class Clause:
@@ -86,8 +109,12 @@ class Clause:
         return challenger > target if self.op == ">" else challenger >= target
 
     def describe(self) -> str:
-        margin = f" + {self.margin}" if self.margin else ""
-        return f"challenger.{self.metric} {self.op} incumbent.{self.metric}{margin}"
+        if not self.margin:
+            return f"challenger.{self.metric} {self.op} incumbent.{self.metric}"
+        # A negative margin is a legitimate do-no-harm tolerance ("may give back at most X"), so it
+        # is rendered as a subtraction rather than as "+ -X" — the pre-registration is read by people.
+        sign = "+" if self.margin > 0 else "-"
+        return f"challenger.{self.metric} {self.op} incumbent.{self.metric} {sign} {abs(self.margin)}"
 
 
 @dataclass(frozen=True)
@@ -103,6 +130,9 @@ class TrialSpec:
     out_dir: str
     criterion: tuple[Clause, ...]
     criterion_text: str
+    # Declared last with a default so specs written before boolean knobs existed still load, and
+    # still mean exactly what they meant then.
+    knob_kind: str = KNOB_VALUE
 
     @classmethod
     def from_dict(cls, doc: Mapping[str, Any]) -> TrialSpec:
@@ -111,6 +141,7 @@ class TrialSpec:
             trainer=str(doc["trainer"]),
             base_args=tuple(str(a) for a in doc.get("base_args", [])),
             knob_flag=str(doc["knob_flag"]),
+            knob_kind=str(doc.get("knob_kind", KNOB_VALUE)),
             incumbent=str(doc["incumbent"]),
             challenger=str(doc["challenger"]),
             out_dir=str(doc["out_dir"]),
@@ -135,6 +166,7 @@ class TrialSpec:
             "trainer": self.trainer,
             "base_args": list(self.base_args),
             "knob_flag": self.knob_flag,
+            "knob_kind": self.knob_kind,
             "incumbent": self.incumbent,
             "challenger": self.challenger,
             "out_dir": self.out_dir,
@@ -158,6 +190,17 @@ def validate_spec(spec: TrialSpec) -> list[str]:
         problems.append(f"unknown trainer {spec.trainer!r} (know: {sorted(TRAINER_MODULES)})")
     if not spec.knob_flag.startswith("--"):
         problems.append(f"knob_flag {spec.knob_flag!r} must be a CLI flag (--...)")
+    if spec.knob_kind not in KNOB_KINDS:
+        problems.append(f"knob_kind {spec.knob_kind!r} must be one of {KNOB_KINDS}")
+    elif spec.knob_kind == KNOB_BOOLEAN:
+        # A store_true flag has no value to carry, so the arms are the flag's presence/absence.
+        # Anything else here would be silently appended to the command line as a stray token.
+        stray = [v for v in (spec.incumbent, spec.challenger) if v not in BOOLEAN_ARMS]
+        if stray:
+            problems.append(
+                f"boolean knob arms must each be one of {BOOLEAN_ARMS}, got {stray} — a store_true "
+                "flag is switched by presence, not by a value"
+            )
     if spec.incumbent == spec.challenger:
         problems.append("incumbent and challenger values are identical — nothing to trial")
     if spec.knob_flag in spec.base_args:
@@ -189,9 +232,20 @@ def validate_spec(spec: TrialSpec) -> list[str]:
 
 
 def arm_command(spec: TrialSpec, arm: str, *, python: str = sys.executable) -> list[str]:
-    """The exact subprocess command for one arm (``incumbent`` or ``challenger``)."""
+    """The exact subprocess command for one arm (``incumbent`` or ``challenger``).
+
+    A ``value`` knob appends ``<flag> <value>``. A ``boolean`` knob appends the bare flag on the
+    ``"on"`` arm and **nothing** on the ``"off"`` arm: argparse ``store_true`` takes no value, so
+    absence — not ``--flag false`` — is how "off" is expressed, and the off arm's command is
+    therefore byte-identical to running the trainer with no knob at all.
+    """
     value = {"incumbent": spec.incumbent, "challenger": spec.challenger}[arm]
-    cmd = [python, "-m", TRAINER_MODULES[spec.trainer], *spec.base_args, spec.knob_flag, value]
+    cmd = [python, "-m", TRAINER_MODULES[spec.trainer], *spec.base_args]
+    if spec.knob_kind == KNOB_BOOLEAN:
+        if value == BOOLEAN_ON:
+            cmd.append(spec.knob_flag)
+    else:
+        cmd += [spec.knob_flag, value]
     if spec.trainer in ("map_elites", "pbt"):
         cmd += ["--out", str(Path(spec.out_dir) / f"{arm}.json")]
         if "--torch-threads" not in spec.base_args:
@@ -361,6 +415,12 @@ if __name__ == "__main__":  # pragma: no cover
 __all__ = [
     "TRAINER_MODULES",
     "TELEMETRY_METRICS",
+    "BOOLEAN_ARMS",
+    "BOOLEAN_OFF",
+    "BOOLEAN_ON",
+    "KNOB_BOOLEAN",
+    "KNOB_KINDS",
+    "KNOB_VALUE",
     "Clause",
     "TrialSpec",
     "validate_spec",
