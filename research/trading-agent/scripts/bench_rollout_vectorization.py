@@ -76,7 +76,7 @@ def load_tapes(
     from oct_trading_agent.data.dataset import MarketSwapDataset
 
     t0 = time.perf_counter()
-    tapes = MarketSwapDataset(Path(dataset)).load_token_tapes(
+    tapes: list[TokenTape] = MarketSwapDataset(Path(dataset)).load_token_tapes(
         max_tokens=max_tokens, min_swaps=min_swaps, protocols=protocols
     )
     print(f"[data] decoded {len(tapes)} tape(s) from {dataset} in {time.perf_counter() - t0:.1f}s")
@@ -228,11 +228,13 @@ def time_collect(
     return time.perf_counter() - t0, buffer.n_steps, buffer.n_episodes
 
 
-def time_env_floor(envs: list[TradingEnv], *, n_steps_target: int) -> tuple[float, int]:
-    """Time the env machinery ALONE — reset + step with a fixed action, no network in the loop.
+def time_env_floor(envs: list[TradingEnv], *, max_steps: int = 2000) -> tuple[float, int]:
+    """Time the env machinery ALONE — reset + ``step`` with a fixed action, no network in the loop.
 
     This is the floor the rewrite can never cross, and the term that decides whether the collection
-    speedup survives into the iteration time or gets eaten by ``env.step``.
+    speedup survives into the iteration time or gets eaten by ``env.step``. Returns
+    ``(seconds, env_steps)`` so it is comparable to the collectors' µs/env-step; the action is fixed
+    so episode lengths here are a *property of the tapes*, not of a policy.
     """
     import numpy as np
 
@@ -242,15 +244,111 @@ def time_env_floor(envs: list[TradingEnv], *, n_steps_target: int) -> tuple[floa
     t0 = time.perf_counter()
     done = [False] * len(envs)
     steps = 0
-    while not all(done) and steps < 2000:
+    env_steps = 0
+    while not all(done) and steps < max_steps:
         for i, env in enumerate(envs):
             if done[i]:
                 continue
             result = env.step(action)
+            env_steps += 1
             done[i] = bool(result.terminated or result.truncated)
         steps += 1
-    elapsed = time.perf_counter() - t0
-    return elapsed, n_steps_target
+    return time.perf_counter() - t0, env_steps
+
+
+_DEPTH_BUCKETS: tuple[int, ...] = (10, 20, 50, 100, 200, 500, 1000, 10**9)
+
+
+def depth_profile(envs: list[TradingEnv], *, max_steps: int) -> list[tuple[str, float, int]]:
+    """Cost of ONE ``env.step`` as a function of how deep into the tape it is.
+
+    This is the term the extrapolation lives or dies on. ``TradingEnv.step`` calls ``_observe()``
+    twice, and each ``_observe`` goes through ``PointInTimeFeatureStore.assemble``, which rebuilds
+    the mint-scoped, ``block_time <= as_of`` slice by scanning the WHOLE tape and then runs six
+    Tier-A features over that slice — so a step's cost grows with its index, and an episode is
+    quadratic in its own length. That makes "seconds per iteration" a function of how long the
+    policy's episodes are, which is why a single average is not enough: the profile is.
+
+    Stepped with ``NO_OP`` (``INTENT_ORDER[0]``) so nothing terminates early and every env walks its
+    tape to truncation — the cost curve is then a property of the data, not of a policy.
+    """
+    import numpy as np
+
+    action = action_from_array(np.array([0, 0.0], dtype=np.float64))
+    totals = dict.fromkeys(_DEPTH_BUCKETS, 0.0)
+    counts = dict.fromkeys(_DEPTH_BUCKETS, 0)
+    for env in envs:
+        env.reset()
+        for idx in range(max_steps):
+            t0 = time.perf_counter()
+            result = env.step(action)
+            dt = time.perf_counter() - t0
+            bucket = next(b for b in _DEPTH_BUCKETS if idx < b)
+            totals[bucket] += dt
+            counts[bucket] += 1
+            if result.terminated or result.truncated:
+                break
+    out: list[tuple[str, float, int]] = []
+    lo = 0
+    for b in _DEPTH_BUCKETS:
+        if counts[b]:
+            label = f"{lo}-{b - 1}" if b < 10**9 else f"{lo}+"
+            out.append((label, totals[b] * 1e6 / counts[b], counts[b]))
+        lo = b
+    return out
+
+
+def project_rung(
+    curve: list[tuple[str, float, int]],
+    splits: dict[str, dict[str, float]],
+    *,
+    n_envs: int,
+    episodes_per_iter: int,
+    iterations: int,
+    update_us_per_step: float,
+) -> list[tuple[float, dict[str, float]]]:
+    """Project seconds/iteration for each (device, path) against MEAN EPISODE LENGTH ``L``.
+
+    One free parameter, not two. An episode of length ``L`` visits depths ``0..L``, so the mean
+    ``env.step`` cost is fully determined by ``L`` through the depth curve — the collected step count
+    (``n_envs * L``) and the per-step env cost move together, and quoting a single "seconds per
+    iteration" without saying which ``L`` it assumes is what makes an ETA meaningless here.
+
+    The other two terms are ``L``-independent and come straight from the ``--split`` measurement:
+    the collector's own per-step cost (``prep + net``, which is what vectorizing changes) and the PPO
+    update's per-step cost (which vectorizing does not change — it is per *batch*, and the batch is
+    the same size either way).
+    """
+    edges: list[tuple[int, float]] = []
+    for label, us, _count in curve:
+        hi = int(label[:-1]) + 1 if label.endswith("+") else int(label.split("-")[1]) + 1
+        edges.append((hi, us))
+
+    def mean_env_us(length: float) -> float:
+        total = 0.0
+        seen = 0.0
+        prev = 0
+        for hi, us in edges:
+            take = min(length, hi) - prev
+            if take <= 0:
+                break
+            total += take * us
+            seen += take
+            prev = hi
+        return total / max(1e-9, seen)
+
+    rows: list[tuple[float, dict[str, float]]] = []
+    for length in (10, 20, 30, 50, 100, 200):
+        env_us = mean_env_us(length)
+        steps = n_envs * length
+        cell: dict[str, float] = {"mean_env_us": env_us, "steps_per_collect": float(steps)}
+        for key, sp in splits.items():
+            collector_us = (sp["prep"] + sp["net"]) * 1e6 / max(1.0, sp["n_steps"])
+            secs = episodes_per_iter * steps * (collector_us + env_us + update_us_per_step) * 1e-6
+            cell[key] = secs
+            cell[key + "|hours"] = secs * iterations / 3600.0
+        rows.append((float(length), cell))
+    return rows
 
 
 def time_ppo_update(
@@ -297,6 +395,131 @@ def time_ppo_update(
     return time.perf_counter() - t0, len(batch)
 
 
+def split_vectorized(
+    model: Any, envs: list[TradingEnv], cfg: MarketTrainConfig, *, seed: int, normalizer_seed: Any = None
+) -> dict[str, float]:
+    """Re-run the vectorized loop with phase timers, to attribute its wall clock.
+
+    This deliberately DUPLICATES ``_collect_vectorized``'s body instead of instrumenting it: the
+    production loop must not carry timers, and a speedup claim is only actionable once you know
+    which phase it shrinks. The three phases are the ones the rewrite trades between —
+    ``prep`` (normalizer + stack), ``net`` (batched forward, sampling, the one fused host transfer),
+    ``env`` (``env.step`` + the ``Transition`` bookkeeping). Their sum is the collect wall clock.
+    """
+    import copy
+
+    import numpy as np
+    import torch
+
+    from oct_trading_agent.agent.critics.quantile import risk_blended_value
+    from oct_trading_agent.agent.online.collect import _pack_for_transfer, _sample_actions
+    from oct_trading_agent.agent.online.normalize import RunningNormalizer
+
+    torch.manual_seed(seed)
+    np.random.seed(seed)
+    normalizer = copy.deepcopy(normalizer_seed) if normalizer_seed is not None else RunningNormalizer()
+    device = next(model.parameters()).device
+
+    prep = net = env_t = 0.0
+    n_steps = 0
+    timesteps = 0
+    batch_sizes: list[int] = []
+    observations = [env.reset() for env in envs]
+    active = list(range(len(envs)))
+    steps = 0
+    while active and steps < 2000:
+        t0 = time.perf_counter()
+        vectors = []
+        for i in active:
+            normalizer.update(observations[i])
+            vectors.append(np.asarray(normalizer.normalize(observations[i]), dtype=np.float32))
+        t1 = time.perf_counter()
+        with torch.no_grad():
+            batch = torch.from_numpy(np.stack(vectors)).to(device)
+            out = model.forward(batch)
+            intents, sizes, log_probs = _sample_actions(out)
+            packed = _pack_for_transfer(intents, sizes, log_probs, out.quantiles)
+        t2 = time.perf_counter()
+        still: list[int] = []
+        for slot, i in enumerate(active):
+            result = envs[i].step(
+                action_from_array(np.array([int(packed[slot, 0]), float(packed[slot, 1])], dtype=np.float64))
+            )
+            risk_blended_value(packed[slot, 3:], cfg.risk_beta, cfg.cvar_alpha)
+            observations[i] = result.observation
+            n_steps += 1
+            if not (result.terminated or result.truncated):
+                still.append(i)
+        t3 = time.perf_counter()
+        prep += t1 - t0
+        net += t2 - t1
+        env_t += t3 - t2
+        batch_sizes.append(len(active))
+        timesteps += 1
+        active = still
+        steps += 1
+    return {
+        "prep": prep, "net": net, "env": env_t, "total": prep + net + env_t,
+        "n_steps": float(n_steps), "timesteps": float(timesteps),
+        "mean_batch": float(sum(batch_sizes) / max(1, len(batch_sizes))),
+    }
+
+
+def split_sequential(
+    model: Any, envs: list[TradingEnv], cfg: MarketTrainConfig, *, seed: int, normalizer_seed: Any = None
+) -> dict[str, float]:
+    """The same phase attribution for the legacy one-env-at-a-time loop (batch of 1 every step)."""
+    import copy
+
+    import numpy as np
+    import torch
+
+    from oct_trading_agent.agent.critics.quantile import risk_blended_value
+    from oct_trading_agent.agent.online.collect import _sample_actions
+    from oct_trading_agent.agent.online.normalize import RunningNormalizer
+
+    torch.manual_seed(seed)
+    np.random.seed(seed)
+    normalizer = copy.deepcopy(normalizer_seed) if normalizer_seed is not None else RunningNormalizer()
+    device = next(model.parameters()).device
+
+    prep = net = env_t = 0.0
+    n_steps = 0
+    for env in envs:
+        obs = env.reset()
+        done = False
+        steps = 0
+        while not done and steps < 2000:
+            t0 = time.perf_counter()
+            normalizer.update(obs)
+            vec = np.asarray(normalizer.normalize(obs), dtype=np.float32)
+            t1 = time.perf_counter()
+            with torch.no_grad():
+                obs_t = torch.from_numpy(vec).unsqueeze(0).to(device)
+                out = model.forward(obs_t)
+                intent, size, log_prob = _sample_actions(out)
+                logp = float(log_prob.item())
+                quantiles = out.quantiles.squeeze(0).cpu().numpy()
+                value = risk_blended_value(quantiles, cfg.risk_beta, cfg.cvar_alpha)
+            intent_idx = int(intent.item())
+            size_val = float(size.item())
+            t2 = time.perf_counter()
+            result = env.step(action_from_array(np.array([intent_idx, size_val], dtype=np.float64)))
+            _ = (logp, value)
+            obs = result.observation
+            done = bool(result.terminated or result.truncated)
+            t3 = time.perf_counter()
+            prep += t1 - t0
+            net += t2 - t1
+            env_t += t3 - t2
+            n_steps += 1
+            steps += 1
+    return {
+        "prep": prep, "net": net, "env": env_t, "total": prep + net + env_t,
+        "n_steps": float(n_steps), "timesteps": float(n_steps), "mean_batch": 1.0,
+    }
+
+
 # ---------------------------------------------------------------------------
 # Driver
 # ---------------------------------------------------------------------------
@@ -315,6 +538,20 @@ def main() -> None:
     parser.add_argument("--seed", type=int, default=0)
     parser.add_argument("--full-scale", action="store_true", help="also time the FULL rung env set (vectorized only)")
     parser.add_argument("--floor", action="store_true", help="also time env.step alone (the Amdahl floor)")
+    parser.add_argument(
+        "--depth-profile", type=int, default=0,
+        help="profile env.step cost against tape depth on N envs, then exit (0 = off)",
+    )
+    parser.add_argument(
+        "--from-json", default="",
+        help="with --depth-profile: a prior --split run's JSON, to project seconds/iteration",
+    )
+    parser.add_argument("--project-key", default="cuda@700", help="--from-json: which device@envs cell")
+    parser.add_argument("--rung-iterations", type=int, default=1500, help="--from-json: rung budget")
+    parser.add_argument(
+        "--split", action="store_true",
+        help="attribute each path's wall clock to prep / net / env.step (what the speedup can touch)",
+    )
     parser.add_argument("--threads", type=int, default=0, help="torch CPU threads (0 = torch default)")
     parser.add_argument(
         "--warm-ladder", default="",
@@ -352,6 +589,40 @@ def main() -> None:
     print(f"[rung {args.rung}] tapes={len(tapes)} tradeable={len(wf.train) + len(wf.test)} "
           f"train={len(wf.train)} test={len(wf.test)} skipped={len(wf.skipped)}")
 
+    if args.depth_profile:
+        n = min(args.depth_profile, len(wf.train))
+        probe = [wf.env(p, cfg, seed=args.seed) for p in wf.train[:n]]
+        print(f"\n[depth] env.step cost vs tape depth ({n} envs, NO_OP so nothing exits early)")
+        print(f"  {'step idx':<12}{'us/step':>10}{'samples':>10}")
+        curve = depth_profile(probe, max_steps=2000)
+        for label, us, count in curve:
+            print(f"  {label:<12}{us:>10.1f}{count:>10}")
+        if args.from_json:
+            blob = json.loads(Path(args.from_json).read_text(encoding="utf-8"))
+            cells = {
+                k: v for k, v in blob["splits"].items() if k.startswith(f"{args.project_key}@")
+            }
+            upd_secs, upd_steps = blob["updates"][args.project_key]
+            upd_us = upd_secs * 1e6 / max(1, upd_steps)
+            rows = project_rung(
+                curve, cells, n_envs=blob["n_train_envs_at_rung"],
+                episodes_per_iter=cfg.episodes_per_iter, iterations=args.rung_iterations,
+                update_us_per_step=upd_us,
+            )
+            keys = sorted(cells)
+            print(
+                f"\n[project] rung {args.rung}: {blob['n_train_envs_at_rung']} train envs, "
+                f"{cfg.episodes_per_iter} episodes/iter, {args.rung_iterations} iterations, "
+                f"PPO update {upd_us:.1f} us/step"
+            )
+            print(f"  {'L (steps/ep)':<14}{'env us/step':>12}" + "".join(f"{k.split('@')[-1]:>26}" for k in keys))
+            for length, cell in rows:
+                rendered = "".join(
+                    f"{cell[k]:>12.1f}s /{cell[k + '|hours']:>10.1f}h" for k in keys
+                )
+                print(f"  {length:<14.0f}{cell['mean_env_us']:>12.0f}{rendered}")
+        return
+
     scales = list(env_counts)
     if args.full_scale and len(wf.train) not in scales:
         scales.append(len(wf.train))
@@ -359,14 +630,18 @@ def main() -> None:
     samples: list[Sample] = []
     updates: dict[str, tuple[float, int]] = {}
     floors: dict[int, tuple[float, int]] = {}
+    splits: dict[str, dict[str, float]] = {}
 
     for n_envs in scales:
         n = min(n_envs, len(wf.train))
         envs = [wf.env(p, cfg, seed=args.seed) for p in wf.train[:n]]
         if args.floor:
-            secs, _ = time_env_floor(envs, n_steps_target=0)
-            floors[n] = (secs, 0)
-            print(f"[floor] {n} envs: env.step-only collection = {secs:.3f}s")
+            secs, env_steps = time_env_floor(envs)
+            floors[n] = (secs, env_steps)
+            print(
+                f"[floor] {n} envs: env.step-only = {secs:.3f}s over {env_steps} env-steps "
+                f"({secs * 1e6 / max(1, env_steps):.1f} us/env-step)"
+            )
         for device_name in devices:
             device = torch.device(device_name)
             warm_state, warm_norm = (None, None)
@@ -400,6 +675,21 @@ def main() -> None:
                     f"({sample.steps_per_episode:6.1f} steps/ep)  "
                     f"{sample.us_per_env_step:8.1f} us/env-step  (spread {spread:.3f}s over {len(runs)})"
                 )
+            if args.split:
+                for label, fn in (("vectorized", split_vectorized), ("sequential", split_sequential)):
+                    if label not in paths:
+                        continue
+                    sp = fn(model, envs, cfg, seed=args.seed, normalizer_seed=warm_norm)
+                    splits[f"{device_name}@{n}@{label}"] = sp
+                    tot = max(1e-9, sp["total"])
+                    print(
+                        f"[split]   {device_name:<4} {label:<10} envs={n:<4} total={tot:7.3f}s  "
+                        f"prep={sp['prep']:6.3f}s ({100 * sp['prep'] / tot:4.1f}%)  "
+                        f"net={sp['net']:6.3f}s ({100 * sp['net'] / tot:4.1f}%)  "
+                        f"env={sp['env']:7.3f}s ({100 * sp['env'] / tot:4.1f}%)  "
+                        f"steps={int(sp['n_steps'])} fwd={int(sp['timesteps'])} "
+                        f"mean_batch={sp['mean_batch']:.1f}"
+                    )
             key = f"{device_name}@{n}"
             upd_secs, batch_n = time_ppo_update(model, envs, cfg, seed=args.seed, normalizer_seed=warm_norm)
             updates[key] = (upd_secs, batch_n)
@@ -457,9 +747,18 @@ def main() -> None:
                     "gpu": torch.cuda.get_device_name(0) if torch.cuda.is_available() else None,
                     "n_train_envs_at_rung": len(wf.train),
                     "n_test_envs_at_rung": len(wf.test),
-                    "samples": [asdict(s) for s in samples],
+                    "samples": [
+                        asdict(s)
+                        | {
+                            "seconds": s.seconds,
+                            "steps_per_episode": s.steps_per_episode,
+                            "us_per_env_step": s.us_per_env_step,
+                        }
+                        for s in samples
+                    ],
                     "updates": updates,
                     "floors": {str(k): v for k, v in floors.items()},
+                    "splits": splits,
                 },
                 indent=2,
             ),
