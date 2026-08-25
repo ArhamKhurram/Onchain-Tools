@@ -13,7 +13,6 @@ function normalizePrivateKeyPem(raw: string | undefined): string | null {
 
 export type GmgnEnvStatus = {
   gmgnApiKeyConfigured: boolean;
-  gmgnApiKeyLength: number;
   gmgnPrivateKeyConfigured: boolean;
   gmgnPrivateKeyAlgorithm: string | null;
   gmgnPrivateKeyParseError: string | null;
@@ -33,9 +32,12 @@ export function getGmgnEnvStatus(): GmgnEnvStatus {
     }
   }
 
+  // Only ever report whether a key is configured. The exact character length of
+  // a secret is a real disclosure (it narrows a brute-force search and
+  // fingerprints the issuing provider) and buys no diagnostic value that the
+  // boolean does not already give.
   return {
     gmgnApiKeyConfigured: !!apiKey,
-    gmgnApiKeyLength: apiKey?.length ?? 0,
     gmgnPrivateKeyConfigured: !!privateKeyPem && !parseError,
     gmgnPrivateKeyAlgorithm: algorithm,
     gmgnPrivateKeyParseError: parseError,

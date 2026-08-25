@@ -26,13 +26,12 @@ function getVerifier() {
 }
 
 export function authMiddleware(req: Request, res: Response, next: NextFunction): void {
-  // Read-only GMGN env probe — no secrets, useful for local + Railway debugging.
-  if (req.path === '/portfolio/status') {
-    if (!isHostedMode()) req.userId = LOCAL_USER_ID;
-    next();
-    return;
-  }
-
+  // NOTE: there is deliberately no per-path bypass here. `/portfolio/status`
+  // used to skip auth, but its `probeChain`/`probeAddress` query params drive
+  // live Birdeye calls against an arbitrary address, so an unauthenticated
+  // bypass let anyone spend the operator's paid quota. In local mode the
+  // endpoint stays reachable via the `userId = 'local'` branch below; hosted
+  // mode now requires a bearer token like every other `/api` route.
   if (!isHostedMode()) {
     req.userId = LOCAL_USER_ID;
     next();
