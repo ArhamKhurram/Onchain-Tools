@@ -4,8 +4,9 @@
 
 This directory is the isolated research and specification workspace for OCT's autonomous
 reinforcement-learning trading agent (internally: **Model N**, the new-pair agent, alongside
-the extended **Model R** revival policy). It is documentation and scaffolding only — no app
-code lives here yet, and nothing here touches any build.
+the extended **Model R** revival policy). It holds the specification documents *and* the research
+code (`src/oct_trading_agent/`, a self-contained Python package with its own venv) — but no *app*
+code: nothing here is imported by, or touches, any OCT build.
 
 ---
 
@@ -49,20 +50,25 @@ upward later. What is *no longer* assumed is default live execution — that is 
 
 ## Current status
 
-**Phase: pre-Phase-0 (documentation and scoping).** No code, no data pipeline, no simulator yet.
-The first real work item is **Phase 0** — build the high-fidelity replay simulator and prove an
-edge survives realistic costs (see [`03-experiment-plan.md`](./03-experiment-plan.md)). Nothing
-proceeds to a learned policy until Phase 0's exit milestone is met.
+**In execution.** The code lives in `src/oct_trading_agent/`. The Phase-1 gate — does *any* edge
+survive realistic costs from the raw chart alone — was answered **NO-GO** on 2026-08-24 by two
+independent methods (a PPO token-count ladder and MAP-Elites population search), which is a valid
+outcome of the evaluation, not a failure of it (paper §12.1). Per the curriculum's own design the
+program moved on to **Phase 2 (wallet flows first)**; that machinery has landed and the tier-B
+measurement is pending. See [`PROGRESS.md`](./PROGRESS.md) for the running detail.
 
 | Artifact | State |
 |---|---|
-| Research paper | Drafted + reviewed; attention model integrated (§4.4/§9.10); signal-first locked. Synced as `00-paper.md` |
-| Attention sub-project | Drafted as `subprojects/trade-flow-attention.md` |
-| Document set (this workspace) | Drafted; charter + README updated for the signal-first decision |
-| Progress log | Started (`PROGRESS.md`) |
-| Simulator / data pipeline | Not started (Phase 0) |
-| Any learned policy | Not started |
-| Any live money | Not permitted until the full backtest→paper→live gate is cleared |
+| Research paper | Drafted + reviewed; attention model integrated (§4.4/§9.10); signal-first locked; §12 empirical addendum carries the measured results. Synced as `00-paper.md` |
+| Attention sub-project | Drafted as `subprojects/trade-flow-attention.md`; Hawkes attention features wired as tier-A+ observations |
+| Document set (this workspace) | Drafted; kept current as results land |
+| Progress log | Running (`PROGRESS.md`) — the newest entry is the fastest way in |
+| Data pipeline / feature store / simulator | Built (Pinax capture + decoded tape, point-in-time store, multi-venue AMM fills calibrated per venue) |
+| Learned policies | Built and trained: PPO token-count ladder, BC warm-start from tracked traders, PBT + MAP-Elites populations |
+| Phase-1 (raw chart) verdict | **NO-GO**, replicated across two methods |
+| vs-traders ladder | Rungs 10 and 100 complete (rung 100: **NO-GO** — beat `buy_and_hold`, could not beat `hold_sol`); rung 1000 in flight, **no verdict yet** |
+| Convergence adapter / sniper bridge | Interface stubs only — nothing proposes to `/sniper/v1` |
+| Any live money | Never spent, and not permitted until the full backtest→paper→live gate is cleared |
 
 ---
 

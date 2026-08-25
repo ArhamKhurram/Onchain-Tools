@@ -14,6 +14,111 @@ program logs reasoning and scoping; once Phase 0 starts, entries carry real numb
 
 ---
 
+## 2026-08-26 (b) — Rollout collection vectorized: the batch-1 forward was the tax, and `env.step` is what's left
+
+Collection, not the gradient step, is the ladder's budget. It is now **one batched forward per
+timestep** instead of one per env-step. Measuring the rewrite end-to-end produced the more important
+number: after it, **88–90% of collection is `env.step`**, whose cost grows with tape depth — so
+seconds-per-iteration is a function of one parameter, mean episode length.
+
+**Finding — the GPU was 5.4x SLOWER, and the reason is not compute**
+- Measured on this exact model (15-dim observation → ≤128-wide two-layer torso → small heads):
+  **461 µs per env-step on CPU vs 2474 µs on CUDA.** The net is far too small for a batch-size-1
+  forward to amortise a host↔device round trip, and the inner loop called `.item()` /
+  `.cpu().numpy()` four times per step — four forced device syncs. The step was **latency-bound,
+  never compute-bound**, which is the whole explanation: an accelerator can only pay for itself on
+  work big enough to hide the round trip. The device seam from 2026-08-23 (v) was correct; the batch
+  size it was being fed was not.
+
+**Changes**
+- `agent/online/collect.py` — `collect_rollouts` steps every env in **lockstep**: one `np.stack` of
+  the active envs' observations, ONE batched forward, ONE fused device→host transfer carrying
+  (intent, size, log-prob, quantiles) for the whole batch, then the cheap per-env `env.step`
+  bookkeeping. Envs leave the active set as their episodes end (a long tail costs only the envs still
+  running); truncation bootstraps are batched the same way. `HybridActorCritic` was already
+  batch-native, so no model changed — only this loop. The external contract and every semantic are
+  unchanged: one episode per env in env order, per-env step cap, `last_value` 0.0 on a natural
+  terminal vs the critic's risk-blended value on truncation, identical `Transition` fields,
+  train-only normalizer updates, sampled (not argmax) actions. The old loop survives as
+  `_collect_sequential` behind `vectorized=False` for reproducing pre-vectorization runs. One new
+  precondition: entries of `envs` must be **distinct instances**.
+- `tests/test_vectorized_rollouts.py` — pins the correctness claim where it is checkable: with
+  **exactly one env** the batch is size 1, the RNG draws line up, and the two paths must agree
+  field-for-field (they do — 0.0 max diff on log-prob and value over a 7-step episode). Plus
+  determinism, episode accounting/ordering, the per-env step budget, the truncation-vs-terminal
+  bootstrap split, and a forward-counting proxy proving 12 envs × 5 steps costs **5 forwards, not 60**.
+- `scripts/bench_rollout_vectorization.py` — the measurement harness, deliberately outside the
+  production loops (those must not carry timers). Reuses `train_market`'s
+  `build_market_walk_forward` rather than re-deriving env construction, caches the decoded tape slice
+  (decoding 1.3M rows is minutes), and deep-copies one normalizer seed into every timed run so both
+  paths share a denominator.
+
+**Finding — end-to-end on the REAL rung-1000 substrate** (snap800 / pumpfun / min-swaps 16, 700 train
+envs, the live run's own checkpointed policy so episode lengths are real; paired seed, step counts
+within 2%; repeats pooled, because episode length here is stochastic and heavy-tailed):
+
+| device | path | prep+net per env-step | `env.step` share | forwards per collect |
+|---|---|---|---|---|
+| cpu | sequential | 577 µs | 34.0% | 6000 (= steps) |
+| cpu | vectorized | 219 µs | 90.5% | 1824 |
+| cuda | sequential | 2723 µs | 11.8% | 5949 (= steps) |
+| cuda | vectorized | **40 µs** | 87.6% | **33** |
+
+- Batching removes **68x of the CUDA collector's own cost** (2723 → 40 µs) and 2.6x of the CPU's — so
+  once the forwards are batched the GPU is the cheaper device again, having been the more expensive
+  one only because of the batch-1 round trip. **This no longer decides much:** with the collector at
+  40–219 µs and `env.step` at 88–90% of collection, device choice is now a rounding error against
+  the env. (On the *ceiling* — cheap scripted envs, where nothing is eaten back — the rewrite is 4x
+  at 16 envs and ~12x at 64: 688 → 60 µs per env-step.)
+- **`env.step` is not a constant — an episode is quadratic in its own length.** `TradingEnv.step`
+  calls `_observe()` twice, each goes through `PointInTimeFeatureStore.assemble`, which rescans the
+  whole tape (`block_time <= as_of`) before six Tier-A features each rescan the slice again. Measured
+  µs/step by depth: 415 (idx 0–9) · 435 · 640 · 859 · 1270 · 1953 · 2994 (500–999) · **4827 (1000+)**.
+- Projected on that curve (rung 1000, 700 envs, 4 episodes/iter, 1500 iters, CUDA) the whole run is a
+  function of mean episode length **L**: L=10 → 6.4 h vectorized vs 37.7 h sequential; L=30 → 22.1 h
+  vs 116.0 h; L=50 → 40.2 h vs 196.7 h (4.9–5.9x throughout). The model was validated at both ends
+  against the live ladder's own timestamps: iterations 1–100 ran at ≤106 s/iter (model: 90.5 at
+  L=10), and the resumed process has since run 7 h 14 m without reaching iteration 200 at
+  `--checkpoint-every 100`, i.e. ≥260 s/iter (model: 278 at L=30). **The run is slowing because the
+  policy is learning to hold and walking deeper into the O(depth) region — not because anything
+  regressed.**
+
+**Decisions**
+- **Vectorized is the default; the sequential loop is kept only as a reproduction path.** Batching is
+  **not bit-identical** across multiple envs and the module docstring says so plainly rather than
+  papering over it: (1) the running normalizer now folds in observations *interleaved across envs,
+  one timestep at a time* instead of one whole episode at a time — the same multiset, but read while
+  being written, so the standardized vectors and therefore the actions diverge numerically; (2)
+  drawing B samples in one call consumes the RNG differently from B single draws. Both are
+  consequences of batching, not approximations — a run stays fully deterministic per seed, it simply
+  walks a different, equally valid trajectory. Pre-vectorization runs are reproducible only with
+  `vectorized=False`.
+- **Optimize the env next, not the net.** With the collector down to ~10–12% of collection there is
+  little left to win there; `assemble`'s full-tape rescan is now the lever that matters.
+
+**Ladder status — honest**
+- **Rung 10: complete. Rung 100: complete, verdict NO-GO.** `learned_agent` mean_ret **−0.0001**,
+  Sharpe **−2.01**, 283 trades. It **beat `buy_and_hold` by +0.0121 on 76.7% of tokens** — a real
+  relative result — and still could not beat **`hold_sol`**, i.e. doing nothing. Beating the worse of
+  two do-nothing baselines is not an edge.
+- **The rung-100 `tracked_traders` line must be read as absent, not as 0%.** The cohort pull was
+  rate-limited on every launch and left ~8 of 40 wallets, and those survivors had traded **none** of
+  the held-out tokens — so "0% beaten" was a **degenerate baseline**, undefined rather than zero. The
+  cache/ratchet landed today ((a) above) is the fix: coverage now accumulates run over run instead of
+  resetting to whatever survived the last five minutes. The methodological lesson is written into
+  `05-evaluation-plan.md` §1.2 so it cannot be re-learned by accident.
+- **Rung 1000 has produced no verdict.** It is mid-run, slowing along the depth curve above, and
+  nothing about it should be quoted until it reports.
+
+**Open**
+- `PointInTimeFeatureStore.assemble` rescans the full tape per `_observe`; an incremental / prefix-
+  cached slice would attack the 88–90% term directly and is the highest-leverage remaining
+  optimization on the ladder.
+- The two do-nothing baselines diverge sharply on this data (`buy_and_hold` beatable, `hold_sol` not).
+  Worth stating which one a rung's headline is against, every time.
+
+---
+
 ## 2026-08-26 (a) — The cohort re-pull stall is dead: cache the RESOLVED cohort, ratchet coverage
 
 Closes the open recommendation from 2026-08-25 (a) — "the 40-wallet Pinax cohort re-pull is the one

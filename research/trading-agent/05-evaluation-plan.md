@@ -36,6 +36,25 @@ token, matched on the token and controlling for entry/exit timing. Report:
 - the edge vs the **top decile** of traders, not only the median.
 Discount headline outperformance modestly for the residual selection effect (paper §9.3).
 
+> **Field note (2026-08-26) — the degenerate-baseline trap: an absent comparison is not a lost one.**
+> A `tracked_traders` baseline is only defined on the **intersection** of the held-out tokens and the
+> tokens the cohort actually traded. If that intersection is empty, "fraction beaten" is
+> **undefined** — it is not 0%, and it is certainly not a win for the agent. This happened for real:
+> the rung-100 evaluation's cohort pull was rate-limited down to ~8 of 40 wallets, those survivors had
+> traded none of the held-out tokens, and the run duly printed a `tracked_traders` line the agent
+> "beat 0% of" — a number that measured nothing at all and, read carelessly, looks like a *finding*
+> about the traders. Rules adopted:
+> - **Report the intersection first.** Every trader-relative number carries `n_tokens_compared` (and
+>   the cohort size behind it) beside it. `n = 0` prints as **N/A — no overlap**, never as a rate.
+> - **Pre-register a minimum overlap.** Below it the comparison is reported as not made; the rung is
+>   scored against the remaining baselines only, and the report says which baselines it was scored on.
+> - **A baseline whose input is fetched at eval time must be checkpointed or ratcheted,** or a
+>   transient upstream failure silently degrades the *yardstick* rather than the agent. (Fixed here by
+>   caching the resolved cohort so coverage accumulates across runs — `PROGRESS.md` 2026-08-26 (a).)
+> - **Generalize the shape:** a baseline that is empty, near-empty, or non-overlapping is a **broken
+>   instrument**, and a broken instrument is reported as broken. This applies to every comparator,
+>   not just this one.
+
 ### 1.3 The 1→100 SOL run — north-star, not teacher (paper §8.1)
 Report the balance trajectory from 1 SOL under the portfolio-episode setting as the headline single
 number — **and** the full distribution of such runs across seeds/periods. A strategy that reaches
@@ -96,6 +115,10 @@ performance delta at each gate *is* the measured marginal edge of that informati
 - **Multiple-comparison discipline.** With five tiers, a population of archetypes, and many metrics, apparent edges will arise by chance; corrections/discipline are applied before calling a marginal edge "credible" (paper §10.3).
 - **Seeds & regimes.** Report across seeds and across recent regimes; **stability** (low variance across seeds/regimes) is a gating criterion, not a footnote (paper §5.6).
 - **Population validity (paper §6.4).** Behavioral diversity must persist **out-of-sample and across regimes** — a population that all overfit one replay window is 100 correlated ways to fail, not robustness. Each retained archetype must be **individually edge-positive** after realistic costs; "diverse but unprofitable" does not pass. Where independently evolved archetypes **converge** on the same trade, that agreement is itself a robustness signal (and feeds the convergence layer).
+- **Baseline validity.** A comparison is only as real as the baseline's coverage: every
+  benchmark-relative number is reported with the count of tokens actually compared, and a baseline
+  with no overlap (or below its pre-registered minimum) is reported as **not measured**, never as a
+  0% beat rate. See the §1.2 field note — this failure mode has already occurred once.
 - **Cost realism.** Every reported number is **after** modeled fees, slippage, and price impact. Numbers that only survive under unrealistic costs are treated as failures, not results.
 - **Luck-vs-skill.** For the trader benchmark, apply persistence / cross-period edge-stability tests before trusting any single trader's label (paper §9.3).
 

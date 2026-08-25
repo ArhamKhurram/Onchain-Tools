@@ -1,7 +1,7 @@
 # 02 — Technical Design Document
 
 **Program:** OCT Autonomous Trading Agent
-**Status:** Proposal / pre-Phase-0
+**Status:** Partly built — the data pipeline, feature store, simulator, RL core, ledger and evaluation battery exist under `src/oct_trading_agent/`; the convergence adapter (5) and the actuator bridge (6) exist only as interface stubs. Sections still marked *proposal* remain uncommitted.
 **Source of truth:** [`00-paper.md`](./00-paper.md) (architecture in §4, training in §6, data in §7). This doc operationalizes it into components, interfaces, a stack, and a module layout. Where it goes beyond the paper it says so.
 
 ---
@@ -74,6 +74,35 @@ the convergence layer.
 - **Continual learning:** regime detection (always-on), fast meta-adaptation, EWC-style anti-forgetting, frozen-regime re-eval battery.
 - **Algorithm-plural by design** — a pre-registered bake-off, not a single committed algorithm (paper §6.3).
 
+**Rollout collection — as built (`agent/online/collect.py`, vectorized 2026-08-26).** Collection, not
+the gradient step, is this program's training budget, so its mechanics are pinned here rather than
+left to implementation:
+
+- **One batched forward per timestep, not per env-step.** All active envs are stepped in lockstep:
+  one `np.stack` of their observations → ONE forward → ONE fused device→host transfer carrying
+  (intent, size, log-prob, quantiles) for the whole batch → the per-env `env.step` bookkeeping. Envs
+  drop out of the active set as their episodes end, so a long tail costs only the envs still running;
+  truncation bootstraps are batched the same way. Semantics are identical to the sequential loop (one
+  episode per env in env order, per-env step cap, `last_value` 0 on a natural terminal vs the critic's
+  value of the next state on truncation, train-only normalizer updates, sampled actions).
+- **Why: the per-step forward was latency-bound, never compute-bound.** The policy is small (a 15-dim
+  observation through a ≤128-wide two-layer torso into small heads), so a batch-size-1 forward buys no
+  compute and pays a full host↔device round trip, plus a forced sync at every `.item()` /
+  `.cpu().numpy()`. Measured on this model: **461 µs per env-step on CPU vs 2474 µs on CUDA** — the
+  accelerator was 5.4x *slower*. Batching removes 68x of the CUDA collector's cost and 2.6x of the
+  CPU's, after which the collector is ~10–12% of collection and **`env.step` is the remaining
+  88–90%**. Device choice is therefore no longer the throughput decision at this model scale —
+  `env.step` is.
+- **Two honest caveats — vectorized runs are NOT bit-identical to sequential ones.** (1) The running
+  observation normalizer now sees observations *interleaved across envs, one timestep at a time*
+  rather than one complete episode at a time: the same multiset is folded in, but it is read while
+  being written, so the standardized vectors — and hence the actions — diverge numerically. (2) RNG
+  consumption differs: drawing B samples in one call advances the generator differently from B single
+  draws. Neither is an approximation; a run remains **fully deterministic for a fixed seed**, it just
+  walks a different, equally valid trajectory. With exactly one env the batch is size 1, the RNG lines
+  up, and the two paths agree exactly — which is how the rewrite is unit-tested. The sequential loop
+  is retained (`vectorized=False`) solely to reproduce pre-vectorization runs.
+
 ### (5) Policy ensemble / convergence adapter
 - Wraps the surviving population into **one calibrated, independent signal** for OCT's convergence layer.
 - Emits a *typed decision*: intent, size, confidence/value distribution, and a **rationale trace** (which features/tools drove it).
@@ -139,14 +168,15 @@ Also reused as features / signal context: GMGN/DexScreener enrichment (metadata,
 
 ---
 
-## 6. Proposed repo / module layout (for the eventual code)
+## 6. Repo / module layout
 
-Under `research/trading-agent/` (code lands only when a piece is being built; this is the target shape):
+Under `research/trading-agent/` (code lands only when a piece is being built; this was the target
+shape and the package now largely follows it, rooted at `src/oct_trading_agent/`):
 
 ```
 research/trading-agent/
 ├── 00-paper.md ... 06-risk-register.md      # this doc set (present now)
-└── src/                                      # (future) — nothing here yet
+└── src/oct_trading_agent/
     ├── data/
     │   ├── pinax_client/                     # firehose ingest → append-only log
     │   ├── labeling/                         # trader-DB full-history → demonstrations
