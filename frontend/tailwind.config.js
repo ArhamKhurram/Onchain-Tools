@@ -61,6 +61,39 @@ export default {
           'scrollbar-thin-thumb': 'rgb(var(--oct-border) / <alpha-value>)',
         },
       },
+      // Type scale. Tailwind ships no `fontSize` override here by default, so
+      // every `text-*` call-site inherited Tailwind's stock ramp — which put
+      // OCT's dominant body text at 12px (`text-xs`, 437 sites) and its
+      // secondary at 14px (`text-sm`, 334 sites). Every terminal OCT competes
+      // with runs dominant body text at 14px+, so the console was rendering a
+      // full step below the category floor. Redefining the NAMED sizes lifts
+      // ~870 existing call-sites at once with zero component edits.
+      //
+      // `text-xs` is 13px and `text-sm` is 15px. That is deliberate — do not
+      // "fix" them back to 12/14. Deleting this whole block is the revert.
+      //
+      // Each size carries its own line-height and letter-spacing so vertical
+      // rhythm stops depending on the `line-height: 1.5` inherited from body.
+      // Tracking is positive below 13px (Carbon's productive set opens small
+      // text) and negative from 15px up (Linear's measured curve). `tracking-*`
+      // utilities still win where a component sets one explicitly, because
+      // Tailwind emits letterSpacing after fontSize.
+      //
+      // `2xs` (12px) is the hard floor for new work; nothing should render
+      // below it. The 407 legacy `text-[8..11px]` arbitrary sizes bypass this
+      // block entirely and are unaffected — migrating them is a separate pass.
+      fontSize: {
+        '2xs': ['0.75rem', { lineHeight: '1rem', letterSpacing: '0.01em' }], // 12
+        xs: ['0.8125rem', { lineHeight: '1.125rem', letterSpacing: '0em' }], // 13
+        sm: ['0.9375rem', { lineHeight: '1.375rem', letterSpacing: '-0.011em' }], // 15
+        base: ['1rem', { lineHeight: '1.5rem', letterSpacing: '-0.011em' }], // 16
+        lg: ['1.125rem', { lineHeight: '1.625rem', letterSpacing: '-0.014em' }], // 18
+        xl: ['1.25rem', { lineHeight: '1.75rem', letterSpacing: '-0.016em' }], // 20
+        '2xl': ['1.5rem', { lineHeight: '1.875rem', letterSpacing: '-0.014em' }], // 24
+        '3xl': ['1.875rem', { lineHeight: '2.125rem', letterSpacing: '-0.018em' }], // 30
+        '4xl': ['2.25rem', { lineHeight: '2.375rem', letterSpacing: '-0.022em' }], // 36
+        '5xl': ['3rem', { lineHeight: '3rem', letterSpacing: '-0.026em' }], // 48
+      },
       fontFamily: {
         display: ['Fraunces', 'Georgia', 'serif'],
         sans: ['"Space Grotesk"', 'system-ui', 'sans-serif'],

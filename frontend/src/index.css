@@ -126,7 +126,13 @@ html {
 
 body {
   font-family: 'Space Grotesk', system-ui, sans-serif;
-  font-size: 14px;
+  /* Matches `text-sm` in tailwind.config.js, which is the console's default body
+     size. Leaving this at 14px while `text-sm` is 15px would split every dense
+     surface into two body sizes — the Radar table measured 96 cells at the
+     inherited size next to 66 at `text-sm`. `line-height` deliberately stays a
+     unitless ratio: the ~400 legacy `text-[Npx]` sites inherit it, and pinning
+     it to a pixel value would give an 11px label a 22px line. */
+  font-size: 15px;
   line-height: 1.5;
   color: rgb(var(--oct-text));
   background-color: rgb(var(--oct-bg));
