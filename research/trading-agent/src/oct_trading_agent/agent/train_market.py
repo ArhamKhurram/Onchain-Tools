@@ -738,8 +738,16 @@ def _load_cohort(args: argparse.Namespace) -> list[LabeledWallet]:  # pragma: no
     # escapes is setup-level (missing PINAX_API_KEY, client construction, ...). Degrade on those —
     # but never on a UnicodeError, which would be a logging bug, not a data failure (and the
     # safe_print log sink means encoding can no longer raise from inside the pull anyway).
+    cache_dir = None
+    cache_spec = getattr(args, "cohort_cache", "") or ""
+    if cache_spec.strip():
+        from pathlib import Path as _Path
+
+        cache_dir = _Path(cache_spec)
     try:
-        pull = load_cohort_from_pinax(cohort, max_pages=args.cohort_pages, log=safe_print)
+        pull = load_cohort_from_pinax(
+            cohort, max_pages=args.cohort_pages, cache_dir=cache_dir, log=safe_print
+        )
     except UnicodeError:
         raise  # a logging/encoding bug must be loud, never turn the baseline off
     except Exception as exc:
@@ -793,6 +801,12 @@ def main() -> None:  # pragma: no cover - CLI
     )
     parser.add_argument("--max-wallets", type=int, default=40, help="cohort size (top by SOL balance)")
     parser.add_argument("--cohort-pages", type=int, default=8, help="Pinax pages per cohort wallet")
+    parser.add_argument(
+        "--cohort-cache", type=str, default="data/cohort_cache",
+        help="disk cache dir for the cohort's Pinax responses; a resume re-pull hits cache, not the "
+        "network (empty string disables). Keyed by URL hash — the recurring rate-limit stall on "
+        "resume is a cache HIT after the first successful pull.",
+    )
     args = parser.parse_args()
     args.rungs_list = [int(r) for r in args.rungs.split(",") if r.strip()]
 

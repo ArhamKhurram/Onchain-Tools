@@ -14,6 +14,30 @@ program logs reasoning and scoping; once Phase 0 starts, entries carry real numb
 
 ---
 
+## 2026-08-25 (a) — Crash recovery + first trial-runner verdict (σ-trial: REVERT)
+
+A hard PC power-loss on 2026-08-24 killed every background process. Everything resumed from disk —
+the checkpointing machinery (v) proved itself in anger, not just in tests.
+
+**Resume**
+- **vs-traders ladder** resumed from `data/checkpoints_vs_traders/ladder.ckpt.pt` (saved 00:15, minutes
+  before the crash) via `--resume`. Rung 10 skipped as completed; rung 100 continues from its
+  checkpointed iteration. Dataset (`market_dataset_large`, 31,697 pools) + rung 10/100/1000 `.pt` all
+  intact. The 40-wallet Pinax cohort re-pull is the one un-checkpointed step and re-runs each launch —
+  it rate-limits (~half the wallets `SKIPPED after retries`, non-fatal per-wallet isolation) and burns
+  ~10 min. **Open recommendation:** source the baseline cohort from already-captured census data
+  instead of re-pulling Pinax REST every launch — kills the recurring bottleneck.
+
+**Finding — Audit-loop trial #1 (first real trial-runner verdict)**
+- **σ-trial `mutation-sigma-0.08`: REVERT.** Pre-registered 2026-08-24 (suggestion `pm-7fffd9d376`),
+  run head-to-head on the same snap800 slice / seed 0 / 48-gen budget. Challenger (sigma 0.08)
+  final-generation held-out **best_pnl_bps = 9.9** vs incumbent (0.05) **41.6**; coverage tied at 1.0.
+  Clause `challenger.best_pnl_bps > incumbent` fails → **keep mutation_sigma = 0.05.** Wider mutation
+  decisively hurts exploitation at this budget. The harness worked exactly as designed: pre-registered
+  criterion, deterministic, no eyeballing. Record in `data/postmortem/trials.jsonl`.
+
+---
+
 ## 2026-08-24 (vii) — Replay Room ships: the trade-replay browser over the trace layer
 
 The consumer of the (vi) trace layer: a trickshot-style replay browser. Pick any of the 406 actors
