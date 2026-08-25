@@ -64,6 +64,27 @@ function intInRange(v: number, lo: number, hi: number): boolean {
   return Number.isInteger(v) && v >= lo && v <= hi;
 }
 
+/**
+ * A real, bounded amount. `> 0` alone is NOT that: `Infinity > 0` is true, so a
+ * bare `!(cap > 0)` accepts an unbounded cap, and every downstream comparison
+ * (`triggerTotal > perTriggerCap`, `amountWithFees > perFireCap`) is then false
+ * — which turns the cap OFF rather than raising it.
+ *
+ * Nothing further down catches it, and the two modes get it wrong differently:
+ * local keeps the live object in memory (jsonSniperStore's `cache`), so the
+ * cap stays Infinity and stays disabled for the rest of the process; hosted
+ * never reaches its CHECK constraint at all, because `JSON.stringify(Infinity)`
+ * is `null` and the `not null` column rejects the write as a raw Postgres 500.
+ * That is exactly the local/hosted divergence this file exists to prevent, so
+ * the refusal belongs here, in the app, with a reason the console can render.
+ *
+ * NaN fails `> 0` on its own; the explicit finiteness test just makes that
+ * intentional rather than incidental.
+ */
+function positiveFinite(v: number): boolean {
+  return Number.isFinite(v) && v > 0;
+}
+
 /** Walk the matcher tree and check every regex leaf against the ReDoS heuristic. */
 function firstUnsafeRegex(node: MatcherNode): string | null {
   switch (node.op) {
@@ -141,13 +162,20 @@ export function validateRuleStructure(rule: SnipeRule): ValidationResult {
   }
 
   if (
-    !(rule.sizeTotal > 0) ||
-    !(rule.perFireCap > 0) ||
-    !(rule.perTriggerCap > 0) ||
+    !positiveFinite(rule.sizeTotal) ||
+    !positiveFinite(rule.perFireCap) ||
+    !positiveFinite(rule.perTriggerCap) ||
     rule.perTriggerCap < rule.perFireCap
   ) {
     // A trigger cap below the fire cap makes the fire cap unreachable and is
     // always a typo, never an intent.
+    //
+    // The finiteness half is the one with money attached: `perTriggerCap <
+    // perFireCap` is also false for Infinity < Infinity, so before this an
+    // all-Infinity rule cleared the whole check — and cleared the arm-time
+    // `size_over_trigger_cap` check too, because its trigger total is Infinity
+    // and `Infinity > Infinity` is false. It armed with both rule-level caps
+    // disabled.
     return fail('caps_inconsistent');
   }
 

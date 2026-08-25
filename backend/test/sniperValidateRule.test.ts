@@ -117,6 +117,37 @@ describe('validateRuleStructure — the half that runs on create and patch', () 
     expect(reasonOf(validateRuleStructure(rule({ perFireCap: 0 })))).toBe('caps_inconsistent');
   });
 
+  // The bug this guards: the caps check was written as `!(x > 0)`, and Infinity
+  // satisfies `> 0`. `perTriggerCap < perFireCap` is likewise false for
+  // Infinity < Infinity. So a rule with unbounded spend caps passed BOTH halves
+  // of validation and could be armed — and every downstream comparison
+  // (executeFire step 2's `triggerTotal > perTriggerCap`, runLeg's
+  // `amountWithFees > perFireCap`) is false against Infinity, so the rule-level
+  // caps bound nothing at all.
+  //
+  // The string spelling matters because the caps arrive through
+  // `Number(pick(...))` in router.ts's ruleFromBody: JSON cannot carry a bare
+  // Infinity literal, but `"Infinity"` is a plain JSON string that Number()
+  // turns into one.
+  it('rejects non-finite caps', () => {
+    expect(reasonOf(validateRuleStructure(rule({ perFireCap: Infinity, perTriggerCap: Infinity })))).toBe('caps_inconsistent');
+    expect(reasonOf(validateRuleStructure(rule({ perTriggerCap: Infinity })))).toBe('caps_inconsistent');
+    expect(reasonOf(validateRuleStructure(rule({ sizeTotal: Infinity, perTriggerCap: Infinity })))).toBe('caps_inconsistent');
+    expect(reasonOf(validateRuleStructure(rule({ perFireCap: Number('Infinity') })))).toBe('caps_inconsistent');
+    // NaN already failed `> 0`, but pin it so the finiteness guard cannot
+    // regress it into an accept.
+    expect(reasonOf(validateRuleStructure(rule({ sizeTotal: NaN })))).toBe('caps_inconsistent');
+    expect(reasonOf(validateRuleStructure(rule({ perFireCap: NaN })))).toBe('caps_inconsistent');
+    expect(reasonOf(validateRuleStructure(rule({ perTriggerCap: NaN })))).toBe('caps_inconsistent');
+  });
+
+  // An unbounded ceiling is the same class of hole one field over: `mcapCeiling`
+  // is already `Number.isFinite`-guarded, which is the shape the caps check
+  // needed. Pinned so the two stay consistent.
+  it('rejects a non-finite mcap ceiling', () => {
+    expect(reasonOf(validateRuleStructure(rule({ mcapCeiling: Infinity })))).toBe('mcap_ceiling_out_of_range');
+  });
+
   it('maps every ladder-split failure to its own reason', () => {
     const ladder = (split: number[] | null) => rule({ entryStyle: 'ladder', ladderSplit: split });
     expect(reasonOf(validateRuleStructure(ladder(null)))).toBe('ladder_split_empty');
@@ -184,6 +215,15 @@ describe('validateRule — the arm-time half that needs wallet rows', () => {
   it('rejects a rule whose legs can never clear its own per-trigger cap', () => {
     const r = rule({ walletIds: ['w1', 'w2'], sizeTotal: 3, perFireCap: 4, perTriggerCap: 5 });
     expect(reasonOf(validateRule(r, [wallet(), wallet({ walletId: 'w2' })]))).toBe('size_over_trigger_cap');
+  });
+
+  // The arm-time half caught NOTHING here before the finiteness guard: the
+  // trigger total of an infinite-size rule is Infinity, and `Infinity >
+  // Infinity` is false, so `size_over_trigger_cap` did not fire either. The rule
+  // armed clean and reached executeFire with an infinite leg amount.
+  it('rejects a non-finite cap at arm time too', () => {
+    const r = rule({ sizeTotal: Infinity, perFireCap: Infinity, perTriggerCap: Infinity });
+    expect(reasonOf(validateRule(r, [wallet()]))).toBe('caps_inconsistent');
   });
 
   it('accounts for fees when checking the trigger total', () => {
