@@ -701,6 +701,22 @@ if (isHostedMode()) {
       req.method === 'POST' && req.originalUrl.includes('/alerts/missed-runner/test'),
   });
   app.use('/api', generalLimiter);
+
+  // /health/deep is unauthenticated by design (a monitor should not need a
+  // credential), so a limiter is the only thing bounding it. Generous enough for
+  // a 10s-interval uptime check plus retries, tight enough that it cannot be
+  // scraped in a loop. NOT applied to /health — Railway's own probe polls that
+  // one, and a rate-limited liveness probe is a restart storm waiting to happen.
+  app.use(
+    '/health/deep',
+    rateLimit({
+      windowMs: 60 * 1000,
+      max: 60,
+      standardHeaders: true,
+      legacyHeaders: false,
+      message: { error: 'Too many requests, please try again later.' },
+    }),
+  );
 }
 
 const httpServer = createServer(app);
@@ -733,11 +749,12 @@ app.get('/health', (_req, res) => res.json({ status: 'ok' }));
 app.get('/health/deep', (_req, res) => {
   const hosted = isHostedMode();
   const localGateway = hosted ? null : getGateway();
-  const activeUsers = hosted ? gatewayPool.getActiveCount() : null;
   const report = buildDeepHealth(
     collectDeepHealthFacts({
-      connected: hosted ? (activeUsers ?? 0) > 0 : localGateway !== null,
-      activeUsers,
+      // Boolean, never the pooled count. This endpoint is unauthenticated, so
+      // publishing gatewayPool.getActiveCount() told any anonymous caller how
+      // many people were using OCT at that moment. A monitor needs up/down.
+      connected: hosted ? gatewayPool.getActiveCount() > 0 : localGateway !== null,
       invalidTokens: hosted ? null : (localGateway?.getInvalidTokenIndices().length ?? 0),
     }),
   );

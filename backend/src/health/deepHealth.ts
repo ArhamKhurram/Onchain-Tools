@@ -23,9 +23,15 @@
 // behind GET /api/fomo/status, which makes that network call. This endpoint
 // reuses the same in-memory poller getter instead of duplicating it.
 //
-// It is also unauthenticated, like /health, so it reports only booleans, counts,
-// enum reasons and timestamps — never upstream error text, which can carry URLs
-// and identifiers.
+// It is also unauthenticated, like /health, so it reports only booleans, enum
+// reasons and timestamps — never upstream error text, which can carry URLs and
+// identifiers, and never a business metric. An uptime monitor needs up/down; the
+// live user count that used to sit in `subsystems.gateway.activeUsers` told an
+// anonymous caller how many people were using OCT right now, so the pooled
+// gateway count is no longer part of the report at all (`GatewayFacts` carries
+// only the boolean it derives). `invalidTokens` stays because it is a fault
+// count, and it is null in hosted mode — the one mode where this endpoint is
+// reachable from the internet.
 
 import { getFomoPollerStatus } from '../fomo/poller.js';
 import { getMissedRunnerPollerStatus } from '../alerts/missedRunnerPoller.js';
@@ -46,10 +52,11 @@ export interface PollerFacts {
 }
 
 export interface GatewayFacts {
-  /** local: a global GatewayManager exists. hosted: at least one pooled manager. */
+  /**
+   * local: a global GatewayManager exists. hosted: at least one pooled manager.
+   * Deliberately a boolean and not the pooled count — see the module header.
+   */
   connected: boolean;
-  /** hosted only — pooled per-user gateways. null in local mode. */
-  activeUsers: number | null;
   /** local only — Discord tokens the gateway saw rejected. null in hosted mode. */
   invalidTokens: number | null;
 }
@@ -110,10 +117,40 @@ function iso(ms: number | null): string | null {
   return ms === null ? null : new Date(ms).toISOString();
 }
 
+/**
+ * Inactive reasons that are NEVER benign, in either mode.
+ *
+ * Both pollers self-gate on Supabase *first* and only then attempt to bootstrap
+ * (`fomo/poller.ts` start() → bootstrap()). So these two reasons are unreachable
+ * without a configured Supabase service client: getting here means the subsystem
+ * was expected to run and failed to. `no_refresh_token` in particular is exactly
+ * the shape of the 2026-08-20 outage — `ensureSharedFomoClientReady` is
+ * contractually non-throwing and returns null when the Privy refresh token is
+ * dead, so a 34-hour FOMO blackout presents as a quietly inactive poller with no
+ * error and no stale timestamp to trip the staleness check.
+ */
+const POLLER_FAULT_REASONS: ReadonlySet<string> = new Set(['no_refresh_token', 'bootstrap_failed']);
+
+/**
+ * An inactive poller is only "idle by design" in local mode, and only for the
+ * reasons that come from the self-gate itself (`no_supabase`, `not_started`).
+ *
+ * In hosted mode there is no such thing as a legitimately inactive poller —
+ * Supabase is the system of record and both pollers are started unconditionally
+ * at boot — so ANY inactive reason is degraded there. That also fails safe if a
+ * poller gains a new reason string later: an unrecognised reason alerts rather
+ * than silently reporting green, which is how the FOMO blind spot happened.
+ */
+function classifyInactivePoller(reason: string | null, hosted: boolean): SubsystemState {
+  if (reason !== null && POLLER_FAULT_REASONS.has(reason)) return 'degraded';
+  return hosted ? 'degraded' : 'idle';
+}
+
 export function evaluatePoller(
   facts: PollerFacts,
   nowMs: number,
   processStartedAtMs: number,
+  hosted: boolean,
 ): PollerReport {
   const base = {
     reason: facts.reason,
@@ -123,10 +160,15 @@ export function evaluatePoller(
     lastPollErrorAt: iso(facts.lastPollErrorAtMs),
   };
 
-  // A self-gated poller (no Supabase, no refresh token) is idle by design, not
-  // broken. Reporting it degraded would page someone about local mode.
+  // An inactive poller never reaches the staleness check below, so this branch
+  // is the ONLY thing standing between a dead subsystem and a green report.
+  // Getting it wrong is silent: `status: ok`, HTTP 200, FOMO down for a day.
   if (!facts.active) {
-    return { state: 'idle', stalenessBudgetSec: null, ...base };
+    return {
+      state: classifyInactivePoller(facts.reason, hosted),
+      stalenessBudgetSec: null,
+      ...base,
+    };
   }
 
   const budgetMs = pollStalenessBudgetMs(facts.pollIntervalMs);
@@ -156,8 +198,20 @@ export function buildDeepHealth(facts: DeepHealthFacts): DeepHealthReport {
   const gatewayState: SubsystemState =
     invalidTokens > 0 ? 'degraded' : facts.gateway.connected ? 'ok' : 'idle';
 
-  const fomoPoller = evaluatePoller(facts.fomoPoller, facts.nowMs, facts.processStartedAtMs);
-  const missedRunner = evaluatePoller(facts.missedRunner, facts.nowMs, facts.processStartedAtMs);
+  // Same "required = hosted" rule as Supabase above: a poller that is not
+  // running is expected in local mode and a fault in hosted.
+  const fomoPoller = evaluatePoller(
+    facts.fomoPoller,
+    facts.nowMs,
+    facts.processStartedAtMs,
+    facts.hosted,
+  );
+  const missedRunner = evaluatePoller(
+    facts.missedRunner,
+    facts.nowMs,
+    facts.processStartedAtMs,
+    facts.hosted,
+  );
 
   const degraded =
     supabaseState === 'degraded' ||
