@@ -27,6 +27,12 @@ Data source precedence: ``--dataset DIR`` (the persisted, resumable
 :class:`~oct_trading_agent.data.dataset.MarketSwapDataset` — the only path to the high rungs), else a
 bounded ``--live`` single-page pull (low hundreds of tokens max), else the offline fixture (one token
 — enough to smoke-test the pipeline, not the ladder).
+
+The optional ``tracked_traders`` baseline (``--wallets-file``) resolves through
+:func:`resolve_cohort`, which is cache-FIRST: the resolved cohort is persisted by
+:mod:`~oct_trading_agent.agent.imitation.cohort_store`, later launches pull only the wallets still
+missing, and a partial pull is unioned with the file so coverage ratchets up instead of resetting to
+whatever survived Pinax's rate limiter that minute.
 """
 
 from __future__ import annotations
@@ -37,7 +43,7 @@ from dataclasses import dataclass, field
 from datetime import datetime
 from decimal import Decimal
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from oct_trading_agent.agent.envs import (
     EnvConfig,
@@ -52,6 +58,7 @@ from oct_trading_agent.agent.imitation.demos import build_cohort_action_tape
 from oct_trading_agent.agent.policies import EnvPolicy
 from oct_trading_agent.agent.train import GateVerdict, phase1_gate
 from oct_trading_agent.data.labeling.schema import LabeledWallet
+from oct_trading_agent.data.labeling.wallets_file import TrackedWallet
 from oct_trading_agent.eval.baselines import (
     BuyAndHoldPolicy,
     CohortReplayPolicy,
@@ -61,6 +68,9 @@ from oct_trading_agent.eval.baselines import (
 from oct_trading_agent.eval.data import TokenTape, load_bonding_curve_fixture
 from oct_trading_agent.eval.runner import PolicyEvaluation, evaluate_policy, per_token_edge
 from oct_trading_agent.eval.walkforward import TokenSpan, token_time_holdout
+
+if TYPE_CHECKING:  # the pull's return type; importing it for real would pull in the BC/torch path
+    from oct_trading_agent.agent.imitation.cohort import CohortPullResult
 
 DEFAULT_RUNGS = (10, 100, 1000, 10000, 100000)
 
@@ -703,21 +713,133 @@ def _load_tapes(args: argparse.Namespace) -> list[TokenTape]:  # pragma: no cove
     return [fixture]
 
 
-def _load_cohort(args: argparse.Namespace) -> list[LabeledWallet]:  # pragma: no cover - IO/live
-    """Load tracked-trader histories for the ``tracked_traders`` baseline (opt-in via --wallets-file).
+def resolve_cohort(
+    tracked: Sequence[TrackedWallet],
+    *,
+    pull: Callable[[Sequence[TrackedWallet]], CohortPullResult],
+    cache_path: Path | None = None,
+    refresh: bool = False,
+    max_wallets: int = 0,
+    max_pages: int = 0,
+    log: Callable[[str], None] = lambda _m: None,
+) -> list[LabeledWallet]:
+    """Resolve the tracked-trader cohort cache-first, pulling only what is still missing.
 
-    Reuses the Phase-2 cohort loader: parse the operator's export, take the bounded top-balance cohort,
-    and pull each wallet's swap history from Pinax. Returns ``[]`` (baseline OFF) when no file is given
-    or when a **genuine data/network failure** degrades the pull — the ladder still runs its three
+    This is the fix for the recurring launch stall. Pinax rate-limits hard enough that most of the
+    ~40 wallets came back ``SKIPPED after retries`` on every start, burning 10+ minutes to reach
+    training with ~8 wallets — few enough that the rung-100 ``tracked_traders`` baseline was
+    degenerate (the survivors had traded none of the held-out tokens, so "0% beaten" measured
+    nothing). The REST client's own response cache could not help, because the requests that stall
+    are the ones that FAIL and so never populate it.
+
+    The policy here, in order:
+
+    1. **Read the resolved cohort from disk** (:func:`~.imitation.cohort_store.read_cohort_cache`,
+       which never raises — a corrupt cache degrades to a live pull, it does not fail a run).
+    2. **Ask the network only for the wallets the cache lacks.** With full coverage the launch does
+       no network work at all. ``refresh`` re-pulls every wallet instead — but it still merges the
+       cache in rather than discarding it, so a refresh can never *lose* coverage.
+    3. **Union, never replace** (:func:`~.imitation.cohort_store.merge_cohorts`), so coverage
+       RATCHETS UP across runs instead of resetting to whatever survived the last five minutes.
+    4. **Persist the union**, so the next launch starts from the better cohort.
+
+    ``pull`` is injected (the real one closes over the Pinax client; tests pass a fake), which is what
+    keeps this launch policy unit-testable without a network. Failures degrade to whatever the cache
+    holds and only announce ``[cohort] baseline OFF:`` when there is genuinely nothing to score — but
+    a ``UnicodeError`` is re-raised, because that is a LOGGING bug and a logging bug must never be
+    allowed to silently disable the baseline.
+    """
+    from oct_trading_agent.agent.imitation.cohort_store import (
+        merge_cohorts,
+        read_cohort_cache,
+        save_cohort,
+    )
+
+    cached = read_cohort_cache(cache_path, log=log)
+    cached_addresses = {w.wallet for w in cached}
+    if refresh:
+        missing = list(tracked)
+        if cached:
+            log(
+                f"[cohort] --cohort-refresh: re-pulling all {len(missing)} wallet(s) live "
+                f"(the {len(cached)} cached one(s) are still merged in, never discarded)"
+            )
+    else:
+        missing = [tw for tw in tracked if tw.address not in cached_addresses]
+        if cached and not missing:
+            log(
+                f"[cohort] {len(cached)} wallet(s) restored from {cache_path} — no Pinax pull "
+                f"needed this launch (pass --cohort-refresh to re-pull them anyway)"
+            )
+            return cached
+        if cached:
+            log(
+                f"[cohort] {len(cached)}/{len(tracked)} wallet(s) restored from {cache_path}; "
+                f"pulling the {len(missing)} still missing"
+            )
+
+    # The live pull: per-wallet failures are already isolated inside load_cohort_from_pinax; what
+    # escapes is setup-level (missing PINAX_API_KEY, client construction, ...). Degrade on those —
+    # but never on a UnicodeError, which would be a logging bug, not a data failure (and the
+    # safe_print log sink means encoding can no longer raise from inside the pull anyway).
+    try:
+        result = pull(missing)
+    except UnicodeError:
+        raise  # a logging/encoding bug must be loud, never turn the baseline off
+    except Exception as exc:
+        if cached:
+            log(
+                f"[cohort] live pull failed ({type(exc).__name__}: {exc}) — continuing on the "
+                f"{len(cached)} cached wallet(s); the baseline stays ON"
+            )
+            return cached
+        log(f"[cohort] baseline OFF: cohort pull failed ({type(exc).__name__}: {exc})")
+        return []
+    if result.n_skipped:
+        log(f"[cohort] {result.n_skipped} wallet(s) skipped after retries")
+
+    merged = merge_cohorts(cached, result.wallets)
+    resolved = {w.wallet for w in merged.wallets}
+    still_missing = sum(1 for tw in tracked if tw.address not in resolved)
+    log(
+        f"[cohort] resolved {len(merged.wallets)}/{len(tracked)} tracked wallet(s): "
+        f"{merged.n_live} live, {merged.n_cache_only} from cache, {still_missing} still missing"
+        + (
+            f" (+{merged.n_trades_recovered} trade(s) recovered from cache)"
+            if merged.n_trades_recovered
+            else ""
+        )
+    )
+    if cache_path is not None and merged.wallets:
+        try:
+            save_cohort(
+                cache_path, merged.wallets, max_wallets=max_wallets, max_pages=max_pages
+            )
+            log(f"[cohort] cached {len(merged.wallets)} resolved wallet(s) -> {cache_path}")
+        except UnicodeError:
+            raise
+        except Exception as exc:  # a cache we cannot write is a lost speed-up, not a failed run
+            log(f"[cohort] cache write failed ({type(exc).__name__}: {exc}) — continuing without it")
+    if not merged.wallets:
+        log("[cohort] baseline OFF: no tracked wallet resolved (empty cache, empty live pull)")
+    return merged.wallets
+
+
+def _load_cohort(args: argparse.Namespace) -> list[LabeledWallet]:  # pragma: no cover - IO/live
+    """CLI adapter: read the operator's export, then hand the cohort to :func:`resolve_cohort`.
+
+    Opt-in via ``--wallets-file``. Returns ``[]`` (baseline OFF) when no file is given or when a
+    **genuine data/network failure** degrades the resolve — the ladder still runs its three
     mechanical baselines, and every degrade prints a loud ``[cohort] baseline OFF:`` line.
 
-    Every print here goes through :func:`safe_print` (wallet names carry emoji the cp1252 Windows
-    console cannot encode), and a ``UnicodeError`` is deliberately re-raised rather than degraded:
-    a LOGGING failure must crash loudly, never silently disable the baseline.
+    Every print goes through :func:`safe_print` (wallet names carry emoji the cp1252 Windows console
+    cannot encode), and a ``UnicodeError`` is deliberately re-raised rather than degraded: a LOGGING
+    failure must crash loudly, never silently disable the baseline.
     """
     if not args.wallets_file:
         return []
     from oct_trading_agent.agent.imitation.cohort import load_cohort_from_pinax
+    from oct_trading_agent.agent.imitation.cohort_store import cohort_cache_path
     from oct_trading_agent.console import safe_print
     from oct_trading_agent.data.labeling.wallets_file import parse_tracked_wallets, select_cohort
 
@@ -734,28 +856,33 @@ def _load_cohort(args: argparse.Namespace) -> list[LabeledWallet]:  # pragma: no
         return []
     safe_print(f"[cohort] selected {len(cohort)} / {len(tracked)} tracked wallets (top by balance)")
 
-    # The live pull: per-wallet failures are already isolated inside load_cohort_from_pinax; what
-    # escapes is setup-level (missing PINAX_API_KEY, client construction, ...). Degrade on those —
-    # but never on a UnicodeError, which would be a logging bug, not a data failure (and the
-    # safe_print log sink means encoding can no longer raise from inside the pull anyway).
-    cache_dir = None
-    cache_spec = getattr(args, "cohort_cache", "") or ""
-    if cache_spec.strip():
-        from pathlib import Path as _Path
-
-        cache_dir = _Path(cache_spec)
-    try:
-        pull = load_cohort_from_pinax(
-            cohort, max_pages=args.cohort_pages, cache_dir=cache_dir, log=safe_print
+    # One directory holds both cache layers: the REST client's per-URL response cache (bare
+    # <sha1>.json) and this run's resolved-cohort file (cohort_<...>.json). Empty spec = both off.
+    cache_spec = (getattr(args, "cohort_cache", "") or "").strip()
+    cache_dir = Path(cache_spec) if cache_spec else None
+    cache_path = (
+        cohort_cache_path(
+            cache_dir, args.wallets_file,
+            max_wallets=args.max_wallets, max_pages=args.cohort_pages,
         )
-    except UnicodeError:
-        raise  # a logging/encoding bug must be loud, never turn the baseline off
-    except Exception as exc:
-        safe_print(f"[cohort] baseline OFF: cohort pull failed ({type(exc).__name__}: {exc})")
-        return []
-    if pull.n_skipped:
-        safe_print(f"[cohort] {pull.n_skipped} wallet(s) skipped after retries")
-    return pull.wallets
+        if cache_dir is not None
+        else None
+    )
+
+    def _pull(wallets: Sequence[TrackedWallet]) -> CohortPullResult:
+        return load_cohort_from_pinax(
+            wallets, max_pages=args.cohort_pages, cache_dir=cache_dir, log=safe_print
+        )
+
+    return resolve_cohort(
+        cohort,
+        pull=_pull,
+        cache_path=cache_path,
+        refresh=bool(getattr(args, "cohort_refresh", False)),
+        max_wallets=args.max_wallets,
+        max_pages=args.cohort_pages,
+        log=safe_print,
+    )
 
 
 def main() -> None:  # pragma: no cover - CLI
@@ -803,9 +930,16 @@ def main() -> None:  # pragma: no cover - CLI
     parser.add_argument("--cohort-pages", type=int, default=8, help="Pinax pages per cohort wallet")
     parser.add_argument(
         "--cohort-cache", type=str, default="data/cohort_cache",
-        help="disk cache dir for the cohort's Pinax responses; a resume re-pull hits cache, not the "
-        "network (empty string disables). Keyed by URL hash — the recurring rate-limit stall on "
-        "resume is a cache HIT after the first successful pull.",
+        help="disk cache dir for the cohort (empty string disables BOTH layers). Holds the Pinax "
+        "response cache (keyed by URL hash) AND — the one that actually kills the rate-limit stall "
+        "— the RESOLVED cohort itself, cohort_<export-hash>_<max-wallets>_<pages>.json: a later "
+        "launch loads those wallets instead of re-pulling them, and a partial pull is UNIONED with "
+        "the file so coverage ratchets up run over run.",
+    )
+    parser.add_argument(
+        "--cohort-refresh", action="store_true",
+        help="re-pull every cohort wallet live even if the resolved-cohort cache covers it (the "
+        "cache is still merged into the result, so a refresh can never lose coverage)",
     )
     args = parser.parse_args()
     args.rungs_list = [int(r) for r in args.rungs.split(",") if r.strip()]
@@ -868,6 +1002,7 @@ __all__ = [
     "train_market_policy",
     "evaluate_rung",
     "format_rung",
+    "resolve_cohort",
     "run_ladder",
     "save_ladder_checkpoint",
     "load_ladder_checkpoint",

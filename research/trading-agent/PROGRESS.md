@@ -14,6 +14,58 @@ program logs reasoning and scoping; once Phase 0 starts, entries carry real numb
 
 ---
 
+## 2026-08-26 (a) — The cohort re-pull stall is dead: cache the RESOLVED cohort, ratchet coverage
+
+Closes the open recommendation from 2026-08-25 (a) — "the 40-wallet Pinax cohort re-pull is the one
+un-checkpointed step and re-runs each launch." It no longer does.
+
+**Finding — why `--cohort-cache` (2026-08-25) did not help**
+- That flag cached **successful HTTP responses** inside `PinaxRestClient`, keyed by URL hash. But the
+  requests that cause the stall are the ones that **fail**: Pinax rate-limits, the wallet comes back
+  `SKIPPED after retries`, and nothing about it ever enters the cache. Every launch therefore re-paid
+  for the same ~30 failures — 10+ minutes to reach training with ~8 usable wallets.
+- That thin cohort is what made the **rung-100 `tracked_traders` baseline degenerate**: the survivors
+  had traded none of the held-out tokens, so "0% beaten" measured nothing at all.
+
+**Changes**
+- New `agent/imitation/cohort_store.py` — caches one level up, the **resolved cohort itself**: the
+  `LabeledWallet` objects with their trades, round-tripped through pydantic
+  (`model_dump(mode="json")` / `model_validate`) so `Decimal` amounts and tz-aware timestamps come
+  back exact. Atomic write (temp + rename); `read_cohort_cache` never raises — a corrupt or
+  stale-schema file degrades to a live pull. Keyed by
+  `cohort_<export-content-hash>_<max_wallets>_<max_pages>.json` under `--cohort-cache`
+  (default `data/cohort_cache`, shared with the response cache, collision-free by prefix).
+- `agent/train_market.py` — `_load_cohort` split into a thin CLI adapter plus `resolve_cohort`, a
+  cache-FIRST launch policy with an **injected** pull (hence unit-testable, no network): load the
+  cache, ask Pinax **only for the wallets it lacks**, `merge_cohorts` the two, persist the union.
+  New `--cohort-refresh` re-pulls every wallet — and still merges the cache in, so even a refresh
+  cannot lose coverage.
+- 25 new tests (`tests/test_cohort_store.py`): round-trip fidelity, the union/ratchet across three
+  partial launches, refresh, corrupt/absent/version-mismatched caches, pull failure falling back to
+  cache with the baseline still ON, cache-write failure, and the `UnicodeError` re-raise.
+
+**Decisions**
+- **Union, never replace — at two levels.** A wallet only one side has is kept; a wallet both sides
+  have gets the union of its trades (de-duped on signature + the economically distinguishing fields,
+  then re-sorted by time). Realized on-chain trades are append-only facts, so unioning two bounded
+  windows of one wallet's history invents nothing — it recovers what a single rate-limited window
+  dropped. Coverage now **ratchets up run over run** instead of resetting to whatever survived the
+  last five minutes; that is the direct fix for the degenerate baseline.
+- **A cache failure may never fail a run.** It is an optimization over a reconstructible network
+  pull, so anything unusable degrades to a live pull. The existing rules are untouched: the loud
+  `[cohort] baseline OFF:` lines stay, and a `UnicodeError` is still re-raised — a logging bug must
+  never be mistaken for a data failure.
+- **A wallet that resolves with zero trades still counts as coverage** and is cached, so we stop
+  re-asking for it. That is honest (it is a real answer, and it contributes nothing to the baseline
+  it is not claimed to contribute to); `--cohort-refresh` is the escape hatch if a venue ever starts
+  soft-failing rate limits as empty 200s rather than 429s.
+
+**Open**
+- The cohort is still sourced from Pinax rather than the already-captured census data
+  (`data/wallet_census`). With the stall gone that is now an optimization, not a bottleneck.
+
+---
+
 ## 2026-08-25 (a) — Crash recovery + first trial-runner verdict (σ-trial: REVERT)
 
 A hard PC power-loss on 2026-08-24 killed every background process. Everything resumed from disk —
