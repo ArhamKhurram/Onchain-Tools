@@ -58,6 +58,12 @@ import {
 } from './callers/callerStatsRecorder.js';
 import type { DiscordMessage, PushoverConfig, FrontendMessage, ContractLinkTemplates } from './discord/types.js';
 import type { ContractEnrichmentPatch } from './utils/contractLog.js';
+import { installProcessGuards, guardAsyncHandler } from './utils/processGuards.js';
+
+// Installed here rather than in bootstrap.ts because bootstrap.ts is not the
+// only entry point: Railway runs `node dist/bootstrap.js`, but the desktop app
+// bundles and forks `backend/dist/index.js` directly.
+installProcessGuards();
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const PORT = parseInt(process.env.PORT ?? '3001', 10);
@@ -226,7 +232,7 @@ function wireGatewayEvents(gw: GatewayManager, wsServer: WsServer, userId: strin
     wsServer.broadcastRaw({ type: 'gateway_ready', data: { username: user.username } }, userId);
   });
 
-  gw.on('message', async (rawMsg: DiscordMessage & { _channelName: string; _guildName: string | null }) => {
+  gw.on('message', guardAsyncHandler('App:discord-message', async (rawMsg: DiscordMessage & { _channelName: string; _guildName: string | null }) => {
     const isDM = !rawMsg.guild_id && gw.getDMChannels().some((dm) => dm.id === rawMsg.channel_id);
     const rooms = await storage.getRoomsForChannel(userId, rawMsg.channel_id);
 
@@ -351,9 +357,9 @@ function wireGatewayEvents(gw: GatewayManager, wsServer: WsServer, userId: strin
     broadcastFrontendAlerts(wsServer, userId, frontendMsg, config);
 
     wsServer.broadcastMessage(frontendMsg, roomIds, userId);
-  });
+  }));
 
-  gw.on('messageUpdate', async (rawMsg: Partial<DiscordMessage> & { id: string; channel_id: string; guild_id?: string; _channelName: string; _guildName: string | null }) => {
+  gw.on('messageUpdate', guardAsyncHandler('App:discord-message-update', async (rawMsg: Partial<DiscordMessage> & { id: string; channel_id: string; guild_id?: string; _channelName: string; _guildName: string | null }) => {
     const rooms = await storage.getRoomsForChannel(userId, rawMsg.channel_id);
     const isDM = !rawMsg.guild_id && gw.getDMChannels().some((dm) => dm.id === rawMsg.channel_id);
     if (rooms.length === 0 && !isDM) return;
@@ -387,9 +393,9 @@ function wireGatewayEvents(gw: GatewayManager, wsServer: WsServer, userId: strin
         messageId: rickReply.messageId,
       });
     }
-  });
+  }));
 
-  gw.on('messageDelete', async (data: { id: string; channel_id: string; guild_id?: string | null }) => {
+  gw.on('messageDelete', guardAsyncHandler('App:discord-message-delete', async (data: { id: string; channel_id: string; guild_id?: string | null }) => {
     const rooms = await storage.getRoomsForChannel(userId, data.channel_id);
     const isDM = !data.guild_id && gw.getDMChannels().some((dm) => dm.id === data.channel_id);
     if (rooms.length === 0 && !isDM) return;
@@ -401,7 +407,7 @@ function wireGatewayEvents(gw: GatewayManager, wsServer: WsServer, userId: strin
       messageId: data.id,
       channelId: data.channel_id,
     }, roomIds, userId);
-  });
+  }));
 
   gw.on('reactionUpdate', (data) => {
     wsServer.broadcastReactionUpdate(data, userId);
@@ -473,7 +479,7 @@ function wireTelegramEvents(tg: TelegramClientManager, wsServer: WsServer, userI
     wsServer.broadcastRaw({ type: 'telegram_ready', data: { username: user.username, firstName: user.firstName } }, userId);
   });
 
-  tg.on('message', async (raw: TelegramRawMessage) => {
+  tg.on('message', guardAsyncHandler('App:telegram-message', async (raw: TelegramRawMessage) => {
     const rooms = await storage.getRoomsForChannel(userId, raw.chatId);
     const isTgDm = raw.chatType === 'user';
 
@@ -548,9 +554,9 @@ function wireTelegramEvents(tg: TelegramClientManager, wsServer: WsServer, userI
     broadcastFrontendAlerts(wsServer, userId, frontendMsg, config);
 
     wsServer.broadcastMessage(frontendMsg, roomIds, userId);
-  });
+  }));
 
-  tg.on('messageUpdate', async (raw: TelegramRawMessage) => {
+  tg.on('messageUpdate', guardAsyncHandler('App:telegram-message-update', async (raw: TelegramRawMessage) => {
     const rooms = await storage.getRoomsForChannel(userId, raw.chatId);
     const isTgDm = raw.chatType === 'user';
     if (rooms.length === 0 && !isTgDm) return;
@@ -564,7 +570,7 @@ function wireTelegramEvents(tg: TelegramClientManager, wsServer: WsServer, userI
       channelId: frontendMsg.channelId,
       content: frontendMsg.content,
     }, roomIds, userId);
-  });
+  }));
 
   tg.on('fatal', (err: Error) => {
     console.error('[App] Fatal Telegram error:', err.message);
