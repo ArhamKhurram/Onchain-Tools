@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { ChevronDown, ShieldCheck, HelpCircle } from 'lucide-react';
 import { isClientGatewayMode } from '../../discord/clientGateway';
 import { track } from '../../lib/analytics';
+import { docsUrl } from '../../lib/links';
 
 // The trust panel that sits at the token-paste step — the activation cliff.
 // Three jobs, all aimed at converting "I don't know what they're asking / this
@@ -110,6 +111,14 @@ export default function TokenTrustPanel() {
               </li>
               <li>Paste it above and hit Connect.</li>
             </ol>
+            <a
+              href={docsUrl('connecting/discord')}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="mt-3 inline-block text-[11px] leading-relaxed text-oct-accent underline underline-offset-2 hover:text-oct-accent-2"
+            >
+              Stuck? Full walkthrough in the user guide →
+            </a>
           </div>
         )}
       </div>

@@ -1,5 +1,6 @@
 import { Check, Plus, ArrowRight } from 'lucide-react';
 import { useAppStore } from '../../stores/appStore';
+import { docsUrl } from '../../lib/links';
 
 // Shown the moment a real token connects but no room exists yet — so the first
 // post-connect screen isn't blank. It confirms the hard step is done and points
@@ -56,6 +57,15 @@ export default function FirstRunGuide() {
           Create your first room
           <ArrowRight size={16} />
         </button>
+
+        <a
+          href={docsUrl('feed/rooms')}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="mt-3 block text-center text-xs text-oct-muted underline underline-offset-2 hover:text-oct-text"
+        >
+          How rooms work →
+        </a>
       </div>
     </div>
   );
