@@ -3,6 +3,7 @@ import {
   isRecoverableUncaughtException,
   guardAsyncHandler,
   describeError,
+  handleUncaughtException,
 } from '../src/utils/processGuards.js';
 
 function errWithCode(code: string, message = 'boom'): NodeJS.ErrnoException {
@@ -102,6 +103,60 @@ describe('guardAsyncHandler', () => {
 
     expect(() => wrapped()).not.toThrow();
     expect(String(spy.mock.calls[0][1])).toContain('sync boom');
+  });
+});
+
+describe('handleUncaughtException', () => {
+  function hooks() {
+    const written: string[] = [];
+    const exits: number[] = [];
+    return {
+      written,
+      exits,
+      hooks: {
+        write: (line: string) => { written.push(line); },
+        exit: (code: number) => { exits.push(code); },
+      },
+    };
+  }
+
+  it('exits synchronously on a fatal error, leaving no window for the loop to turn', () => {
+    const h = hooks();
+    const timer = vi.spyOn(global, 'setTimeout');
+
+    const verdict = handleUncaughtException(new TypeError('x is not a function'), 'uncaughtException', h.hooks);
+
+    // Synchronously, before this assertion runs — not deferred behind a timer.
+    // Any delay here keeps the HTTP server (and with it /sniper/v1) answering on
+    // a process that just declared its own state untrustworthy.
+    expect(verdict).toBe('fatal');
+    expect(h.exits).toEqual([1]);
+    expect(timer).not.toHaveBeenCalled();
+  });
+
+  it('writes the reason before exiting, via the injected sync writer not console', () => {
+    const h = hooks();
+    const consoleSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+
+    handleUncaughtException(new TypeError('boom'), 'uncaughtException', h.hooks);
+
+    expect(h.written).toHaveLength(1);
+    expect(h.written[0]).toContain('boom');
+    expect(h.written[0]).toContain('Fatal uncaughtException');
+    // console.error buffers when stderr is a pipe, so the fatal line must not
+    // depend on it.
+    expect(consoleSpy).not.toHaveBeenCalled();
+  });
+
+  it('survives a transient transport error without exiting', () => {
+    const h = hooks();
+    vi.spyOn(console, 'error').mockImplementation(() => {});
+
+    const verdict = handleUncaughtException(errWithCode('ECONNRESET'), 'uncaughtException', h.hooks);
+
+    expect(verdict).toBe('survived');
+    expect(h.exits).toEqual([]);
+    expect(h.written).toEqual([]);
   });
 });
 
