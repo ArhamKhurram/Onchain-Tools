@@ -10,13 +10,18 @@ web console, a marketing landing site, and an optional desktop app.
 
 ---
 
-## Full documentation
+## Documentation
 
-**https://arhamkhurram.github.io/Onchain-Tools/**
+Two sites, two audiences:
 
-Architecture (C4 diagrams, sequence/state diagrams), architecture decision
-records, REST + WebSocket API reference, database schema, test plan, the
-operations runbook, and the roadmap all live there. This README stays a quick
+| Site | For | URL |
+| --- | --- | --- |
+| **User guide** | People *using* OCT — connecting feeds, reading the signals, tuning alerts | **https://docs.onchaintools.tech** |
+| **Developer docs** | People *building* OCT — architecture, ADRs, API, schema, ops | **https://arhamkhurram.github.io/Onchain-Tools/** |
+
+The developer site holds architecture (C4 diagrams, sequence/state diagrams),
+architecture decision records, REST + WebSocket API reference, database schema,
+test plan, the operations runbook, and the roadmap. This README stays a quick
 orientation for cloning and running the project — everything else has moved.
 
 ---
@@ -31,7 +36,8 @@ OCT is an **npm-workspaces monorepo**. Each workspace is independently deployabl
 | `frontend/`     | `oct-console`      | React 19 + Vite console (served at `/dashboard`)       | Vercel     |
 | `landing/`      | —                  | React + Vite marketing site (served at `/`)            | Vercel     |
 | `fomo-worker/`  | `oct-fomo-worker`  | Always-on Playwright worker for Cloudflare-gated FOMO API | VPS     |
-| `docs/`         | `oct-docs`         | This documentation site (Astro Starlight)               | GitHub Pages |
+| `docs/`         | `oct-docs`         | Developer documentation site (Astro Starlight)         | GitHub Pages |
+| `user-docs/`    | `oct-user-docs`    | User guide (Astro Starlight) — `docs.onchaintools.tech` | Vercel     |
 | `desktop/`      | —                  | Electron wrapper (bundles backend + frontend)          | local pack |
 
 `supabase/` holds migrations. `scripts/` holds dev/build helpers.

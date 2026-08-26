@@ -28,17 +28,21 @@ extraResources:
   - from: "../frontend/dist"
     to: "frontend/dist"
 
+# This is BOTH the publish target and the auto-update feed: desktop/main.js calls
+# electron-updater's checkForUpdatesAndNotify(), which reads latest.yml from
+# <owner>/<repo>/releases/latest. Pointing it at the wrong repository does not fail
+# safe — it serves that repository's installer to our users under our version string.
 publish:
   provider: github
-  owner: DanielHighETH
-  repo: trenchcord
+  owner: ArhamKhurram
+  repo: Onchain-Tools
   # Publish a real (non-draft) release so it appears at /releases/latest, which
   # the in-app download button links to. Set to `draft` to review before going live.
   releaseType: release
 
 win:
   # Stable filename so the landing page can link to
-  # /releases/latest/download/Trenchcord-Setup.exe across every release.
+  # /releases/latest/download/OCT-Setup.exe across every release.
   artifactName: OCT-Setup.${ext}
   target:
     - nsis
@@ -51,7 +55,7 @@ nsis:
 mac:
   category: public.app-category.finance
   # Universal build so one download runs on both Intel and Apple Silicon, and a
-  # stable filename for /releases/latest/download/Trenchcord-mac.dmg.
+  # stable filename for /releases/latest/download/OCT-mac.dmg.
   artifactName: OCT-mac.${ext}
   target:
     - target: dmg

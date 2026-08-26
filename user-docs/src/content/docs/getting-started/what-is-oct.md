@@ -30,13 +30,18 @@ answers a different question:
 
 A typical setup, start to finish:
 
-1. [Connect Discord](../../connecting/discord/) (and optionally
-   [Telegram](../../connecting/telegram/)).
-2. Enable the servers you care about and build a [room](../../feed/rooms/) or two.
-3. Watch the [Feed](../../feed/feed/); let [Radar](../../callers/radar/) surface
+1. Sign in, open **Feed**, and press **Watch the live demo feed** — the whole
+   console running on sample data, with nothing connected.
+2. [Connect Discord](../../connecting/discord/) when you want your own servers
+   (and optionally [Telegram](../../connecting/telegram/)).
+3. Build a [room](../../feed/rooms/) or two, enabling servers as you pick channels.
+4. Watch the [Feed](../../feed/feed/); let [Radar](../../callers/radar/) surface
    the crowded tokens.
-4. Track a few [FOMO traders](../../fomo/overview/) and turn on the
+5. Track a few [FOMO traders](../../fomo/overview/) and turn on the
    [alerts](../../alerts/notifications/) you want.
+
+Step by step, with what each screen actually shows:
+[quick start](./quick-start/).
 
 ## A note on the two modes
 

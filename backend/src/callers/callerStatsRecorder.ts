@@ -17,6 +17,10 @@
 //     browser gateway posting to /api/contracts) and covers any fire-and-forget
 //     write that failed.
 //
+//     The sweep visits ACTIVE users, not registered ones — see `activeUserIds`.
+//     Its cost is meant to track how much is being scanned, never how many
+//     accounts exist.
+//
 // Both go through `foldCallerCalls` in packages/shared, so the attribution
 // rules — earliest row wins, own MC@call, one row per caller/token pair,
 // excluded authors dropped — are enforced in exactly one place.
@@ -25,9 +29,10 @@
 // nothing here is ever awaited by the ingest path.
 
 import { DEFAULT_EXCLUDED_CALLERS, foldCallerCalls, type ContractEntry } from '@oct/shared';
+import type { SupabaseClient } from '@supabase/supabase-js';
 import { getFomoServiceClient } from '../fomo/store.js';
 import { getStorageProvider, isHostedMode } from '../storage/index.js';
-import { getCallerStatsStore } from './callerStatsStore.js';
+import { getCallerStatsStore, type CallerCallRecord } from './callerStatsStore.js';
 import { refreshTokenPeakOnRescan } from './tokenPeakRefresh.js';
 
 const LOCAL_USER_ID = 'local';
@@ -99,6 +104,94 @@ async function userIds(): Promise<string[]> {
   return (data ?? []).map((row) => row.user_id as string);
 }
 
+let activeUserRpcWarned = false;
+
+/**
+ * The roster, already narrowed to the users this pass could actually do work
+ * for: those with at least one contract row newer than `since`.
+ *
+ * Returns null when the question can't be asked (local mode, no service client,
+ * RPC missing or failing), which is the signal to fall back to the full roster
+ * — i.e. to exactly what this loop did before.
+ *
+ * Why this is safe to skip on: the pass below reads `contracts` newer than the
+ * same `since` and `continue`s the moment that comes back empty. A user with no
+ * row in the window therefore cannot change any stored call, so visiting them
+ * costs two Supabase round-trips to prove there is nothing to do — and that
+ * cost was paid per REGISTERED user every 5 minutes, growing with sign-ups
+ * rather than with usage. The cutoff bounds the rows each query returns, never
+ * the number of queries.
+ *
+ * A user who goes dormant and comes back is picked up on the very next pass:
+ * this is a stateless re-ask of "who has a row since `since`" on every pass,
+ * not a watermark that can drift or go stale across restarts. (Their board is
+ * already current within milliseconds regardless — `recordScannedContract`
+ * writes at scan time; the sweep only re-folds late enrichment.)
+ */
+async function activeUserIds(since: string): Promise<string[] | null> {
+  if (!isHostedMode()) return null;
+  const db = getFomoServiceClient();
+  if (!db) return null;
+
+  // Untyped view of the same client: this RPC is not in the generated
+  // `Database` types (which are generated and must not be hand-edited), so it
+  // takes the string-name-plus-row-cast route callerStatsStore already uses for
+  // the rest of the caller-quality RPCs.
+  const { data, error } = await (db as unknown as SupabaseClient).rpc(
+    'caller_stats_active_users',
+    { p_since: since },
+  );
+
+  if (error) {
+    // Loud once, then silent: an un-applied migration must not turn into a log
+    // line every 5 minutes, but it must not be invisible either — the sweep is
+    // still correct without it, just as expensive as it used to be.
+    if (!activeUserRpcWarned) {
+      activeUserRpcWarned = true;
+      console.warn(
+        '[CallerStats] caller_stats_active_users unavailable — sweeping every registered user. Apply supabase/migrations/20260825120000_caller_stats_active_users.sql. Reason:',
+        error.message,
+      );
+    }
+    return null;
+  }
+  return ((data ?? []) as { user_id: string }[]).map((row) => row.user_id);
+}
+
+/** Everything the reconcile pass touches, injected so the loop is testable. */
+export interface ReconcilePassDeps {
+  /** Users worth visiting, given the pass cutoff. */
+  roster(since: string): Promise<string[]>;
+  getConfig(userId: string): Promise<{ callerScoreExclusions?: string[] } | null>;
+  getContracts(userId: string, limit: number, since: string): Promise<ContractEntry[]>;
+  recordCalls(userId: string, calls: CallerCallRecord[]): Promise<void>;
+}
+
+/**
+ * One reconcile pass over the roster. Extracted from the timer so the query
+ * cost — the point of the roster narrowing above — can be counted in a test.
+ */
+export async function runReconcilePass(since: string, deps: ReconcilePassDeps): Promise<void> {
+  for (const userId of await deps.roster(since)) {
+    try {
+      // Exclusions are re-read per user per pass rather than cached: they
+      // are a handful of strings and an operator who excludes a bot expects
+      // it to stop accruing rows, not to stop on the next restart. They are
+      // ALSO applied on read (see `splitCallerAggregates`), so an exclusion
+      // added after the fact still hides rows already stored.
+      const config = await deps.getConfig(userId).catch(() => null);
+      const exclude = scoringExclusions(config);
+      const contracts = await deps.getContracts(userId, MAX_CONTRACTS_PER_USER, since);
+      if (contracts.length === 0) continue;
+      const calls = foldCallerCalls(contracts, { exclude });
+      if (calls.length === 0) continue;
+      await deps.recordCalls(userId, calls);
+    } catch (err) {
+      console.error(`[CallerStats] Reconcile failed for ${userId}:`, (err as Error)?.message);
+    }
+  }
+}
+
 class CallerStatsReconciler {
   private timer: NodeJS.Timeout | null = null;
   private running = false;
@@ -144,27 +237,12 @@ class CallerStatsReconciler {
       const storage = getStorageProvider();
       const store = getCallerStatsStore();
 
-      for (const userId of await userIds()) {
-        try {
-          // Exclusions are re-read per user per pass rather than cached: they
-          // are a handful of strings and an operator who excludes a bot expects
-          // it to stop accruing rows, not to stop on the next restart. They are
-          // ALSO applied on read (see `splitCallerAggregates`), so an exclusion
-          // added after the fact still hides rows already stored.
-          const config = await storage.getConfig(userId).catch(() => null);
-          const exclude = scoringExclusions(config);
-          const contracts = await storage.getContracts(userId, MAX_CONTRACTS_PER_USER, since);
-          if (contracts.length === 0) continue;
-          const calls = foldCallerCalls(contracts, { exclude });
-          if (calls.length === 0) continue;
-          await store.recordCalls(userId, calls);
-        } catch (err) {
-          console.error(
-            `[CallerStats] Reconcile failed for ${userId}:`,
-            (err as Error)?.message,
-          );
-        }
-      }
+      await runReconcilePass(since, {
+        roster: async (cutoff) => (await activeUserIds(cutoff)) ?? (await userIds()),
+        getConfig: (userId) => storage.getConfig(userId),
+        getContracts: (userId, limit, cutoff) => storage.getContracts(userId, limit, cutoff),
+        recordCalls: (userId, calls) => store.recordCalls(userId, calls),
+      });
     } finally {
       this.running = false;
     }

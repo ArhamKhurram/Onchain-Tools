@@ -1,6 +1,6 @@
 import { RefObject } from 'react';
 import { motion } from 'framer-motion';
-import { APP_CONSOLE_PATH } from '../../constants';
+import { APP_CONSOLE_PATH, USER_DOCS_URL } from '../../constants';
 import { useSectionScroll } from '../../hooks/useSectionScroll';
 
 const mockLines = [
@@ -45,20 +45,33 @@ export function EnterSection({ scrollRef }: { scrollRef: RefObject<HTMLElement |
             transition={{ delay: 0.1 }}
             className="font-mono text-sm leading-relaxed text-white/65 max-w-md mb-10"
           >
-            No install. Sign in, paste your Discord token in-browser, and start streaming.
-            Your token never touches our servers — it connects directly from your browser.
+            No install. Sign in, watch the demo feed stream live, and paste your Discord token
+            only when you want your own servers. Your token never touches our servers — it
+            connects directly from your browser.
           </motion.p>
 
-          <motion.a
-            href={APP_CONSOLE_PATH}
+          <motion.div
             initial={{ opacity: 0, y: 8 }}
             whileInView={{ opacity: 1, y: 0 }}
             viewport={{ once: true }}
             transition={{ delay: 0.15 }}
-            className="inline-block font-mono text-sm sm:text-base tracking-wide border-2 border-white px-8 py-4 hover:bg-white hover:text-black transition-colors"
+            className="flex flex-wrap items-center gap-x-8 gap-y-4"
           >
-            [ TAKE ME TO CONSOLE → ]
-          </motion.a>
+            <a
+              href={APP_CONSOLE_PATH}
+              className="inline-block font-mono text-sm sm:text-base tracking-wide border-2 border-white px-8 py-4 hover:bg-white hover:text-black transition-colors"
+            >
+              [ TAKE ME TO CONSOLE → ]
+            </a>
+            <a
+              href={USER_DOCS_URL}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="font-mono text-xs sm:text-sm tracking-wide text-white/65 hover:text-white underline underline-offset-4 transition-colors"
+            >
+              Read the user guide
+            </a>
+          </motion.div>
         </motion.div>
 
         <motion.div
