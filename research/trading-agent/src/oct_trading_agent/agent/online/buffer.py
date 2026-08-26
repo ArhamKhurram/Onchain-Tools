@@ -83,7 +83,9 @@ class RolloutBuffer:
     def clear(self) -> None:
         self._episodes.clear()
 
-    def compute(self, *, normalize_adv: bool = True) -> RolloutBatch:
+    def compute(
+        self, *, normalize_adv: bool = True, normalize_returns: bool = False
+    ) -> RolloutBatch:
         """Flatten every stored episode into a GAE batch (advantages + λ-returns)."""
         obs_list: list[np.ndarray] = []
         intents: list[int] = []
@@ -110,6 +112,27 @@ class RolloutBuffer:
             if std > 1e-8:
                 adv_arr = (adv_arr - float(adv_arr.mean())) / (std + 1e-8)
 
+        ret_arr = np.asarray(returns, dtype=np.float32)
+        if normalize_returns and ret_arr.size > 1:
+            # OPT-IN, and off by default on purpose: this changes what the critic regresses to,
+            # so switching it on silently would make every run before and after incomparable.
+            # Pre-registration discipline (05-evaluation-plan.md) says a knob that moves learning
+            # gets A/B'd, not defaulted.
+            #
+            # Why it exists: advantages are standardised above, returns are not, and the critic
+            # fits raw lambda-returns through quantile_huber_loss with no value-loss clipping. On
+            # fat-tailed memecoin payoffs one survivor token in a batch can therefore move the
+            # value loss by two orders of magnitude — observed live on 2026-08-26, iter 750:
+            # val went 1.76e6 -> 2.10e8 and back to 1.19e6 by iter 900. That was volatility, not
+            # divergence, but it is avoidable noise in the signal the policy learns from, because
+            # advantage = actual - predicted.
+            #
+            # SCALE ONLY, no mean shift: subtracting the mean would move the critic's zero point
+            # and change what "break even" means to a value head whose output is read as PnL.
+            rstd = float(ret_arr.std())
+            if rstd > 1e-8:
+                ret_arr = ret_arr / (rstd + 1e-8)
+
         return RolloutBatch(
             obs=np.asarray(obs_list, dtype=np.float32).reshape(len(obs_list), -1),
             intents=np.asarray(intents, dtype=np.int64),
@@ -117,7 +140,7 @@ class RolloutBuffer:
             log_probs=np.asarray(log_probs, dtype=np.float32),
             values=np.asarray(values, dtype=np.float32),
             advantages=adv_arr,
-            returns=np.asarray(returns, dtype=np.float32),
+            returns=ret_arr,
         )
 
 

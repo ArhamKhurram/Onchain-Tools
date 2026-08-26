@@ -106,6 +106,10 @@ class MarketTrainConfig:
     # suspicion) to every env observation AND widens the net input to match. OFF by default —
     # flag-off runs are byte-identical to before.
     attention_features: bool = False
+    # Scale the critic's regression target by the batch's return std. OFF by default so
+    # flag-off runs stay comparable with every run before it; see RolloutBuffer.compute for
+    # why it exists and 05-evaluation-plan.md for why a learning knob is A/B'd, not defaulted.
+    normalize_returns: bool = False
 
 
 # ---------------------------------------------------------------------------
@@ -325,16 +329,36 @@ def train_market_policy(
         trainer.config = replace(base_ppo, entropy_coef=entropy)
 
         buffer = RolloutBuffer(gamma=cfg.gamma, lam=cfg.gae_lambda)
+        # Episode PnL, sampled after each pass. pol/val/ent/kl are all optimiser diagnostics —
+        # not one of them says whether the agent made money, which made it possible to reason at
+        # length about training health from the wrong signal. This is the column that answers it.
+        ep_pnl_bps: list[float] = []
         for _ in range(cfg.episodes_per_iter):
             collect_rollouts(
                 model, train_envs, normalizer, buffer,
                 update_normalizer=True, risk_beta=cfg.risk_beta, cvar_alpha=cfg.cvar_alpha,
             )
-        batch = buffer.compute()
+            for env in train_envs:
+                base = float(env.config.initial_balance_quote)
+                if base > 0:
+                    ep_pnl_bps.append((float(env.balance_quote) / base - 1.0) * 10_000.0)
+        batch = buffer.compute(normalize_returns=cfg.normalize_returns)
         stats = trainer.update(batch)
         if (it + 1) % max(1, n // 10) == 0:
+            # MEDIAN, not mean, and always with the win rate beside it. On fat-tailed survivor
+            # tokens a mean is one lottery ticket away from meaningless, and 05-evaluation-plan
+            # §1.1 pins the rule: headline PnL is never read without the win-rate shape behind it.
+            if ep_pnl_bps:
+                srt = sorted(ep_pnl_bps)
+                mid = len(srt) // 2
+                med = srt[mid] if len(srt) % 2 else (srt[mid - 1] + srt[mid]) / 2.0
+                wins = sum(1 for v in ep_pnl_bps if v > 0.0) / len(ep_pnl_bps)
+                pnl_col = f"  pnl={med:+8.1f}bps  win={wins:.2f}"
+            else:
+                pnl_col = "  pnl=       -  win=   -"
             log(
-                f"    iter {it + 1:>4}/{n}  steps={len(batch):>6}  ent_coef={entropy:.4f}  "
+                f"    iter {it + 1:>4}/{n}  steps={len(batch):>6}{pnl_col}  "
+                f"ent_coef={entropy:.4f}  "
                 f"pol={stats.policy_loss:+.4f}  val={stats.value_loss:.4f}  "
                 f"ent={stats.entropy:+.3f}  kl={stats.approx_kl:+.4f}"
             )
@@ -919,6 +943,13 @@ def main() -> None:  # pragma: no cover - CLI
         "manipulation suspicion) to the observation; widens the net input — a resume/warm-start "
         "must use the same flag as the checkpointed run",
     )
+    parser.add_argument(
+        "--normalize-returns", action="store_true",
+        help="scale the critic's regression target by the batch return std. Advantages are already "
+        "standardised and returns are not, so one fat-tailed survivor token can move the value loss "
+        "by two orders of magnitude (observed 2026-08-26: 1.76e6 -> 2.10e8 -> 1.19e6). OFF by "
+        "default — it changes what the critic learns, so A/B it rather than assuming it helps",
+    )
     parser.add_argument("--build", action="store_true", help="build/extend the dataset first, then train")
     parser.add_argument("--target-tokens", type=int, default=1000, help="--build: pools to accumulate")
     parser.add_argument("--max-pages", type=int, default=200, help="--build: REST page budget")
@@ -968,6 +999,7 @@ def main() -> None:  # pragma: no cover - CLI
     cfg = MarketTrainConfig(
         n_iterations=args.iterations, hidden_dim=args.hidden_dim,
         attention_features=args.attention_features,
+        normalize_returns=args.normalize_returns,
     )
     checkpoint_dir = Path(args.checkpoint_dir) if args.checkpoint_dir else None
     results = run_ladder(
