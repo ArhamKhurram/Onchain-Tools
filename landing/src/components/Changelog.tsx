@@ -37,7 +37,7 @@ const CHANGELOG: ChangelogEntry[] = [
       '**Room hotkeys** — assign a single key to any room and press it anywhere (outside a text field) to jump straight to it',
       '**See who reacted** — click a reaction on a Discord message to see the list of users who reacted with that emoji',
       '**Unread badges** — the sidebar now shows a blue unread counter on rooms, DMs, and Mentions, clearing the moment you open them',
-      '**Desktop app** — OCT is now available as a native desktop app for Windows and macOS, with auto-updates, keeping your token and data fully on your machine',
+      '**Desktop app** — OCT is now available as a native desktop app for Windows and macOS, keeping your token and data fully on your machine',
       '**In-app announcements** — important updates and notices can now surface in a dismissible in-app modal',
       '**Import on setup** — the welcome screen now lets you import an existing config.json (token, rooms, and settings) to get going in one step, or continue without a token to explore the app first',
       '**Local backups include credentials** — in self-hosted mode, settings backups now include your Discord tokens and Telegram credentials so a restore fully reconnects you (hosted mode still never exports credentials — keep local backups somewhere safe)',
