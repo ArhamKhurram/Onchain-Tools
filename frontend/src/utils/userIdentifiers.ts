@@ -133,3 +133,26 @@ export function summarizeParse(result: ParsedIdentifiers): string {
   if (result.invalid.length > 0) parts.push(`${result.invalid.length} skipped`);
   return parts.join(' · ');
 }
+
+/**
+ * Resolve the custom highlight colour for a message author.
+ *
+ * `highlightedUserColors` is keyed by whatever identifier the user added — a
+ * bare id or an `@handle` (see the matching rules at the top of this file).
+ * The chat pane used to look colours up by author id only, so a colour set on
+ * an `@handle` entry never resolved: the row still highlighted (the highlight
+ * matcher IS identifier-aware) but painted the default colour instead of the
+ * one the user picked. Mirror the matcher here: ids exactly, handles
+ * case-insensitively.
+ */
+export function createHighlightColorResolver(
+  colors: Readonly<Record<string, string>> | undefined,
+): (authorId: string, username?: string) => string | undefined {
+  if (!colors) return () => undefined;
+  const byHandle = new Map<string, string>();
+  for (const [key, color] of Object.entries(colors)) {
+    if (key.startsWith('@')) byHandle.set(key.slice(1).toLowerCase(), color);
+  }
+  return (authorId, username) =>
+    colors[authorId] ?? (username ? byHandle.get(username.toLowerCase()) : undefined);
+}
