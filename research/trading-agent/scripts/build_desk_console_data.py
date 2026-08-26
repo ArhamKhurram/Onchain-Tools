@@ -432,6 +432,58 @@ def build_program() -> dict[str, Any]:
     }
 
 
+def build_champions() -> list[dict[str, Any]]:
+    """Every niche champion from every telemetry export — the full agent roster.
+
+    The animated floor only ever shows one run's six niches at the playback frame. This is the
+    flat, sortable version: every agent the program has ever elected champion of a niche, with
+    the run it came from.
+
+    ``mapelites-gpu-seed0.json`` IS included here — unlike SCALE_SWEEP, which averages and would
+    be flattered by it — but every one of its rows is tagged ``artefact: True`` and carries the
+    reason. A roster that silently omits a run is a roster you cannot trust to be complete; one
+    that shows it unlabelled at +22,829 bps is worse. Showing it with the caveat attached is the
+    only option that is both complete and honest.
+    """
+    ARTEFACT = "mapelites-gpu-seed0.json"
+    out: list[dict[str, Any]] = []
+    for path in sorted((DATA / "desk_telemetry").glob("*.json")):
+        try:
+            doc = json.loads(path.read_text(encoding="utf-8"))
+        except Exception:
+            continue
+        gens = doc.get("generations") or []
+        if not gens:
+            continue
+        last = gens[-1]
+        for desk in last.get("desks", []):
+            champ = desk.get("champion")
+            if not champ:
+                continue
+            out.append({
+                "agent_id": champ.get("agent_id"),
+                "role": desk.get("role"),
+                "run": path.name.replace("-seed0.json", "").replace(".json", ""),
+                "algo": doc.get("algo"),
+                "gens": len(gens),
+                "cost_bps": doc.get("cost_bps"),
+                "pnl_bps": champ.get("pnl_bps"),
+                "trades": champ.get("trades"),
+                "win_rate": champ.get("win_rate"),
+                "hold_s": champ.get("hold_s"),
+                "median_pnl_bps": desk.get("median_pnl_bps"),
+                "occupancy": desk.get("occupancy"),
+                "artefact": path.name == ARTEFACT,
+                "artefact_reason": (
+                    "first GPU smoke run on a tiny token slice; ~3 orders of magnitude off every "
+                    "later run — a scale artefact, not a result"
+                ) if path.name == ARTEFACT else None,
+            })
+    # Best first, but artefact rows always sort last so they cannot head the table.
+    out.sort(key=lambda r: (r["artefact"], -(r["pnl_bps"] if r["pnl_bps"] is not None else -1e9)))
+    return out
+
+
 # ---------------------------------------------------------------------------
 # Emit
 # ---------------------------------------------------------------------------
@@ -464,6 +516,10 @@ def render_block(ladder: dict[str, Any]) -> str:
         "",
         "/* The standing substrate: wallet census, replay traces, audit rounds. */",
         js_const("PROGRAM", build_program(), indent=2),
+        "",
+        "/* Every niche champion from every run — the flat agent roster. Rows from the first GPU",
+        "   smoke run are tagged `artefact` and sort last; see build_champions(). */",
+        js_const("CHAMPIONS", build_champions(), indent=2),
         "",
         END,
     ]

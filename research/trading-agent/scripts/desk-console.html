@@ -198,6 +198,21 @@ button{font-family:inherit;color:inherit}
 /* ===================== RIGHT RAIL ===================== */
 .rail{display:flex;flex-direction:column;gap:14px;min-width:0}
 .roster{padding:8px 12px 12px}
+.champwrap{max-height:420px;overflow:auto;border-top:1px solid var(--line)}
+table.champ{width:100%;border-collapse:collapse;font-size:12px}
+table.champ th{position:sticky;top:0;background:var(--panel);text-align:left;padding:7px 10px;
+  font:600 10px/1.2 var(--px);letter-spacing:.10em;text-transform:uppercase;color:var(--muted);
+  border-bottom:1px solid var(--line);white-space:nowrap;z-index:1}
+table.champ td{padding:6px 10px;border-bottom:1px solid var(--line-soft,rgba(255,255,255,.05));
+  white-space:nowrap}
+table.champ td.num,table.champ th.num{text-align:right;font-family:var(--mono,monospace);
+  font-variant-numeric:tabular-nums}
+table.champ tr.art td{opacity:.5}
+table.champ tr:hover td{background:rgba(255,255,255,.03)}
+.chip{display:inline-block;font:600 9px/1 var(--px);letter-spacing:.08em;text-transform:uppercase;
+  padding:3px 6px;border-radius:2px;background:rgba(255,255,255,.07);color:var(--muted)}
+.chip.art{background:rgba(255,120,90,.14);color:#e08a72}
+td.pos{color:var(--pos,#5ec98a)} td.neg{color:var(--neg,#e0705a)}
 .rrow{display:grid;grid-template-columns:14px 62px 1fr 52px;align-items:center;gap:9px;
   padding:6px 0;border-bottom:1px dashed var(--border)}
 .rrow:last-child{border-bottom:0}
@@ -518,6 +533,16 @@ input[type=range]::-moz-range-thumb{width:14px;height:18px;border-radius:4px;bac
     <div class="panel-foot" id="ladderFoot">—</div>
   </section>
 
+  <!-- ===================== AGENT ROSTER ===================== -->
+  <section class="panel" style="margin-top:14px" aria-label="Every niche champion across every run">
+    <div class="phead">
+      <span class="t px">AGENT ROSTER · EVERY CHAMPION, EVERY RUN</span>
+      <span class="r num" id="champMeta">—</span>
+    </div>
+    <div class="champwrap"><table class="champ" id="champ"></table></div>
+    <div class="panel-foot" id="champFoot">—</div>
+  </section>
+
   <!-- ===================== IMPROVEMENT LOOP + SUBSTRATE ===================== -->
   <div class="grid2">
     <section class="panel" aria-label="Improvement loop — post-mortem queue and trial verdicts">
@@ -683,7 +708,7 @@ const LADDER = {
     {
       "rung": 1000,
       "status": "running",
-      "iter_done": 200,
+      "iter_done": 625,
       "checkpoint": null,
       "report": null,
       "pending_reason": "mid-run — no verdict exists yet; nothing here should be quoted"
@@ -817,6 +842,683 @@ const PROGRAM = {
     "discrepancies": 0
   }
 };
+
+/* Every niche champion from every run — the flat agent roster. Rows from the first GPU
+   smoke run are tagged `artefact` and sort last; see build_champions(). */
+const CHAMPIONS = [
+  {
+    "agent_id": "g05a007",
+    "role": "RUG",
+    "run": "pbt-2026-08-23",
+    "algo": "pbt",
+    "gens": 6,
+    "cost_bps": 125,
+    "pnl_bps": 995.6,
+    "trades": 328,
+    "win_rate": 0.17,
+    "hold_s": null,
+    "median_pnl_bps": 656.3,
+    "occupancy": 23,
+    "artefact": false,
+    "artefact_reason": null
+  },
+  {
+    "agent_id": "g05a015",
+    "role": "SHILL",
+    "run": "pbt-2026-08-23",
+    "algo": "pbt",
+    "gens": 6,
+    "cost_bps": 125,
+    "pnl_bps": 192.4,
+    "trades": 145,
+    "win_rate": 0.08,
+    "hold_s": null,
+    "median_pnl_bps": 192.4,
+    "occupancy": 1,
+    "artefact": false,
+    "artefact_reason": null
+  },
+  {
+    "agent_id": "c0116",
+    "role": "GIZMO",
+    "run": "mapelites-gpu-large",
+    "algo": "map_elites",
+    "gens": 16,
+    "cost_bps": 125,
+    "pnl_bps": 130.3,
+    "trades": 118,
+    "win_rate": 0.03,
+    "hold_s": null,
+    "median_pnl_bps": 130.3,
+    "occupancy": 1,
+    "artefact": false,
+    "artefact_reason": null
+  },
+  {
+    "agent_id": "c0036",
+    "role": "GREMLIN",
+    "run": "mapelites-gpu-large",
+    "algo": "map_elites",
+    "gens": 16,
+    "cost_bps": 125,
+    "pnl_bps": 111.3,
+    "trades": 37,
+    "win_rate": 0.03,
+    "hold_s": null,
+    "median_pnl_bps": 111.3,
+    "occupancy": 1,
+    "artefact": false,
+    "artefact_reason": null
+  },
+  {
+    "agent_id": "c0083",
+    "role": "PICKLE",
+    "run": "mapelites-gpu-large",
+    "algo": "map_elites",
+    "gens": 16,
+    "cost_bps": 125,
+    "pnl_bps": 100.5,
+    "trades": 201,
+    "win_rate": 0.03,
+    "hold_s": null,
+    "median_pnl_bps": 100.5,
+    "occupancy": 1,
+    "artefact": false,
+    "artefact_reason": null
+  },
+  {
+    "agent_id": "seed386",
+    "role": "NOODLE",
+    "run": "mapelites-gpu-400",
+    "algo": "map_elites",
+    "gens": 12,
+    "cost_bps": 125,
+    "pnl_bps": 90.4,
+    "trades": 2044,
+    "win_rate": 0.01,
+    "hold_s": null,
+    "median_pnl_bps": 90.4,
+    "occupancy": 1,
+    "artefact": false,
+    "artefact_reason": null
+  },
+  {
+    "agent_id": "c0003",
+    "role": "NOODLE",
+    "run": "mapelites-2026-08-23",
+    "algo": "map_elites",
+    "gens": 7,
+    "cost_bps": 125,
+    "pnl_bps": 63.7,
+    "trades": 97,
+    "win_rate": 0.17,
+    "hold_s": null,
+    "median_pnl_bps": 63.7,
+    "occupancy": 1,
+    "artefact": false,
+    "artefact_reason": null
+  },
+  {
+    "agent_id": "c0012",
+    "role": "PICKLE",
+    "run": "mapelites-2026-08-23",
+    "algo": "map_elites",
+    "gens": 7,
+    "cost_bps": 125,
+    "pnl_bps": 48.4,
+    "trades": 45,
+    "win_rate": 0.08,
+    "hold_s": null,
+    "median_pnl_bps": 48.4,
+    "occupancy": 1,
+    "artefact": false,
+    "artefact_reason": null
+  },
+  {
+    "agent_id": "seed391",
+    "role": "GIZMO",
+    "run": "mapelites-gpu-400",
+    "algo": "map_elites",
+    "gens": 12,
+    "cost_bps": 125,
+    "pnl_bps": 30.2,
+    "trades": 229,
+    "win_rate": 0.07,
+    "hold_s": null,
+    "median_pnl_bps": 30.2,
+    "occupancy": 1,
+    "artefact": false,
+    "artefact_reason": null
+  },
+  {
+    "agent_id": "seed282",
+    "role": "NOODLE",
+    "run": "mapelites-gpu-800",
+    "algo": "map_elites",
+    "gens": 12,
+    "cost_bps": 125,
+    "pnl_bps": 27.1,
+    "trades": 9896,
+    "win_rate": 0.23,
+    "hold_s": null,
+    "median_pnl_bps": 27.1,
+    "occupancy": 1,
+    "artefact": false,
+    "artefact_reason": null
+  },
+  {
+    "agent_id": "seed384",
+    "role": "PICKLE",
+    "run": "mapelites-gpu-400",
+    "algo": "map_elites",
+    "gens": 12,
+    "cost_bps": 125,
+    "pnl_bps": 26.5,
+    "trades": 1934,
+    "win_rate": 0.01,
+    "hold_s": null,
+    "median_pnl_bps": 26.5,
+    "occupancy": 1,
+    "artefact": false,
+    "artefact_reason": null
+  },
+  {
+    "agent_id": "c0013",
+    "role": "GIZMO",
+    "run": "mapelites-2026-08-23",
+    "algo": "map_elites",
+    "gens": 7,
+    "cost_bps": 125,
+    "pnl_bps": 23.2,
+    "trades": 18,
+    "win_rate": 0.08,
+    "hold_s": null,
+    "median_pnl_bps": 23.2,
+    "occupancy": 1,
+    "artefact": false,
+    "artefact_reason": null
+  },
+  {
+    "agent_id": "seed311",
+    "role": "GIZMO",
+    "run": "mapelites-gpu-800",
+    "algo": "map_elites",
+    "gens": 12,
+    "cost_bps": 125,
+    "pnl_bps": 15.9,
+    "trades": 468,
+    "win_rate": 0.09,
+    "hold_s": null,
+    "median_pnl_bps": 15.9,
+    "occupancy": 1,
+    "artefact": false,
+    "artefact_reason": null
+  },
+  {
+    "agent_id": "c0049",
+    "role": "NOODLE",
+    "run": "mapelites-gpu-huge",
+    "algo": "map_elites",
+    "gens": 11,
+    "cost_bps": 125,
+    "pnl_bps": 7.2,
+    "trades": 1493,
+    "win_rate": 0.15,
+    "hold_s": null,
+    "median_pnl_bps": 7.2,
+    "occupancy": 1,
+    "artefact": false,
+    "artefact_reason": null
+  },
+  {
+    "agent_id": "c0003",
+    "role": "GECKO",
+    "run": "mapelites-gpu-mega",
+    "algo": "map_elites",
+    "gens": 12,
+    "cost_bps": 125,
+    "pnl_bps": 3.0,
+    "trades": 284,
+    "win_rate": 0.22,
+    "hold_s": null,
+    "median_pnl_bps": 3.0,
+    "occupancy": 1,
+    "artefact": false,
+    "artefact_reason": null
+  },
+  {
+    "agent_id": "c0048",
+    "role": "GREMLIN",
+    "run": "mapelites-gpu-huge",
+    "algo": "map_elites",
+    "gens": 11,
+    "cost_bps": 125,
+    "pnl_bps": 2.5,
+    "trades": 37,
+    "win_rate": 0.05,
+    "hold_s": null,
+    "median_pnl_bps": 2.5,
+    "occupancy": 1,
+    "artefact": false,
+    "artefact_reason": null
+  },
+  {
+    "agent_id": "c0068",
+    "role": "PICKLE",
+    "run": "mapelites-gpu-mega",
+    "algo": "map_elites",
+    "gens": 12,
+    "cost_bps": 125,
+    "pnl_bps": 2.4,
+    "trades": 527,
+    "win_rate": 0.12,
+    "hold_s": null,
+    "median_pnl_bps": 2.4,
+    "occupancy": 1,
+    "artefact": false,
+    "artefact_reason": null
+  },
+  {
+    "agent_id": "seed059",
+    "role": "GIZMO",
+    "run": "mapelites-gpu-mega",
+    "algo": "map_elites",
+    "gens": 12,
+    "cost_bps": 125,
+    "pnl_bps": 1.6,
+    "trades": 89,
+    "win_rate": 0.06,
+    "hold_s": null,
+    "median_pnl_bps": 1.6,
+    "occupancy": 1,
+    "artefact": false,
+    "artefact_reason": null
+  },
+  {
+    "agent_id": "c0087",
+    "role": "GIZMO",
+    "run": "mapelites-gpu-huge",
+    "algo": "map_elites",
+    "gens": 11,
+    "cost_bps": 125,
+    "pnl_bps": 1.5,
+    "trades": 147,
+    "win_rate": 0.03,
+    "hold_s": null,
+    "median_pnl_bps": 1.5,
+    "occupancy": 1,
+    "artefact": false,
+    "artefact_reason": null
+  },
+  {
+    "agent_id": "c0053",
+    "role": "PICKLE",
+    "run": "mapelites-gpu-huge",
+    "algo": "map_elites",
+    "gens": 11,
+    "cost_bps": 125,
+    "pnl_bps": 1.5,
+    "trades": 781,
+    "win_rate": 0.05,
+    "hold_s": null,
+    "median_pnl_bps": 1.5,
+    "occupancy": 1,
+    "artefact": false,
+    "artefact_reason": null
+  },
+  {
+    "agent_id": "c0094",
+    "role": "GREMLIN",
+    "run": "mapelites-gpu-mega",
+    "algo": "map_elites",
+    "gens": 12,
+    "cost_bps": 125,
+    "pnl_bps": 1.1,
+    "trades": 4,
+    "win_rate": 0.02,
+    "hold_s": null,
+    "median_pnl_bps": 1.1,
+    "occupancy": 1,
+    "artefact": false,
+    "artefact_reason": null
+  },
+  {
+    "agent_id": "seed425",
+    "role": "GREMLIN",
+    "run": "mapelites-gpu-800",
+    "algo": "map_elites",
+    "gens": 12,
+    "cost_bps": 125,
+    "pnl_bps": 0.6,
+    "trades": 3,
+    "win_rate": 0.01,
+    "hold_s": null,
+    "median_pnl_bps": 0.6,
+    "occupancy": 1,
+    "artefact": false,
+    "artefact_reason": null
+  },
+  {
+    "agent_id": "seed001",
+    "role": "GREMLIN",
+    "run": "mapelites-2026-08-23",
+    "algo": "map_elites",
+    "gens": 7,
+    "cost_bps": 125,
+    "pnl_bps": 0.0,
+    "trades": 0,
+    "win_rate": 0.0,
+    "hold_s": null,
+    "median_pnl_bps": 0.0,
+    "occupancy": 1,
+    "artefact": false,
+    "artefact_reason": null
+  },
+  {
+    "agent_id": "seed003",
+    "role": "GREMLIN",
+    "run": "mapelites-gpu-400",
+    "algo": "map_elites",
+    "gens": 12,
+    "cost_bps": 125,
+    "pnl_bps": 0.0,
+    "trades": 0,
+    "win_rate": 0.0,
+    "hold_s": null,
+    "median_pnl_bps": 0.0,
+    "occupancy": 1,
+    "artefact": false,
+    "artefact_reason": null
+  },
+  {
+    "agent_id": "seed235",
+    "role": "PICKLE",
+    "run": "mapelites-gpu-800",
+    "algo": "map_elites",
+    "gens": 12,
+    "cost_bps": 125,
+    "pnl_bps": -0.2,
+    "trades": 1330,
+    "win_rate": 0.01,
+    "hold_s": null,
+    "median_pnl_bps": -0.2,
+    "occupancy": 1,
+    "artefact": false,
+    "artefact_reason": null
+  },
+  {
+    "agent_id": "c0054",
+    "role": "NOODLE",
+    "run": "mapelites-gpu-large",
+    "algo": "map_elites",
+    "gens": 16,
+    "cost_bps": 125,
+    "pnl_bps": -0.4,
+    "trades": 406,
+    "win_rate": 0.08,
+    "hold_s": null,
+    "median_pnl_bps": -0.4,
+    "occupancy": 1,
+    "artefact": false,
+    "artefact_reason": null
+  },
+  {
+    "agent_id": "c0098",
+    "role": "GECKO",
+    "run": "mapelites-gpu-huge",
+    "algo": "map_elites",
+    "gens": 11,
+    "cost_bps": 125,
+    "pnl_bps": -1.5,
+    "trades": 242,
+    "win_rate": 0.19,
+    "hold_s": null,
+    "median_pnl_bps": -1.5,
+    "occupancy": 1,
+    "artefact": false,
+    "artefact_reason": null
+  },
+  {
+    "agent_id": "c0106",
+    "role": "GECKO",
+    "run": "mapelites-gpu-large",
+    "algo": "map_elites",
+    "gens": 16,
+    "cost_bps": 125,
+    "pnl_bps": -1.9,
+    "trades": 188,
+    "win_rate": 0.1,
+    "hold_s": null,
+    "median_pnl_bps": -1.9,
+    "occupancy": 1,
+    "artefact": false,
+    "artefact_reason": null
+  },
+  {
+    "agent_id": "seed036",
+    "role": "GOBLIN",
+    "run": "mapelites-gpu-large",
+    "algo": "map_elites",
+    "gens": 16,
+    "cost_bps": 125,
+    "pnl_bps": -2.1,
+    "trades": 311,
+    "win_rate": 0.03,
+    "hold_s": null,
+    "median_pnl_bps": -2.1,
+    "occupancy": 1,
+    "artefact": false,
+    "artefact_reason": null
+  },
+  {
+    "agent_id": "c0050",
+    "role": "GOBLIN",
+    "run": "mapelites-gpu-800",
+    "algo": "map_elites",
+    "gens": 12,
+    "cost_bps": 125,
+    "pnl_bps": -2.6,
+    "trades": 382,
+    "win_rate": 0.21,
+    "hold_s": null,
+    "median_pnl_bps": -2.6,
+    "occupancy": 1,
+    "artefact": false,
+    "artefact_reason": null
+  },
+  {
+    "agent_id": "seed046",
+    "role": "GECKO",
+    "run": "mapelites-gpu-800",
+    "algo": "map_elites",
+    "gens": 12,
+    "cost_bps": 125,
+    "pnl_bps": -2.9,
+    "trades": 371,
+    "win_rate": 0.2,
+    "hold_s": null,
+    "median_pnl_bps": -2.9,
+    "occupancy": 1,
+    "artefact": false,
+    "artefact_reason": null
+  },
+  {
+    "agent_id": "seed043",
+    "role": "GOBLIN",
+    "run": "mapelites-gpu-mega",
+    "algo": "map_elites",
+    "gens": 12,
+    "cost_bps": 125,
+    "pnl_bps": -4.3,
+    "trades": 395,
+    "win_rate": 0.17,
+    "hold_s": null,
+    "median_pnl_bps": -4.3,
+    "occupancy": 1,
+    "artefact": false,
+    "artefact_reason": null
+  },
+  {
+    "agent_id": "c0059",
+    "role": "NOODLE",
+    "run": "mapelites-gpu-mega",
+    "algo": "map_elites",
+    "gens": 12,
+    "cost_bps": 125,
+    "pnl_bps": -4.3,
+    "trades": 1848,
+    "win_rate": 0.14,
+    "hold_s": null,
+    "median_pnl_bps": -4.3,
+    "occupancy": 1,
+    "artefact": false,
+    "artefact_reason": null
+  },
+  {
+    "agent_id": "c0026",
+    "role": "GOBLIN",
+    "run": "mapelites-gpu-huge",
+    "algo": "map_elites",
+    "gens": 11,
+    "cost_bps": 125,
+    "pnl_bps": -7.5,
+    "trades": 1004,
+    "win_rate": 0.19,
+    "hold_s": null,
+    "median_pnl_bps": -7.5,
+    "occupancy": 1,
+    "artefact": false,
+    "artefact_reason": null
+  },
+  {
+    "agent_id": "c0104",
+    "role": "GOBLIN",
+    "run": "mapelites-gpu-400",
+    "algo": "map_elites",
+    "gens": 12,
+    "cost_bps": 125,
+    "pnl_bps": -8.1,
+    "trades": 437,
+    "win_rate": 0.17,
+    "hold_s": null,
+    "median_pnl_bps": -8.1,
+    "occupancy": 1,
+    "artefact": false,
+    "artefact_reason": null
+  },
+  {
+    "agent_id": "seed287",
+    "role": "GECKO",
+    "run": "mapelites-gpu-400",
+    "algo": "map_elites",
+    "gens": 12,
+    "cost_bps": 125,
+    "pnl_bps": -10.9,
+    "trades": 294,
+    "win_rate": 0.09,
+    "hold_s": null,
+    "median_pnl_bps": -10.9,
+    "occupancy": 1,
+    "artefact": false,
+    "artefact_reason": null
+  },
+  {
+    "agent_id": "c0092",
+    "role": "NOODLE",
+    "run": "mapelites-gpu",
+    "algo": "map_elites",
+    "gens": 18,
+    "cost_bps": 125,
+    "pnl_bps": 22828.9,
+    "trades": 771,
+    "win_rate": 0.25,
+    "hold_s": null,
+    "median_pnl_bps": 22828.9,
+    "occupancy": 1,
+    "artefact": true,
+    "artefact_reason": "first GPU smoke run on a tiny token slice; ~3 orders of magnitude off every later run — a scale artefact, not a result"
+  },
+  {
+    "agent_id": "c0011",
+    "role": "PICKLE",
+    "run": "mapelites-gpu",
+    "algo": "map_elites",
+    "gens": 18,
+    "cost_bps": 125,
+    "pnl_bps": 7235.1,
+    "trades": 343,
+    "win_rate": 0.38,
+    "hold_s": null,
+    "median_pnl_bps": 7235.1,
+    "occupancy": 1,
+    "artefact": true,
+    "artefact_reason": "first GPU smoke run on a tiny token slice; ~3 orders of magnitude off every later run — a scale artefact, not a result"
+  },
+  {
+    "agent_id": "seed024",
+    "role": "GIZMO",
+    "run": "mapelites-gpu",
+    "algo": "map_elites",
+    "gens": 18,
+    "cost_bps": 125,
+    "pnl_bps": 1378.8,
+    "trades": 89,
+    "win_rate": 0.31,
+    "hold_s": null,
+    "median_pnl_bps": 1378.8,
+    "occupancy": 1,
+    "artefact": true,
+    "artefact_reason": "first GPU smoke run on a tiny token slice; ~3 orders of magnitude off every later run — a scale artefact, not a result"
+  },
+  {
+    "agent_id": "c0049",
+    "role": "GECKO",
+    "run": "mapelites-gpu",
+    "algo": "map_elites",
+    "gens": 18,
+    "cost_bps": 125,
+    "pnl_bps": 109.1,
+    "trades": 80,
+    "win_rate": 0.19,
+    "hold_s": null,
+    "median_pnl_bps": 109.1,
+    "occupancy": 1,
+    "artefact": true,
+    "artefact_reason": "first GPU smoke run on a tiny token slice; ~3 orders of magnitude off every later run — a scale artefact, not a result"
+  },
+  {
+    "agent_id": "c0045",
+    "role": "GOBLIN",
+    "run": "mapelites-gpu",
+    "algo": "map_elites",
+    "gens": 18,
+    "cost_bps": 125,
+    "pnl_bps": 103.3,
+    "trades": 130,
+    "win_rate": 0.25,
+    "hold_s": null,
+    "median_pnl_bps": 103.3,
+    "occupancy": 1,
+    "artefact": true,
+    "artefact_reason": "first GPU smoke run on a tiny token slice; ~3 orders of magnitude off every later run — a scale artefact, not a result"
+  },
+  {
+    "agent_id": "c0061",
+    "role": "GREMLIN",
+    "run": "mapelites-gpu",
+    "algo": "map_elites",
+    "gens": 18,
+    "cost_bps": 125,
+    "pnl_bps": 43.9,
+    "trades": 37,
+    "win_rate": 0.12,
+    "hold_s": null,
+    "median_pnl_bps": 43.9,
+    "occupancy": 1,
+    "artefact": true,
+    "artefact_reason": "first GPU smoke run on a tiny token slice; ~3 orders of magnitude off every later run — a scale artefact, not a result"
+  }
+];
 
 /* @generated:end desk-console-data */
 
@@ -1010,6 +1712,46 @@ function renderRoster(g){
     if(b.pnl === null) return -1;
     return b.pnl - a.pnl;
   });
+  (function renderChampions(){
+    if(typeof CHAMPIONS === 'undefined' || !CHAMPIONS.length) return;
+    const real = CHAMPIONS.filter(c=>!c.artefact);
+    const art  = CHAMPIONS.filter(c=>c.artefact);
+    const pnls = real.map(c=>c.pnl_bps).filter(v=>typeof v === 'number');
+    const wrs  = real.map(c=>c.win_rate).filter(v=>typeof v === 'number');
+    const med  = a => { if(!a.length) return null; const s=[...a].sort((x,y)=>x-y);
+                        const m=Math.floor(s.length/2);
+                        return s.length%2 ? s[m] : (s[m-1]+s[m])/2; };
+    const fmt = v => v === null || v === undefined ? '—'
+                   : (v>=0?'+':'') + Number(v).toFixed(1);
+    el('champMeta').textContent =
+      real.length + ' agents · ' + new Set(real.map(c=>c.run)).size + ' runs';
+    el('champ').innerHTML =
+      '<thead><tr><th>Agent</th><th>Niche</th><th>Run</th><th class="num">PnL bps</th>' +
+      '<th class="num">Win rate</th><th class="num">Trades</th><th class="num">Hold s</th>' +
+      '<th class="num">Niche median</th><th></th></tr></thead><tbody>' +
+      CHAMPIONS.map(c=>{
+        const cls = c.artefact ? ' class="art"' : '';
+        const pc  = typeof c.pnl_bps === 'number' ? (c.pnl_bps>=0?'pos':'neg') : '';
+        return '<tr'+cls+'>'
+          + '<td>'+esc(c.agent_id||'—')+'</td>'
+          + '<td>'+esc(c.role||'—')+'</td>'
+          + '<td>'+esc(c.run||'—')+'</td>'
+          + '<td class="num '+pc+'">'+fmt(c.pnl_bps)+'</td>'
+          + '<td class="num">'+(typeof c.win_rate==='number'?c.win_rate.toFixed(2):'—')+'</td>'
+          + '<td class="num">'+(c.trades??'—')+'</td>'
+          + '<td class="num">'+(c.hold_s??'—')+'</td>'
+          + '<td class="num">'+fmt(c.median_pnl_bps)+'</td>'
+          + '<td>'+(c.artefact?'<span class="chip art" title="'+esc(c.artefact_reason||'')+'">artefact</span>':'')+'</td>'
+          + '</tr>';
+      }).join('') + '</tbody>';
+    el('champFoot').textContent =
+      'Median champion PnL ' + fmt(med(pnls)) + ' bps · win rates ' +
+      (wrs.length ? Math.min(...wrs).toFixed(2)+'–'+Math.max(...wrs).toFixed(2) : '—') +
+      ' — read the win-rate column, not the PnL column: on fat-tailed survivor tokens a top PnL ' +
+      'is a lottery ticket, and a win rate at or below 0.10 is what lottery looks like. ' +
+      art.length + ' row(s) from the first GPU smoke run are dimmed and sort last.';
+  })();
+
   el('roster').innerHTML = rows.map((r,i)=>{
     const v = roleVarMap[r.role];
     if(r.pnl === null){
