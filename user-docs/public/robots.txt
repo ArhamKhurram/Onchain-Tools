@@ -1,0 +1,7 @@
+# https://docs.onchaintools.tech/
+# The user guide. Every page here is public and worth indexing.
+
+User-agent: *
+Allow: /
+
+Sitemap: https://docs.onchaintools.tech/sitemap-index.xml
