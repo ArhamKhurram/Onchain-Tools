@@ -1,6 +1,7 @@
 // @ts-check
 import { defineConfig } from 'astro/config';
 import starlight from '@astrojs/starlight';
+import sitemap from '@astrojs/sitemap';
 
 // User-facing guide for Onchain Tools. Deployed to Vercel at
 // https://docs.onchaintools.tech (its own subdomain — separate from the
@@ -9,6 +10,10 @@ import starlight from '@astrojs/starlight';
 export default defineConfig({
   site: 'https://docs.onchaintools.tech',
   integrations: [
+    // Emits sitemap-index.xml + sitemap-0.xml at build. `site` above is what makes
+    // the URLs absolute; without this integration the guide's pages were reachable
+    // but undiscoverable — nothing advertised them to a crawler.
+    sitemap(),
     starlight({
       title: 'Onchain Tools',
       tagline: 'The user guide',
