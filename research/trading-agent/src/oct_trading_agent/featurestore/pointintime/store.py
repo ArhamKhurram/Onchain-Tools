@@ -16,6 +16,7 @@ absent tier and a requested-but-empty tier are different states, and consumers m
 
 from __future__ import annotations
 
+from bisect import bisect_right
 from collections.abc import Mapping, Sequence
 from datetime import datetime
 
@@ -64,6 +65,28 @@ class PointInTimeFeatureStore:
             if registry is not None
             else _default_registry()
         )
+        # Index once: mint -> its events sorted by block_time, plus the parallel key list
+        # bisect needs. `assemble` used to re-walk the WHOLE multi-mint tape on every call,
+        # which measured a FLAT ~300 us regardless of depth (at depth 50 that was 102% of
+        # assemble's total time) purely because the scan never got smaller.
+        #
+        # Sort is stable, so events sharing a block_time keep tape order and the slice handed
+        # to a feature is identical to what the linear filter produced.
+        by_mint: dict[Mint, list[TapeEvent]] = {}
+        for e in self._tape:
+            by_mint.setdefault(e.mint, []).append(e)
+        self._by_mint: dict[Mint, list[TapeEvent]] = {
+            m: sorted(evs, key=lambda e: e.block_time) for m, evs in by_mint.items()
+        }
+        self._times: dict[Mint, list[datetime]] = {
+            m: [e.block_time for e in evs] for m, evs in self._by_mint.items()
+        }
+        # One-entry bundle cache. TradingEnv.step calls _observe() twice, and `next_obs` at
+        # step i resolves to the SAME (mint, as_of) as `pre_obs` at step i+1 — so consecutive
+        # steps rebuilt an identical FeatureBundle. The surrounding Observation still differs
+        # (position, balance, steps_elapsed_frac), so only the bundle is cacheable.
+        self._cache_key: tuple[Mint, datetime, frozenset[FeatureTier]] | None = None
+        self._cache_val: FeatureBundle | None = None
 
     def assemble(
         self,
@@ -73,14 +96,26 @@ class PointInTimeFeatureStore:
     ) -> FeatureBundle:
         """Reconstruct the requested tiers for ``mint`` as-of ``as_of``. No event after ``as_of``
         may influence any slot (enforced here AND re-checked inside each feature)."""
-        # Firewall: mint-scope and time-clip once, up front. Features never see a future event.
-        scoped: list[TapeEvent] = [
-            e for e in self._tape if e.mint == mint and e.block_time <= as_of
-        ]
+        key = (mint, as_of, tiers)
+        if self._cache_key == key and self._cache_val is not None:
+            return self._cache_val
+
+        # Firewall unchanged in meaning: mint-scope and time-clip before any feature sees an
+        # event. Only the mechanism changed — a dict lookup plus bisect_right on the sorted
+        # block_times, instead of a linear scan of every event of every mint.
+        events = self._by_mint.get(mint)
+        if events is None:
+            scoped: list[TapeEvent] = []
+        else:
+            hi = bisect_right(self._times[mint], as_of)
+            scoped = events[:hi]
+
         out: dict[FeatureTier, TierFeatures] = {}
         for tier in tiers:
             out[tier] = self._compute_tier(tier, scoped, as_of)
-        return FeatureBundle(mint=mint, as_of=as_of, tiers=out)
+        bundle = FeatureBundle(mint=mint, as_of=as_of, tiers=out)
+        self._cache_key, self._cache_val = key, bundle
+        return bundle
 
     def _compute_tier(
         self, tier: FeatureTier, scoped_tape: list[TapeEvent], as_of: datetime
