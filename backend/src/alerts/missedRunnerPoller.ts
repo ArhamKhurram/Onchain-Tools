@@ -209,9 +209,27 @@ class MissedRunnerPoller {
   private timer: NodeJS.Timeout | null = null;
   private polling = false;
   private started = false;
+  // Sweep bookkeeping, surfaced by getMissedRunnerPollerStatus() for
+  // GET /health/deep. In-memory; resets on process restart.
+  private reason: MissedRunnerPollerStatus['reason'] = 'not_started';
+  private pollIntervalMs: number | null = null;
+  private lastPollAt: string | null = null;
+  private lastSuccessfulPollAt: string | null = null;
+  private lastPollErrorAt: string | null = null;
 
   constructor(wsServer: WsServer) {
     this.wsServer = wsServer;
+  }
+
+  getStatus(): MissedRunnerPollerStatus {
+    return {
+      active: this.reason === 'running',
+      reason: this.reason,
+      pollIntervalMs: this.pollIntervalMs,
+      lastPollAt: this.lastPollAt,
+      lastSuccessfulPollAt: this.lastSuccessfulPollAt,
+      lastPollErrorAt: this.lastPollErrorAt,
+    };
   }
 
   start(): void {
@@ -221,11 +239,14 @@ class MissedRunnerPoller {
     const db = getFomoServiceClient();
     if (!db) {
       console.log('[MissedRunnerPoller] Supabase not configured; poller idle.');
+      this.reason = 'no_supabase';
       return;
     }
     this.db = db;
 
     const interval = Number.parseInt(process.env.MISSED_RUNNER_POLL_INTERVAL_MS ?? '', 10) || DEFAULT_INTERVAL_MS;
+    this.reason = 'running';
+    this.pollIntervalMs = interval;
     console.log(`[MissedRunnerPoller] Started (interval ${interval}ms).`);
     void this.poll().catch((err) => console.error('[MissedRunnerPoller] initial poll error:', (err as Error)?.message));
     this.timer = setInterval(() => {
@@ -445,6 +466,7 @@ class MissedRunnerPoller {
   private async poll(): Promise<void> {
     if (this.polling || !this.db) return;
     this.polling = true;
+    this.lastPollAt = new Date().toISOString();
     try {
       const userIds = await this.loadActiveUserIds();
       for (const userId of userIds) {
@@ -454,13 +476,45 @@ class MissedRunnerPoller {
           console.error(`[MissedRunnerPoller] User ${userId} error:`, (err as Error)?.message);
         }
       }
+      // Per-user failures are already tolerated above, so "successful sweep"
+      // means the sweep itself completed — which is exactly the liveness fact
+      // /health/deep watches for staleness.
+      this.lastSuccessfulPollAt = new Date().toISOString();
+    } catch (err) {
+      // Rethrow: the existing start() callers still own the logging.
+      this.lastPollErrorAt = new Date().toISOString();
+      throw err;
     } finally {
       this.polling = false;
     }
   }
 }
 
+export interface MissedRunnerPollerStatus {
+  active: boolean;
+  reason: 'not_started' | 'no_supabase' | 'running';
+  pollIntervalMs: number | null;
+  lastPollAt: string | null;
+  lastSuccessfulPollAt: string | null;
+  lastPollErrorAt: string | null;
+}
+
 let _poller: MissedRunnerPoller | null = null;
+
+/** In-process sweep health for GET /health/deep. Never performs I/O. */
+export function getMissedRunnerPollerStatus(): MissedRunnerPollerStatus {
+  if (!_poller) {
+    return {
+      active: false,
+      reason: 'not_started',
+      pollIntervalMs: null,
+      lastPollAt: null,
+      lastSuccessfulPollAt: null,
+      lastPollErrorAt: null,
+    };
+  }
+  return _poller.getStatus();
+}
 
 export function startMissedRunnerPoller(wsServer: WsServer): void {
   if (_poller) return;

@@ -28,6 +28,8 @@ import { startDailyDigestScheduler } from './bot/dailyDigest.js';
 import { getStorageProvider, isHostedMode } from './storage/index.js';
 import { authMiddleware } from './auth/middleware.js';
 import { getGateway, setGateway } from './gateway/state.js';
+import { recordIngest } from './health/ingestHeartbeat.js';
+import { buildDeepHealth, collectDeepHealthFacts, deepHealthHttpStatus } from './health/deepHealth.js';
 import { UserGatewayPool } from './gateway/userGatewayPool.js';
 import { buildContractUrl, detectEvmChainFromContent, extractEvmChainFromGmgnLinks, resolveEvmChainFromApi } from './utils/contract.js';
 import { tryParseTokenEnrichment, buildRickReplyContext } from './utils/rickEmbedParser.js';
@@ -233,6 +235,9 @@ function wireGatewayEvents(gw: GatewayManager, wsServer: WsServer, userId: strin
   });
 
   gw.on('message', guardAsyncHandler('App:discord-message', async (rawMsg: DiscordMessage & { _channelName: string; _guildName: string | null }) => {
+    // Before room gating on purpose: the heartbeat means "the gateway is
+    // delivering traffic", not "the traffic matched a room".
+    recordIngest();
     const isDM = !rawMsg.guild_id && gw.getDMChannels().some((dm) => dm.id === rawMsg.channel_id);
     const rooms = await storage.getRoomsForChannel(userId, rawMsg.channel_id);
 
@@ -480,6 +485,8 @@ function wireTelegramEvents(tg: TelegramClientManager, wsServer: WsServer, userI
   });
 
   tg.on('message', guardAsyncHandler('App:telegram-message', async (raw: TelegramRawMessage) => {
+    // See the Discord handler above: heartbeat before room gating.
+    recordIngest();
     const rooms = await storage.getRoomsForChannel(userId, raw.chatId);
     const isTgDm = raw.chatType === 'user';
 
@@ -700,6 +707,22 @@ if (isHostedMode()) {
       req.method === 'POST' && req.originalUrl.includes('/alerts/missed-runner/test'),
   });
   app.use('/api', generalLimiter);
+
+  // /health/deep is unauthenticated by design (a monitor should not need a
+  // credential), so a limiter is the only thing bounding it. Generous enough for
+  // a 10s-interval uptime check plus retries, tight enough that it cannot be
+  // scraped in a loop. NOT applied to /health — Railway's own probe polls that
+  // one, and a rate-limited liveness probe is a restart storm waiting to happen.
+  app.use(
+    '/health/deep',
+    rateLimit({
+      windowMs: 60 * 1000,
+      max: 60,
+      standardHeaders: true,
+      legacyHeaders: false,
+      message: { error: 'Too many requests, please try again later.' },
+    }),
+  );
 }
 
 const httpServer = createServer(app);
@@ -719,7 +742,30 @@ app.use('/api/v1/bot', requireBotAuth, createBotRouter());
 
 app.use('/api', authMiddleware, createRouter(wsServer));
 
+// LIVENESS. Railway polls THIS (railway.toml `healthcheckPath = "/health"`) and
+// its restart policy is ON_FAILURE, so it must never report on subsystems: a
+// degraded FOMO worker returning non-200 here would make Railway restart the
+// container into the same degradation, forever. Keep it a dumb 200.
 app.get('/health', (_req, res) => res.json({ status: 'ok' }));
+
+// READINESS — a separate path precisely so it is allowed to fail. Returns 503
+// when a subsystem is degraded; intended for an external uptime monitor only.
+// Do NOT point railway.toml's healthcheckPath at it. Rationale in full:
+// backend/src/health/deepHealth.ts.
+app.get('/health/deep', (_req, res) => {
+  const hosted = isHostedMode();
+  const localGateway = hosted ? null : getGateway();
+  const report = buildDeepHealth(
+    collectDeepHealthFacts({
+      // Boolean, never the pooled count. This endpoint is unauthenticated, so
+      // publishing gatewayPool.getActiveCount() told any anonymous caller how
+      // many people were using OCT at that moment. A monitor needs up/down.
+      connected: hosted ? gatewayPool.getActiveCount() > 0 : localGateway !== null,
+      invalidTokens: hosted ? null : (localGateway?.getInvalidTokenIndices().length ?? 0),
+    }),
+  );
+  res.status(deepHealthHttpStatus(report)).json(report);
+});
 
 const frontendDist = process.env.OCT_FRONTEND_DIST || process.env.TRENCHCORD_FRONTEND_DIST || path.resolve(__dirname, '../../frontend/dist');
 app.use(express.static(frontendDist));

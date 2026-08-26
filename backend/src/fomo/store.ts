@@ -25,6 +25,15 @@ function resolveSupabaseServiceConfig(): { url: string; key: string } | null {
 }
 
 /**
+ * Is a Supabase service client available? Answers the question without
+ * constructing one, so GET /health/deep can report Supabase configuration
+ * without any side effect or I/O.
+ */
+export function isSupabaseServiceConfigured(): boolean {
+  return resolveSupabaseServiceConfig() !== null;
+}
+
+/**
  * Lazily construct the process-wide Supabase service client used for all
  * fomo_* table access. Returns null when Supabase is not configured (e.g. local
  * mode), so callers can degrade gracefully instead of throwing.
