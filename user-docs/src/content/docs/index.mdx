@@ -9,13 +9,13 @@ hero:
     alt: Onchain Tools
     html: '<img src="/oct-logo.png" alt="Onchain Tools" width="320" height="320" class="oct-hero-logo" />'
   actions:
-    - text: Get started
-      link: ./getting-started/what-is-oct/
+    - text: Quick start
+      link: ./getting-started/quick-start/
       icon: right-arrow
       variant: primary
-    - text: Connect Discord
-      link: ./connecting/discord/
-      icon: external
+    - text: What is OCT?
+      link: ./getting-started/what-is-oct/
+      icon: open-book
       variant: minimal
 ---
 
@@ -25,9 +25,10 @@ import { Card, CardGrid } from '@astrojs/starlight/components';
 
 <CardGrid stagger>
   <Card title="New here?" icon="rocket">
-    Start with [What is OCT?](./getting-started/what-is-oct/) then
-    [connect your Discord](./connecting/discord/) — that unlocks the Feed and
-    everything downstream of it.
+    You can watch OCT work before connecting anything — the console has a live
+    demo feed. The [quick start](./getting-started/quick-start/) walks the real
+    first-run path; [What is OCT?](./getting-started/what-is-oct/) explains the
+    idea first if you'd rather read.
   </Card>
   <Card title="Read the Feed" icon="comment">
     The [Feed](./feed/feed/) aggregates every channel you watch into rooms, with
@@ -52,6 +53,7 @@ OCT is organized into modules you reach from the top nav:
 - **Callers** — every contract address mentioned in your feeds, plus a Radar that ranks tokens by crowd.
 - **FOMO** — live trades from the fomo.family traders you follow.
 - **[Sniper](./sniper/sniper/)** — a pre-declared buy you fire yourself, behind caps and a kill switch. The one module that spends money; read its safety notes first.
+- **Pump.fun** — pump.fun caller tracking. *(Not covered by this guide yet.)*
 - **Portfolio** — PnL, holdings, and activity for your own wallets.
 - **Directory** — a private watchlist of on-chain wallets to monitor.
 

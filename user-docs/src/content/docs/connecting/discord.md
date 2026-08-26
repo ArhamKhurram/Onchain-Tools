@@ -5,8 +5,14 @@ sidebar:
   order: 1
 ---
 
-Connecting Discord is the one step everything else depends on — the Feed,
-contract detection, Callers, and most alerts all run off your Discord stream.
+Connecting Discord is what turns OCT into *your* console — the Feed, contract
+detection, Callers, and most alerts all run off your Discord stream.
+
+:::tip[You can look before you connect]
+You don't have to do this first. Open **Feed** and press **Watch the live demo
+feed** to see the whole console working on sample data, with nothing connected.
+See the [quick start](../../getting-started/quick-start/).
+:::
 
 :::caution[Self-bots and Discord's Terms of Service]
 OCT connects using your personal **user token**, which Discord's Terms of
@@ -17,10 +23,26 @@ with it has full access to your account.
 
 ## Where you paste it
 
-**Settings → Tokens.** The field is labelled **"Paste Discord token…"** with a
-show/hide eye toggle. Paste, press Enter (or the **+** button), and OCT
-connects. The Feed page also prompts you with the same field the first time you
-open it without a token configured.
+Two places, same result:
+
+- **Feed.** With no token configured, the Feed page *is* the connect screen:
+  a **Discord Token** field, a **Connect** button, and the trust panel described
+  below. This is where new users land.
+- **Settings → Tokens.** The field is labelled **"Paste Discord token…"** with a
+  show/hide eye toggle. Paste, press Enter (or the **+** button), and OCT
+  connects. Use this to add or replace a token later.
+
+## What the connect screen tells you
+
+Under the token field, OCT shows a short **Where your token goes** panel:
+
+- A diagram — **your browser → Discord** — with **OCT servers** crossed out on
+  the hosted console. Nothing carrying your token is sent to us, and the panel
+  invites you to check: open DevTools → Network and watch.
+- An expandable **How do I get my Discord token?** section with the extraction
+  steps.
+- A plain-English note that this is user-account automation and where Discord
+  stands on it.
 
 ## How to find your token
 
@@ -31,7 +53,11 @@ open it without a token configured.
 5. Click one of the matching requests and find the **Request Headers**.
 6. Copy the value of the **`authorization`** header — that's your token.
 
-Paste it into **Settings → Tokens**.
+Paste it into the Feed connect screen or **Settings → Tokens**.
+
+The in-app panel gives the same steps with a `/api` request filter instead of
+`@me` — either filter surfaces requests carrying the same `authorization`
+header, so use whichever shows results first.
 
 :::caution[Don't screenshot this step]
 The `authorization` header **is** your token. A screenshot of that Network-tab
@@ -64,6 +90,10 @@ proxies aren't supported. This panel doesn't appear on the hosted console.
 
 ## Next
 
+Once a token connects and you have no rooms yet, the Feed shows an **Almost
+there** card with a **Create your first room** button — follow it. The channel
+picker lets you enable your servers inline if none are enabled yet, so the
+**Settings → Guilds** detour is optional.
+
+- [Build a room](../../feed/rooms/).
 - [Connect Telegram](./telegram/) to add Telegram channels too.
-- Enable your servers in **Settings → Guilds**, then
-  [build a room](../../feed/rooms/).
