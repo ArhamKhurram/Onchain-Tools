@@ -113,7 +113,15 @@ class ReplaySimulator:
             ep.terminal_reason = TerminalReason.LIQUIDITY_FLOOR
             return self._terminal_result(ep, order, as_of)
 
-        # 4) Route the intent.
+        # 4) Venue handoff (e.g. a bonding curve that graduated). Checked BEFORE routing so a HOLD
+        #    sees it too — see Curve.is_complete for why that matters.
+        venue_reason = self._venue_absorbed(pool)
+        if venue_reason is not None:
+            ep.terminal = True
+            ep.terminal_reason = venue_reason
+            return self._terminal_result(ep, order, as_of)
+
+        # 5) Route the intent.
         if order.intent in _BUY_INTENTS:
             return self._do_buy(ep, order, as_of, pool)
         if order.intent in _SELL_INTENTS:
@@ -121,9 +129,40 @@ class ReplaySimulator:
         # NO_OP / HOLD — nothing executes, position unchanged.
         return self._noop_result(ep, order, pool)
 
+    def _venue_absorbed(self, pool: PoolState) -> TerminalReason | None:
+        """Hook: has the venue handed this token off? Base simulator has one fixed law, so never."""
+        return None
+
     def reset(self, mint: Mint) -> None:
         """Reset per-token episode state (position, absorbing flags)."""
         self._episodes.pop(mint, None)
+
+    def force_close_at(self, mint: Mint, as_of: datetime) -> SimStepResult:
+        """Close an open position as-of a time the venue could still quote, bypassing the absorbing flag.
+
+        **Only valid for a GRADUATED episode.** A graduated token did not die — it migrated to
+        another venue and is still worth something, so leaving the position unrealized would book a
+        winner as a total loss of its entry cost. Every other absorbing state (a rug above all) is
+        genuinely unsellable, and bypassing the flag there would fabricate an exit that could not
+        have happened; this method refuses those outright.
+
+        ``as_of`` must be an instant where the curve still quotes — in practice the decision step
+        *before* the one that reported graduation.
+        """
+        ep = self._episode(mint)
+        if ep.terminal_reason is not TerminalReason.GRADUATED:
+            raise ValueError(
+                "force_close_at is only valid for a GRADUATED episode; "
+                f"this one is {ep.terminal_reason}"
+            )
+        was_terminal, was_reason = ep.terminal, ep.terminal_reason
+        ep.terminal = False
+        try:
+            return self.step(Order(mint=mint, intent=Intent.CLOSE), as_of)
+        finally:
+            # Restore BOTH: a successful close would otherwise stamp the episode FULL_EXIT and lose
+            # the real reason it ended. The agent did not choose to exit — the venue moved.
+            ep.terminal, ep.terminal_reason = was_terminal, was_reason
 
     # -- helpers ------------------------------------------------------------------------------
 
@@ -242,11 +281,14 @@ class ReplaySimulator:
     ) -> SimStepResult:
         # No pool reconstruction on a dead token — mark is gone.
         reason = ep.terminal_reason
-        fill_reason = (
-            FillFailureReason.RUGGED
-            if reason is TerminalReason.RUG
-            else FillFailureReason.INSUFFICIENT_LIQUIDITY
-        )
+        if reason is TerminalReason.RUG:
+            fill_reason = FillFailureReason.RUGGED
+        elif reason is TerminalReason.GRADUATED:
+            # NOT "insufficient liquidity" — the pool is deep, it simply moved to another venue.
+            # Calling a migration a thin pool would poison the fill-failure diagnostics.
+            fill_reason = FillFailureReason.VENUE_MIGRATED
+        else:
+            fill_reason = FillFailureReason.INSUFFICIENT_LIQUIDITY
         return SimStepResult(
             fill=self._exec.fail(order, fill_reason),
             position=ep.book.snapshot(None),

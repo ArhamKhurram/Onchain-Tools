@@ -72,6 +72,7 @@ class FillFailureReason(StrEnum):
     TX_FAILED = "tx_failed"  # dropped / failed inclusion (priority-fee model)
     RUGGED = "rugged"  # token entered an absorbing zero state before inclusion
     MEV_SANDWICH = "mev_sandwich"  # back-run/sandwich made the fill non-viable
+    VENUE_MIGRATED = "venue_migrated"  # the venue handed the token off; this curve no longer prices it
 
 
 class TerminalReason(StrEnum):
@@ -82,3 +83,4 @@ class TerminalReason(StrEnum):
     LIQUIDITY_FLOOR = "liquidity_floor"  # dropped below the floor
     RUG = "rug"  # absorbing zero state from the tape
     HARD_CAP = "hard_cap"  # the ~3-day compute-bounding cap (NOT behavior-shaping)
+    GRADUATED = "graduated"  # bonding curve completed; the token migrated to the AMM

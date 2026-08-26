@@ -88,6 +88,17 @@ class Curve(ABC):
         """Fill ``request`` against pre-trade ``state``. Raises ``ValueError`` if untradeable."""
         ...
 
+    def is_complete(self, state: PoolState) -> bool:
+        """Has this venue handed the token off, making the curve's fill law inapplicable?
+
+        Default ``False`` — most venues never "finish". A bonding curve does: once it graduates,
+        the token trades on an AMM instead. The simulator polls this as an absorbing-state check
+        BEFORE routing an order, so a handoff is detected even on a step that never fills (a HOLD).
+        Relying on ``fill`` to raise would let an agent sit through a graduation unnoticed and then
+        book the position as unrealized — silently penalising the tokens that succeeded.
+        """
+        return False
+
     # -- convenience wrappers (parallel to sim.amm.curve.fill_buy / fill_sell) -----------------
 
     def fill_buy(self, quote_in: Decimal, state: PoolState) -> CurveFill:

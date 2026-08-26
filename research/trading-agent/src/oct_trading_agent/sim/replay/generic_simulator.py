@@ -26,9 +26,16 @@ from __future__ import annotations
 from datetime import datetime
 from decimal import Decimal
 
-from oct_trading_agent.core import FillFailureReason, Order, SimStepResult, TapeEvent
+from oct_trading_agent.core import (
+    FillFailureReason,
+    Order,
+    SimStepResult,
+    TapeEvent,
+    TerminalReason,
+)
 from oct_trading_agent.sim.amm.pool import PoolState
 from oct_trading_agent.sim.curves.base import Curve
+from oct_trading_agent.sim.curves.bonding_curve import BondingCurveComplete
 from oct_trading_agent.sim.replay.simulator import (
     ReplaySimulator,
     SimConfig,
@@ -51,6 +58,28 @@ class MarketReplaySimulator(ReplaySimulator):
         super().__init__(tape, config)
         self._curve = curve
 
+    def _venue_absorbed(self, pool: PoolState) -> TerminalReason | None:
+        if self._curve.is_complete(pool):
+            return TerminalReason.GRADUATED
+        return None
+
+    def _graduate(self, ep: _EpisodeState, order: Order, as_of: datetime) -> SimStepResult:
+        """Absorb a venue handoff: the bonding curve completed and the token moved to the AMM.
+
+        The curve raises :class:`BondingCurveComplete` as an explicit handoff signal, deliberately
+        distinct from the ``ValueError`` that means "thin pool". A ``pumpfun`` tape *stops* at
+        migration — there are no post-graduation swaps in it to price against — so the honest move
+        is to end the episode here rather than re-resolve onto a venue this tape cannot support.
+
+        Graduation is not a death: the driver is expected to realize any open position at the last
+        quotable instant (see :meth:`ReplaySimulator.force_close_at`). Skipping that would book the
+        tokens that *succeeded* as a total loss of their entry cost — a systematic bias against
+        exactly the winners the study is about.
+        """
+        ep.terminal = True
+        ep.terminal_reason = TerminalReason.GRADUATED
+        return self._terminal_result(ep, order, as_of)
+
     @property
     def curve(self) -> Curve:
         return self._curve
@@ -66,6 +95,8 @@ class MarketReplaySimulator(ReplaySimulator):
 
         try:
             curve_fill = self._curve.fill_buy(quote_in, pool)
+        except BondingCurveComplete:
+            return self._graduate(ep, order, as_of)
         except _CURVE_ERRORS:
             # Venue curve refused (non-positive depth, out-of-range CLMM, etc.) — honest thin-pool
             # failure, never a fabricated fill.
@@ -96,6 +127,8 @@ class MarketReplaySimulator(ReplaySimulator):
 
         try:
             curve_fill = self._curve.fill_sell(base_in, pool)
+        except BondingCurveComplete:
+            return self._graduate(ep, order, as_of)
         except _CURVE_ERRORS:
             return self._fail_result(ep, order, pool, FillFailureReason.INSUFFICIENT_LIQUIDITY)
         if self._impact_too_large(curve_fill):

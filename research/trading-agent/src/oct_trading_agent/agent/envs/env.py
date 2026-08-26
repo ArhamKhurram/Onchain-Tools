@@ -238,6 +238,25 @@ class TradingEnv:
             "forced_liquidation": False,
         }
 
+        # A GRADUATED token migrated venues; it did not die. Realize any open position at the last
+        # instant the curve could still quote it — the step BEFORE the one that reported graduation.
+        # Without this, a token that made it all the way to the AMM (i.e. a winner) books as a total
+        # loss of its entry cost, biasing the measurement against exactly the tokens that ran.
+        if (
+            terminated
+            and terminal_reason is TerminalReason.GRADUATED
+            and self._step_index > 0
+            and self._sim.position(self.mint).is_open
+        ):
+            last_quotable = self._decision_times[self._step_index - 1]
+            close = self._sim.force_close_at(self.mint, last_quotable)
+            self._ledger.record(self.mint, close, last_quotable)
+            close_input = reward_from_step(close, ())
+            assert_no_unrealized_read(close_input)
+            reward += self._reward.step(close_input).total
+            info["forced_liquidation"] = True
+            info["balance_quote"] = self._ledger.balance_quote
+
         # Advance, then decide truncation (end-of-tape or the ~3-day hard cap).
         self._step_index += 1
         truncated = False
