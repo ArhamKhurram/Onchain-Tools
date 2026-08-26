@@ -69,7 +69,7 @@ session if not (see `backend/.env.example` for the cookie procedure).
 | Check | How |
 | --- | --- |
 | Backend liveness | `GET https://<railway-host>/health` → `{"status":"ok"}` |
-| Provider env | `GET /api/portfolio/status` (public probe) |
+| Provider env | `GET /api/portfolio/status` (needs a bearer token in hosted mode) |
 | FOMO pipeline | `GET /api/fomo/status` (poller active, last poll, last error, worker health) |
 | Bot | Railway logs: `[Bot] OCT bot online as …` vs `DISCORD_BOT_TOKEN not set` |
 | Worker | `GET http://<vps>:3100/health` |

@@ -29,8 +29,11 @@ flowchart LR
 | **Local** | No auth at all. Every request gets `req.userId = 'local'`. This is why local mode binds `127.0.0.1` — the API serves Discord tokens and Telegram session strings. |
 | **Hosted** | Requires `Authorization: Bearer <supabase-jwt>`. Verified with `supabase.auth.getUser(token)`; `req.userId` becomes the Supabase user id. Failures return `401`. |
 
-One deliberate exception: `GET /api/portfolio/status` bypasses auth entirely —
-it is a provider-env probe that returns no secrets.
+There are no per-path exceptions. `GET /api/portfolio/status` used to bypass
+auth; it no longer does, because its optional `probeChain`/`probeAddress`
+params drive a live Birdeye call against an arbitrary address. In local mode it
+stays reachable (local mode has no auth at all); in hosted mode it needs a
+bearer token like every other `/api` route.
 
 Frontend side: there is no single API client. `apiFetch` (in
 `frontend/src/stores/appStore.ts`) plus per-hook `portfolioFetch` /

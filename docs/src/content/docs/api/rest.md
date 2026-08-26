@@ -138,7 +138,7 @@ All DB-backed FOMO routes `503` without Supabase.
 
 | Method & path | Purpose |
 | --- | --- |
-| `GET /api/portfolio/status` | Provider env probe. **Public** (explicit auth bypass); optional `probeChain`/`probeAddress` run a live provider probe. |
+| `GET /api/portfolio/status` | Provider env probe — reports only whether each key is *configured*, never any key material or its length. Authenticated like the rest of `/api`; optional `probeChain`/`probeAddress` run a live provider probe. |
 | `GET /api/portfolio/:chain/:address/stats?period=` | Wallet PnL/trade stats (`7d`/`30d`). |
 | `GET /api/portfolio/:chain/:address/holdings?limit=` | Current holdings. |
 | `GET /api/portfolio/:chain/:address/activity?limit=` | Recent swaps. |
