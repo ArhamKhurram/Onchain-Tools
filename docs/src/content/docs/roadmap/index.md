@@ -261,6 +261,32 @@ Rank contract calls by who sent them.
 
 ## Deferred / backlog
 
+### Liquidation heatmap (Hyperliquid) — might do
+
+An on-chain liquidation map: every leveraged position's liquidation price plotted
+against time, shorts above spot and longs below, with cluster size shown as
+intensity. Liquidations are forced market orders, so dense clusters are pools of
+guaranteed counterparty flow — which is why price tends to accelerate through them
+and stall where the map is empty.
+
+Feasible because Hyperliquid is an on-chain perp DEX: positions, leverage and
+margin are public, so liquidation prices can be **computed** rather than inferred.
+Most liquidation heatmaps estimate from volume and open interest; this would not
+have to.
+
+Two honest reasons it is deferred rather than planned:
+
+- **It is a different product.** OCT is new-pair memecoin intelligence on Solana
+  and EVM. This is perp-market structure on a venue we do not otherwise touch, for
+  an audience that overlaps ours only partly.
+- **It is a map of fuel, not a prediction.** Clusters get taken out, ignored, or sit
+  untouched for weeks. Shipped without that caveat attached, it would be read as a
+  forecast — which is exactly the kind of overclaiming the caller-quality work has
+  been careful to avoid.
+
+Prerequisite if it is ever picked up: a real-time Hyperliquid position feed and
+somewhere to put a chart this dense — the Workspace, not the Feed.
+
 ### On-chain wallet detection engine
 
 The Wallets page is currently a **watchlist only** (`user_tracked_wallets` CRUD in
