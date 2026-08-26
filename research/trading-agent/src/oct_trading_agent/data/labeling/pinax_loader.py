@@ -114,8 +114,23 @@ def load_wallet_trades(
     ``labels`` is free-form provenance (e.g. ``["tracked", "high-balance"]``); it is metadata only —
     the reconstruction never filters on it. Trades are returned time-ordered.
     """
-    events = list(
-        iter_signer_swaps(
+    # Drain the generator incrementally and KEEP whatever arrived before a failure.
+    #
+    # `list(...)` around the generator loses everything when any page raises, and deep pages are
+    # exactly where Pinax fails: a deep query takes ~10-12s and intermittently exceeds a server-side
+    # timeout, returning 500 (measured 2026-08-26 — failure rate rises with offset and is roughly
+    # independent of page size, so a smaller `limit` is not the fix). The caller
+    # (`load_cohort_from_pinax`) treats an exception as "skip this wallet entirely", so one failed
+    # page discarded every page already fetched.
+    #
+    # That did not thin the cohort randomly — it removed exactly the wallets with enough history to
+    # need a deep page, biasing the tracked-trader baseline toward LOW-VOLUME traders. A truncated
+    # history is a far better baseline input than no wallet at all, so a partial pull now succeeds
+    # and records how far it got.
+    events = []
+    truncated_at: int | None = None
+    try:
+        for event in iter_signer_swaps(
             client,
             address,
             network=network,
@@ -123,11 +138,19 @@ def load_wallet_trades(
             limit=limit,
             max_pages=max_pages,
             use_cache=use_cache,
-        )
-    )
+        ):
+            events.append(event)
+    except Exception:
+        if not events:
+            raise  # nothing salvageable — the caller's skip path is the right outcome
+        truncated_at = len(events)
+
     events.sort(key=lambda e: (e.block_time, e.slot))
     trades = [_to_labeled_trade(e) for e in events]
-    return LabeledWallet(wallet=address, labels=list(labels or []), trades=trades)
+    marks = list(labels or [])
+    if truncated_at is not None:
+        marks.append(f"truncated:{truncated_at}")
+    return LabeledWallet(wallet=address, labels=marks, trades=trades)
 
 
 __all__ = ["iter_signer_swaps", "load_wallet_trades"]
