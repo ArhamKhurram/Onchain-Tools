@@ -3,7 +3,8 @@ import { useAppStore } from '../stores/appStore';
 import { useThemeStore } from '../stores/themeStore';
 import Message from './Message';
 import ChatInput from './ChatInput';
-import { useCallerQuality } from '../hooks/useCallerQuality';
+import { useCallerQuality, type CallerQuality } from '../hooks/useCallerQuality';
+import { createHighlightColorResolver } from '../utils/userIdentifiers';
 import { useFeedChromeContext } from './feed/feedChromeContract';
 import { callerKey } from '@oct/shared';
 import { Hash, MessageCircle, Settings, ArrowDown, Filter, EyeOff, X, Trash2, Eye, Search, ChevronUp, ChevronDown, Send, AtSign, GripVertical, Plus, Rows2, Columns2, ArrowLeft, ArrowRight, Lock, Unlock, ExternalLink } from 'lucide-react';
@@ -127,6 +128,26 @@ export default function ChatPane({ roomId, paneIndex, paneCount, editMode, varia
 
   const activeRoom = isAnyDMView || isMentionsView ? undefined : rooms.find((r) => r.id === roomId);
   const allRoomMessages = messages[roomId] ?? [];
+
+  // Colour lookup that understands @handle-keyed entries, not just ids — a
+  // colour saved against "@handle" must paint that user's rows. Memoised per
+  // colour map so rows share one resolver.
+  const highlightColorFor = useMemo(
+    () => createHighlightColorResolver(activeRoom?.highlightedUserColors),
+    [activeRoom?.highlightedUserColors],
+  );
+
+  // `qualityFor` builds a fresh object per call, and `callerQuality` is a prop
+  // of the memoised <Message> row — fresh identities every render would defeat
+  // the memo for every visible row (up to renderLimit rows in each of up to 4
+  // panes) on every pane render. Cache one object per caller key and reset the
+  // cache only when the inputs behind `qualityFor` change (its identity) or
+  // the pane moves to another room.
+  const qualityCacheRef = useRef<{ fn: typeof qualityFor; room: string; map: Map<string, CallerQuality> } | null>(null);
+  if (!qualityCacheRef.current || qualityCacheRef.current.fn !== qualityFor || qualityCacheRef.current.room !== roomId) {
+    qualityCacheRef.current = { fn: qualityFor, room: roomId, map: new Map() };
+  }
+  const qualityCache = qualityCacheRef.current.map;
   const embedDisabledChannels = new Set(
     activeRoom?.channels.filter((c) => c.disableEmbeds).map((c) => c.channelId)
   );
@@ -888,7 +909,14 @@ export default function ChatPane({ roomId, paneIndex, paneCount, editMode, varia
                 : msg.guildId
                   ? config?.guildColors?.[msg.guildId]
                   : config?.dmColors?.[msg.channelId];
-              const highlightColor = activeRoom?.highlightedUserColors?.[msg.author.id];
+              const highlightColor = highlightColorFor(msg.author.id, msg.author.username);
+
+              const qualityKey = callerKey(msg.source === 'telegram' ? 'telegram' : 'discord', msg.author.id);
+              let callerQuality = qualityCache.get(qualityKey);
+              if (!callerQuality) {
+                callerQuality = qualityFor(qualityKey, activeRoom ? [activeRoom.id] : []);
+                qualityCache.set(qualityKey, callerQuality);
+              }
 
               return (
                 <div key={msg.id} id={`msg-${msg.id}`} className="transition-colors duration-100">
@@ -922,10 +950,7 @@ export default function ChatPane({ roomId, paneIndex, paneCount, editMode, varia
                     onQuickReply={handleQuickReply}
                     chattingEnabled={chattingEnabled}
                     roleColors={config?.roleColors ?? true}
-                    callerQuality={qualityFor(
-                      callerKey(msg.source === 'telegram' ? 'telegram' : 'discord', msg.author.id),
-                      activeRoom ? [activeRoom.id] : [],
-                    )}
+                    callerQuality={callerQuality}
                     onSetCallerTier={setCallerTier}
                   />
                 </div>
