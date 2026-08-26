@@ -478,6 +478,43 @@ describe('sniper control plane — wallets and budget', () => {
     expect(res.body.reason).toBe('daily_below_per_fire');
   });
 
+  // The bug this guards: POST /wallets funnels the caps through
+  // `positiveNumber`, which is `Number.isFinite(n) && n > 0`. PATCH did not — it
+  // took a raw `Number(body.dailyCap)` and leaned on `validateWalletShape`,
+  // whose only test was `!(x > 0)`. Infinity passes that, and
+  // `dailyCap < perFireCap` is false when dailyCap is Infinity, so a PATCH could
+  // raise a wallet's daily cap and max-open to unbounded on a wallet that POST
+  // had refused to create that way.
+  //
+  // JSON has no Infinity literal; `"Infinity"` is a plain string that Number()
+  // turns into one, which is how it arrives over the wire.
+  it('refuses to patch a wallet cap to a non-finite value', async () => {
+    const { walletId } = await seedWalletAndRule();
+    for (const patch of [{ dailyCap: 'Infinity' }, { perFireCap: 'Infinity' }, { maxOpen: 'Infinity' }]) {
+      const res = await call('PATCH', `/wallets/${walletId}`, patch);
+      expect(res.status).toBe(400);
+      expect(res.body.reason).toBe('invalid_caps');
+    }
+    // Unchanged: the refusal must not have written a partial update.
+    const after = await call('GET', '/wallets');
+    expect(after.body.wallets[0]).toMatchObject({ perFireCap: 2, dailyCap: 10, maxOpen: 5 });
+  });
+
+  it('refuses a non-finite cap on rule create', async () => {
+    const w = await call('POST', '/wallets', {
+      label: 'main', chain: 'sol', venue: 'slotshark', address: ADDRESS,
+      unit: 'SOL', perFireCap: 2, dailyCap: 10, maxOpen: 5,
+    });
+    const walletId = w.body.wallet.walletId as string;
+    const res = await call(
+      'POST',
+      '/rules',
+      ruleBody({ walletIds: [walletId], perFireCap: 'Infinity', perTriggerCap: 'Infinity' }),
+    );
+    expect(res.status).toBe(400);
+    expect(res.body.reason).toBe('caps_inconsistent');
+  });
+
   it('refuses to delete a wallet a rule still references', async () => {
     const { walletId, ruleId } = await seedWalletAndRule();
     const res = await call('DELETE', `/wallets/${walletId}`);
