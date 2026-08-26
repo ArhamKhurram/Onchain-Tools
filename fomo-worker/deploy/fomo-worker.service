@@ -14,8 +14,18 @@ RestartSec=5
 # Backstop for the Chromium renderer. In-process tab recycling should keep the
 # whole cgroup well under this; if it ever does not, we want a fast restart
 # rather than the box paging itself to a standstill (which reads on Railway as
-# `fetch failed`, not as an outage). Sized for the 1 GB VPS.
-MemoryMax=700M
+# `fetch failed`, not as an outage).
+#
+# A PERCENTAGE, not a literal, so the cap tracks the box instead of a number
+# someone has to remember to change. The 1 GB VPS this ran on OOM-killed the
+# unit 15-26 times a day through late August; the honest fix is more RAM, and
+# with `75%` a resize alone applies it (2 GB -> ~1.5 GB cap, no redeploy).
+#
+# Deliberately NOT raised as a literal on the 1 GB box: at 951 MB total there is
+# no headroom to give. A bigger cap there would just move the kill from this
+# cgroup to the kernel's box-wide OOM killer, which is free to take sshd instead
+# — trading a clean 5-second worker restart for losing the box.
+MemoryMax=75%
 MemorySwapMax=256M
 
 [Install]
