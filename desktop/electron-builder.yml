@@ -28,16 +28,20 @@ extraResources:
   - from: "../frontend/dist"
     to: "frontend/dist"
 
-# This is BOTH the publish target and the auto-update feed: desktop/main.js calls
-# electron-updater's checkForUpdatesAndNotify(), which reads latest.yml from
-# <owner>/<repo>/releases/latest. Pointing it at the wrong repository does not fail
-# safe — it serves that repository's installer to our users under our version string.
+# Release-upload target for `electron-builder --publish` only.
+#
+# This is NOT an auto-update feed any more: desktop/main.js no longer runs
+# electron-updater, so nothing in a shipped build ever reads latest.yml. It used
+# to, and pointing it at the wrong repository served a third party's installer to
+# our users under our version string - see PR #177. Re-adding an updater means
+# re-adding that failure mode, so don't, unless the desktop app is a supported
+# channel again.
 publish:
   provider: github
   owner: ArhamKhurram
   repo: Onchain-Tools
-  # Publish a real (non-draft) release so it appears at /releases/latest, which
-  # the in-app download button links to. Set to `draft` to review before going live.
+  # Publish a real (non-draft) release so it appears at /releases/latest. Set to
+  # `draft` to review before going live.
   releaseType: release
 
 win:

@@ -229,40 +229,6 @@ ipcMain.handle('popout:getSeed', (_event, roomId) => {
   return seed;
 });
 
-function setupAutoUpdate() {
-  // Squirrel.Mac requires a signed + notarized app to apply updates, and this
-  // build is unsigned. So auto-update runs on Windows only; macOS users update
-  // by re-downloading the latest release.
-  if (process.platform !== 'win32') return;
-
-  let autoUpdater;
-  try {
-    ({ autoUpdater } = require('electron-updater'));
-  } catch {
-    return;
-  }
-
-  autoUpdater.autoDownload = true;
-  autoUpdater.on('update-downloaded', async (info) => {
-    const { response } = await dialog.showMessageBox(mainWindow, {
-      type: 'info',
-      buttons: ['Restart now', 'Later'],
-      defaultId: 0,
-      cancelId: 1,
-      title: 'Update ready',
-      message: `OCT ${info.version} has been downloaded.`,
-      detail: 'Restart the app to finish updating.',
-    });
-    if (response === 0) autoUpdater.quitAndInstall();
-  });
-  autoUpdater.on('error', (err) => {
-    console.error('[desktop] auto-update error:', err ? err.message || err : 'unknown');
-  });
-  autoUpdater.checkForUpdatesAndNotify().catch((err) => {
-    console.error('[desktop] update check failed:', err ? err.message || err : 'unknown');
-  });
-}
-
 async function bootstrap() {
   if (isDev) {
     // Dev: run `npm run dev` in the repo root (backend on 3001 + Vite on 5173),
@@ -283,7 +249,6 @@ async function bootstrap() {
   }
 
   createWindow(`http://127.0.0.1:${backendPort}`);
-  setupAutoUpdate();
 }
 
 app.whenReady().then(bootstrap);

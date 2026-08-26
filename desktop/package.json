@@ -3,7 +3,7 @@
   "productName": "OCT",
   "version": "1.1.1",
   "private": true,
-  "description": "OCT desktop app — Onchain Tools",
+  "description": "OCT desktop app \u2014 Onchain Tools",
   "author": "Onchain Tools",
   "main": "main.js",
   "scripts": {
@@ -11,9 +11,6 @@
     "bundle:backend": "node build-backend.mjs",
     "pack": "npm run bundle:backend && electron-builder --dir",
     "dist": "npm run bundle:backend && electron-builder"
-  },
-  "dependencies": {
-    "electron-updater": "^6.3.9"
   },
   "devDependencies": {
     "electron": "^33.2.1",
