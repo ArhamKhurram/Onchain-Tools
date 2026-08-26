@@ -14,6 +14,7 @@
   "dependencies": {
     "@oct/shared": "*",
     "@supabase/supabase-js": "^2.98.0",
+    "@tanstack/react-virtual": "^3.14.10",
     "lucide-react": "^0.474.0",
     "posthog-js": "^1.418.9",
     "react": "^19.0.0",
