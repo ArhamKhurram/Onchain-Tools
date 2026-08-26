@@ -10,7 +10,7 @@ export function OpenSource() {
             Open Source
           </h2>
           <p className="mt-3 text-dc-text-muted max-w-xl mx-auto text-sm">
-            Onchain Tools is fully open source. Inspect the code, build on top of it,
+            Onchain Tools source is available on request. Inspect the code, build on top of it,
             add your own features, and share with the community.
           </p>
         </AnimatedSection>

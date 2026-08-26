@@ -51,9 +51,9 @@ export function Security() {
               <div className="w-10 h-10 rounded-lg bg-emerald-500/10 flex items-center justify-center text-emerald-400">
                 <ShieldCheck size={20} />
               </div>
-              <h3 className="font-semibold text-white text-sm">Open Source & Auditable</h3>
+              <h3 className="font-semibold text-white text-sm">Verifiable in Your Browser</h3>
               <p className="text-xs text-dc-text-muted leading-relaxed">
-                Don&apos;t just trust it — verify it. The entire encryption implementation is open source. Inspect every line yourself.
+                Don&apos;t just trust it — verify it. Open your network tab and watch the gateway connect straight to Discord, with no request carrying your token to us.
               </p>
             </div>
           </div>
