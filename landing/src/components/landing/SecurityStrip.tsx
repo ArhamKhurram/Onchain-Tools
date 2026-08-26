@@ -12,8 +12,8 @@ const points = [
     body: 'Rooms, config, and Telegram sessions are encrypted at rest with AES-256-GCM. Row-level security isolates every account.',
   },
   {
-    title: 'OPEN SOURCE',
-    body: 'Inspect the encryption, gateway, and client-side token flow yourself. Don\'t trust — verify.',
+    title: 'VERIFY IT YOURSELF',
+    body: 'Open your browser\'s network tab. The gateway connects straight to Discord, and no request carries your token to us. Don\'t trust — check.',
   },
 ];
 
