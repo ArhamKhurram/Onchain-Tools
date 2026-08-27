@@ -3,18 +3,18 @@ import { useAppStore } from '../stores/appStore';
 import { useThemeStore } from '../stores/themeStore';
 import Message from './Message';
 import ChatInput from './ChatInput';
+import VirtualMessageList, { type VirtualMessageListHandle } from './VirtualMessageList';
 import { useCallerQuality, type CallerQuality } from '../hooks/useCallerQuality';
 import { createHighlightColorResolver } from '../utils/userIdentifiers';
+import { computeFrozenWindow, scrollAnchorDecision, MESSAGE_JUMP_EVENT } from '../utils/messageListWindow';
 import { useFeedChromeContext } from './feed/feedChromeContract';
 import { callerKey } from '@oct/shared';
+import type { FrontendMessage } from '../types';
 import { Hash, MessageCircle, Settings, ArrowDown, Filter, EyeOff, X, Trash2, Eye, Search, ChevronUp, ChevronDown, Send, AtSign, GripVertical, Plus, Rows2, Columns2, ArrowLeft, ArrowRight, Lock, Unlock, ExternalLink } from 'lucide-react';
 
 const MAX_PANES = 4;
 
 const SCROLL_THRESHOLD = 150;
-const WINDOW_INITIAL = 200;
-const WINDOW_GROW = 200;
-const LOAD_MORE_THRESHOLD = 300;
 
 function formatTime(ts: string | number | Date) {
   return new Date(ts).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
@@ -66,8 +66,7 @@ export default function ChatPane({ roomId, paneIndex, paneCount, editMode, varia
   const [showScrollButton, setShowScrollButton] = useState(false);
   const programmaticScrollRef = useRef(false);
   const settleRafRef = useRef<number | undefined>(undefined);
-  const [renderLimit, setRenderLimit] = useState(WINDOW_INITIAL);
-  const growingRef = useRef(false);
+  const listRef = useRef<VirtualMessageListHandle>(null);
   // When the user scrolls up, we pin the rendered list to this message id so
   // incoming messages don't shift/drift the view. Cleared when back at bottom.
   const [frozenAtId, setFrozenAtId] = useState<string | null>(null);
@@ -196,22 +195,12 @@ export default function ChatPane({ roomId, paneIndex, paneCount, editMode, varia
   // While "frozen" (user scrolled up), hold the rendered list at the boundary
   // and keep newer messages out of the view. They are counted and surfaced via
   // the "new messages" pill / "jump to present" banner instead of drifting in.
-  let frozenIndex = -1;
-  if (frozenAtId) {
-    for (let i = afterFocus.length - 1; i >= 0; i--) {
-      if (afterFocus[i].id === frozenAtId) { frozenIndex = i; break; }
-    }
-  }
-  const baseList = frozenIndex >= 0 ? afterFocus.slice(0, frozenIndex + 1) : afterFocus;
-  const newMessageCount = frozenIndex >= 0 ? afterFocus.length - 1 - frozenIndex : 0;
-  const firstNewMessage = newMessageCount > 0 ? afterFocus[frozenIndex + 1] : null;
+  const { baseList, newMessageCount, firstNewMessage } = computeFrozenWindow(afterFocus, frozenAtId);
   const viewingOlder = frozenAtId !== null;
 
-  const roomMessages = searchResults
-    ? searchResults
-    : baseList.length > renderLimit
-      ? baseList.slice(-renderLimit)
-      : baseList;
+  // The list is virtualised (only rows near the viewport are mounted), so the
+  // full filtered list renders — no mount-count window to grow on scroll.
+  const roomMessages = searchResults ?? baseList;
 
   const lastMessageId = roomMessages.length > 0 ? roomMessages[roomMessages.length - 1].id : null;
 
@@ -275,13 +264,9 @@ export default function ChatPane({ roomId, paneIndex, paneCount, editMode, varia
     if (!searchResults || searchResults.length === 0) return;
     const clamped = ((index % searchResults.length) + searchResults.length) % searchResults.length;
     setActiveMatchIndex(clamped);
-    const msg = searchResults[clamped];
-    const el = document.getElementById(`msg-${msg.id}`);
-    if (el) {
-      el.scrollIntoView({ behavior: 'smooth', block: 'center' });
-      el.classList.add('outline', 'outline-2', 'outline-oct-accent');
-      setTimeout(() => el.classList.remove('outline', 'outline-2', 'outline-oct-accent'), 2000);
-    }
+    // The match's row may not be mounted (virtualised list), so scroll via the
+    // list handle rather than getElementById.
+    listRef.current?.scrollToMessage(searchResults[clamped].id, ['outline', 'outline-2', 'outline-oct-accent']);
   }, [searchResults]);
 
   const checkNearBottom = useCallback(() => {
@@ -292,36 +277,21 @@ export default function ChatPane({ roomId, paneIndex, paneCount, editMode, varia
     // scrolls so the next user-driven event compares correctly.
     const prevTop = lastScrollTopRef.current;
     lastScrollTopRef.current = el.scrollTop;
-    const scrolledUp = el.scrollTop < prevTop - 2;
 
     if (programmaticScrollRef.current) return;
 
-    if (
-      !growingRef.current &&
-      !searchResults &&
-      el.scrollTop < LOAD_MORE_THRESHOLD &&
-      renderLimit < afterFocus.length
-    ) {
-      growingRef.current = true;
-      const prevHeight = el.scrollHeight;
-      const growPrevTop = el.scrollTop;
-      setRenderLimit((n) => Math.min(n + WINDOW_GROW, afterFocus.length));
-      requestAnimationFrame(() => {
-        const newEl = scrollContainerRef.current;
-        if (newEl) {
-          const delta = newEl.scrollHeight - prevHeight;
-          if (delta > 0) newEl.scrollTop = growPrevTop + delta;
-        }
-        growingRef.current = false;
-      });
-    }
-
-    const distanceFromBottom = el.scrollHeight - el.scrollTop - el.clientHeight;
-    if (distanceFromBottom < SCROLL_THRESHOLD) {
+    const action = scrollAnchorDecision({
+      scrollTop: el.scrollTop,
+      previousScrollTop: prevTop,
+      scrollHeight: el.scrollHeight,
+      clientHeight: el.clientHeight,
+      nearBottomThreshold: SCROLL_THRESHOLD,
+    });
+    if (action === 'stick') {
       // Back at the bottom -> stick to the present.
       isNearBottomRef.current = true;
       setShowScrollButton(false);
-    } else if (scrolledUp) {
+    } else if (action === 'release') {
       // Deliberate upward scroll -> pause and view older messages. We only pause
       // on a real up-scroll (not merely distance) so that content growing during
       // load/streaming never yanks us off the present.
@@ -330,7 +300,7 @@ export default function ChatPane({ roomId, paneIndex, paneCount, editMode, varia
     } else {
       setShowScrollButton(!isNearBottomRef.current);
     }
-  }, [searchResults, renderLimit, afterFocus.length]);
+  }, []);
 
   const cancelSettle = useCallback(() => {
     if (settleRafRef.current !== undefined) {
@@ -414,11 +384,6 @@ export default function ChatPane({ roomId, paneIndex, paneCount, editMode, varia
   }, [roomId, clearFocusFilter, performScroll, cancelSettle, closeSearch]);
 
   useEffect(() => {
-    setRenderLimit(WINDOW_INITIAL);
-    growingRef.current = false;
-  }, [roomId, focusFilter, searchOpen]);
-
-  useEffect(() => {
     return () => cancelSettle();
   }, [cancelSettle]);
 
@@ -489,7 +454,6 @@ export default function ChatPane({ roomId, paneIndex, paneCount, editMode, varia
 
   const jumpToPresent = () => {
     setFrozenAtId(null);
-    setRenderLimit(WINDOW_INITIAL);
     scrollToBottom();
   };
 
@@ -549,6 +513,21 @@ export default function ChatPane({ roomId, paneIndex, paneCount, editMode, varia
   };
 
   const unknownPane = !activeRoom && !activeDM && !isTgDMView && !isMentionsView;
+
+  // Reply-preview clicks inside <Message> bubble a jump request up to the pane
+  // (the target row may not be mounted, so getElementById can't be used there).
+  // Re-attach when the scroll container (re)mounts as the pane leaves the
+  // unknown state.
+  useEffect(() => {
+    const el = scrollContainerRef.current;
+    if (!el) return;
+    const onJump = (e: Event) => {
+      const detail = (e as CustomEvent<{ messageId?: string }>).detail;
+      if (detail?.messageId) listRef.current?.scrollToMessage(detail.messageId, ['bg-oct-accent-dim']);
+    };
+    el.addEventListener(MESSAGE_JUMP_EVENT, onJump);
+    return () => el.removeEventListener(MESSAGE_JUMP_EVENT, onJump);
+  }, [unknownPane]);
 
   const ringClass = editMode ? 'outline outline-2 outline-offset-[-2px] outline-oct-accent' : '';
   const theme = useThemeStore((s) => s.theme);
@@ -885,18 +864,22 @@ export default function ChatPane({ roomId, paneIndex, paneCount, editMode, varia
           onScroll={checkNearBottom}
           style={{ overflowAnchor: 'none' }}
         >
-          <div ref={contentRef} className="pb-[1vh]">
-            {roomMessages.length === 0 && (
-              <div className="flex items-center justify-center h-full font-mono text-xs uppercase tracking-[0.15em] text-oct-muted">
-                {searchOpen && trimmedSearch
-                  ? 'No messages match your search.'
-                  : isMentionsView
-                    ? 'No mentions yet.'
-                    : 'Waiting for messages...'}
-              </div>
-            )}
+          {roomMessages.length === 0 && (
+            <div className="flex items-center justify-center h-full font-mono text-xs uppercase tracking-[0.15em] text-oct-muted">
+              {searchOpen && trimmedSearch
+                ? 'No messages match your search.'
+                : isMentionsView
+                  ? 'No mentions yet.'
+                  : 'Waiting for messages...'}
+            </div>
+          )}
 
-            {roomMessages.map((msg, i) => {
+          <VirtualMessageList
+            ref={listRef}
+            items={roomMessages}
+            scrollElementRef={scrollContainerRef}
+            contentRef={contentRef}
+            renderRow={(msg: FrontendMessage, i: number) => {
               const prev = i > 0 ? roomMessages[i - 1] : null;
               const sameAuthor = prev?.author.id === msg.author.id;
               const timeDiff = prev
@@ -919,7 +902,6 @@ export default function ChatPane({ roomId, paneIndex, paneCount, editMode, varia
               }
 
               return (
-                <div key={msg.id} id={`msg-${msg.id}`} className="transition-colors duration-100">
                   <Message
                     message={msg}
                     isCompact={isCompact}
@@ -953,10 +935,9 @@ export default function ChatPane({ roomId, paneIndex, paneCount, editMode, varia
                     callerQuality={callerQuality}
                     onSetCallerTier={setCallerTier}
                   />
-                </div>
               );
-            })}
-          </div>
+            }}
+          />
         </div>
       )}
 
