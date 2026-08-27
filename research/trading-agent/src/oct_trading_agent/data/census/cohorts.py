@@ -105,6 +105,33 @@ def add_quartiles(pairs: pl.DataFrame, config: CensusConfig) -> pl.DataFrame:
     )
 
 
+#: A pair counts as an EARLY entry when the wallet bought at or below this fraction of the token's
+#: exitable peak. 0.10 = "got in with a 10x still on the table". Deliberately strict: the point of
+#: the count is to separate wallets that repeatedly find things early from wallets that were
+#: occasionally lucky, and a loose threshold makes almost everyone look early.
+EARLY_ENTRY_PCT_OF_PEAK = 0.10
+
+
+def _earliness_aggs(pairs: pl.DataFrame, config: CensusConfig) -> list[pl.Expr]:
+    """Per-wallet earliness rollups — empty when the pair frame predates the earliness pass.
+
+    Returned as expressions rather than folded into the aggregate so a census run over an older
+    pairs parquet keeps working instead of raising on a missing column.
+    """
+    if "entry_price_pct_of_peak" not in pairs.columns:
+        return []
+    return [
+        # MEDIAN, not mean: one 500x outlier would otherwise define a wallet's whole profile.
+        pl.col("entry_price_pct_of_peak").median().alias("median_entry_pct_of_peak"),
+        pl.col("max_multiple_available").median().alias("median_max_multiple"),
+        pl.col("entry_trade_rank_pct").median().alias("median_entry_rank_pct"),
+        (pl.col("entry_price_pct_of_peak") <= EARLY_ENTRY_PCT_OF_PEAK)
+        .sum()
+        .alias("early_entries"),
+        pl.col("entry_price_pct_of_peak").is_not_null().sum().alias("tokens_with_earliness"),
+    ]
+
+
 def aggregate_wallets(pairs: pl.DataFrame, config: CensusConfig) -> pl.DataFrame:
     """Aggregate quartile-annotated pairs per wallet ACROSS tokens, with wash + wonder flags."""
     pair_ping = (
@@ -133,6 +160,7 @@ def aggregate_wallets(pairs: pl.DataFrame, config: CensusConfig) -> pl.DataFrame
         pl.col("mean_hold_s").mean().alias("mean_hold_s"),
         pair_ping.any().alias("flag_ping_pong"),
         pair_metro.any().alias("flag_metronome"),
+        *_earliness_aggs(pairs, config),
     )
     return agg.with_columns(
         (
