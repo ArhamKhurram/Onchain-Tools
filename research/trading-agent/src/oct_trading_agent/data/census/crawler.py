@@ -112,6 +112,8 @@ def build_pair_stats(trades: pl.DataFrame) -> pl.DataFrame:
         "mean_hold_s": [],
         "first_ts": [],
         "last_ts": [],
+        "first_buy_price": [],
+        "first_buy_ts": [],
         "alternation": [],
         "size_cv": [],
         "buy_size_cv": [],
@@ -144,6 +146,18 @@ def build_pair_stats(trades: pl.DataFrame) -> pl.DataFrame:
         cols["mean_hold_s"].append(pnl.mean_hold_s)
         cols["first_ts"].append(int(seg_ts[0]))
         cols["last_ts"].append(int(seg_ts[-1]))
+        # Entry price = the quote/base of the wallet's FIRST BUY, not its first trade: a wallet
+        # whose first row on a token is a sell is an airdrop recipient or a transfer-in, and
+        # pricing their "entry" off that would invent a cost basis they never paid.
+        seg_base = base[seg]
+        buy_idx = np.flatnonzero(seg_buy)
+        if buy_idx.size > 0 and seg_base[buy_idx[0]] > 0:
+            fb = int(buy_idx[0])
+            cols["first_buy_price"].append(float(seg_quote[fb] / seg_base[fb]))
+            cols["first_buy_ts"].append(int(seg_ts[fb]))
+        else:
+            cols["first_buy_price"].append(None)
+            cols["first_buy_ts"].append(None)
         cols["alternation"].append(alternation)
         cols["size_cv"].append(_cv(seg_quote, min_n=_MIN_SIZES_FOR_CV))
         # Buys-only CV: a ping-pong bot's buy legs are near-identical while its sell legs drift
@@ -169,6 +183,8 @@ def build_pair_stats(trades: pl.DataFrame) -> pl.DataFrame:
             "mean_hold_s": pl.Float64,
             "first_ts": pl.Int64,
             "last_ts": pl.Int64,
+            "first_buy_price": pl.Float64,
+            "first_buy_ts": pl.Int64,
             "alternation": pl.Float64,
             "size_cv": pl.Float64,
             "buy_size_cv": pl.Float64,
@@ -177,9 +193,23 @@ def build_pair_stats(trades: pl.DataFrame) -> pl.DataFrame:
     )
 
 
-def crawl_dataset(dataset_root: Path, *, quote_mint: str = WSOL) -> pl.DataFrame:
-    """Scan a captured dataset (READ-ONLY) into the per-(wallet, token) census stats table."""
-    return build_pair_stats(scan_swaps(dataset_root, quote_mint=quote_mint).collect())
+def crawl_dataset(
+    dataset_root: Path, *, quote_mint: str = WSOL, earliness: bool = True
+) -> pl.DataFrame:
+    """Scan a captured dataset (READ-ONLY) into the per-(wallet, token) census stats table.
+
+    ``earliness`` annotates each pair with how early into the token's life the wallet bought (see
+    :mod:`~oct_trading_agent.data.census.earliness`). It needs the same trade frame the pair stats
+    are built from, which is why it happens here rather than in ``extract_cohorts`` — the caller
+    only ever sees pairs.
+    """
+    trades = scan_swaps(dataset_root, quote_mint=quote_mint).collect()
+    pairs = build_pair_stats(trades)
+    if not earliness:
+        return pairs
+    from .earliness import add_earliness
+
+    return add_earliness(pairs, trades)
 
 
 __all__ = ["scan_swaps", "build_pair_stats", "crawl_dataset"]
