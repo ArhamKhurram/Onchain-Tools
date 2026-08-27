@@ -94,6 +94,20 @@ session string may be revoked: user must re-login via
 means no Supabase or no tracked users; `lastPollError` naming Cloudflare
 means the worker needs a restart or a fresh refresh token.
 
+**FOMO trades stopped, and every call is `403 Forbidden`** — a different
+failure from the Cloudflare one above, and a restart will not fix it. Check
+`GET http://<vps>:3100/v1/status`: if `breaker.open` is true, the worker has
+already stopped calling and is probing on a growing backoff.
+
+Read the 403 body carefully. Cloudflare blocks return **HTML**; fomo's own
+`{"success":false,"message":"Forbidden","statusCode":403}` envelope means the
+browser cleared Cloudflare, reached the app, and *the app refused the account*.
+Restarting re-fetches a fresh JWT from Privy every time, so a persistent 403
+across restarts is not a token problem — the fomo.family account itself is
+being refused (revoked session, flagged account, or a changed requirement).
+That needs a human to log into fomo.family and check; nothing on the box will
+fix it.
+
 **Bot offline** — it lives in the backend process; check Railway logs for
 the `[Bot]` boot line. If `DISCORD_BOT_TOKEN not set`, the variable is
 missing on the service.

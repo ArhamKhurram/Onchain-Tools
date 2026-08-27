@@ -28,6 +28,23 @@ function envInt(name: string, fallback: number): number {
 const PAGE_MAX_AGE_MS = envInt('FOMO_PAGE_MAX_AGE_MS', 30 * 60 * 1000);
 const PAGE_MAX_CALLS = envInt('FOMO_PAGE_MAX_CALLS', 200);
 
+// --- 403 circuit breaker ---------------------------------------------------
+// A 401 means "token expired" and we refresh. A 403 means fomo.family knows who
+// we are and is refusing anyway — a revoked session, a flagged account, a
+// changed requirement. Retrying that at full speed fixes nothing and is exactly
+// how a soft block becomes a hard one.
+//
+// This is not hypothetical. On 2026-08-25 22:56 UTC every call started coming
+// back 403 and the worker kept hammering: ~10,500 rejected requests an hour for
+// 26 hours, roughly 250k a day, until it was stopped by hand. Nothing in the
+// code would ever have slowed down, because 403 fell through to a bare
+// console.error.
+//
+// Threshold 0 disables the breaker entirely.
+const BREAKER_THRESHOLD = envInt('FOMO_BREAKER_THRESHOLD', 5);
+const BREAKER_BASE_MS = envInt('FOMO_BREAKER_BASE_MS', 30 * 1000);
+const BREAKER_MAX_MS = envInt('FOMO_BREAKER_MAX_MS', 15 * 60 * 1000);
+
 const USER_AGENT =
   'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36';
 
@@ -76,6 +93,10 @@ export class FomoBrowserClient {
   private pageOpenedAt = 0;
   private callsOnPage = 0;
   private inFlight = 0;
+  private deniedStreak = 0;
+  private breakerOpenUntil = 0;
+  private breakerBackoffMs = BREAKER_BASE_MS;
+  private refreshedThisOutage = false;
   private contextClosed = false;
   lastCallAt: Date | null = null;
   lastCallPath: string | null = null;
@@ -93,6 +114,43 @@ export class FomoBrowserClient {
 
   get jwtReady(): boolean {
     return !!this.jwt;
+  }
+
+  /** Breaker state, surfaced on /v1/status so an outage is visible without reading logs. */
+  get breaker(): { open: boolean; deniedStreak: number; retryInMs: number; backoffMs: number } {
+    const now = Date.now();
+    return {
+      open: this.breakerOpenUntil > now,
+      deniedStreak: this.deniedStreak,
+      retryInMs: Math.max(0, this.breakerOpenUntil - now),
+      backoffMs: this.breakerBackoffMs,
+    };
+  }
+
+  /** Close the breaker and forget the outage. Called on any successful call. */
+  private breakerReset(): void {
+    if (this.deniedStreak === 0 && this.breakerOpenUntil === 0) return;
+    console.log('[FomoWorker] Access restored — closing the 403 circuit breaker.');
+    this.deniedStreak = 0;
+    this.breakerOpenUntil = 0;
+    this.breakerBackoffMs = BREAKER_BASE_MS;
+    this.refreshedThisOutage = false;
+  }
+
+  /** Record a 403 and open the breaker once the streak crosses the threshold. */
+  private breakerTrip(): void {
+    this.deniedStreak += 1;
+    if (BREAKER_THRESHOLD <= 0 || this.deniedStreak < BREAKER_THRESHOLD) return;
+    // Every probe that comes back 403 doubles the wait, so a permanent refusal
+    // settles at one call per BREAKER_MAX_MS instead of three per second.
+    this.breakerOpenUntil = Date.now() + this.breakerBackoffMs;
+    const mins = Math.round(this.breakerBackoffMs / 60_000);
+    console.error(
+      `[FomoWorker] 403 circuit breaker OPEN after ${this.deniedStreak} consecutive refusals — ` +
+        `pausing calls for ${mins >= 1 ? `${mins}min` : `${Math.round(this.breakerBackoffMs / 1000)}s`}. ` +
+        'fomo.family is refusing this account, not this token; check the account.',
+    );
+    this.breakerBackoffMs = Math.min(this.breakerBackoffMs * 2, BREAKER_MAX_MS);
   }
 
   /**
@@ -327,6 +385,19 @@ export class FomoBrowserClient {
     apiPath: string,
     opts: { method?: string; body?: string | null } = {},
   ): Promise<FomoCallResult<T>> {
+    if (this.breakerOpenUntil > Date.now()) {
+      // Fail fast and locally: no browser work, no request to fomo.family.
+      const waitS = Math.ceil((this.breakerOpenUntil - Date.now()) / 1000);
+      this.lastError = `403 circuit breaker open — retrying in ${waitS}s`;
+      return {
+        status: 403,
+        text: '',
+        json: null,
+        errorName: 'CircuitBreakerOpen',
+        errorMessage: this.lastError,
+      } as FomoCallResult<T>;
+    }
+
     await this.ensureBrowser();
     const method = opts.method || 'GET';
     const body = opts.body || null;
@@ -418,6 +489,26 @@ export class FomoBrowserClient {
       this.jwt = null;
       await retry(() => this.refreshJwt(), 3, 1500);
       this.lastError = '401 — refreshed JWT';
+    } else if (result.status === 403) {
+      // Try a fresh JWT exactly ONCE per outage: some rejections surface as 403
+      // rather than 401, and that case is worth one cheap attempt. Repeating it
+      // would just move the hammering from fomo.family to Privy.
+      if (!this.refreshedThisOutage) {
+        this.refreshedThisOutage = true;
+        this.jwt = null;
+        try {
+          await retry(() => this.refreshJwt(), 2, 1500);
+          console.warn('[FomoWorker] 403 — refreshed the JWT once; retrying on the next call.');
+        } catch (err) {
+          console.warn('[FomoWorker] 403 — JWT refresh also failed:', (err as Error)?.message);
+        }
+      }
+      this.breakerTrip();
+      this.lastError = result.text?.slice?.(0, 500) || 'HTTP 403';
+      // Logged once per streak, not once per call — the flood was the old bug.
+      if (this.deniedStreak <= BREAKER_THRESHOLD) {
+        console.error('[FomoWorker]', apiPath, this.lastError);
+      }
     } else if (!result.status || result.status < 200 || result.status >= 300) {
       // A throw inside page.evaluate comes back as status 0 with an empty body,
       // which used to log as a bare path and nothing else. Prefer the real error.
@@ -427,6 +518,7 @@ export class FomoBrowserClient {
       console.error('[FomoWorker]', apiPath, this.lastError);
     } else {
       this.lastError = null;
+      this.breakerReset();
     }
 
     return result;

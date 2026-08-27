@@ -46,4 +46,6 @@ export interface WorkerStatus {
   pageAgeSec: number | null;
   callsSincePageOpen: number;
   rssMb: number;
+  /** 403 circuit breaker: open means calls are being refused locally, not sent. */
+  breaker?: { open: boolean; deniedStreak: number; retryInMs: number; backoffMs: number };
 }
