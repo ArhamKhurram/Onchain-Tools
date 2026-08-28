@@ -9,6 +9,18 @@ export interface TelegramMessageProcessorContext {
   cacheUserName: (telegramUserId: string, displayName: string) => void;
 }
 
+/**
+ * The channel id for a Telegram message given its group and (optional) topic.
+ *
+ * A topic message is scoped to ``chatId:topicId`` — the topic is a channel *within* the group, the
+ * way a Discord channel sits within a guild. A non-topic message stays scoped to the group
+ * (``chatId``) unchanged, so pre-topics subscriptions keep matching. Both ingestion and routing
+ * MUST use this one function, or a message and its subscription would compute different ids.
+ */
+export function telegramChannelId(chatId: string, topicId?: number | null): string {
+  return topicId != null ? `${chatId}:${topicId}` : chatId;
+}
+
 export function processTelegramMessage(
   raw: TelegramRawMessage,
   roomKeywordPatterns?: KeywordPattern[],
@@ -68,12 +80,21 @@ export function processTelegramMessage(
     platformUrl = raw.chatInviteLink;
   }
 
+  // Topic scoping mirrors Discord's guild→channel shape: the group becomes the guild, the topic
+  // becomes the channel. A message with no topic stays flat (guildId null, channel = group) exactly
+  // as before, so nothing about non-forum groups changes.
+  const inTopic = raw.topicId != null;
+  const channelId = telegramChannelId(raw.chatId, raw.topicId);
+  const channelName = inTopic ? (raw.topicTitle ?? `Topic ${raw.topicId}`) : raw.chatTitle;
+  const guildId = inTopic ? raw.chatId : null;
+  const guildName = inTopic ? raw.chatTitle : null;
+
   return {
     id: `tg_${raw.chatId}_${raw.id}`,
-    channelId: raw.chatId,
-    guildId: null,
-    channelName: raw.chatTitle,
-    guildName: null,
+    channelId,
+    guildId,
+    channelName,
+    guildName,
     source: 'telegram',
     platformUrl,
     author: {

@@ -7,6 +7,38 @@ import { Api } from 'teleproto/tl/index.js';
 import type { TelegramChat, TelegramSender, TelegramRawMessage, TelegramMedia, TelegramButton } from './types.js';
 import { rewriteReferralLinks } from '../utils/contract.js';
 
+/**
+ * The forum-topic id of a message, or null if it is not in a topic.
+ *
+ * Telegram encodes topic membership in the reply header: a forum message carries ``forumTopic``,
+ * and the topic root is ``replyToTopId`` when the message is a reply *within* the topic, or
+ * ``replyToMsgId`` when it is a top-level post in the topic (the message that opened the topic is
+ * the root). Non-forum groups and the "General" topic carry no ``forumTopic`` flag → null, which
+ * keeps them flat (scoped to the group) exactly as before topics existed.
+ *
+ * Pure and exported so the mapping is unit-tested without a live MTProto session.
+ */
+export function extractTopicId(replyTo: Api.Message['replyTo']): number | null {
+  if (replyTo && 'forumTopic' in replyTo && replyTo.forumTopic) {
+    return replyTo.replyToTopId ?? replyTo.replyToMsgId ?? null;
+  }
+  return null;
+}
+
+/**
+ * Whether ``replyTo`` points at a genuine replied-to message versus a forum topic root.
+ *
+ * In a forum, a top-level topic post carries ``forumTopic`` + ``replyToMsgId`` (the topic root)
+ * but no ``replyToTopId`` — that is NOT a reply, and rendering it as one shows a spurious
+ * "replying to …" against the topic-creation message. A real reply inside a topic additionally
+ * carries ``replyToTopId``. Outside forums, any ``replyToMsgId`` is a genuine reply.
+ */
+export function isGenuineReply(replyTo: Api.Message['replyTo']): boolean {
+  if (!replyTo || !('replyToMsgId' in replyTo) || !replyTo.replyToMsgId) return false;
+  if ('forumTopic' in replyTo && replyTo.forumTopic && !replyTo.replyToTopId) return false;
+  return true;
+}
+
 /** How often to prove the update stream is still alive. */
 const HEALTH_CHECK_INTERVAL_MS = 60_000;
 /** A health check that hangs this long counts as a dead connection. */
@@ -183,10 +215,11 @@ export class TelegramClientWrapper extends EventEmitter {
     const sender = await this.resolveSender(message);
     if (!sender) return null;
 
+    const rawReplyTo = message.replyTo;
     let replyTo: TelegramRawMessage['replyTo'] = null;
-    if (message.replyTo && 'replyToMsgId' in message.replyTo && message.replyTo.replyToMsgId) {
+    if (rawReplyTo && isGenuineReply(rawReplyTo) && 'replyToMsgId' in rawReplyTo && rawReplyTo.replyToMsgId) {
       try {
-        const replyMsgId = message.replyTo.replyToMsgId;
+        const replyMsgId = rawReplyTo.replyToMsgId;
         const replyMsg = await this.client.getMessages(message.peerId!, {
           ids: [replyMsgId],
         });
@@ -241,6 +274,11 @@ export class TelegramClientWrapper extends EventEmitter {
       chatType: chat.type,
       chatUsername: chat.username ?? null,
       chatInviteLink: chat.inviteLink ?? null,
+      // Topic scoping. Title is resolved later (topics API); ingestion only pins the id so routing
+      // and per-topic subscriptions work immediately — the title is cosmetic and degrades to
+      // "Topic <id>" until then.
+      topicId: extractTopicId(message.replyTo),
+      topicTitle: null,
       sender,
       text: this.applyLinkEntities(message),
       date: message.date,

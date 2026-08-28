@@ -22,6 +22,15 @@ export interface TelegramRawMessage {
   chatType: TelegramChat['type'];
   chatUsername?: string | null;
   chatInviteLink?: string | null;
+  /**
+   * Forum-topic id for a message in a topic-enabled (forum) supergroup, else null. This is the
+   * Telegram analog of a Discord channel *within* a server: the group is the guild, the topic is
+   * the channel. Null for non-forum groups and the group's "General" topic — those stay flat,
+   * scoped to the group itself (backward-compatible with the pre-topics chatId-only model).
+   */
+  topicId?: number | null;
+  /** Human-readable topic title if resolved, else null (ingestion sets null; the topics API fills it). */
+  topicTitle?: string | null;
   sender: TelegramSender;
   text: string;
   date: number;
