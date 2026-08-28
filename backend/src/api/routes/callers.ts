@@ -227,7 +227,7 @@ export function createCallersRoutes(ctx: RouterContext): Router {
     exclude: string[],
   ): Promise<ScoresPayload> {
     const since = new Date(Date.now() - windowDays * 86_400_000).toISOString();
-    const contracts = await storage.getContracts(userId, MAX_CONTRACTS, since);
+    const contracts = await storage.getContractsForScoring(userId, MAX_CONTRACTS, since);
 
     const peaks = await getPeaks(contracts.map((c) => c.address));
     const peakFor = (addr: string) => peaks.get(addr.toLowerCase());

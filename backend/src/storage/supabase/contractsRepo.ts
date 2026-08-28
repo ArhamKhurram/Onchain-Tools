@@ -73,6 +73,38 @@ export class ContractsRepo extends BaseRepo {
   }
 
   /**
+   * Column-scoped read for the caller-scoring board (StorageProvider.getContractsForScoring).
+   *
+   * The derived-scores path folds up to MAX_CONTRACTS (20k) rows every cache miss.
+   * `getContracts`'s `select('*')` drags the message text, `description`, every display
+   * string, and the full enrichment block across the wire for each of those rows — the
+   * single largest source of Supabase egress in the app. `buildCallerScores` + `getPeaks`
+   * read only nine fields (see the field audit); this selects exactly those. The mapper
+   * blanks the four required-but-unread fields (channel/guild) — scoring never touches them.
+   */
+  async getContractsForScoring(userId: string, limit = 100, since?: string): Promise<ContractEntry[]> {
+    let query = this.supabase
+      .from('contracts')
+      .select('address, chain, evm_chain, author_id, author_name, room_ids, message_id, timestamp, fdv_at_call')
+      .eq('user_id', userId)
+      .order('timestamp', { ascending: false })
+      .limit(limit);
+
+    if (since) {
+      query = query.gt('timestamp', since);
+    }
+
+    const { data, error } = await query;
+    if (error) {
+      console.error('[Supabase] Failed to fetch contracts for scoring:', error);
+      throw new Error(`Failed to fetch contracts for scoring: ${error.message}`);
+    }
+    if (!data) return [];
+
+    return data.map((row) => this.mapScoringRow(row));
+  }
+
+  /**
    * Resolve one specific logged row by the message it came from.
    *
    * Deliberately not `getContracts(20)` + `.find()`, which is how the two
@@ -359,6 +391,30 @@ export class ContractsRepo extends BaseRepo {
 
     throwIfError({ error }, 'Failed to enrich contract');
     return updated ? this.mapContractRow(updated) : null;
+  }
+
+  /**
+   * Maps a column-scoped scoring row. Only the nine selected columns are real; the four
+   * required ContractEntry fields the scorer never reads (channelId/channelName/guildId/
+   * guildName) are blanked so the partial row still satisfies the type. If a future scorer
+   * starts reading one of these, widen the `select` in getContractsForScoring first.
+   */
+  private mapScoringRow(row: any): ContractEntry {
+    return {
+      address: row.address,
+      chain: row.chain as 'evm' | 'sol',
+      evmChain: row.evm_chain ?? undefined,
+      authorId: row.author_id,
+      authorName: row.author_name,
+      channelId: '',
+      channelName: '',
+      guildId: null,
+      guildName: null,
+      roomIds: row.room_ids ?? [],
+      messageId: row.message_id,
+      timestamp: row.timestamp,
+      fdvAtCall: row.fdv_at_call != null ? Number(row.fdv_at_call) : undefined,
+    };
   }
 
   private mapContractRow(row: any): ContractEntry {
