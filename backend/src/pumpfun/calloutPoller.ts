@@ -15,6 +15,7 @@ import type { WsServer } from '../ws/server.js';
 import { getStorageProvider } from '../storage/index.js';
 import { sendPushover } from '../utils/pushover.js';
 import { getPumpCalloutFeedClient, type RecentCallout } from './calloutFeedClient.js';
+import { PumpfunRequestError } from './client.js';
 import {
   getPumpServiceClient,
   getCalloutPollState,
@@ -60,6 +61,36 @@ function compactUsd(value: number | null): string {
   return `$${abs.toFixed(0)}`;
 }
 
+/**
+ * How many consecutive "this request can never succeed" responses stop the poller.
+ *
+ * A 4xx that is not 429 means the request itself is wrong — a removed route, a changed contract —
+ * and retrying it on a timer is pure noise. pump.fun removed the global callouts firehose:
+ * `/callout/recent` now returns 400 `Validation failed (uuid is expected)`, because `recent` is
+ * being matched as a `:uuid` path parameter. Every path under `/callout/` behaves the same, so
+ * there is no list route left to poll. Before this guard the poller retried it every 12 seconds
+ * indefinitely, filling production logs and sending thousands of futile requests a day.
+ *
+ * 429 and 5xx are explicitly NOT counted: those are transient and retrying is correct.
+ */
+const CONTRACT_FAILURES_BEFORE_STOP = Number.parseInt(
+  process.env.PUMP_CALLOUT_CONTRACT_FAILURES ?? '',
+  10,
+) || 5;
+
+/**
+ * Is this status one that retrying can never fix?
+ *
+ * 4xx means the REQUEST is wrong — a removed route, a changed contract. 429 is excluded because it
+ * means "right request, wrong pace", and 5xx because the vendor is having a moment. Getting this
+ * boundary wrong in either direction is costly: too broad and a transient blip permanently kills a
+ * working feed; too narrow and we hammer a dead endpoint forever, which is the bug this fixes.
+ */
+export function isPermanentContractFailure(status: number | null | undefined): boolean {
+  if (status == null) return false;
+  return status >= 400 && status < 500 && status !== 429;
+}
+
 class PumpCalloutPoller {
   private wsServer: WsServer;
   private timer: NodeJS.Timeout | null = null;
@@ -67,6 +98,9 @@ class PumpCalloutPoller {
   private polling = false;
   private pollIntervalMs = DEFAULT_INTERVAL_MS;
   private lastPollError: string | null = null;
+  /** Consecutive 4xx-not-429 responses — see CONTRACT_FAILURES_BEFORE_STOP. */
+  private contractFailures = 0;
+  private stoppedReason: string | null = null;
   // Callers whose handle/avatar we've already tried to resolve this process. New
   // callers are enriched once; re-seen callers cost no identity call.
   private enrichedAddresses = new Set<string>();
@@ -91,6 +125,12 @@ class PumpCalloutPoller {
   stop(): void {
     if (this.timer) clearTimeout(this.timer);
     this.timer = null;
+    this.started = false;
+  }
+
+  /** Why the poller gave up, or null while it is healthy. Surfaced for health probes. */
+  get haltedReason(): string | null {
+    return this.stoppedReason;
   }
 
   private resolveInterval(): number {
@@ -179,6 +219,24 @@ class PumpCalloutPoller {
       this.lastPollError = null;
     } catch (err) {
       this.lastPollError = (err as Error)?.message ?? String(err);
+      const status = err instanceof PumpfunRequestError ? err.status : null;
+      const permanent = isPermanentContractFailure(status);
+      if (permanent) {
+        this.contractFailures += 1;
+        if (this.contractFailures >= CONTRACT_FAILURES_BEFORE_STOP) {
+          this.stoppedReason =
+            `pump.fun rejected the request ${this.contractFailures}x with HTTP ${status} — ` +
+            'the endpoint contract has changed and retrying cannot fix it';
+          console.error(
+            `[PumpCalloutPoller] STOPPING: ${this.stoppedReason}. Last error: ${this.lastPollError}`,
+          );
+          this.stop();
+          return;
+        }
+      } else {
+        // Transient (429/5xx/network): the endpoint is fine, we just missed a beat.
+        this.contractFailures = 0;
+      }
       console.warn('[PumpCalloutPoller] poll failed:', this.lastPollError);
     } finally {
       this.polling = false;
