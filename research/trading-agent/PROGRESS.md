@@ -14,6 +14,60 @@ program logs reasoning and scoping; once Phase 0 starts, entries carry real numb
 
 ---
 
+## 2026-08-28 — Earliness PREDICTS, out of sample: top-quintile wallets are the only profitable bucket
+
+The 2026-08-27 entry established that earliness correlates with outcome across 552,916 pairs and
+logged the obvious objection under **Open**: all of it was descriptive. Correlating a wallet's past
+entries with its past PnL does not show that ranking wallets by earliness predicts what they do
+NEXT. This is that test.
+
+**Method.** Split every scored pair at the median first-buy timestamp. Rank wallets using ONLY
+period A (>=3 scored pairs each), then measure their realized PnL and win rate in period B (>=3
+pairs each). 6,471 wallets qualify on both sides.
+
+**The separation is clean:** *zero* wallet-token pairs appear in both halves (0 of 100,715 A-pairs
+recur in B). Period-B outcomes are earned on tokens the ranking never saw.
+
+**Findings**
+
+| ranked on period A | wallets | A entry % of peak | → B median PnL | B win rate |
+| --- | ---: | ---: | ---: | ---: |
+| Q1 earliest | 1,295 | 0.407 | **+0.0147** | **0.403** |
+| Q2 | 1,294 | 0.532 | -0.0002 | 0.402 |
+| Q3 | 1,294 | 0.607 | -0.0067 | 0.391 |
+| Q4 | 1,294 | 0.676 | -0.0108 | 0.374 |
+| Q5 latest | 1,294 | 0.778 | **-0.0204** | 0.350 |
+
+- **Monotone in both columns, on unseen tokens.** Past earliness orders future PnL and future win
+  rate without a single inversion.
+- **Q1 is the ONLY bucket with positive median PnL.** Everything from Q2 down loses money at the
+  median. The usable form of this signal is therefore a top-quintile filter, not a continuous
+  score — the middle of the distribution carries no edge to spend.
+- **The out-of-sample effect is much weaker than the in-sample one, as it should be.** Win rate
+  spans 0.403-0.350 here versus 0.606-0.063 within-sample. The in-sample spread is inflated by the
+  mechanical component (buying at 95% of a peak loses by construction); what survives the split is
+  the part that is actually about the wallet.
+
+**Decisions**
+
+- **This is now enough to justify a tier-B feature built on wallet identity** — not the leaky
+  `entry_price_pct_of_peak` itself, but a *point-in-time* rank derived from a wallet's history
+  strictly before the decision instant. The feature store already enforces that discipline;
+  earliness now has an out-of-sample reason to be plumbed through it.
+
+**Open**
+
+- **The window is 21 hours** (2026-08-23 17:11 → 2026-08-24 14:28), so "period B" is ~10 hours
+  ahead, not weeks. Whether the ranking survives at a horizon anyone would trade on is untested and
+  needs a longer capture. This result should not be quoted as though it were a multi-week backtest.
+- Only wallets active in BOTH halves are measurable (6,471 of 19,853 rankable on A). That selects
+  for high-frequency wallets and may not describe the patient ones.
+- The ranking feature still uses each token's full-tape peak. No pair recurs across halves, so it
+  cannot leak an outcome directly — but a longer capture should recompute A-side peaks using only
+  A-side data to remove the question entirely.
+
+---
+
 ## 2026-08-27 — EARLINESS: the first tier-B feature with a monotone link to outcome
 
 The program's tier-A verdict is a NO-GO: price-chart-only trading showed no durable edge after 125
