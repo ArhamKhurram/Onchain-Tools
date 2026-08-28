@@ -64,8 +64,8 @@ import { getFomoServiceClient } from '../fomo/store.js';
 import { sendPushover } from '../utils/pushover.js';
 import { formatCompact } from '../wallets/balanceChecker.js';
 import { DEFAULT_REVIVAL_CONFIG, evaluateRevival, type RevivalEvaluation } from './detector.js';
+import { fetchCandlesForToken } from './candleSource.js';
 import {
-  fetchRevivalCandles,
   isBackedOff,
   resolveRequestSpacingMs,
   revivalRequestCounters,
@@ -904,7 +904,10 @@ class RevivalPoller {
   ): Promise<{ drawdownBlocked: boolean; breakout: boolean }> {
     const { address: mint, network, subscribers } = target;
     const none = { drawdownBlocked: false, breakout: false };
-    const candles = await fetchRevivalCandles(network, mint);
+    // Routed: Solana/BNB go to Pinax when it is configured and its per-pool USD calibration
+    // succeeded, Robinhood always to GeckoTerminal, and any Pinax miss falls back rather than
+    // reporting the token as dataless.
+    const candles = await fetchCandlesForToken(network, mint);
     if (!candles) return none;
 
     const now = Date.now();
