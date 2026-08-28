@@ -14,6 +14,124 @@ program logs reasoning and scoping; once Phase 0 starts, entries carry real numb
 
 ---
 
+## 2026-08-28 (v) — Cohort ladder v2: at matched data volume, SELECTION wins
+
+The v1 ladder answered the size question and could only gesture at the selection one, because its
+arms were matched on wallet count rather than demonstration count — at N=10 the PnL-ranked control
+carried 4,944 demos against the earliness arm's 837, top-PnL wallets being high-volume traders by
+construction. v2 subsamples every cell to exactly 5,000 demos and lifts the 20,000 cap, so the only
+remaining difference between arms is *which wallets were chosen*.
+
+**Findings**
+
+| N | earliness | pnl_control | gap |
+| ---: | ---: | ---: | ---: |
+| 10 | 0.680 | **0.846** | −0.166 \* |
+| 20 | **0.772** | 0.716 | +0.056 |
+| 30 | **0.786** | 0.665 | **+0.121** |
+| 40 | **0.781** | 0.629 | +0.152 |
+| 50 | **0.726** | 0.621 | +0.105 |
+| 75 | **0.692** | 0.609 | +0.083 |
+| 100 | **0.684** | 0.609 | +0.075 |
+| 150 | **0.674** | 0.583 | +0.091 |
+| 200 | **0.628** | 0.581 | +0.047 |
+
+\* N=10 is the one rung where matching cannot bind: the earliness cohort only produces 837 demos,
+so the control still has ~6x the data. That cell is exactly the confound v1 could not remove.
+
+- **Earliness-ranked cohorts clone better at every rung where the data volume is actually equal.**
+  The v1 reading — "the PnL control wins at small N" — was a data-volume artefact, and it does not
+  survive matching. Selection matters, and this is the run that isolates it.
+- **The PnL-ranked arm degrades faster with size** (0.846 → 0.581) than the earliness arm
+  (0.680 → 0.628). Ranking by realized profit assembles a *less coherent* expert set as it grows:
+  top-PnL wallets are heterogeneous high-volume traders, whereas ranking by earliness selects for a
+  shared behaviour.
+- **The size finding from v1 holds and is now cleaner.** Both arms still peak early — earliness at
+  **N=30 (0.786)** — and decline. With volume held fixed, that decline can no longer be blamed on
+  data starvation: more wallets genuinely means a harder imitation target.
+- Cross-seed spread stays small (0.008–0.051) and `trades=True` in 90/90 cells again.
+
+**Decisions**
+
+- **Rank cohorts by earliness, not by realized PnL, and keep them small.** N≈30 is the operating
+  point on this data; the gain from better selection (+0.12 at N=30) is larger than anything cohort
+  growth offers.
+
+**Open**
+
+- The N=10 cell still is not a fair comparison and cannot be made one by subsampling — it needs the
+  earliness arm to produce more demos, i.e. a lower rank threshold or a longer capture.
+- Held-out intent accuracy measures *imitation fidelity*, not profit. A cohort that is easier to
+  clone is not automatically a cohort worth cloning; connecting this to the PPO warm-start and then
+  to held-out PnL is the step that would make it an edge claim rather than a fidelity one.
+
+---
+
+## 2026-08-28 (iv) — CO-OCCURRENCE: the count of good wallets buying early predicts the token
+
+Earliness ranks *wallets*. This is the first result that turns that ranking into a signal about a
+*token*, and it is the strongest number the program has produced. Prompted by a public onchain-
+analysis thread whose step 3 reads: "If 1 wallet bought early, okay. If 5-10 wallets with strong
+histories accumulated before the move, now I have a signal." That is a testable claim, and the data
+to test it was already on disk.
+
+**Method.** Split at the median first-buy timestamp. Rank wallets on period A only (>=3 scored
+pairs) and call the earliest quintile "smart" — 3,971 of 19,853. Then for every period-B token with
+>=5 early buyers (entry inside the first 20% of its trade queue), count how many distinct smart
+wallets are among them, and measure the token's own run (`peak / first price`). The ranking never
+saw a period-B token.
+
+**Findings**
+
+| smart early buyers | tokens | median run | >2x | >10x |
+| --- | ---: | ---: | ---: | ---: |
+| 0 | 1,157 | 1.37x | 0.174 | **0.003** |
+| 1 | 311 | 1.85x | 0.418 | 0.035 |
+| 2-3 | 238 | 2.60x | 0.664 | 0.076 |
+| 4-6 | 160 | 3.27x | 0.719 | 0.113 |
+| 7+ | 130 | **8.03x** | 0.869 | **0.423** |
+
+- **The >10x rate spans 0.003 to 0.423 — a 141x difference** — and the median run 1.37x to 8.03x,
+  monotone throughout, out of sample.
+- **It is not merely "more early buyers".** That was the obvious confound and it does not explain
+  the effect. Splitting each early-buyer-count band at its median smart-SHARE, the high-share half
+  beats the low-share half in **every band, on both metrics**:
+
+  | early buyers | smart share | tokens | median run | >10x |
+  | --- | ---: | ---: | ---: | ---: |
+  | 5-9 low / high | 0.000 / 0.200 | 778 / 182 | 1.17x / **1.50x** | 0.001 / **0.049** |
+  | 10-19 low / high | 0.000 / 0.091 | 261 / 175 | 1.65x / **1.98x** | 0.000 / **0.011** |
+  | 20-49 low / high | 0.000 / 0.083 | 153 / 152 | 2.21x / **2.61x** | 0.020 / **0.059** |
+  | 50+ low / high | 0.023 / 0.072 | 148 / 147 | 4.89x / **6.27x** | 0.223 / **0.327** |
+
+- **But crowd size matters too, and the headline table conflates the two.** Median run climbs
+  1.17x -> 4.89x across the bands at *zero* smart share. Both effects are real and they are
+  additive; quoting the 1.37x -> 8.03x table without the control would overstate the wallet-quality
+  part.
+- **The signal is sparse: smart wallets are 4.3% of all early buyers.** A handful of ranked
+  addresses inside a crowd of hundreds moves the distribution this much, which is what makes it
+  worth computing rather than eyeballing.
+
+**Decisions**
+
+- **This is the token-level signal the tier-B channel was supposed to produce**, and unlike
+  earliness itself it is a candidate for a *live* feature: the count of previously-ranked wallets
+  among a token's early buyers is knowable at any instant from history alone. The ranking must
+  still be built strictly point-in-time — the feature store exists for exactly this — but nothing
+  about the quantity requires hindsight.
+
+**Open**
+
+- The outcome measure (`peak / first price`) uses the token's whole tape, so it answers "did it
+  run", not "could you have traded it". A tradeable version must measure forward return from the
+  smart wallets' own entry instant, net of costs.
+- Same 21-hour capture, same ~10-hour forward horizon as the earliness split. Whether the effect
+  holds over days is untested.
+- "Smart" here is the earliest quintile by a hindsight peak. A point-in-time re-derivation could
+  weaken it, and that check is the obvious next step.
+
+---
+
 ## 2026-08-28 (iii) — Cohort ladder: bigger cohorts make imitation WORSE, and the seeds agree
 
 The rung-1000 table left one number worth chasing: a 40-wallet cohort selected by SOL balance beat
