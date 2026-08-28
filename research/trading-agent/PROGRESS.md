@@ -14,6 +14,90 @@ program logs reasoning and scoping; once Phase 0 starts, entries carry real numb
 
 ---
 
+## 2026-08-27 — EARLINESS: the first tier-B feature with a monotone link to outcome
+
+The program's tier-A verdict is a NO-GO: price-chart-only trading showed no durable edge after 125
+bps costs, confirmed by two independent methods, with champion win rates pinned at **0.00-0.22 at
+every scale we could reach**. The charter's answer to that was the information curriculum — the
+edge, if it exists, lives in the wallet flows, not the chart. This is the first measurement that
+puts a number on that claim.
+
+**Findings**
+
+- **A single wallet-flow feature separates a 0.606 win rate from 0.063.** For each (wallet, token)
+  pair, `entry_price_pct_of_peak` is the wallet's first BUY price divided by the token's exitable
+  peak. Bucketed over **552,916 ranked pairs** on `market_dataset_large`:
+
+  | entry % of peak | n | median PnL | win rate | top-quartile |
+  | ---: | ---: | ---: | ---: | ---: |
+  | 0-10 | 14,847 | +0.0038 | 0.564 | 0.461 |
+  | 10-20 | 26,001 | +0.0179 | **0.606** | 0.486 |
+  | 20-30 | 37,818 | +0.0006 | 0.512 | 0.426 |
+  | 30-40 | 47,151 | +0.0000 | 0.499 | 0.415 |
+  | 40-50 | 62,675 | 0.0000 | 0.410 | 0.342 |
+  | 50-60 | 69,179 | 0.0000 | 0.349 | 0.290 |
+  | 60-70 | 81,411 | 0.0000 | 0.279 | 0.231 |
+  | 70-80 | 77,869 | -0.0023 | 0.225 | 0.185 |
+  | 80-90 | 72,248 | -0.0082 | 0.163 | 0.124 |
+  | 90-100 | 63,717 | -0.0139 | **0.063** | 0.048 |
+
+- **It replicates.** The same analysis on `market_dataset_snap800` — a different capture, 2.5x
+  smaller — lands every bucket within ~0.02 of these win rates (0.560 / 0.607 / 0.524 / 0.510 /
+  0.427 / 0.371 / 0.299 / 0.237 / 0.154 / 0.062). Two datasets, one curve.
+
+- **The relationship is NOT monotone at the early end, and that is the interesting part.** The
+  0-10% bucket underperforms 10-20% on both win rate (0.564 vs 0.606) and median PnL (+0.0038 vs
+  +0.0179), in both datasets. The wallet-level cut explains why: among wallets with >=5
+  earliness-scored tokens, the 0-20% band carries a **21x higher suspect rate** (0.064 vs 0.003)
+  than every other band. The earliest cohort is disproportionately snipers and bots buying
+  everything, including the ~95% that die. **"Earliest" is not the target; "early and selective"
+  is** — the best band by median PnL is 20-40% (+0.1239 SOL, consistency 0.400).
+
+- **Most wallets live where the money is lost.** Of 22,864 wallets with enough evidence, 13,555
+  sit in the 60-100% bands; the 80-100% band has median consistency **0.000** — it never profits.
+
+**Decisions**
+
+- **Earliness is a WALLET LABEL, not a live observation, and the code must never blur that.** The
+  peak is computed over the token's whole tape, so feeding `entry_price_pct_of_peak` to the agent
+  as a feature would be plain lookahead leakage. Its legitimate use is to rank who repeatedly
+  arrives early-and-selective, and then follow those wallets forward — which is causally clean and
+  is the tier-B channel the charter actually asked for. Anyone wiring this into an observation
+  vector should read this paragraph first.
+
+- **The peak is the p99 of traded prices, not the max.** One fat-fingered print sets a high nobody
+  could have sold into, and dividing by it flatters every wallet on that token equally.
+  `token_peak_price_max` is retained for reference and is never the denominator.
+
+- **Null, never a default, wherever the answer would be invented.** A wallet whose first row on a
+  token is a SELL was airdropped or transferred in and never paid that price; a token below the
+  trade floor has no meaningful peak. A 0.0 in either case reads as *maximally early* and would
+  promote exactly the wallets we know least about. Coverage is 560,185 / 832,606 pairs (67%); the
+  rest are honestly blank.
+
+- **Three measures, not one.** `entry_trade_rank_pct` (queue position) is kept separate from the
+  price fraction because they are different edges: on a token that chopped before running, a wallet
+  late in the queue can still buy at a pre-run price. A test pins that they can diverge, so a later
+  refactor cannot quietly collapse them into a single score.
+
+**Changes**
+
+- `data/census/earliness.py` (new), `crawler.py` (first-buy price/ts per pair), `cohorts.py`
+  (median rollups + `early_entries`), `tests/test_census_earliness.py` (8 tests). Full suite 590
+  passed, ruff clean.
+- Census re-run on `market_dataset_large`: **832,606 pairs / 94k+ wallets / 31,085 tokens**, up
+  from 339,863 / 94,367 / 14,897 on snap800. Outputs in `data/wallet_census_large/`.
+
+**Open**
+
+- **Not yet an out-of-sample test.** Everything above is descriptive over historical pairs. The
+  causal claim — that ranking wallets by past earliness predicts their FUTURE entries — is
+  untested and is the obvious next experiment. It should be pre-registered like any other.
+- The wallet-level suspect finding suggests the wash-detection flags are doing real work at the
+  early end. Whether they are calibrated correctly there has not been checked.
+
+---
+
 ## 2026-08-26 (c) — Attention-features ablation PRE-REGISTERED (not yet run)
 
 The §4.4 tier-A+ attention slots (λ_buy/μ, branching ratio n, manipulation suspicion) have been
