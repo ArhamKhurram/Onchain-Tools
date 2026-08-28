@@ -115,15 +115,23 @@ def build_labeled_wallets(dataset: Path, wanted: set[str]) -> dict:
     }
 
 
-def run_cell(arm: str, wallets: list, n: int, seed: int) -> dict:
+def run_cell(arm: str, wallets: list, n: int, seed: int,
+             max_demos: int = 20000, match_demos: int = 0) -> dict:
     """Train BC for one (arm, rung, seed). Runs in its own process."""
     start = time.time()
     try:
         from oct_trading_agent.agent.imitation.bc import BCConfig, train_bc
         from oct_trading_agent.agent.imitation.demos import build_demos
 
-        demos = build_demos(wallets)
-        steps = demos.steps
+        from oct_trading_agent.agent.imitation.demos import DemoConfig
+        demos = build_demos(wallets, DemoConfig(max_demos=max_demos))
+        steps = list(demos.steps)
+        if match_demos and len(steps) > match_demos:
+            # Deterministic per-seed subsample: same budget for every arm and rung, so any
+            # remaining difference is selection, not volume.
+            import random as _r
+            _r.Random(seed).shuffle(steps)
+            steps = steps[:match_demos]
         if len(steps) < 32:
             return asdict(
                 Cell(arm, n, seed, len(steps), 0, 0, 0.0, 0.0, 0.0, False, 0.0, {}, {},
@@ -160,6 +168,14 @@ def main() -> int:
     ap.add_argument("--out", type=Path, default=DEFAULT_OUT)
     ap.add_argument("--workers", type=int, default=0,
                     help="parallel processes (0 = CPU count - 2, minimum 2)")
+    ap.add_argument("--max-demos", type=int, default=20000,
+                    help="raise DemoConfig's global cap; the v1 run hit 20000 from N=40 up")
+    ap.add_argument("--match-demos", type=int, default=0,
+                    help="subsample every cohort to exactly this many demos. THE POINT: v1 matched "
+                         "arms on wallet COUNT, so at N=10 the PnL arm had 4,944 demos against the "
+                         "earliness arm's 837 — top-PnL wallets are high-volume traders by "
+                         "construction, so 'control wins' may have been a data-volume result. "
+                         "Matching on demos is what isolates SELECTION from VOLUME.")
     args = ap.parse_args()
 
     rungs = [int(r) for r in args.rungs.split(",") if r.strip()]
@@ -195,7 +211,7 @@ def main() -> int:
                 print(f"[ladder] skip {arm} n={n}: only {len(cohort)} wallets have trades", flush=True)
                 continue
             for seed in range(args.seeds):
-                jobs.append((arm, cohort, n, seed))
+                jobs.append((arm, cohort, n, seed, args.max_demos, args.match_demos))
 
     print(f"[ladder] {len(jobs)} cells to run", flush=True)
     results: list[dict] = []
