@@ -14,6 +14,39 @@ program logs reasoning and scoping; once Phase 0 starts, entries carry real numb
 
 ---
 
+## 2026-08-28 (vi) — Co-occurrence specced as the first Tier-B feature
+
+The 2026-08-28 (iv) finding (smart-wallet co-occurrence: >10x rate 0.003 → 0.423 out of sample) is
+now a written feature spec: [`09-cooccurrence-feature.md`](./09-cooccurrence-feature.md). It is the
+first `B_WALLET_FLOWS` slot and the concrete instantiation of the 04 LEAKAGE RULE ("rank who arrives
+early, follow them forward, strictly from history before the decision instant").
+
+**Decisions**
+
+- **Two slots, not one:** `smart_wallet_count` (distinct roster wallets that have BOUGHT the mint by
+  `as_of`) and `smart_wallet_share` (that / distinct buyers so far). The share carries the crowd-size
+  control — (iv) showed wallet-quality and crowd-size are *separate, additive* effects, so the
+  observation must let the model see both rather than pre-baking a cutoff.
+- **"Before now" replaces the study's "first 20% of queue."** The queue-fraction window is
+  whole-tape hindsight; live, the decision instant *is* the window, so the running distinct-buyer
+  count is the tradeable, trivially-causal quantity. No forward window needed.
+- **The roster is the leakage surface, and it has two halves.** (a) `RosterProvider.as_of(t)` must
+  return only wallets rankable from history `< t`, refreshed walk-forward. (b) the study's "smart =
+  earliest quintile by *hindsight peak*" label is itself lookahead — a point-in-time re-derivation
+  (realized history as-of, not forward peak) is a **precondition** for live wiring, not a follow-up.
+- **Plumbing can land ahead of validation** behind the empty-tier gate: a roster-less Tier B is a
+  correct `MISSING_SOURCE_GAP`, not a wrong number. Feature + tests can ship; admission to the live
+  observation vector waits on the point-in-time roster re-rank and a fee-net tradeable-outcome
+  re-measure.
+
+**Open**
+
+- Both (iv) blockers still stand and are now sequenced in 09 §8: point-in-time roster re-derivation,
+  then tradeable forward-return outcome, then longer horizon. Nothing here changes those; it commits
+  the design that consumes their answers.
+
+---
+
 ## 2026-08-28 (v) — Cohort ladder v2: at matched data volume, SELECTION wins
 
 The v1 ladder answered the size question and could only gesture at the selection one, because its

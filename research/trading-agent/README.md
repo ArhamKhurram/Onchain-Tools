@@ -45,6 +45,7 @@ upward later. What is *no longer* assumed is default live execution — that is 
 **Living documents (updated as work proceeds):**
 - **[`PROGRESS.md`](./PROGRESS.md)** — running, reverse-chronological log of decisions, findings, and progress. Start here to see *what's changed*.
 - **[`subprojects/trade-flow-attention.md`](./subprojects/trade-flow-attention.md)** — full standalone development of the trade-flow attention model (companion to paper §4.4 / §9.10).
+- **[`09-cooccurrence-feature.md`](./09-cooccurrence-feature.md)** — spec for the first Tier-B feature: smart-wallet co-occurrence, its two slots, and the roster leakage firewall (operationalizes the 04 LEAKAGE RULE; empirical basis in PROGRESS 2026-08-28 (iv)).
 
 ---
 
