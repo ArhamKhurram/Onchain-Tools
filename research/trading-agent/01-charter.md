@@ -80,8 +80,8 @@ Success is defined **primarily by the honesty and rigor of the answer**, not by 
 3. A defensible, documented yes/no on the go/no-go question at each gate, caveats attached.
 
 **Outcome success (if edge exists):**
-4. A raw-chart agent beating hold-SOL and buy-and-hold **after realistic costs** on held-out periods (Phase 1 gate).
-5. Per-tier ablations showing statistically credible marginal edge for at least the first information tiers, or an honest report that a tier does not help (Phase 2 gate).
+4. A raw-chart agent beating hold-SOL and buy-and-hold **after realistic costs** on held-out periods (Phase 1 gate). — **ANSWERED NO (2026-08-28), and the gate is closed.** Three rungs, two independent methods. The closing run beat buy-and-hold on 82.7% of held-out tokens and `hold_sol` on 1.0%; it learned risk avoidance (lowest max drawdown in the table) rather than edge, and paid the largest fee bill to land below doing nothing. Criterion 3 — an honest documented no — is what this satisfies.
+5. Per-tier ablations showing statistically credible marginal edge for at least the first information tiers, or an honest report that a tier does not help (Phase 2 gate). — **IN PROGRESS.** Tier B has its first positive result: earliness orders outcome monotonically in sample and survives a split-sample test on unseen tokens. It is a wallet *label*, not an observation — the peak is hindsight — so the marginal-edge ablation this criterion asks for still has to be run against a point-in-time feature derived from it.
 6. An out-of-sample-validated, diverse population of **individually edge-positive** archetypes.
 7. Positive per-token edge vs the labeled-trader cohort on **forward** data, discounted for the residual selection effect (paper §9.3).
 8. A sustained paper run reproducing backtest within tolerance, and — only then — a minimal-size live pilot inside the sniper caps.

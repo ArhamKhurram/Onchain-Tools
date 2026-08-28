@@ -106,6 +106,34 @@ performance delta at each gate *is* the measured marginal edge of that informati
 3. **Convergence A/B (paper §4.3):** OCT ranking/decisions **with vs without** Model N — a clean marginal measurement of the agent's contribution to the ensemble.
 4. **Honest-null reporting:** a tier that does not add edge is **reported and dropped**. That is a valid scientific outcome; the curriculum is designed to tell us cleanly when a tier fails.
 
+### 3.1 Tier-A result (2026-08-28): reported and dropped
+
+The raw-chart tier is the first to complete this protocol, and it failed it. Three rungs, two
+independent methods, `hold_sol` never beaten. Per rule 4 the tier is **priced at ~zero and dropped
+as an edge source** — recorded here so the null is part of the evaluation record rather than a gap
+in it.
+
+The closing run also demonstrates why the metric set is plural. Read on max drawdown alone the
+agent is the *best* policy in the table (0.031 against buy-and-hold's 5.005); read on hit rate
+alone `random` wins (22.0%); read on "beats buy-and-hold" alone the agent wins 82.7% of tokens.
+Only the joint read — return, versus the do-nothing baseline, net of the fees it took to get there
+— gives the right answer. **Any single number here would have reported a success.**
+
+### 3.2 Split-sample protocol for wallet-derived labels
+
+A label computed over a wallet's history is not evaluated like a tier. Correlating past behaviour
+with past profit is circular; the question is whether a ranking built on the past orders the
+future. The protocol used for earliness, and required for anything like it:
+
+1. Split every (wallet, token) pair at the median first-buy timestamp.
+2. Rank wallets using **period A only**, with a minimum evidence threshold per wallet.
+3. Measure realized outcome in **period B**, again with a minimum threshold.
+4. **Report the pair overlap.** For earliness it was zero of 100,715 — period-B outcomes were
+   earned entirely on tokens the ranking never saw. Without that number the test proves nothing.
+5. Report the in-sample and out-of-sample effect sizes **together**. Earliness spans 0.606→0.063
+   in sample and 0.403→0.350 out of sample; the shrinkage is expected — the in-sample figure is
+   inflated by a mechanical component — and quoting only the larger number would be dishonest.
+
 ---
 
 ## 4. Statistical-rigor rules (paper §8.5, §9.6)

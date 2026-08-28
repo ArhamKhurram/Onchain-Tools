@@ -14,6 +14,61 @@ program logs reasoning and scoping; once Phase 0 starts, entries carry real numb
 
 ---
 
+## 2026-08-28 (iii) — Cohort ladder: bigger cohorts make imitation WORSE, and the seeds agree
+
+The rung-1000 table left one number worth chasing: a 40-wallet cohort selected by SOL balance beat
+the agent on 97% of held-out tokens. So — does cohort SIZE help, and does cohort SELECTION help?
+`scripts/cohort_ladder.py` separates them: rungs at 10/20/30/40/50/75/100/150/200 wallets, two arms
+(earliness-ranked vs a size-matched PnL-ranked control drawn from the same candidate pool), five
+seeds each, behavioural cloning against the cohort's real decisions. 90 cells, all from disk — no
+Pinax call, so it is reproducible and rate-limit-free.
+
+**Findings**
+
+| N | earliness val_acc | spread | demos | | pnl_control val_acc | spread | demos |
+| ---: | ---: | ---: | ---: | --- | ---: | ---: | ---: |
+| 10 | 0.669 | 0.032 | 837 | | **0.841** | 0.006 | 4,944 |
+| 20 | 0.766 | 0.011 | 2,687 | | 0.705 | 0.008 | 11,306 |
+| 30 | **0.782** | 0.012 | 3,394 | | 0.672 | 0.013 | 17,739 |
+| 40 | 0.779 | 0.007 | 4,249 | | 0.647 | 0.021 | 20,000* |
+| 50 | 0.731 | 0.004 | 5,401 | | 0.650 | 0.021 | 20,000* |
+| 75 | 0.717 | 0.017 | 8,697 | | 0.658 | 0.019 | 20,000* |
+| 100 | 0.706 | 0.019 | 11,231 | | 0.647 | 0.010 | 20,000* |
+| 150 | 0.698 | 0.022 | 20,000* | | 0.648 | 0.010 | 20,000* |
+| 200 | 0.690 | 0.012 | 20,000* | | 0.667 | 0.013 | 20,000* |
+
+\* `DemoConfig.max_demos = 20000` binds — above this, extra wallets add no data.
+
+- **Neither arm improves with cohort size. Both peak early and decline.** Earliness peaks at
+  **N=30 (0.782)**, the control at **N=10 (0.841)**; both fall away after. More wallets makes
+  cloning *harder*, which is the opposite of the "more data is better" prior this ladder was built
+  to test.
+- **The decline is not noise.** Cross-seed spread is 0.004–0.032, far smaller than the 0.09–0.19
+  swings between rungs. Running five seeds in parallel was precisely to be able to say this.
+- **No collapse anywhere: `trades=True` in 90/90 cells.** The from-scratch degenerate corner
+  (PROGRESS 2026-08-23 e/f) does not reappear at any cohort size in either arm.
+- **The reading: imitation quality tracks the COHERENCE of the expert set, not its size.** Twenty
+  traders who disagree are a harder target than five who do not; cloning a mixture converges toward
+  the average of contradictory advice. That is a useful thing to know before scaling any expert set.
+
+**Decisions**
+
+- **Stop treating "more wallets" as an improvement axis.** The next lever is expert *coherence* —
+  cluster the cohort by behaviour and clone within a cluster — not a longer wallet list.
+
+**Open — two confounds this run cannot resolve, stated plainly**
+
+- **The arms are matched on wallet COUNT, not on demo COUNT.** At N=10 the control has 4,944 demos
+  against earliness's 837, because top-PnL wallets are high-volume traders by construction. So
+  "control beats earliness at N=10" may be a data-volume result, not a selection result. **A fair
+  arm comparison must match on demos.** Until it does, this ladder answers the size question and
+  only gestures at the selection one.
+- **The 20,000-demo cap binds from N=150 (earliness) and N=40 (control).** Above those the rungs
+  vary expert *diversity* at fixed data volume — which is arguably the more interesting experiment,
+  but it is not the one the rung labels imply, and the cap should be raised or the axis relabelled.
+
+---
+
 ## 2026-08-28 (ii) — 1000-token rung: NO-GO. The agent converged on doing nothing, expensively.
 
 The largest tier-A run the capture supports finished: rung 1000, 1500 PPO iterations, 300 held-out

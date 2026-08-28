@@ -50,12 +50,28 @@ upward later. What is *no longer* assumed is default live execution — that is 
 
 ## Current status
 
-**In execution.** The code lives in `src/oct_trading_agent/`. The Phase-1 gate — does *any* edge
-survive realistic costs from the raw chart alone — was answered **NO-GO** on 2026-08-24 by two
-independent methods (a PPO token-count ladder and MAP-Elites population search), which is a valid
-outcome of the evaluation, not a failure of it (paper §12.1). Per the curriculum's own design the
-program moved on to **Phase 2 (wallet flows first)**; that machinery has landed and the tier-B
-measurement is pending. See [`PROGRESS.md`](./PROGRESS.md) for the running detail.
+**In execution, and tier A is now closed.** The code lives in `src/oct_trading_agent/`.
+
+The Phase-1 gate — does *any* edge survive realistic costs from the raw chart alone — is answered
+**NO-GO**, on three rungs and by two independent methods. The largest run the capture supports
+(1000 tokens, 1500 PPO iterations, 300 held-out) finished 2026-08-28 and is the most legible of
+the three, because its baseline table says what the policy learned *instead* of an edge: the
+lowest max drawdown in the table (0.031 against buy-and-hold's 5.005) and the largest fee bill
+(2,549 trades) to land a hair below the policy that trades nothing at all. It learned that most of
+these tokens die and expressed that as "barely participate". A NO-GO is a valid outcome of the
+evaluation, not a failure of it (paper §12.1).
+
+**The most useful number in that table is not the agent's.** The 40 tracked wallets were the only
+profitable policy, on 51 trades, and beat the agent on 97% of held-out tokens while trading 50x
+less — and they were selected by SOL balance, i.e. by size rather than by skill.
+
+**Tier B has its first result.** *Earliness* — a wallet's first-buy price as a fraction of the
+token's exitable peak — orders outcome monotonically across 552,916 ranked pairs (win rate 0.606
+to 0.063), replicates on a second capture, and **survives a split-sample test**: rank wallets on
+the first half, and the earliest quintile is the only one with positive median PnL on the second,
+earned on tokens the ranking never saw (zero of 100,715 pairs recur). It is a wallet LABEL, not a
+live feature — the peak is hindsight, so feeding it to the agent as an observation would be
+lookahead leakage. See [`PROGRESS.md`](./PROGRESS.md) for the running detail and the caveats.
 
 | Artifact | State |
 |---|---|
@@ -65,8 +81,10 @@ measurement is pending. See [`PROGRESS.md`](./PROGRESS.md) for the running detai
 | Progress log | Running (`PROGRESS.md`) — the newest entry is the fastest way in |
 | Data pipeline / feature store / simulator | Built (Pinax capture + decoded tape, point-in-time store, multi-venue AMM fills calibrated per venue) |
 | Learned policies | Built and trained: PPO token-count ladder, BC warm-start from tracked traders, PBT + MAP-Elites populations |
-| Phase-1 (raw chart) verdict | **NO-GO**, replicated across two methods |
-| vs-traders ladder | Rungs 10 and 100 complete (rung 100: **NO-GO** — beat `buy_and_hold`, could not beat `hold_sol`); rung 1000 in flight, **no verdict yet** |
+| Phase-1 (raw chart) verdict | **NO-GO**, replicated across two methods and three rungs |
+| vs-traders ladder | **Complete.** Rungs 10 / 100 / 1000 all **NO-GO** — each beat `buy_and_hold` and none beat `hold_sol`. Rung 1000 (2026-08-28): agent mean -0.0001 / sharpe -0.08 / 2,549 trades; `tracked_traders` +0.0002 on 51 trades and the only positive policy |
+| Tier-B: earliness | **First positive signal.** Monotone in sample (0.606 to 0.063 win rate over 552,916 pairs), replicates on a second capture, and predicts out of sample on unseen tokens. `data/census/earliness.py`; ranked export at `data/early_selective_wallets.csv` (8,491 wallets) |
+| Cohort ladder | `scripts/cohort_ladder.py` — behavioural cloning against 10/20/30/... wallets, earliness-ranked vs a PnL-ranked control, seeds in parallel. Runs entirely from disk |
 | Convergence adapter / sniper bridge | Interface stubs only — nothing proposes to `/sniper/v1` |
 | Any live money | Never spent, and not permitted until the full backtest→paper→live gate is cleared |
 

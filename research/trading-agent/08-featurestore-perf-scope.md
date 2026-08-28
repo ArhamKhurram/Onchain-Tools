@@ -99,3 +99,18 @@ Do not do Tier 3 as a performance task.
 `scripts/bench_rollout_vectorization.py` (`db2685d`) already measures the collector/env split
 end-to-end on the real ladder path. Extend it rather than writing a new harness, and report the
 `env.step` share before and after — the share, not the microbenchmark, is the number that matters.
+
+---
+
+## Status (2026-08-28)
+
+Tier-1 indexing shipped and was measured at **2.74× on the ladder** (135.0 → 49.2 s/iter,
+like-for-like on the same 40-wallet cohort). The store is no longer the binding constraint on the
+runs this program is doing.
+
+The constraint that replaced it is **data volume, not lookup speed**: the 1000-token rung is the
+highest the current capture supports, and the census work now reads 832,606 (wallet, token) pairs
+straight from parquet without touching the store at all. A note for whoever next optimises here —
+earliness and the cohort ladder are deliberately *outside* the point-in-time store, because they
+are labels computed with hindsight rather than features served as-of a decision instant
+(`04-data-spec.md` §2.1a). Do not "optimise" them into it.

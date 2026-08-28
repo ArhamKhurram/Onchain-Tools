@@ -162,6 +162,14 @@ Three concrete couplings (paper §4, §7, §10.4; root `CLAUDE.md` sniper sectio
 
 1. **Pinax new-pair firehose** — the transaction-level tape that feeds the replay simulator and the feature store. *To be wired* (per the paper's data table). This is the primary data dependency.
 2. **Labeled wallet DB** — the operator's database of active daily traders, labeled by full win-and-loss histories. Feeds imitation bootstrapping and the per-token benchmark opponents. The full-history labeling is what defuses most survivorship bias (paper §9.3).
+
+   **Census + earliness (`data/census/`).** The DB is now derived from the captured tape itself
+   rather than only supplied: `crawler.py` reduces the swap frame to one row per (wallet, token)
+   with FIFO-realized PnL, and `earliness.py` adds how early into a token's life the wallet bought.
+   At `market_dataset_large` scale that is 832,606 pairs over 94k wallets and 31,085 tokens, on
+   disk, with no vendor call — which is what makes wallet-selection experiments reproducible and
+   rate-limit-free. Earliness is a **label, not an observation**: its denominator is a hindsight
+   peak, so it must never reach the feature store (see `04-data-spec.md` §2.1a).
 3. **`/sniper/v1` control plane as the live actuator + safety envelope** — reused, **not rebuilt**. Per `CLAUDE.md`: it mounts on its own hardened control plane (its own body parser, rate limit, auth, strict Origin/Host check), *before* `app.use(cors())`, deliberately **not** under `/api`. `executeFire` is the only function that spends, with every control (kill switch, caps, max open positions) a step inside it. The agent integrates by **proposing** to this plane — it does not touch `executeFire`, does not read the venue token (read late, never escapes the call frame), and cannot alter any cap. This boundary is a hard architectural rule, not a convention.
 
 Also reused as features / signal context: GMGN/DexScreener enrichment (metadata, safety flags), Discord/TG chatter ingestion + honest-caller reliability scoring, and OCT's existing signals (revival, FOMO smart-money, convergence). Model N becomes **one more independent input** to the convergence layer — score-level fusion only.
@@ -195,7 +203,7 @@ research/trading-agent/
     │   ├── policies/                         # actor heads; hybrid discrete-continuous action
     │   ├── critics/                          # distributional (C51/QR-DQN/IQN), CVaR objectives
     │   ├── offline/                          # IQL/CQL pretraining
-    │   ├── imitation/                        # BC, GAIL/AIRL, DAgger corrections
+    │   ├── imitation/                        # BC, GAIL/AIRL, DAgger corrections; cohort demos
     │   ├── online/                           # PPO fine-tune, prioritized recency buffer
     │   ├── population/                        # PBT, ES, MAP-Elites archive
     │   └── continual/                        # regime detection, meta-adaptation, anti-forgetting
