@@ -1,4 +1,5 @@
-import { type ReactNode, Fragment } from 'react';
+import { type ReactNode, Fragment, useState } from 'react';
+import { Copy, Check } from 'lucide-react';
 import type { ContractLinkTemplates, ContractClickAction } from '../../types';
 import { useAppStore } from '../../stores/appStore';
 import { buildContractUrl, DEFAULT_LINK_TEMPLATES } from '../../utils/contractUrl';
@@ -95,6 +96,60 @@ function handleContractClick(addr: string, action: ContractClickAction, linkTemp
     const evmChain = useAppStore.getState().addressChains[addr.toLowerCase()];
     window.open(buildContractUrl(addr, linkTemplates, evmChain), '_blank');
   }
+}
+
+/**
+ * A detected contract address rendered as a colored pill. The pill body keeps the
+ * existing click behavior (`copy_open` by default — copy AND open). The trailing icon
+ * is a dedicated copy button that copies WITHOUT opening (`stopPropagation`), which is
+ * the affordance the pill lacked: previously the only way to copy also navigated away.
+ * Matches the Copy/Check pattern used in the caller radar table.
+ */
+function ContractPill({
+  addr,
+  color,
+  clickAction,
+  linkTemplates,
+  showFull,
+}: {
+  addr: string;
+  color: string;
+  clickAction: ContractClickAction;
+  linkTemplates: ContractLinkTemplates;
+  showFull: boolean;
+}) {
+  const [copied, setCopied] = useState(false);
+
+  const copyOnly = (e: React.MouseEvent) => {
+    e.stopPropagation(); // never trigger the pill's open action
+    navigator.clipboard.writeText(addr);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 1500);
+  };
+
+  return (
+    <span
+      className="pl-1 pr-0.5 rounded text-[13px] font-mono inline-flex items-center gap-1 transition-opacity hover:opacity-80"
+      style={{ backgroundColor: colorWithExtraAlpha(color, 0.125), color }}
+    >
+      <span
+        className="cursor-pointer"
+        title={contractClickTitle(clickAction, addr)}
+        onClick={() => handleContractClick(addr, clickAction, linkTemplates)}
+      >
+        {showFull ? addr : `${addr.slice(0, 6)}...${addr.slice(-4)}`}
+      </span>
+      <button
+        type="button"
+        className="shrink-0 opacity-70 hover:opacity-100 leading-none"
+        title={copied ? 'Copied!' : 'Copy address'}
+        aria-label="Copy contract address"
+        onClick={copyOnly}
+      >
+        {copied ? <Check size={12} className="text-oct-green" /> : <Copy size={12} />}
+      </button>
+    </span>
+  );
 }
 
 function applyInlineFormatting(
@@ -204,15 +259,14 @@ function applyInlineFormatting(
         if (splits[i]) newParts.push(splits[i]);
         if (i < splits.length - 1) {
           newParts.push(
-            <span
+            <ContractPill
               key={`contract-${addr}-${i}`}
-              className="px-1 rounded text-[13px] font-mono cursor-pointer inline-flex items-center gap-1 transition-opacity hover:opacity-80"
-              style={{ backgroundColor: colorWithExtraAlpha(color, 0.125), color }}
-              title={contractClickTitle(clickAction, addr)}
-              onClick={() => handleContractClick(addr, clickAction, linkTemplates)}
-            >
-              {showFull ? addr : `${addr.slice(0, 6)}...${addr.slice(-4)}`}
-            </span>
+              addr={addr}
+              color={color}
+              clickAction={clickAction}
+              linkTemplates={linkTemplates}
+              showFull={showFull}
+            />
           );
         }
       }
@@ -235,15 +289,14 @@ function renderInlineMarkdown(content: string, contractAddresses: string[], ment
       const isEvm = matchedAddr.startsWith('0x');
       const color = isEvm ? (addressColors?.evm ?? '#fee75c') : (addressColors?.sol ?? '#14f195');
       return (
-        <span
+        <ContractPill
           key={`code-contract-${i}`}
-          className="px-1 rounded text-[13px] font-mono cursor-pointer inline-flex items-center gap-1 transition-opacity hover:opacity-80"
-          style={{ backgroundColor: colorWithExtraAlpha(color, 0.125), color }}
-          title={contractClickTitle(clickAction, matchedAddr)}
-          onClick={() => handleContractClick(matchedAddr, clickAction, linkTemplates)}
-        >
-          {showFull ? matchedAddr : `${matchedAddr.slice(0, 6)}...${matchedAddr.slice(-4)}`}
-        </span>
+          addr={matchedAddr}
+          color={color}
+          clickAction={clickAction}
+          linkTemplates={linkTemplates}
+          showFull={showFull}
+        />
       );
     }
     return (
