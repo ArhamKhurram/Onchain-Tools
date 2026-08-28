@@ -65,6 +65,7 @@ import { sendPushover } from '../utils/pushover.js';
 import { formatCompact } from '../wallets/balanceChecker.js';
 import { DEFAULT_REVIVAL_CONFIG, evaluateRevival, type RevivalEvaluation } from './detector.js';
 import { fetchCandlesForToken } from './candleSource.js';
+import { fetchBroadTier, isBroadTierEnabled } from './broadUniverse.js';
 import {
   isBackedOff,
   resolveRequestSpacingMs,
@@ -724,7 +725,44 @@ class RevivalPoller {
     this.outcomes.resumeEntries(open.map((e) => ({ entry: e, userId: e.userId })));
   }
 
+  /**
+   * Feed universe PLUS the optional market-wide broad tier.
+   *
+   * The feed tier answers "what did our callers mention in the last 48h" — which structurally
+   * cannot see an old token waking up (see broadUniverse.ts). The broad tier fills exactly that
+   * hole and is off unless OCT_REVIVAL_BROAD_TIER is set.
+   */
   private async loadUniverse(): Promise<RevivalUniverse> {
+    const universe = await this.loadFeedUniverse();
+    if (!isBroadTierEnabled()) return universe;
+
+    // Broad-tier tokens belong to no one in particular, so they go to everyone already receiving
+    // revival alerts. With no such users there is nobody to tell, and discovery would be wasted
+    // requests.
+    const audience = new Set<string>();
+    for (const entry of universe.values()) for (const u of entry.subscribers) audience.add(u);
+    if (audience.size === 0) return universe;
+
+    let added = 0;
+    for (const network of resolveRevivalNetworks()) {
+      for (const token of await fetchBroadTier(network)) {
+        const key = universeKey(network, token.address);
+        const existing = universe.get(key);
+        if (existing) {
+          // Already in someone's feed — keep the feed entry, it has the real subscriber list.
+          continue;
+        }
+        universe.set(key, { address: token.address, network, subscribers: new Set(audience) });
+        added += 1;
+      }
+    }
+    if (added > 0) {
+      console.log(`[RevivalPoller] broad tier added ${added} token(s) beyond the feed universe.`);
+    }
+    return universe;
+  }
+
+  private async loadFeedUniverse(): Promise<RevivalUniverse> {
     const since = new Date(Date.now() - UNIVERSE_LOOKBACK_MS).toISOString();
     const enabled = new Set(resolveRevivalNetworks());
     if (enabled.size === 0) return new Map();
