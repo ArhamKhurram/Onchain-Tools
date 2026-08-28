@@ -101,7 +101,14 @@ function checkPushover(cfg: PushoverConfig, msg: FrontendMessage, evmChainHint: 
   if (!triggered) return;
 
   if (f.userIds.length > 0 && !f.userIds.includes(msg.author.id)) return;
-  if (f.channelIds.length > 0 && !f.channelIds.includes(msg.channelId)) return;
+  // A Telegram forum-topic message carries `chatId:topicId`; a filter saved for the
+  // whole group (bare chatId — every pre-topics filter) must keep matching, so the
+  // group half of the id counts too. Discord ids never contain ':', so this is inert there.
+  if (
+    f.channelIds.length > 0 &&
+    !f.channelIds.includes(msg.channelId) &&
+    !f.channelIds.includes(msg.channelId.split(':')[0])
+  ) return;
   if (f.guildIds.length > 0 && msg.guildId && !f.guildIds.includes(msg.guildId)) return;
 
   let title: string;

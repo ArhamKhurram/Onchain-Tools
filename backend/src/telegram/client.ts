@@ -4,7 +4,7 @@ import { StringSession } from 'teleproto/sessions/index.js';
 import { NewMessage } from 'teleproto/events/index.js';
 import { EditedMessage } from 'teleproto/events/EditedMessage.js';
 import { Api } from 'teleproto/tl/index.js';
-import type { TelegramChat, TelegramSender, TelegramRawMessage, TelegramMedia, TelegramButton } from './types.js';
+import type { TelegramChat, TelegramSender, TelegramRawMessage, TelegramMedia, TelegramButton, TelegramForumTopic } from './types.js';
 import { rewriteReferralLinks } from '../utils/contract.js';
 
 /**
@@ -53,6 +53,10 @@ export class TelegramClientWrapper extends EventEmitter {
   private apiHash: string;
   private chatCache = new Map<string, TelegramChat>();
   private senderCache = new Map<string, TelegramSender>();
+  /** `chatId:topicId` -> topic title, filled by getForumTopics (and lazily on first sight). */
+  private topicTitles = new Map<string, string>();
+  /** Chats with a topic-title fetch already in flight, so one unknown topic = one fetch. */
+  private topicFetchInFlight = new Set<string>();
   private connected = false;
   private handlersWired = false;
   private disposed = false;
@@ -266,6 +270,7 @@ export class TelegramClientWrapper extends EventEmitter {
     const sticker = await this.resolveSticker(message);
     const poll = this.resolvePoll(message);
     const buttons = this.resolveButtons(message);
+    const topicId = extractTopicId(message.replyTo);
 
     return {
       id: message.id,
@@ -274,11 +279,11 @@ export class TelegramClientWrapper extends EventEmitter {
       chatType: chat.type,
       chatUsername: chat.username ?? null,
       chatInviteLink: chat.inviteLink ?? null,
-      // Topic scoping. Title is resolved later (topics API); ingestion only pins the id so routing
-      // and per-topic subscriptions work immediately — the title is cosmetic and degrades to
-      // "Topic <id>" until then.
-      topicId: extractTopicId(message.replyTo),
-      topicTitle: null,
+      // Topic scoping. The id is what routing and per-topic subscriptions key on; the title is
+      // cosmetic, served from the topic-title cache and lazily refreshed in the background —
+      // an unknown topic renders as "Topic <id>" until the fetch lands, never blocks ingestion.
+      topicId,
+      topicTitle: this.topicTitleFor(chat.id, topicId),
       sender,
       text: this.applyLinkEntities(message),
       date: message.date,
@@ -403,6 +408,8 @@ export class TelegramClientWrapper extends EventEmitter {
           title: entity.title ?? 'Channel',
           type: entity.megagroup ? 'supergroup' : 'channel',
           username: entity.username ?? null,
+          // Topic-enabled supergroup — the picker offers per-topic subscription for these.
+          isForum: !!entity.forum,
         };
       } else {
         return null;
@@ -433,6 +440,59 @@ export class TelegramClientWrapper extends EventEmitter {
       if (exported instanceof Api.ChatInviteExported) return exported.link;
     } catch {
       // ignore - no permission or unavailable
+    }
+    return null;
+  }
+
+  /**
+   * The forum topics of a topic-enabled supergroup, oldest-topic-first as Telegram returns them.
+   *
+   * Also the topic-title source for ingestion: every title seen here lands in `topicTitles`, so
+   * later messages in those topics carry a real name instead of the "Topic <id>" fallback. This
+   * TL layer exposes the call as `messages.GetForumTopics` (peer-based); the offset triple is the
+   * pagination cursor and zeroes mean "from the top" — 100 topics covers any real group's list.
+   * Returns [] on any failure (not-a-forum, no access, flood-wait) rather than throwing: the
+   * caller is a picker, and an empty list is the honest render for every one of those cases.
+   */
+  async getForumTopics(chatId: string): Promise<TelegramForumTopic[]> {
+    try {
+      const entity = await this.client.getEntity(chatId);
+      const res = await this.client.invoke(
+        new Api.messages.GetForumTopics({
+          peer: entity,
+          offsetDate: 0,
+          offsetId: 0,
+          offsetTopic: 0,
+          limit: 100,
+        }),
+      );
+      const topics: TelegramForumTopic[] = [];
+      for (const t of res.topics ?? []) {
+        if (!(t instanceof Api.ForumTopic)) continue; // skip ForumTopicDeleted
+        topics.push({ id: t.id, title: t.title, closed: t.closed ? true : undefined });
+        this.topicTitles.set(`${chatId}:${t.id}`, t.title);
+      }
+      return topics;
+    } catch (err: any) {
+      console.warn(`[Telegram] getForumTopics failed for ${chatId}:`, err.message);
+      return [];
+    }
+  }
+
+  /**
+   * Topic title from the cache, kicking off ONE background refresh per chat when an unknown
+   * topic appears mid-stream. The current message keeps the null (rendered as "Topic <id>");
+   * every following message in that topic gets the real name. Deliberately not awaited — a
+   * title is cosmetic and must never delay or fail message ingestion.
+   */
+  private topicTitleFor(chatId: string, topicId: number | null): string | null {
+    if (topicId == null) return null;
+    const key = `${chatId}:${topicId}`;
+    const known = this.topicTitles.get(key);
+    if (known !== undefined) return known;
+    if (!this.topicFetchInFlight.has(chatId)) {
+      this.topicFetchInFlight.add(chatId);
+      void this.getForumTopics(chatId).finally(() => this.topicFetchInFlight.delete(chatId));
     }
     return null;
   }
@@ -631,6 +691,8 @@ export class TelegramClientWrapper extends EventEmitter {
             title: entity.title ?? 'Channel',
             type: entity.megagroup ? 'supergroup' : 'channel',
             username: entity.username ?? null,
+            // The picker keys the per-topic subscription UI off this flag.
+            isForum: !!entity.forum,
           };
         }
 

@@ -56,6 +56,7 @@ export type {
   TelegramButton,
   FrontendMessage,
   TelegramChatInfo,
+  TelegramForumTopicInfo,
   ContractEntry,
   RevivalAlertData,
   BreakoutAlertData,

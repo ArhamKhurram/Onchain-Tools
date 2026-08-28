@@ -827,6 +827,15 @@ export interface TelegramChatInfo {
   title: string;
   type: 'user' | 'group' | 'supergroup' | 'channel';
   photo?: string | null;
+  /** Topic-enabled (forum) supergroup — its topics are separately subscribable. */
+  isForum?: boolean;
+}
+
+/** One forum topic of a topic-enabled Telegram supergroup (GET /telegram/chats/:id/topics). */
+export interface TelegramForumTopicInfo {
+  id: number;
+  title: string;
+  closed?: boolean;
 }
 
 export interface GuildInfo {

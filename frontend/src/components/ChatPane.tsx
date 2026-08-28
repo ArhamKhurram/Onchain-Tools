@@ -887,8 +887,14 @@ export default function ChatPane({ roomId, paneIndex, paneCount, editMode, varia
                 : Infinity;
               const isCompact = sameAuthor && timeDiff < 5 * 60 * 1000 && prev?.channelId === msg.channelId;
 
+              // A forum-topic message's channelId is `chatId:topicId`; a color saved
+              // for the whole group (bare chatId — every pre-topics color) must
+              // still apply, so fall back to the group half of the id.
+              const tgGroupId = msg.channelId.split(':')[0];
               const guildColor = msg.source === 'telegram'
-                ? config?.telegramColors?.[msg.channelId] ?? config?.dmColors?.[msg.channelId]
+                ? config?.telegramColors?.[msg.channelId]
+                  ?? config?.telegramColors?.[tgGroupId]
+                  ?? config?.dmColors?.[msg.channelId]
                 : msg.guildId
                   ? config?.guildColors?.[msg.guildId]
                   : config?.dmColors?.[msg.channelId];

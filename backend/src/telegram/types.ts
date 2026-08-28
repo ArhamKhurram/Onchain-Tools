@@ -5,6 +5,16 @@ export interface TelegramChat {
   photo?: string | null;
   username?: string | null;
   inviteLink?: string | null;
+  /** Topic-enabled (forum) supergroup — its topics are separately subscribable channels. */
+  isForum?: boolean;
+}
+
+/** One forum topic of a topic-enabled supergroup, as the topics API lists them. */
+export interface TelegramForumTopic {
+  id: number;
+  title: string;
+  /** Closed topics still ingest history but usually stop producing new messages. */
+  closed?: boolean;
 }
 
 export interface TelegramSender {
