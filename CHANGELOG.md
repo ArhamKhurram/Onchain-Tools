@@ -4,6 +4,16 @@ All notable changes to Onchain Tools are documented here. Entries before the
 rename still say "Trenchcord" — that was the product's name at the time, and
 they're left as the record of what shipped.
 
+## 2026-08-28
+
+### Fixed
+- **Colour changes apply the moment you make them** — picking a colour for a user or a keyword used to lag behind the picker, and sometimes the old colour stuck around until you reloaded. Dragging the picker no longer fires a save on every pixel of movement, saves can't overtake each other and land out of order, and a colour set against an `@handle` now matches the person it was meant for. Setting a colour and seeing it are the same instant again.
+- **The chat panes got a lot lighter** — with several panes open on busy rooms, the console was doing far more work than the handful of messages on screen justified. It now renders only the rows near your viewport instead of every message it has ever loaded. With four panes on a full room that is **800 message rows down to about 60**, a colour change that blocked the interface for **~350ms now takes ~67ms**, and fast scrolling that produced **413ms of stalls now produces none**. The whole room is scrollable straight away, too — no more waiting for older messages to page in as you scroll up.
+  - Two honest trade-offs: your browser's own Ctrl+F only finds messages currently on screen (the pane's own search still covers everything loaded), and selecting text across a very long stretch of messages stops at the rendered window.
+
+### Notes
+- **FOMO trade tracking is paused.** fomo.family is refusing our requests — not an expired token, but the account itself, so reconnecting doesn't help. The trade feed and trader lookup stay quiet until that's resolved. Everything else — the contract feed, revival and breakout alerts, callers, price alerts, the journal — is unaffected.
+
 ## 2026-08-24
 
 ### Added
