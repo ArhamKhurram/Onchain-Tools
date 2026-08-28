@@ -80,6 +80,15 @@ export interface StorageProvider {
   isUserHighlighted(userId: string, discordUserId: string, roomId?: string, username?: string | null): Promise<boolean>;
 
   getContracts(userId: string, limit?: number, since?: string): Promise<ContractEntry[]>;
+  /**
+   * Column-scoped contract read for the caller-scoring board. `getContracts` does
+   * `select('*')`, dragging message text, description, and every enrichment/display
+   * column across the wire for up to MAX_CONTRACTS (20k) rows — the single largest
+   * source of Supabase egress on the derived-scores path. This returns only the
+   * fields `buildCallerScores` + `getPeaks` read; all other ContractEntry fields
+   * come back blank/undefined. Locally it may delegate to `getContracts` (no egress).
+   */
+  getContractsForScoring(userId: string, limit?: number, since?: string): Promise<ContractEntry[]>;
   /** One specific logged row, for callers that know exactly which row they mean. */
   getContractByMessage(userId: string, messageId: string, address: string): Promise<ContractEntry | null>;
   logContract(userId: string, entry: ContractEntry): Promise<ContractEntry>;

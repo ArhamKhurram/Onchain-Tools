@@ -90,6 +90,15 @@ export class JsonStorageProvider implements StorageProvider {
     return contractLog.getContracts(limit, since);
   }
 
+  /**
+   * Local storage is JSON files on disk — reading every column costs nothing over the
+   * wire, so the slim scoring read is just the full read. The column-scoping only
+   * matters on the hosted (Supabase) path, where it is the actual egress fix.
+   */
+  async getContractsForScoring(userId: string, limit?: number, since?: string): Promise<ContractEntry[]> {
+    return this.getContracts(userId, limit, since);
+  }
+
   async getContractByMessage(_userId: string, messageId: string, address: string): Promise<ContractEntry | null> {
     return contractLog.getContractByMessage(messageId, address);
   }

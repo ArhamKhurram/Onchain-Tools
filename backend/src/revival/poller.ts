@@ -679,7 +679,8 @@ class RevivalPoller {
       if (!this.db) return;
       const { data, error } = await this.db
         .from('revival_alerts')
-        .select('*')
+        // Column-scoped: the mapper below reads only these fields (egress hygiene on a 5-min poll).
+        .select('id, kind, mint, symbol, network, price_usd, mcap_usd, atr_z, rvol, baseline_price_usd, run_multiple, drawdown_from_peak, triggered_at, peak_price_usd, peak_mcap_usd, peak_multiple, peak_at, outcome_window_closed_at, user_id')
         .is('outcome_window_closed_at', null)
         .limit(500);
       if (error) {

@@ -143,7 +143,8 @@ class JournalPoller {
     if (!this.db) return [];
     const { data, error } = await this.db
       .from('journal_wallets')
-      .select('*')
+      // Column-scoped: the mapper below reads only these fields (egress hygiene on a 2-min poll).
+      .select('id, address, label, last_signature, last_polled_at, created_at, user_id')
       .order('created_at', { ascending: true })
       .limit(500);
     if (error) {
