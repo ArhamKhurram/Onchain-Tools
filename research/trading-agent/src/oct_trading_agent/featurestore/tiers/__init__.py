@@ -31,14 +31,26 @@ from .tier_a import (
     TradeCount,
     default_tier_a_features,
 )
+from .tier_b import (
+    RosterProvider,
+    SmartWalletCount,
+    SmartWalletShare,
+    StaticRosterProvider,
+    WalkForwardRosterProvider,
+    smart_wallet_features,
+)
 
 
 def default_tier_b_features() -> list[PointInTimeFeature]:
-    """Wallet-flow features (unique buyers, holder deltas, concentration, creator behavior).
+    """Wallet-flow features — the DEFAULT (roster-less) set, which is empty by design.
 
-    TODO(Wave-2: featurestore B): implement over ``HolderChange`` + wallet-labeled swaps. Prefer
-    surfacing these through the trade-flow attention encoder (``agent/encoders``); this registry
-    holds only the raw, wallet-resolved flow scalars. Empty until Phase 2 unlocks Tier B.
+    The first implemented slot, smart-wallet co-occurrence (:func:`smart_wallet_features`), depends
+    on a :class:`RosterProvider` that cannot be constructed without one, so it is not part of the
+    zero-argument default: a caller with a roster registers it explicitly (see ``tier_b`` module
+    docstring). Everything else here (holder deltas, concentration, creator behavior) is still
+    TODO(Wave-2: featurestore B) over ``HolderChange`` + wallet-labeled swaps, preferably via the
+    trade-flow attention encoder (``agent/encoders``). Empty until a caller supplies a roster or
+    Phase 2 wires the rest.
     """
     return []
 
@@ -76,10 +88,16 @@ __all__ = [
     "MeanInterTradeSeconds",
     "PoolLiquidityQuote",
     "RollingVolumeQuote",
+    "RosterProvider",
+    "SmartWalletCount",
+    "SmartWalletShare",
+    "StaticRosterProvider",
     "TradeCount",
+    "WalkForwardRosterProvider",
     "default_tier_a_features",
     "default_tier_b_features",
     "default_tier_c_features",
     "default_tier_d_features",
     "default_tier_e_features",
+    "smart_wallet_features",
 ]

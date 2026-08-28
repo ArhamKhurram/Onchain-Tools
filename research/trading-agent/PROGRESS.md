@@ -14,6 +14,37 @@ program logs reasoning and scoping; once Phase 0 starts, entries carry real numb
 
 ---
 
+## 2026-08-28 (vii) — Co-occurrence plumbing landed (behind the empty-tier gate)
+
+Built the spec from (vi): `featurestore/tiers/tier_b.py` — the first implemented `B_WALLET_FLOWS`
+slot. 15 tests, ruff + mypy clean, the featurestore/leakage suites still green.
+
+**Changes**
+
+- `RosterProvider` protocol + two providers: `StaticRosterProvider` (constant — a dev/test scaffold,
+  documented as NOT point-in-time) and `WalkForwardRosterProvider` (time-ordered snapshots;
+  `as_of(t)` returns the latest with `effective_from <= t`, empty before the first — this is
+  leakage surface (a) enforced, and a test proves a wallet added in a later snapshot is *not*
+  counted at an earlier `as_of`).
+- `SmartWalletCount` (distinct roster BUYers by `as_of`) + `SmartWalletShare` (that / distinct
+  buyers so far). BUY-only, distinct, causal re-filter; a measured `0` when no roster wallet bought
+  is OBSERVED, not missing (the "0 smart buyers" band); NOT_YET_AVAILABLE before the first swap;
+  share is NOT_APPLICABLE at 0/0.
+- `smart_wallet_features(roster)` factory. The default store registry keeps Tier B literal-empty, so
+  a roster-less store is unchanged; a caller supplies a roster to unlock the tier — the curriculum
+  gate the store already models. `default_tier_b_features()` docstring updated to point at it.
+
+**Still gated (unchanged from (vi)/09 §8) — this is plumbing, not clearance for the live vector**
+
+- A concrete **census-backed** `RosterProvider` (reads the earliness export as-of) is not built yet;
+  `WalkForwardRosterProvider` is the mechanism it will feed.
+- Leakage surface (b) stands: the census "smart" label still ranks by a *hindsight peak*. The
+  point-in-time re-derivation + split-sample re-run is the precondition for live wiring.
+- Tradeable-outcome re-measure (fee-net forward return from the smart wallets' own entry, not
+  `peak/first`) still owed.
+
+---
+
 ## 2026-08-28 (vi) — Co-occurrence specced as the first Tier-B feature
 
 The 2026-08-28 (iv) finding (smart-wallet co-occurrence: >10x rate 0.003 → 0.423 out of sample) is
