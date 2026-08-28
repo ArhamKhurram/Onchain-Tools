@@ -70,6 +70,38 @@ regime — essential under non-stationarity).
 |---|---|---|---|
 | Raw-chart core | **A** | price, liquidity (pool reserves), traded volume, trade count, buy/sell **volume** imbalance | **No wallet identities, no holder attribution, no names/tickers/text.** The "naked chart." |
 | Wallet flows | **B** | unique buyer/seller counts, holder-count deltas, smart-money vs fresh/bot inflow, top-holder concentration, creator-wallet behavior | First tier that reads *who* trades; creator-dumping & concentration are early rug signatures. |
+
+### 2.1a Wallet earliness — a tier-B *label*, and explicitly not an observation
+
+The census (`data/census/earliness.py`) derives three measures per (wallet, token) pair from the
+trade tape it already holds — each trade carries `quote` and `base`, so the entry price is
+`quote / base` of the wallet's **first BUY** (not its first trade: a wallet whose first row is a
+sell was airdropped or transferred in and never paid that price).
+
+| Column | Meaning | Direction |
+| --- | --- | --- |
+| `entry_price_pct_of_peak` | entry ÷ the token's exitable peak | lower is earlier |
+| `max_multiple_available` | peak ÷ entry — what was still on the table | higher is earlier |
+| `entry_trade_rank_pct` | share of the token's trades already done at entry | lower is earlier |
+
+**The peak is the p99 of traded prices, never the max.** One fat-fingered print sets a high nobody
+could have sold into, and dividing by it would flatter every wallet on that token equally.
+`token_peak_price_max` is retained for reference and is never the denominator.
+
+**Null, never a default, wherever the answer would be invented** — no buy, or a token below the
+trade floor. A `0.0` there reads as *maximally early* and would promote exactly the wallets we know
+least about. Coverage is ~67% of pairs; the rest are honestly blank.
+
+**Queue position is kept separate from price on purpose.** On a token that chopped before running,
+a wallet late in the queue can still buy at a pre-run price. Early in *time* and early in *price*
+are different edges, and a test pins that they can diverge so a later refactor cannot quietly
+collapse them into one score.
+
+> **LEAKAGE RULE.** The peak is computed over a token's whole tape, so `entry_price_pct_of_peak`
+> is **hindsight** and must never enter an observation vector — that would be plain lookahead. It
+> is a *wallet label*: rank who repeatedly arrives early, then follow those wallets forward. Any
+> point-in-time feature derived from it must be built strictly from history before the decision
+> instant, through the feature store, like every other tier-B channel.
 | Token metadata | **C** | name, ticker, supply, mint/freeze authority, LP lock/burn, venue, safety flags | Largely static; rug-risk + crude narrative priors via name/ticker embeddings. |
 | Narrative / social | **D** | X account + stats, cross-platform engagement, web-search tool outputs | Text embeddings + counts; introduces the costed information action. |
 | Crowd chatter | **E** | caller identity, call timing vs price, caller reliability | The information-flow tier; most adversarial. |

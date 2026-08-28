@@ -8,6 +8,15 @@ how a one-person system compounds instead of drifting. This document adapts the
 three transferable pieces to this program. Status: adopted as design,
 implementation queued behind the wallet-flow tier.*
 
+**Status (2026-08-28).** The loop has now consumed a closed gate. Tier A returned NO-GO across
+three rungs and was reported and dropped per the honest-null rule, and the first tier-B measurement
+(earliness) came back positive with a split-sample test attached. Two entries the queue cannot
+express, recorded here because they are mechanism changes rather than knob moves (§1): the
+value-loss term is unusable as a health signal at its current scale — it swung four orders of
+magnitude within one run and reverted — and the demonstration cap (`DemoConfig.max_demos`) silently
+bounds the upper rungs of any cohort-size experiment.
+
+
 ---
 
 ## 1. The closed improvement loop (adopted, build queued)

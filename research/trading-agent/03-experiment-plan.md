@@ -1,7 +1,7 @@
 # 03 — Experiment Plan / Research Roadmap
 
 **Program:** OCT Autonomous Trading Agent
-**Status:** In execution — Phase-1 gate answered **NO-GO** (2026-08-24); Phase-2 machinery landed, tier-B measurement pending. Outcome notes inline; results detail in paper §12 and `PROGRESS.md`.
+**Status:** In execution — Phase-1 gate answered **NO-GO** and is now CLOSED (final rung 2026-08-28); Phase 2 has its first positive tier-B result (earliness). Outcome notes inline; results detail in paper §12 and `PROGRESS.md`.
 **Source of truth:** [`00-paper.md`](./00-paper.md) §10 (phased roadmap) and §5–§8. This is the executable version — each phase as a runnable experiment with a hypothesis, method, dataset, primary metric, go/no-go gate, exit milestone, and rough effort/compute.
 
 **Governing rules (apply to every phase):**
@@ -85,6 +85,34 @@ durable chart-only edge after 125 bps modeled costs. Reported per the governing 
 answer; per the curriculum's design the program proceeds to Phase 2 (wallet flows first) rather than
 ending — the chart tier is priced at ~zero and dropped as an edge source. Full detail: paper §12.1.
 
+**Closing rung (2026-08-28): 1000 tokens, 1500 PPO iterations, 300 held-out. NO-GO, and the most
+legible of the three** — because the baseline table names what the policy learned *instead* of an
+edge:
+
+| policy | mean_ret | sharpe | maxDD | hit% | trades | fees |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: |
+| learned_agent | -0.0001 | -0.08 | **0.031** | 1.0% | **2,549** | **0.01274** |
+| tracked_traders | **+0.0002** | **+0.04** | 0.049 | 1.3% | **51** | 0.00026 |
+| hold_sol | 0.0000 | 0.00 | 0.000 | 0.0% | 0 | 0 |
+| buy_and_hold | -0.0166 | -0.53 | 5.005 | 4.0% | 300 | 0.00150 |
+
+`edge vs hold_sol: -0.0001 (beaten 1.0%)` · `vs buy_and_hold: +0.0165 (82.7%)` ·
+`vs tracked_traders: -0.0003 (3.0%)`.
+
+The agent learned **risk avoidance, not edge**: the lowest max drawdown in the table by two orders
+of magnitude, and the largest fee bill, to land a hair below the policy that trades nothing.
+Beating buy-and-hold on 82.7% of tokens is not an edge — it is the value of *not holding a dying
+asset*, which `hold_sol` gets free and without fees.
+
+**The decisive line is the human one.** The 40 tracked wallets are the only positive policy in the
+table, on 51 trades, and beat the agent on 97% of held-out tokens while trading 50x less. The
+window was not unwinnable; the chart-only agent could not find what they found. Those 40 were
+selected by SOL balance — by size, not skill — which is what makes Phase 2's selection question
+sharp rather than academic.
+
+**Tier A is closed.** Three rungs, two methods, one verdict. No further chart-only scaling is
+justified, and the highest achievable rung on this dataset has been run.
+
 **Effort / compute.** Meaningful but single-node-feasible RL training; distributed rollout optional.
 
 ---
@@ -106,7 +134,42 @@ ending — the chart tier is priced at ~zero and dropped as an edge source. Full
 
 **Exit milestone (paper §10.3).** Each gate's ablation shows credible marginal edge (or an honest tier-dropped report); an OOS-validated diverse population of individually edge-positive archetypes exists.
 
-**Status (2026-08-24): machinery landed; the tier-B marginal-edge measurement is the next gate to run.**
+**Status (2026-08-28): tier B has its first positive result — and it is the first feature in the
+program with a monotone link to outcome that survives a split-sample test.**
+
+*Earliness* (`data/census/earliness.py`) is a wallet's first-BUY price as a fraction of the token's
+exitable peak. Across **552,916 ranked wallet-token pairs** it orders outcome without inversion
+below the top bucket — win rate **0.606 → 0.063**, median PnL positive to negative — and reproduces
+within ~0.02 per bucket on an independently captured, 2.5x smaller dataset.
+
+**It predicts out of sample.** Splitting at the median first-buy timestamp, ranking wallets on the
+first half only, and measuring them on the second (6,471 wallets qualifying on both sides, and
+**zero of 100,715 wallet-token pairs recurring across the halves**): Q1 earliest returns +0.0147
+median with a 0.403 win rate, Q5 latest −0.0204 and 0.350, monotone throughout. **Q1 is the only
+quintile with positive median PnL**, which makes the usable form a top-quintile filter rather than
+a continuous score.
+
+Two findings attach to it, and both matter more than the headline:
+
+* **Earliest is not best.** The 0–10% bucket underperforms 10–20% in both datasets. The
+  wallet-level cut explains it: the 0–20% band carries a **21x higher wash/bot flag rate** (0.064
+  vs 0.003). The absolute earliest cohort is disproportionately snipers buying everything,
+  including the ~95% that die. The target is *early and selective*; the best band by median PnL is
+  20–40%.
+* **It is a wallet LABEL, not a live feature.** The peak is computed over the whole tape, so using
+  it as an observation would be plain lookahead leakage. Its clean use is ranking who repeatedly
+  arrives early, then following those wallets forward — which is the tier-B channel this phase was
+  written for. Anyone wiring it into an observation vector should read this paragraph first.
+
+**Next gate — the cohort ladder** (`scripts/cohort_ladder.py`). Phase 1 showed a balance-selected
+cohort beating the agent, and earliness shows selection carries signal, so the open question splits
+in two: does cohort **size** matter, and does cohort **selection** matter? The ladder runs rungs at
+10/20/30/... wallets with an earliness-ranked arm and a size-matched PnL-ranked control, behavioural
+cloning against each, seeds in parallel, entirely from data on disk. Without the control arm it
+could only say "more is better", never "better-chosen is better" — and the second is the claim
+worth testing.
+
+*Prior status (2026-08-24), retained for the record:*
 The imitation warm-start is live — 85.0% held-out-by-token intent accuracy cloning a first 8-wallet
 tracked-trader cohort (2,006 swaps → 2,058 demos); it clones *behaviour*, not proven profit, and the
 selection-bias caveat (paper §9.3) stays attached. The population stack shipped and produced its

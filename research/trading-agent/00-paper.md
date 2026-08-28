@@ -511,7 +511,7 @@ Each phase lists its purpose, what must be built, the compute/data footprint, an
 **Build:** offline-RL pretraining (IQL/CQL) on historical tape + trader demonstrations; distributional critic; PPO online fine-tune against the sim; the evaluation battery (§8) and walk-forward harness; the short-horizon scalper episode (§3.4).
 **Compute:** meaningful but single-node-feasible RL training; distributed rollout optional.
 **Exit milestone:** on held-out time periods, the raw-chart agent clears a pre-registered risk-adjusted bar and beats the buy-and-hold and hold-SOL baselines *after realistic costs*; leakage-guard ablation passes.
-**Status (2026-08-24): gate run and answered — NO-GO at every scale tested** (§12.1). No chart-only configuration beat hold-SOL after costs out-of-sample; the leakage guard passed, so the null is honest. Per the curriculum's own logic this closes the tier and hands the question to Phase 2, rather than ending the program.
+**Status (2026-08-28): gate run, answered, and CLOSED — NO-GO at every scale tested, across three rungs** (§12.1). No chart-only configuration beat hold-SOL after costs out-of-sample; the leakage guard passed, so the null is honest. Per the curriculum's own logic this closes the tier and hands the question to Phase 2, rather than ending the program.
 
 ### 10.3 Phase 2 — Wallet flows + metadata + social + chatter (Curriculum Phases B–E)
 
@@ -519,7 +519,7 @@ Each phase lists its purpose, what must be built, the compute/data footprint, an
 **Build:** wallet-flow features (smart-money/fresh-bot tagging, concentration, creator behavior); metadata features; social connectors + web-search harness (sandboxed, injection-safe); chatter attribution features; text encoders; per-gate ablation reporting; **population/evolutionary + quality-diversity (MAP-Elites) orchestration** for the diverse-archetype "personality" population.
 **Compute:** higher — text encoders, retrieval, and the population multiply cost.
 **Exit milestone:** each of the five gates' ablations shows a statistically credible marginal edge (or we honestly report a tier that does *not* help and drop it); an out-of-sample-validated, diverse population of individually edge-positive archetypes exists.
-**Status (2026-08-24): machinery landed, tier-B measurement not yet run** (§12.2–§12.3). The imitation warm-start is live (85.0% held-out-by-token intent accuracy on a first tracked-trader cohort — behaviour cloned, profit explicitly not established), and the quality-diversity stack is proven: MAP-Elites preserves the behavioural coverage that plain PBT demonstrably collapses. The wallet-flow marginal-edge ablation is the next gate to run, and — after §12.1 — the first place any edge could now appear.
+**Status (2026-08-28): machinery landed and the tier-B measurement has returned its first positive result** (§12.2–§12.3, §12.5). The imitation warm-start is live (85.0% held-out-by-token intent accuracy on a first tracked-trader cohort — behaviour cloned, profit explicitly not established), and the quality-diversity stack is proven: MAP-Elites preserves the behavioural coverage that plain PBT demonstrably collapses. The wallet-flow marginal-edge ablation is the next gate to run, and — after §12.1 — the first place any edge could now appear.
 
 ### 10.4 Phase 3 — Traders-as-opponents + paper-live + the safety envelope
 
@@ -553,7 +553,7 @@ The paper's distinctive contribution is the **progressive-information curriculum
 
 ---
 
-## 12. Empirical Addendum — Results to Date (2026-08-24)
+## 12. Empirical Addendum — Results to Date (updated 2026-08-28)
 
 This section is the canonical home of the paper's measured outcomes; the specification (§1–§11) carries at most brief status notes that point here. The split exists so the specification keeps its no-claims discipline while the program's real results are stated plainly, with their caveats attached (§10.6). Everything here is reproducible from the repository's run artifacts (`data/desk_telemetry/`, `PROGRESS.md`); all pnl figures are net of the simulator's modeled costs (125 bps regime).
 
@@ -568,6 +568,12 @@ The Phase-1 gate question — does *any* edge survive realistic costs from the c
 
 **A measurement lesson worth recording:** headline best-PnL proved as misleading in isolation as §8.3 warned hit-rate would be. The stable, informative statistic across these runs was the shape of the win-rate distribution; evaluation practice has been updated accordingly (`05-evaluation-plan.md`).
 
+**Closing rung (2026-08-28): 1000 tokens, 1500 PPO iterations, 300 held-out — NO-GO, and the tier is closed.** The largest run the capture supports names what the policy learned *instead* of an edge. The agent returned a mean of −0.0001 (Sharpe −0.08) with the **lowest max drawdown in the table by two orders of magnitude** (0.031, against buy-and-hold's 5.005) and a 1.0% hit rate, on **2,549 trades costing 0.01274 in fees — the largest fee bill of any policy, 8.5× the next**. It found the one true thing the chart contains (most of these tokens die) and expressed it as *barely participate*, paying more than any other policy to land a hair below the one that trades nothing at all. Beating buy-and-hold on 82.7% of held-out tokens is not an edge; it is the value of not holding a dying asset, which `hold_sol` obtains for free.
+
+**The decisive comparison is not with a mechanical baseline.** The 40 tracked human wallets were the **only policy in the table with a positive mean** (+0.0002, Sharpe +0.04), achieved in **51 trades**, and they beat the agent on **97% of held-out tokens while trading 50× less**. The window was not unwinnable; the chart-only agent could not find what those wallets found. Since that cohort was selected by SOL balance — by size, not skill — the result also sharpens §9.3: their advantage is partly a selection artefact, and *how a cohort is chosen* becomes a first-class experimental variable rather than an implementation detail.
+
+Three rungs, two independent methods, one verdict. **Tier A is closed**; no further chart-only scaling is justified, and the highest achievable rung on this dataset has been run.
+
 ### 12.2 Phase-2 imitation warm-start: behavioural cloning works — and clones behaviour, not proven profit
 
 The imitation seam of §6.5 is live. From 8 tracked-trader wallets: 2,006 real swaps → 283 per-token episodes (wins **and** losses, per the full-history design) → 2,058 env-aligned demonstrations. Behavioural cloning of the hybrid policy reached **85.0% held-out-by-token intent accuracy**, and the cloned policy exhibits a genuine trading mix (opens, adds, trims, closes) where the untrained network degenerates. Two caveats travel with the number, per §9.3: the cohort is operator-chosen and balance-ranked (the residual selection effect), and BC establishes that the policy *imitates* the cohort — whether the cohort's behaviour is *profitable* under our costs is a separate measurement (the `tracked_traders` replay baseline) not yet made.
@@ -579,6 +585,48 @@ The §6.4 design argued that plain fitness pressure collapses behavioural divers
 ### 12.4 Data reality: most launches are stillborn
 
 The live Pinax WebSocket capture of fresh bonding-curve tokens ran overnight: **23,310 tokens / 2.30M swap rows captured**, of which only **~26% (6,046)** reach the ≥24-swap depth floor that makes a token trainable; the median captured token prints only a handful of swaps (2–5). This is itself a finding about the market the agent inhabits — the overwhelming majority of new pairs die essentially untraded — and it calibrates the token-count ladder honestly: "100,000 tokens" of raw capture yields roughly a quarter of that in trainable episodes, and the fat-tailed, mostly-dead distribution the reward design assumes (§3.5) is measurably the true one.
+
+### 12.5 Tier B, first result: *earliness* orders outcome — and survives a split-sample test
+
+The curriculum's premise is that the edge, if it exists, lives in *who* trades rather than in the
+chart (§5.2). This is the first measurement to put a number on that premise.
+
+**Earliness** is a wallet's first-BUY price as a fraction of the token's exitable peak — the
+quantity a manual wallet-hunt is really after when it walks a chart looking for who loaded up
+before a run. Across **552,916 ranked (wallet, token) pairs** it orders outcome monotonically
+below the top bucket: win rate falls from **0.606** in the 10–20%-of-peak band to **0.063** in the
+90–100% band, with median PnL crossing from positive to negative in step. The same analysis on an
+independently captured, 2.5× smaller dataset reproduces every bucket within ~0.02.
+
+**It predicts out of sample.** Splitting all pairs at the median first-buy timestamp, ranking
+wallets on the first half alone and measuring them on the second — 6,471 wallets qualifying on
+both sides, and **zero of 100,715 (wallet, token) pairs recurring across the halves** — the
+earliest quintile returns +0.0147 median with a 0.403 win rate against the latest quintile's
+−0.0204 and 0.350, monotone throughout. **Q1 is the only quintile with a positive median**, which
+makes the usable form a top-quintile filter rather than a continuous score: there is no edge to
+spend in the middle of the distribution.
+
+Three caveats travel with it, and none is optional:
+
+- **It is a label, not a feature.** The denominator is a hindsight peak, so placing it in an
+  observation vector would be plain lookahead leakage. Its clean use is ranking who repeatedly
+  arrives early, then following those wallets forward.
+- **The out-of-sample horizon is ~10 hours,** because the capture window is 21 hours. This is not a
+  multi-week backtest and must not be quoted as one.
+- **Earliest is not best.** The 0–10% band underperforms 10–20% in both datasets, and the
+  wallet-level cut explains why: that band carries a **21× higher wash/bot flag rate**. The
+  absolute earliest cohort is disproportionately automated participants buying everything,
+  including the ~95% that die. The target is *early and selective*.
+
+**A negative result on cohort size, from the same machinery.** A ladder cloning cohorts of
+10→200 wallets (two selection arms, five seeds each, 90 cells) found held-out imitation accuracy
+**peaking at small N and declining thereafter** — 0.782 at 30 wallets for the earliness arm, 0.841
+at 10 for a PnL-ranked control — with cross-seed spread (0.004–0.032) far below the between-rung
+differences. Cloning a larger, more heterogeneous expert set is a *harder* target, not a
+better-resourced one: imitation quality tracks the coherence of the demonstrators, not their
+number. Two confounds are recorded with it — the arms are matched on wallet count rather than
+demonstration count, and a 20,000-demo cap binds at the upper rungs — so the ladder answers the
+size question and only gestures at the selection one.
 
 ---
 
