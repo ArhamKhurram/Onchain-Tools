@@ -14,6 +14,65 @@ program logs reasoning and scoping; once Phase 0 starts, entries carry real numb
 
 ---
 
+## 2026-08-28 (ii) — 1000-token rung: NO-GO. The agent converged on doing nothing, expensively.
+
+The largest tier-A run the capture supports finished: rung 1000, 1500 PPO iterations, 300 held-out
+tokens. It is the third NO-GO and by far the most legible one, because the baseline table says
+exactly *what* the policy learned instead of an edge.
+
+**Findings**
+
+| policy | n | mean_ret | sharpe | cvar5% | maxDD | hit% | trades | fees |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| learned_agent | 300 | -0.0001 | -0.08 | -0.0019 | 0.031 | 1.0% | **2,549** | **0.01274** |
+| tracked_traders | 300 | **+0.0002** | **+0.04** | -0.0036 | 0.049 | 1.3% | **51** | 0.00026 |
+| hold_sol | 300 | 0.0000 | 0.00 | 0.0000 | 0.000 | 0.0% | 0 | 0.00000 |
+| buy_and_hold | 300 | -0.0166 | -0.53 | -0.0467 | 5.005 | 4.0% | 300 | 0.00150 |
+| random | 300 | -0.0055 | -0.42 | -0.0407 | 1.656 | 22.0% | 896 | 0.00448 |
+
+    edge vs hold_sol       : mean=-0.0001  beaten=  1.0%
+    edge vs buy_and_hold   : mean=+0.0165  beaten= 82.7%
+    edge vs tracked_traders: mean=-0.0003  beaten=  3.0%
+    VERDICT: NO-GO  (hold-SOL=False buy&hold=True)
+
+- **The agent learned risk avoidance, not edge.** Its max drawdown is 0.031 against
+  buy-and-hold's 5.005 and random's 1.656 — it is by far the safest policy in the table. It simply
+  has no return to show for it: mean -0.0001, sharpe -0.08, a 1.0% hit rate. It found the one true
+  thing the chart contains (most of these tokens die) and expressed it as "barely participate".
+- **It paid the largest fee bill in the table to reach approximately zero.** 2,549 trades and
+  0.01274 in fees — 8.5x the next-highest — to land a hair below the policy that trades nothing at
+  all. Beating buy-and-hold on 82.7% of tokens is not an edge; it is the value of *not holding a
+  dying asset*, which `hold_sol` gets for free and without fees.
+- **The 40 tracked human wallets are the only positive policy in the table, on 51 trades.** They
+  beat the agent on 97% of held-out tokens while trading **50x less**. That contrast is the single
+  most useful number here: it is not that the market was unwinnable over this window, it is that
+  the chart-only agent could not find what those wallets found.
+- **Random has the highest hit rate (22%) and still loses.** Many small wins funding a few
+  catastrophic losses — the shape that makes hit rate alone a useless read, and the reason the
+  training log now prints PnL and win rate together.
+
+**Decisions**
+
+- **Tier A is closed.** Three rungs (24 / 149 / 1000 tokens), two independent methods (single-agent
+  PPO and MAP-Elites QD), one verdict. The escalation is finished; no further chart-only scaling is
+  justified, and the highest achievable rung on this dataset has now been run.
+- **The tracked_traders result is the tier-B argument stated in the run's own numbers.** Those 51
+  trades came from wallets selected by balance, not by skill. The 2026-08-28 earliness work shows
+  the selection itself carries signal — so the next experiment is a cohort chosen by measured
+  earliness rather than by size.
+
+**Open**
+
+- The training log's late-run excursions (iter 1350: pnl -111.2 bps, `val` 5.05e7, episode length
+  doubled) fully reverted by 1500 (-32.8 bps, 8.5e6, back to 39.5k steps). Twice this session a
+  trend read from two of those points would have been wrong. The value-loss scale remains unusable
+  as a health signal and should probably be normalised or dropped from the headline log line.
+- `hold_sol` returning exactly 0.0000 with zero trades is correct but makes "beaten=1.0%" a
+  near-degenerate comparison: any token where the agent lost a fraction of a bp counts as a loss.
+  A tolerance band around zero would make the hold-SOL edge more honest to read.
+
+---
+
 ## 2026-08-28 — Earliness PREDICTS, out of sample: top-quintile wallets are the only profitable bucket
 
 The 2026-08-27 entry established that earliness correlates with outcome across 552,916 pairs and
