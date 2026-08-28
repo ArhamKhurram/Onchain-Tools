@@ -62,6 +62,36 @@ number — **and** the full distribution of such runs across seeds/periods. A st
 risk metrics: a 100× reached only via near-ruin drawdowns is a **failure**. This is a report card,
 never a training signal.
 
+### 1.3a The target is a robust process with survivable variance — not a perfect one
+
+A framing worth stating explicitly, because the metrics above are easy to read as a hunt for
+perfection and the runs to date show what that hunt costs:
+
+> There is no perfect trader. In a domain this noisy, perfection isn't a coherent target. The
+> target is a robust process with survivable variance. Chasing perfection is itself a
+> psychological failure mode — it reliably produces overtrading, revenge trading, and an
+> inability to accept the losses that a correct strategy generates by design.
+
+That is not an aphorism here; it is three measured results from this program.
+
+- **The lowest-variance policy was the worst one.** At rung 1000 the learned agent had the smallest
+  max drawdown in the table by two orders of magnitude (0.031 against buy-and-hold's 5.005) and the
+  largest fee bill (2,549 trades, 8.5× the next), and finished *below* the policy that trades
+  nothing. Variance minimisation paid for by turnover is a losing configuration, and an optimiser
+  will walk into it if the objective lets it.
+- **The highest hit rate in the table belonged to a losing policy.** `random` hit 22.0% and lost
+  money; the agent hit 1.0% and lost less. Hit rate is the perfectionism metric — it is the one a
+  reviewer instinctively reaches for and it is uncorrelated with the outcome that matters.
+- **The only cohort that predicts future profit loses most of the time.** The earliest-quintile
+  wallets win 40.3% out of sample and are the only quintile with a positive median. A correct
+  strategy in this domain is red on the majority of its decisions, because the tail pays.
+
+**Consequences for how results are read here.** A candidate is judged on whether its *process*
+survives the walk-forward and the ablations, never on whether a given window was green — §4's
+pre-registration exists to stop the goalposts moving after the fact. Loss periods are expected
+output, not anomalies (see R5). And a drawdown floor is never on its own evidence of quality: ask
+what the policy paid in fees and turnover to buy it.
+
 ### 1.4 Fidelity metric — the paper→live gap (paper §6.2, §8.5)
 The **paper-vs-live performance gap** is itself a monitored metric and the definitive measure of
 sim-to-real fidelity. We expect and budget for degradation; a *large* gap means overfitting/leakage
