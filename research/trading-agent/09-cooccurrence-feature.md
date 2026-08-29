@@ -186,17 +186,23 @@ Carried from PROGRESS 2026-08-28 (iv), in dependency order:
    monotone, share-control holds in all four bands, 94.7% roster overlap. The whole-tape-peak leak
    was real but immaterial. `data/pit_smart_roster.csv` is the leakage-safe snapshot for a
    `WalkForwardRosterProvider`.
-2. **Tradeable outcome** — the study measured `peak / first price` (whole-tape hindsight). Re-measure
-   as forward return from the smart wallets' *own entry instant*, net of fees + slippage, over the
-   sim ([`sim/replay`](./src/oct_trading_agent/sim/replay)). Answers "could you have traded it,"
-   not just "did it run."
+2. **Tradeable outcome** — **⚠ FIRST CUT DONE 2026-08-29, NOT cleared** (`scripts/tradeable_outcome.py`,
+   PROGRESS 2026-08-29 (ii)). Fee-net forward return from a tradeable entry (early-window close),
+   off the observed-price path minus round-trip cost — the *optimistic* mid-price bound. Verdict:
+   **only the 7+ smart-buyer band is net-positive (EV +5.5% at 5% round-trip), and it flips negative
+   by 8% cost**; every lower band loses money after costs despite running. So the signal is a
+   cost-fragile *threshold* at best, NOT the linear tradeable edge the §8.1 tables implied — exactly
+   the R14/Rule-18 trap. The **full `sim/replay` depth-priced re-measure is now load-bearing** (it
+   decides whether even 7+ survives real fills); expectation revised down from "easy confirmation".
 3. **Horizon** — same ~21 h capture / ~10 h forward as the earliness split; whether the effect holds
    over days is untested and needs a longer capture.
 
-(1) cleared 2026-08-29. Until (2) clears, this slot remains **not** admitted to the live
-observation vector — the outcome measure is still "did it run", not "could you have traded it".
-The feature-store plumbing (§3, §6) already landed behind the empty-tier gate, because a
-roster-less Tier B is a correct `MISSING_SOURCE_GAP`, not a wrong number.
+(1) cleared 2026-08-29. (2) first-cut done and it did **not** clear the slot for the live observation
+vector as a standalone tradeable signal — the edge is thin and cost-fragile. The feature is still a
+legitimate **agent input** (its statistical reality from §8.1 stands; an RL policy may time/size
+better than the naive backtest), so the plumbing (§3, §6) rightly stays behind the empty-tier gate —
+a roster-less Tier B is a correct `MISSING_SOURCE_GAP`, not a wrong number. Standalone-signal
+promotion waits on the full-sim §8.2 and a longer horizon.
 
 ---
 
