@@ -14,6 +14,41 @@ program logs reasoning and scoping; once Phase 0 starts, entries carry real numb
 
 ---
 
+## 2026-08-29 — The co-occurrence signal SURVIVES a point-in-time roster (09 §8.1 cleared)
+
+The (iv) finding's named flaw was that "smart" ranked wallets by earliness against each token's
+**whole-tape peak** — for boundary-straddling tokens, that peak includes period-B prices, so the
+roster saw a sliver of its own test set. `scripts/pit_roster_check.py` isolates exactly that: two
+arms share every line of code except the tape the ranking reads (full vs truncated at T).
+
+**Findings**
+
+| arm | >10x span (0 → 7+ smart) | median run span | monotone | share control |
+| --- | --- | --- | --- | --- |
+| hindsight (replicates iv) | 0.002 → 0.361 | 1.34x → 6.80x | yes | high-share wins all 4 bands |
+| **point-in-time** | **0.003 → 0.367** | **1.35x → 6.80x** | **yes** | **high-share wins all 4 bands** |
+
+- **The leak was real but immaterial.** Roster overlap between arms is 94.7% (3,758 of ~3,970);
+  the ~5% membership churn moves no band by more than noise. The whole-tape peak was flattering
+  the ranking, not creating it.
+- **The replication anchored:** the hindsight arm's roster is 3,971 wallets — the exact count (iv)
+  reported — despite the original script being lost. (Honesty: the arm replicates the *described*
+  method with an explicitly stated rule — median `entry_price_pct_of_peak`, earliest quintile,
+  >=3 usable pairs — not a bit-identical rerun; its table matches (iv)'s shape with slightly softer
+  extremes: 0.361 vs 0.423 at 7+.)
+- Exported `data/pit_smart_roster.csv` (3,968 wallets, `effective_from_ts` = T) — a ready-made
+  `WalkForwardRosterProvider` snapshot, leakage-safe by construction.
+
+**Decisions**
+
+- **09 §8.1 (point-in-time roster re-derivation) is CLEARED.** The precondition that blocked live
+  wiring of `smart_wallet_count`/`smart_wallet_share` on surface (b) grounds is satisfied for this
+  capture.
+- Still open before the live observation vector, unchanged: §8.2 (fee-net forward return from the
+  smart wallets' own entries, through the sim) and §8.3 (multi-day horizon needs a longer capture).
+
+---
+
 ## 2026-08-28 (vii) — Co-occurrence plumbing landed (behind the empty-tier gate)
 
 Built the spec from (vi): `featurestore/tiers/tier_b.py` — the first implemented `B_WALLET_FLOWS`

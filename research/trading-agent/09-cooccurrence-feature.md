@@ -180,9 +180,12 @@ observes it only once the curriculum reaches Tier B.
 
 Carried from PROGRESS 2026-08-28 (iv), in dependency order:
 
-1. **Point-in-time roster re-derivation** (§4b) — replace the hindsight-peak "smart" label with an
-   as-of-knowable ranking, and re-run the split-sample to confirm the effect survives. **Blocks
-   live wiring.**
+1. **Point-in-time roster re-derivation** (§4b) — **✅ CLEARED 2026-08-29**
+   (`scripts/pit_roster_check.py`, PROGRESS 2026-08-29): ranking wallets from a tape truncated at
+   the boundary reproduces the full effect — >10x span 0.003 → 0.367 (vs hindsight 0.002 → 0.361),
+   monotone, share-control holds in all four bands, 94.7% roster overlap. The whole-tape-peak leak
+   was real but immaterial. `data/pit_smart_roster.csv` is the leakage-safe snapshot for a
+   `WalkForwardRosterProvider`.
 2. **Tradeable outcome** — the study measured `peak / first price` (whole-tape hindsight). Re-measure
    as forward return from the smart wallets' *own entry instant*, net of fees + slippage, over the
    sim ([`sim/replay`](./src/oct_trading_agent/sim/replay)). Answers "could you have traded it,"
@@ -190,9 +193,10 @@ Carried from PROGRESS 2026-08-28 (iv), in dependency order:
 3. **Horizon** — same ~21 h capture / ~10 h forward as the earliness split; whether the effect holds
    over days is untested and needs a longer capture.
 
-Until (1) and (2) clear, this slot is specified and unit-testable but **not** cleared for the live
-observation vector. The feature-store plumbing (§3, §6) can land ahead of them behind the empty-tier
-gate, because a roster-less Tier B is a correct `MISSING_SOURCE_GAP`, not a wrong number.
+(1) cleared 2026-08-29. Until (2) clears, this slot remains **not** admitted to the live
+observation vector — the outcome measure is still "did it run", not "could you have traded it".
+The feature-store plumbing (§3, §6) already landed behind the empty-tier gate, because a
+roster-less Tier B is a correct `MISSING_SOURCE_GAP`, not a wrong number.
 
 ---
 
