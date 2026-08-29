@@ -261,9 +261,17 @@ class RollingLocalLiquidityEstimator:
         l_center = quote_scale / root_p
         grid = np.geomspace(l_center * 1e-3, l_center * 1e3, self.grid_points)
 
+        # The window is fixed across the whole sweep — only (L, P0) vary — so convert the numpy
+        # windows to Python lists ONCE here rather than re-boxing them on every one of the ~160
+        # _median_rel_error calls this sweep makes. (The numpy arrays are still needed above for the
+        # quote-scale reduction; only the scalar recurrence wants lists.)
+        ins_l: list[float] = ins.tolist()
+        obs_l: list[float] = obs.tolist()
+        sides_l: list[int] = sides.tolist()
+
         best: tuple[float, float, float] | None = None
         for liquidity in grid:
-            med = self._median_rel_error(ins, obs, sides, liquidity, p0, fee)
+            med = self._median_rel_error(ins_l, obs_l, sides_l, liquidity, p0, fee)
             if med is not None and (best is None or med < best[0]):
                 best = (med, float(liquidity), p0)
         if best is None:
@@ -274,12 +282,12 @@ class RollingLocalLiquidityEstimator:
             improved = False
             # Refine L.
             for scale in (1.1, 0.9, 1.03, 0.97, 1.008, 0.992):
-                m = self._median_rel_error(ins, obs, sides, liquidity * scale, price, fee)
+                m = self._median_rel_error(ins_l, obs_l, sides_l, liquidity * scale, price, fee)
                 if m is not None and m < med:
                     med, liquidity, improved = m, liquidity * scale, True
             # Refine the anchor price P0.
             for scale in (1.02, 0.98, 1.005, 0.995, 1.001, 0.999):
-                m = self._median_rel_error(ins, obs, sides, liquidity, price * scale, fee)
+                m = self._median_rel_error(ins_l, obs_l, sides_l, liquidity, price * scale, fee)
                 if m is not None and m < med:
                     med, price, improved = m, price * scale, True
             if not improved:
@@ -288,37 +296,49 @@ class RollingLocalLiquidityEstimator:
 
     @staticmethod
     def _median_rel_error(
-        ins: np.ndarray, obs: np.ndarray, sides: np.ndarray, liquidity: float, p0: float, fee: float
+        ins: list[float], obs: list[float], sides: list[int], liquidity: float, p0: float, fee: float
     ) -> float | None:
         """Propagate the window through the virtual-reserve law at ``L`` and score |pred/obs−1|.
 
         Fee is taken on the input and accrues OUTSIDE the reserves (V3 fee-growth), so only the
         post-fee amount moves the virtual reserves and ``k_v`` is preserved within the range.
+
+        HOT PATH — the profiler puts ~90% of tape-prep time here (``_sweep`` calls it ~160×/token).
+        It is a scalar recurrence (each step's reserves feed the next), so it cannot vectorise across
+        the window. The win is therefore to run it in *pure Python over lists*: numpy scalar indexing
+        (``ins[i]``) boxes an object per access, and a per-call ``np.median`` drags partition +
+        nan-check + dtype machinery over a tiny array — both cost far more than the arithmetic itself.
+        Results are bit-identical: the same float64 ops in the same order, and the same median
+        definition (mean of the two central order statistics for even n).
         """
+        one_minus_fee = 1.0 - fee
         root = p0 ** 0.5
         x_v = liquidity / root  # base virtual reserve
         y_v = liquidity * root  # quote virtual reserve
-        pred = np.empty(len(ins))
-        for i in range(len(ins)):
-            if x_v <= 0 or y_v <= 0:
+        rel: list[float] = []
+        for amt_in, amt_obs, side in zip(ins, obs, sides, strict=True):
+            if x_v <= 0.0 or y_v <= 0.0:
                 return None
-            if sides[i] == 1:  # BUY: SOL in -> token out
-                dq_eff = ins[i] * (1.0 - fee)
-                out = x_v * dq_eff / (y_v + dq_eff)
+            d_eff = amt_in * one_minus_fee
+            if side == 1:  # BUY: SOL in -> token out
+                out = x_v * d_eff / (y_v + d_eff)
                 if out >= x_v:
                     return None
-                pred[i] = out
                 x_v -= out
-                y_v += dq_eff
+                y_v += d_eff
             else:  # SELL: token in -> SOL out
-                db_eff = ins[i] * (1.0 - fee)
-                out = y_v * db_eff / (x_v + db_eff)
+                out = y_v * d_eff / (x_v + d_eff)
                 if out >= y_v:
                     return None
-                pred[i] = out
-                x_v += db_eff
+                x_v += d_eff
                 y_v -= out
-        return float(np.median(np.abs(pred / obs - 1.0)))
+            rel.append(abs(out / amt_obs - 1.0) if amt_obs else float("inf"))
+        n = len(rel)
+        if n == 0:
+            return None
+        rel.sort()
+        mid = n // 2
+        return rel[mid] if n & 1 else 0.5 * (rel[mid - 1] + rel[mid])
 
 
 @register_curve(*CLMM_VENUES)
