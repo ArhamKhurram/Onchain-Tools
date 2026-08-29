@@ -5,7 +5,7 @@ import { useEffect, useRef, useState } from 'react';
  *
  * Raw WebGL in a single <canvas> — no three.js, no libraries. A domain-warped
  * fbm noise field animated as rising flame, rendered ONLY in the brand palette
- * (flame #ff1744 → white embers, dark flame veins for depth). Subtle cursor
+ * (flame #dc1a3d → white embers, dark flame veins for depth). Subtle cursor
  * reactivity. Falls back to a static CSS gradient when the user prefers reduced
  * motion or on small screens (no render loop on phones).
  */
@@ -19,7 +19,7 @@ uniform vec2 u_mouse;      // 0..1, y up
 uniform float u_mouseAmt;  // eased cursor presence 0..1
 
 // Brand palette
-const vec3 FLAME = vec3(1.0, 0.0902, 0.2667); // #ff1744
+const vec3 FLAME = vec3(0.8627, 0.1020, 0.2392); // #dc1a3d
 const vec3 WHITE = vec3(1.0);
 
 float hash(vec2 p) {
@@ -161,7 +161,7 @@ export function HeroCanvas() {
         className="absolute inset-0"
         style={{
           background:
-            'radial-gradient(120% 90% at 50% 35%, #ff5470 0%, #ff1744 42%, #7a0a20 100%)',
+            'radial-gradient(120% 90% at 50% 35%, #e04a63 0%, #dc1a3d 42%, #6e0a1e 100%)',
           opacity: useStatic ? 1 : 0,
           transition: 'opacity 600ms ease',
         }}

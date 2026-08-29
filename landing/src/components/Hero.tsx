@@ -24,7 +24,7 @@ const mockMessages: MockGroup[] = [
     channel: { name: 'sol-calls', type: 'channel' },
     messages: [
       { author: 'alpha_sniper', avatar: '#00e676', text: 'New CA just dropped on pump.fun', time: 'Today at 2:14 PM' },
-      { author: 'whale_tracker', avatar: '#ff1744', text: 'pump.fun/coin/...x7f2', time: 'Today at 2:14 PM', isContract: true, chain: 'SOL' },
+      { author: 'whale_tracker', avatar: '#dc1a3d', text: 'pump.fun/coin/...x7f2', time: 'Today at 2:14 PM', isContract: true, chain: 'SOL' },
     ],
   },
   {
@@ -36,7 +36,7 @@ const mockMessages: MockGroup[] = [
   {
     channel: { name: 'whale_tracker', type: 'dm' },
     messages: [
-      { author: 'whale_tracker', avatar: '#ff1744', text: 'Just aped into this one, check $OCT', time: 'Today at 1:30 PM', isHighlighted: true },
+      { author: 'whale_tracker', avatar: '#dc1a3d', text: 'Just aped into this one, check $OCT', time: 'Today at 1:30 PM', isHighlighted: true },
     ],
   },
 ];
