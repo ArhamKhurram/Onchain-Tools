@@ -1,6 +1,6 @@
 import { EventEmitter } from 'events';
 import { TelegramClientWrapper } from './client.js';
-import type { TelegramChat, TelegramRawMessage } from './types.js';
+import type { TelegramChat, TelegramForumTopic, TelegramRawMessage } from './types.js';
 
 const DEDUP_WINDOW_MS = 10_000;
 const DEDUP_MAX_SIZE = 5_000;
@@ -111,6 +111,19 @@ export class TelegramClientManager extends EventEmitter {
       if (name !== 'Unknown') return name;
     }
     return 'Unknown';
+  }
+
+  /** Forum topics of a topic-enabled supergroup — first client that returns any wins. */
+  async getForumTopics(chatId: string): Promise<TelegramForumTopic[]> {
+    for (const client of this.clients) {
+      try {
+        const topics = await client.getForumTopics(chatId);
+        if (topics.length > 0) return topics;
+      } catch {
+        continue;
+      }
+    }
+    return [];
   }
 
   async fetchMessages(chatId: string, limit = 30): Promise<TelegramRawMessage[]> {

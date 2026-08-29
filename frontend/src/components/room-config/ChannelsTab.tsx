@@ -1,6 +1,7 @@
-import type { Dispatch, SetStateAction } from 'react';
-import { Search, Trash2, Hash, MessageCircle, Users, Palette, Send, AlertTriangle, Plus } from 'lucide-react';
-import type { ChannelRef, AppConfig, AuthStatus, GuildInfo, DMChannel, TelegramChatInfo } from '../../types';
+import { useState, type Dispatch, type SetStateAction } from 'react';
+import { Search, Trash2, Hash, MessageCircle, Users, Palette, Send, AlertTriangle, Plus, ChevronDown, ChevronRight } from 'lucide-react';
+import type { ChannelRef, AppConfig, AuthStatus, GuildInfo, DMChannel, TelegramChatInfo, TelegramForumTopicInfo } from '../../types';
+import { apiFetch, API_BASE } from '../../stores/appStore.helpers';
 import type { AppState } from '../../stores/appStore';
 import ColorPickerWithAlpha from '../ColorPickerWithAlpha';
 
@@ -55,6 +56,36 @@ export default function ChannelsTab({
   filteredDMs,
   filteredTelegramChats,
 }: ChannelsTabProps) {
+  // Forum-topic picker state. Topics load on first expand of a forum group and
+  // are kept for the dialog's lifetime — a topic list changes rarely enough
+  // that refetch-per-expand would just be latency.
+  const [expandedForums, setExpandedForums] = useState<Set<string>>(new Set());
+  const [topicsByChat, setTopicsByChat] = useState<Record<string, TelegramForumTopicInfo[] | 'loading' | 'error'>>({});
+
+  const toggleForumExpanded = (chatId: string) => {
+    setExpandedForums((prev) => {
+      const next = new Set(prev);
+      if (next.has(chatId)) {
+        next.delete(chatId);
+      } else {
+        next.add(chatId);
+      }
+      return next;
+    });
+    if (topicsByChat[chatId] === undefined) {
+      setTopicsByChat((prev) => ({ ...prev, [chatId]: 'loading' }));
+      apiFetch(`${API_BASE}/telegram/chats/${encodeURIComponent(chatId)}/topics`)
+        .then(async (res) => {
+          if (!res.ok) throw new Error(`HTTP ${res.status}`);
+          const topics = (await res.json()) as TelegramForumTopicInfo[];
+          setTopicsByChat((prev) => ({ ...prev, [chatId]: topics }));
+        })
+        .catch(() => {
+          setTopicsByChat((prev) => ({ ...prev, [chatId]: 'error' }));
+        });
+    }
+  };
+
   return (
             <>
               {/* Room name */}
@@ -481,31 +512,88 @@ export default function ChannelsTab({
                         {filteredTelegramChats.map((chat) => {
                           const selected = isChannelSelected(chat.id);
                           const typeLabel = chat.type === 'channel' ? 'CH' : chat.type === 'supergroup' ? 'SG' : chat.type === 'group' ? 'GP' : '';
+                          const isExpanded = expandedForums.has(chat.id);
+                          const topics = topicsByChat[chat.id];
                           return (
-                            <button
-                              key={chat.id}
-                              onClick={() =>
-                                toggleChannel({
-                                  source: 'telegram',
-                                  guildId: null,
-                                  channelId: chat.id,
-                                  guildName: chat.type !== 'user' ? chat.title : undefined,
-                                  channelName: chat.title,
-                                })
-                              }
-                              className={`w-full flex items-center gap-2 px-2 py-1.5 rounded-cockpit border-2 text-sm text-left transition-colors duration-100 ${
-                                selected
-                                  ? 'border-oct-accent bg-oct-accent-dim text-oct-accent'
-                                  : 'border-oct-border bg-oct-bg text-oct-muted hover:border-oct-border-bright hover:text-oct-text'
-                              }`}
-                            >
-                              <Send size={14} className="shrink-0" />
-                              <span className="truncate">{chat.title}</span>
-                              {typeLabel && (
-                                <span className="rounded-cockpit border-2 border-oct-border bg-oct-surface-raised px-1 py-0.5 font-mono text-[9px] font-bold uppercase tracking-wide text-oct-muted shrink-0">{typeLabel}</span>
+                            <div key={chat.id}>
+                              <div className="flex items-center gap-1">
+                                <button
+                                  onClick={() =>
+                                    toggleChannel({
+                                      source: 'telegram',
+                                      guildId: null,
+                                      channelId: chat.id,
+                                      guildName: chat.type !== 'user' ? chat.title : undefined,
+                                      channelName: chat.title,
+                                    })
+                                  }
+                                  className={`flex-1 min-w-0 flex items-center gap-2 px-2 py-1.5 rounded-cockpit border-2 text-sm text-left transition-colors duration-100 ${
+                                    selected
+                                      ? 'border-oct-accent bg-oct-accent-dim text-oct-accent'
+                                      : 'border-oct-border bg-oct-bg text-oct-muted hover:border-oct-border-bright hover:text-oct-text'
+                                  }`}
+                                  title={chat.isForum ? 'Subscribe to the whole group — every topic included' : undefined}
+                                >
+                                  <Send size={14} className="shrink-0" />
+                                  <span className="truncate">{chat.title}</span>
+                                  {typeLabel && (
+                                    <span className="rounded-cockpit border-2 border-oct-border bg-oct-surface-raised px-1 py-0.5 font-mono text-[9px] font-bold uppercase tracking-wide text-oct-muted shrink-0">{typeLabel}</span>
+                                  )}
+                                  {selected && <span className="ml-auto font-mono text-[10px] font-bold uppercase tracking-wide">ADDED</span>}
+                                </button>
+                                {chat.isForum && (
+                                  <button
+                                    onClick={() => toggleForumExpanded(chat.id)}
+                                    className="shrink-0 p-1.5 rounded-cockpit border-2 border-oct-border bg-oct-bg text-oct-muted hover:border-oct-border-bright hover:text-oct-text transition-colors duration-100"
+                                    title={isExpanded ? 'Hide topics' : 'Pick individual topics'}
+                                  >
+                                    {isExpanded ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
+                                  </button>
+                                )}
+                              </div>
+                              {chat.isForum && isExpanded && (
+                                <div className="mt-1 ml-4 space-y-1 border-l-2 border-oct-border pl-2">
+                                  {topics === 'loading' || topics === undefined ? (
+                                    <p className="text-xs text-oct-muted px-2 py-1">Loading topics…</p>
+                                  ) : topics === 'error' ? (
+                                    <p className="text-xs text-oct-muted px-2 py-1">Couldn&rsquo;t load topics — try again, or subscribe to the whole group.</p>
+                                  ) : topics.length === 0 ? (
+                                    <p className="text-xs text-oct-muted px-2 py-1">No topics found.</p>
+                                  ) : (
+                                    topics.map((topic) => {
+                                      const topicChannelId = `${chat.id}:${topic.id}`;
+                                      const topicSelected = isChannelSelected(topicChannelId);
+                                      return (
+                                        <button
+                                          key={topic.id}
+                                          onClick={() =>
+                                            toggleChannel({
+                                              source: 'telegram',
+                                              guildId: chat.id,
+                                              channelId: topicChannelId,
+                                              guildName: chat.title,
+                                              channelName: topic.title,
+                                            })
+                                          }
+                                          className={`w-full flex items-center gap-2 px-2 py-1 rounded-cockpit border-2 text-sm text-left transition-colors duration-100 ${
+                                            topicSelected
+                                              ? 'border-oct-accent bg-oct-accent-dim text-oct-accent'
+                                              : 'border-oct-border bg-oct-bg text-oct-muted hover:border-oct-border-bright hover:text-oct-text'
+                                          }`}
+                                        >
+                                          <Hash size={12} className="shrink-0" />
+                                          <span className="truncate">{topic.title}</span>
+                                          {topic.closed && (
+                                            <span className="rounded-cockpit border-2 border-oct-border bg-oct-surface-raised px-1 py-0.5 font-mono text-[9px] font-bold uppercase tracking-wide text-oct-muted shrink-0">CLOSED</span>
+                                          )}
+                                          {topicSelected && <span className="ml-auto font-mono text-[10px] font-bold uppercase tracking-wide">ADDED</span>}
+                                        </button>
+                                      );
+                                    })
+                                  )}
+                                </div>
                               )}
-                              {selected && <span className="ml-auto font-mono text-[10px] font-bold uppercase tracking-wide">ADDED</span>}
-                            </button>
+                            </div>
                           );
                         })}
                       </div>

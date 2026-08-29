@@ -251,5 +251,16 @@ export function createTelegramRoutes(ctx: RouterContext): Router {
     res.json(chats);
   });
 
+  // Forum topics of one topic-enabled supergroup, for the per-topic subscription
+  // picker. [] for a non-forum chat or on any MTProto failure — the picker
+  // renders that as "no topics", which is the honest answer in every such case.
+  router.get('/telegram/chats/:chatId/topics', async (req, res) => {
+    const tg = await requireTelegramManager(req, res);
+    if (!tg) return;
+    await tg.waitUntilReady();
+    const topics = await tg.getForumTopics(req.params.chatId);
+    res.json(topics);
+  });
+
   return router;
 }

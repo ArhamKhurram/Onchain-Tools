@@ -15,7 +15,7 @@ import { GatewayManager } from './discord/gatewayManager.js';
 import { createProxyBundle } from './discord/proxy.js';
 import { configStore } from './config/store.js';
 import { TelegramClientManager } from './telegram/clientManager.js';
-import { processTelegramMessage } from './telegram/messageProcessor.js';
+import { processTelegramMessage, telegramChannelId } from './telegram/messageProcessor.js';
 import type { TelegramRawMessage } from './telegram/types.js';
 import type { TelegramMessageProcessorContext } from './telegram/messageProcessor.js';
 import { WsServer } from './ws/server.js';
@@ -101,7 +101,14 @@ function checkPushover(cfg: PushoverConfig, msg: FrontendMessage, evmChainHint: 
   if (!triggered) return;
 
   if (f.userIds.length > 0 && !f.userIds.includes(msg.author.id)) return;
-  if (f.channelIds.length > 0 && !f.channelIds.includes(msg.channelId)) return;
+  // A Telegram forum-topic message carries `chatId:topicId`; a filter saved for the
+  // whole group (bare chatId — every pre-topics filter) must keep matching, so the
+  // group half of the id counts too. Discord ids never contain ':', so this is inert there.
+  if (
+    f.channelIds.length > 0 &&
+    !f.channelIds.includes(msg.channelId) &&
+    !f.channelIds.includes(msg.channelId.split(':')[0])
+  ) return;
   if (f.guildIds.length > 0 && msg.guildId && !f.guildIds.includes(msg.guildId)) return;
 
   let title: string;
@@ -479,6 +486,23 @@ export function getUserGateway(userId: string): GatewayManager | null {
 function wireTelegramEvents(tg: TelegramClientManager, wsServer: WsServer, userId: string): void {
   const storage = getStorageProvider();
 
+  // Rooms a Telegram message routes to. A topic message reaches rooms subscribed to EITHER its
+  // topic-channel OR the parent group — so a "whole group" subscription still receives every topic
+  // (backward-compatible), while a per-topic subscription gets just that topic. Non-topic messages
+  // resolve exactly as before. Deduped by room id in case a room subscribes to both.
+  const resolveTelegramRooms = async (raw: TelegramRawMessage) => {
+    if (raw.topicId == null) {
+      return storage.getRoomsForChannel(userId, raw.chatId);
+    }
+    const [topicRooms, groupRooms] = await Promise.all([
+      storage.getRoomsForChannel(userId, telegramChannelId(raw.chatId, raw.topicId)),
+      storage.getRoomsForChannel(userId, raw.chatId),
+    ]);
+    const byId = new Map(groupRooms.map((r) => [r.id, r]));
+    for (const r of topicRooms) byId.set(r.id, r);
+    return [...byId.values()];
+  };
+
   tg.on('ready', (user: { id: string; username: string | null; firstName: string }) => {
     console.log(`[App] Telegram logged in as ${user.firstName} (@${user.username ?? 'no-username'})`);
     wsServer.broadcastRaw({ type: 'telegram_ready', data: { username: user.username, firstName: user.firstName } }, userId);
@@ -487,7 +511,7 @@ function wireTelegramEvents(tg: TelegramClientManager, wsServer: WsServer, userI
   tg.on('message', guardAsyncHandler('App:telegram-message', async (raw: TelegramRawMessage) => {
     // See the Discord handler above: heartbeat before room gating.
     recordIngest();
-    const rooms = await storage.getRoomsForChannel(userId, raw.chatId);
+    const rooms = await resolveTelegramRooms(raw);
     const isTgDm = raw.chatType === 'user';
 
     if (rooms.length === 0 && !isTgDm) return;
@@ -564,7 +588,7 @@ function wireTelegramEvents(tg: TelegramClientManager, wsServer: WsServer, userI
   }));
 
   tg.on('messageUpdate', guardAsyncHandler('App:telegram-message-update', async (raw: TelegramRawMessage) => {
-    const rooms = await storage.getRoomsForChannel(userId, raw.chatId);
+    const rooms = await resolveTelegramRooms(raw);
     const isTgDm = raw.chatType === 'user';
     if (rooms.length === 0 && !isTgDm) return;
 
