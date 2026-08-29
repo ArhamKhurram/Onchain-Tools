@@ -169,6 +169,27 @@ def main() -> int:
               flush=True)
     print("\n(EV = mean net return, the statistic a right-tail strategy lives or dies on; "
           "median stays negative by design — that's Rule 18, not a failure.)", flush=True)
+
+    # Is any band's EV distinguishable from zero, or is a tail-driven mean on ~120 tokens just noise?
+    # Bootstrap the trail EV per band. A CI straddling zero means "not even a candidate", which
+    # decides whether the full depth-priced sim is worth building.
+    import random
+    rng = random.Random(0)  # Math.random is banned in workflows, fine in a plain script; fixed seed
+    print(f"\n{'smart':<7}{'tokens':>7}{'trail EV':>10}{'  90% bootstrap CI':>22}{'  P(EV>0)':>10}", flush=True)
+    print("-" * 56, flush=True)
+    for lo, hi, label in BANDS:
+        vals = df.filter((pl.col("smart_count") >= lo) & (pl.col("smart_count") <= hi))["trail"].to_list()
+        if len(vals) < 20:
+            continue
+        means = []
+        for _ in range(2000):
+            s = [vals[rng.randrange(len(vals))] for _ in range(len(vals))]
+            means.append(sum(s) / len(s))
+        means.sort()
+        lo_ci, hi_ci = means[100], means[1900]  # 5th / 95th pct
+        p_pos = sum(1 for m in means if m > 0) / len(means)
+        print(f"{label:<7}{len(vals):>7}{sum(vals)/len(vals):>10.1%}"
+              f"   [{lo_ci:>6.1%}, {hi_ci:>6.1%}]{p_pos:>10.1%}", flush=True)
     return 0
 
 

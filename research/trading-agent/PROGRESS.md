@@ -24,32 +24,40 @@ minus an explicit round-trip cost. **This is the optimistic bound** — mid-pric
 NOT re-price fills against reconstructed pool depth (that's the full `sim/replay` version §8.2
 ultimately wants). Real fills at size are worse, never better.
 
-**Findings (EV = mean net return, the statistic a right-tail memecoin strategy lives on; the median
-is negative in every band by design — Rule 18, not a failure):**
+**Findings (EV = mean net return — the statistic a right-tail memecoin strategy lives on; the median
+is negative in every band by design, Rule 18). The point estimate alone is not enough on ~120
+tail-driven tokens, so every band's trail EV is bootstrapped (2,000 resamples, 90% CI):**
 
-| smart early buyers | tokens | EV (trailing stop) | win% | at 8% cost | at 12% cost |
-| --- | ---: | ---: | ---: | ---: | ---: |
-| 0 | 1,282 | −30.4% | 3.5% | −33.1% | −37.3% |
-| 1 | 298 | −33.5% | 9.4% | — | — |
-| 2–3 | 250 | −25.6% | 15.6% | — | — |
-| 4–6 | 145 | −18.6% | 19.3% | −22.1% | −27.3% |
-| **7+** | **121** | **+5.5%** | **27.3%** | **−2.6%** | **−4.9%** |
+| smart early buyers | tokens | trail EV | 90% bootstrap CI | P(EV>0) |
+| --- | ---: | ---: | ---: | ---: |
+| 0 | 1,271 | −30.1% | [−31.3%, −28.9%] | 0% |
+| 1 | 297 | −33.8% | [−37.5%, −29.9%] | 0% |
+| 2–3 | 248 | −24.4% | [−31.3%, −16.2%] | 0% |
+| 4–6 | 150 | −20.3% | [−28.0%, −10.8%] | 0% |
+| **7+** | **120** | **−2.1%** | **[−16.9%, +16.1%]** | **39%** |
 
-- **Only the top band (7+) is net-positive, and only under optimistic cost.** Every band below it,
-  4–6 included, loses money after a 5% round-trip — despite those tokens genuinely running (4–6
-  median ceiling was +53%). Cost is decisive: the signal predicts *runs*, but a 20%-late fixed entry
-  can't monetise a run in 4–6.
-- **The 7+ edge is razor-thin and flips negative between 5% and 8% round-trip cost** — and 8–12% is
-  realistic for taker fills on illiquid memecoins. On 121 tail-driven tokens, +5.5% is not a robust
-  profit; it is "the only band that is even a candidate."
-- **This is precisely what R14 / Rule 18 warned about.** §8.1's clean monotone tables read like a
-  green light; §8.2 shows the money isn't there once frictions are charged. Judging the signal by
-  "did it run" would have promoted a strategy that loses on the median token in every band.
+- **No band has a tradeable standalone edge.** Bands 0–4/6 are decisively negative (CIs entirely
+  below zero). The 7+ band is **statistically indistinguishable from zero** — a ±16-point CI and
+  coin-flip odds of being positive.
+- **CORRECTION of this entry's first draft.** The first run reported 7+ at "+5.5% EV, a cost-fragile
+  threshold." A rerun with identical parameters swung the 7+ point estimate to −2.1%; the bootstrap
+  shows why — that band's mean is unstable across runs because it rides ~120 tail-driven tokens.
+  The +5.5% was a single noisy draw, not an edge. I fell into a milder form of the exact trap I was
+  documenting; the bootstrap is what caught it. The corrected verdict is cleaner: **there is no
+  tradeable standalone edge, not even a marginal one.**
+- Cost is still decisive for the lower bands — the signal predicts *runs* (§8.1 stands) but a
+  20%-late fixed entry can't monetise them, and frictions bury 4–6 despite a +53% median ceiling.
+- **This is R14 / Rule 18 made concrete, twice over:** §8.1's clean monotone tables read like a
+  green light, and even inside §8.2 a single positive draw briefly read like a surviving edge. Only
+  the CI told the truth.
 
 **Decisions**
 
-- **§8.2 does NOT clear `smart_wallet_count`/`smart_wallet_share` as a standalone tradeable signal.**
-  On this evidence it is a *threshold gate* (7+) at best, and cost-fragile even there.
+- **§8.2 does NOT clear `smart_wallet_count`/`smart_wallet_share` as a standalone tradeable signal —
+  at any band.** The 7+ "threshold" of the first draft does not survive a bootstrap; it is noise.
+- **The full `sim/replay` depth-priced re-measure is NOT worth building.** It can only push an
+  optimistic-bound EV that already straddles zero further negative — there is no edge to confirm.
+  (This retires the "load-bearing full sim" call from this entry's first draft.)
 - **But its statistical reality (§8.1) stands, so it remains a legitimate AGENT FEATURE** behind the
   empty-tier gate: the naive backtest enters 20% late with a fixed rule and can't size or time — an
   RL policy that combines the feature with entry-latency and cost-awareness may extract value the
@@ -58,9 +66,16 @@ is negative in every band by design — Rule 18, not a failure):**
   decides whether even 7+ survives realistic execution. Its prior expected an easy confirmation;
   the honest prior now is that it may not.
 
+**Where this leaves the feature.** Its §8.1 statistical reality stands — 7+ tokens *do* run more —
+so `smart_wallet_count`/`smart_wallet_share` remain legitimate **agent inputs** behind the empty-tier
+gate: an RL policy that enters faster than 20%-queue-close and sizes to liquidity may extract value
+a naive fixed-entry backtest cannot, and that is a question only the agent, not this script, can
+answer. What is now closed is the **standalone "buy signal" reading** — it is dead.
+
 **Open**
 
-- Full-sim outcome (real depth-priced fills) — the actual §8.2 completion, expectation revised down.
+- Whether the agent, given the feature, does better than the naive rule — answered by training, not
+  by more outcome backtests. This is the honest next question, and it is the agent's job.
 - Entry-latency sensitivity: a faster entry than 20%-queue-close lifts every band, but only if live
   detection is fast — ties back to the featurestore-perf work.
 - Same single ~21h capture; nothing here speaks to longer horizons.
