@@ -77,14 +77,27 @@ def scan_swaps(dataset_root: Path, *, quote_mint: str = WSOL) -> pl.LazyFrame:
 
 
 def _cv(values: np.ndarray, *, min_n: int) -> float | None:
-    """Coefficient of variation (population std / mean), or ``None`` when unreliable."""
-    v = np.asarray(values, dtype=float).ravel()
-    if v.shape[0] < min_n:
+    """Coefficient of variation (population std / mean), or ``None`` when unreliable.
+
+    Called 3×/pair (~hundreds of thousands of times over a census) on tiny arrays. ``np.mean`` +
+    ``np.std`` cost far more in per-call dispatch (std alone is ~4 reduces plus temporaries) than the
+    arithmetic on a handful of values, so a single Python pass over the values wins outright at this
+    size. Population variance via ``E[x²] − E[x]²``, clamped at zero against float cancellation.
+    """
+    v = values.tolist() if hasattr(values, "tolist") else list(values)
+    n = len(v)
+    if n < min_n:
         return None
-    mean = float(np.mean(v))
+    s = 0.0
+    s2 = 0.0
+    for x in v:
+        s += x
+        s2 += x * x
+    mean = s / n
     if mean <= 0.0:
         return None
-    return float(np.std(v) / mean)
+    var = s2 / n - mean * mean
+    return (var**0.5 / mean) if var > 0.0 else 0.0
 
 
 def build_pair_stats(trades: pl.DataFrame) -> pl.DataFrame:
