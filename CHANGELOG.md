@@ -4,6 +4,13 @@ All notable changes to Onchain Tools are documented here. Entries before the
 rename still say "Trenchcord" — that was the product's name at the time, and
 they're left as the record of what shipped.
 
+## 2026-08-29
+
+### Added
+- **Telegram topics are real channels now** — a forum group (a Telegram supergroup with topics, like an alpha group split into *Scanning*, *SOL calls*, *EVM calls*) used to pour everything into one merged stream, and you took all of it or none. Each topic is now its own channel: in room settings → Channels → Telegram, expand a group and pick just the topics you want — the SOL calls without the chatter — exactly the way you pick channels inside a Discord server. Messages are labelled with their topic, contract detections say which group *and* topic they came from, and subscribing to the whole group still gets every topic — nothing about your existing setup changes.
+- **A copy button on contract addresses** — clicking an address pill in a message copies it *and* opens the chart, which meant there was no way to just grab the address. Every detected address now carries a small copy icon that copies and nothing else.
+- **Hide the caller badges** — a new **Badges** toggle in the Contract Feed toolbar turns off the ELITE/UNRATED chips on rows, for anyone who reads the feed by ticker and wants the row prefix quiet. Ranking and the slop filter still use the bands underneath — only the label goes — and the choice sticks between sessions.
+
 ## 2026-08-28
 
 ### Fixed
