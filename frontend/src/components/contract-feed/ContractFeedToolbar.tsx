@@ -1,4 +1,4 @@
-import { Search, LayoutGrid, List, Eye, EyeOff, BadgeCheck, Clock, ArrowDownWideNarrow, Info } from 'lucide-react';
+import { Search, LayoutGrid, List, Eye, EyeOff, BadgeCheck, Clock, ArrowDownWideNarrow, Info, Tags } from 'lucide-react';
 import { BAND_REACH_NOTE } from '../../utils/callerBandStyle';
 import type { ContractSortMode } from '../../utils/contractFeedView';
 
@@ -26,6 +26,13 @@ interface ContractFeedToolbarProps {
   mutedCount: number;
   revealMuted: boolean;
   onRevealMuted: (value: boolean) => void;
+  /**
+   * Hide the caller-band chips (ELITE / UNRATED / …) on every row. Pure display
+   * preference — ranking and filtering still use the bands — persisted by the
+   * dashboard so the feed keeps the chosen density across sessions.
+   */
+  hideBadges: boolean;
+  onHideBadges: (value: boolean) => void;
   /**
    * Top Callers Feed mode. The pane is already locked to elite + trusted
    * callers, so the "Hide slop" and "muted" controls are meaningless here and
@@ -77,6 +84,8 @@ export default function ContractFeedToolbar({
   mutedCount,
   revealMuted,
   onRevealMuted,
+  hideBadges,
+  onHideBadges,
   topOnly = false,
 }: ContractFeedToolbarProps) {
   const ranked = sortMode === 'ranked';
@@ -164,6 +173,22 @@ export default function ContractFeedToolbar({
             <span>Hide slop</span>
           </button>
         )}
+
+        {/* Display-only: drops the ELITE/UNRATED chips from row prefixes for a
+            quieter feed. Ranking and the slop filter still use the bands — this
+            hides the label, not the judgement. */}
+        <button
+          onClick={() => onHideBadges(!hideBadges)}
+          className={chipClass(hideBadges)}
+          title={
+            hideBadges
+              ? 'Show caller-band chips (ELITE / UNRATED) on rows again'
+              : 'Hide the caller-band chips (ELITE / UNRATED) on rows. Ranking and filtering still use the bands — this only quiets the row prefix.'
+          }
+        >
+          <Tags size={12} />
+          <span>Badges</span>
+        </button>
 
         <div className="relative flex-1 min-w-[120px]">
           <Search size={14} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-oct-muted" />
