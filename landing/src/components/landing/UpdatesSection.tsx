@@ -44,16 +44,18 @@ export function UpdatesSection({ scrollRef }: { scrollRef: RefObject<HTMLElement
           >
             WHAT&apos;S NEW.
           </motion.h2>
-        </motion.div>
 
-        <motion.p
-          initial={{ opacity: 0 }}
-          whileInView={{ opacity: 1 }}
-          viewport={{ once: true }}
-          className="font-mono text-xs sm:text-sm text-white/55 mb-12 max-w-lg"
-        >
-          Recent changes to the console, contract feed, and landing experience.
-        </motion.p>
+          {/* Inside the parallax block on purpose: when the heading translated on scroll and this
+              did not, the two overlapped mid-scroll. Moving together keeps them clear. */}
+          <motion.p
+            initial={{ opacity: 0 }}
+            whileInView={{ opacity: 1 }}
+            viewport={{ once: true }}
+            className="font-mono text-xs sm:text-sm text-white/55 mb-12 max-w-lg"
+          >
+            Recent changes to the console, contract feed, and landing experience.
+          </motion.p>
+        </motion.div>
 
         <div className="relative">
           <div className="absolute left-[5px] top-2 bottom-2 w-px bg-white/15" aria-hidden />
@@ -108,6 +110,25 @@ export function UpdatesSection({ scrollRef }: { scrollRef: RefObject<HTMLElement
                           className="font-mono text-xs sm:text-sm leading-relaxed text-white/70 flex gap-2"
                         >
                           <span className="text-amber-400/80 shrink-0">·</span>
+                          <span>{renderBold(item)}</span>
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
+
+                {entry.notes && entry.notes.length > 0 && (
+                  <div className="mt-4">
+                    <span className="font-mono text-[10px] tracking-[0.15em] text-white/50 uppercase">
+                      ◦ Notes
+                    </span>
+                    <ul className="mt-2 space-y-2">
+                      {entry.notes.map((item, i) => (
+                        <li
+                          key={i}
+                          className="font-mono text-xs sm:text-sm leading-relaxed text-white/70 flex gap-2"
+                        >
+                          <span className="text-white/40 shrink-0">·</span>
                           <span>{renderBold(item)}</span>
                         </li>
                       ))}

@@ -6,6 +6,9 @@ export default defineConfig({
   server: {
     port: 5174,
     strictPort: true,
+    // The updates feed imports the repo-root CHANGELOG.md (?raw), which sits above the landing
+    // workspace — allow the dev server to read one level up so that import resolves.
+    fs: { allow: ['..', '../..'] },
     proxy: {
       '/dashboard': {
         target: 'http://localhost:5173',
