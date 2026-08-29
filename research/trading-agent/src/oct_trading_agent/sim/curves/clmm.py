@@ -62,6 +62,7 @@ from decimal import Decimal
 from typing import ClassVar, Literal
 
 import numpy as np
+from numba import njit
 
 from oct_trading_agent.core import Side
 from oct_trading_agent.sim.amm.curve import CurveFill
@@ -98,6 +99,45 @@ DEFAULT_CLMM_FEE_BPS = 30
 #: assumption. Beyond this the fill is flagged ``in_range=False`` / ``confidence="low"`` — the price
 #: is likely crossing a tick, where ``L`` changes and the local model loses validity.
 DEFAULT_VALID_RANGE_FRACTION = Decimal("0.02")  # 2%
+
+
+@njit(cache=True)
+def _fit_median_rel_error(
+    ins: np.ndarray, obs: np.ndarray, sides: np.ndarray, liquidity: float, p0: float, fee: float
+) -> float:
+    """njit'd scalar recurrence for the L/P0 sweep — the fitter's inner kernel (~160 calls/token).
+
+    Propagates the window through the virtual-reserve law at ``L`` and returns the median of
+    |pred/obs − 1|. Each step's reserves feed the next, so it cannot vectorise; compiling the scalar
+    loop is what buys the speed. Returns ``inf`` for a physically-impossible guess (drained reserves
+    or an over-draw) — the caller minimises over this, so ``inf`` is rejected without any None-vs-float
+    branching. Math matches the pure-Python reference exactly (same float64 ops, same median).
+    """
+    root = p0 ** 0.5
+    x_v = liquidity / root
+    y_v = liquidity * root
+    one_minus_fee = 1.0 - fee
+    n = ins.shape[0]
+    rel = np.empty(n)
+    for i in range(n):
+        if x_v <= 0.0 or y_v <= 0.0:
+            return float(np.inf)
+        d_eff = ins[i] * one_minus_fee
+        if sides[i] == 1:  # BUY: SOL in -> token out
+            out = x_v * d_eff / (y_v + d_eff)
+            if out >= x_v:
+                return float(np.inf)
+            x_v -= out
+            y_v += d_eff
+        else:  # SELL: token in -> SOL out
+            out = y_v * d_eff / (x_v + d_eff)
+            if out >= y_v:
+                return float(np.inf)
+            x_v += d_eff
+            y_v -= out
+        ao = obs[i]
+        rel[i] = abs(out / ao - 1.0) if ao != 0.0 else np.inf
+    return float(np.median(rel))
 
 
 @dataclass(frozen=True)
@@ -261,20 +301,19 @@ class RollingLocalLiquidityEstimator:
         l_center = quote_scale / root_p
         grid = np.geomspace(l_center * 1e-3, l_center * 1e3, self.grid_points)
 
-        # The window is fixed across the whole sweep — only (L, P0) vary — so convert the numpy
-        # windows to Python lists ONCE here rather than re-boxing them on every one of the ~160
-        # _median_rel_error calls this sweep makes. (The numpy arrays are still needed above for the
-        # quote-scale reduction; only the scalar recurrence wants lists.)
-        ins_l: list[float] = ins.tolist()
-        obs_l: list[float] = obs.tolist()
-        sides_l: list[int] = sides.tolist()
+        # Lock dtypes so the njit kernel compiles once and reuses its cached signature across every
+        # call and every process (cache=True). The kernel returns inf for a drained/over-draw guess,
+        # so the minimisation rejects it with a plain `<` — no None branching.
+        ins_f = ins.astype(np.float64)
+        obs_f = obs.astype(np.float64)
+        sides_i = sides.astype(np.int64)
 
         best: tuple[float, float, float] | None = None
         for liquidity in grid:
-            med = self._median_rel_error(ins_l, obs_l, sides_l, liquidity, p0, fee)
-            if med is not None and (best is None or med < best[0]):
+            med = _fit_median_rel_error(ins_f, obs_f, sides_i, float(liquidity), p0, fee)
+            if best is None or med < best[0]:
                 best = (med, float(liquidity), p0)
-        if best is None:
+        if best is None or np.isinf(best[0]):
             raise ValueError("L fit failed: virtual depth drained under every guess")
 
         med, liquidity, price = best
@@ -282,63 +321,17 @@ class RollingLocalLiquidityEstimator:
             improved = False
             # Refine L.
             for scale in (1.1, 0.9, 1.03, 0.97, 1.008, 0.992):
-                m = self._median_rel_error(ins_l, obs_l, sides_l, liquidity * scale, price, fee)
-                if m is not None and m < med:
+                m = _fit_median_rel_error(ins_f, obs_f, sides_i, liquidity * scale, price, fee)
+                if m < med:
                     med, liquidity, improved = m, liquidity * scale, True
             # Refine the anchor price P0.
             for scale in (1.02, 0.98, 1.005, 0.995, 1.001, 0.999):
-                m = self._median_rel_error(ins_l, obs_l, sides_l, liquidity, price * scale, fee)
-                if m is not None and m < med:
+                m = _fit_median_rel_error(ins_f, obs_f, sides_i, liquidity, price * scale, fee)
+                if m < med:
                     med, price, improved = m, price * scale, True
             if not improved:
                 break
         return med, liquidity, price
-
-    @staticmethod
-    def _median_rel_error(
-        ins: list[float], obs: list[float], sides: list[int], liquidity: float, p0: float, fee: float
-    ) -> float | None:
-        """Propagate the window through the virtual-reserve law at ``L`` and score |pred/obs−1|.
-
-        Fee is taken on the input and accrues OUTSIDE the reserves (V3 fee-growth), so only the
-        post-fee amount moves the virtual reserves and ``k_v`` is preserved within the range.
-
-        HOT PATH — the profiler puts ~90% of tape-prep time here (``_sweep`` calls it ~160×/token).
-        It is a scalar recurrence (each step's reserves feed the next), so it cannot vectorise across
-        the window. The win is therefore to run it in *pure Python over lists*: numpy scalar indexing
-        (``ins[i]``) boxes an object per access, and a per-call ``np.median`` drags partition +
-        nan-check + dtype machinery over a tiny array — both cost far more than the arithmetic itself.
-        Results are bit-identical: the same float64 ops in the same order, and the same median
-        definition (mean of the two central order statistics for even n).
-        """
-        one_minus_fee = 1.0 - fee
-        root = p0 ** 0.5
-        x_v = liquidity / root  # base virtual reserve
-        y_v = liquidity * root  # quote virtual reserve
-        rel: list[float] = []
-        for amt_in, amt_obs, side in zip(ins, obs, sides, strict=True):
-            if x_v <= 0.0 or y_v <= 0.0:
-                return None
-            d_eff = amt_in * one_minus_fee
-            if side == 1:  # BUY: SOL in -> token out
-                out = x_v * d_eff / (y_v + d_eff)
-                if out >= x_v:
-                    return None
-                x_v -= out
-                y_v += d_eff
-            else:  # SELL: token in -> SOL out
-                out = y_v * d_eff / (x_v + d_eff)
-                if out >= y_v:
-                    return None
-                x_v += d_eff
-                y_v -= out
-            rel.append(abs(out / amt_obs - 1.0) if amt_obs else float("inf"))
-        n = len(rel)
-        if n == 0:
-            return None
-        rel.sort()
-        mid = n // 2
-        return rel[mid] if n & 1 else 0.5 * (rel[mid - 1] + rel[mid])
 
 
 @register_curve(*CLMM_VENUES)

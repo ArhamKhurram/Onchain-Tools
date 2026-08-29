@@ -17,6 +17,7 @@ authors = [{ name = "Onchain Tools" }]
 # Runtime deps kept lean: typed contracts (pydantic v2), numeric (numpy),
 # columnar/point-in-time work (polars). Everything else is optional.
 dependencies = [
+    "numba>=0.67.0",
     "numpy>=1.26",
     "polars>=1.0",
     "pydantic>=2.6,<3",
