@@ -1,5 +1,6 @@
 {
   "$schema": "https://openapi.vercel.sh/vercel.json",
+  "installCommand": "npm ci --include=dev -w landing -w frontend -w @oct/shared",
   "buildCommand": "npm run build:vercel",
   "outputDirectory": "dist",
   "rewrites": [
