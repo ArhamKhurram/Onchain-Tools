@@ -196,9 +196,17 @@ export function sortContractGroups<T extends ContractFeedItem & { quality: FeedR
   mode: ContractSortMode,
 ): ContractScanGroup<T>[] {
   if (mode === 'recent') return [...groups];
-  return [...groups].sort(
-    (a, b) =>
-      groupRank(b) - groupRank(a) ||
-      timestampOf(groupSummaryItem(b)) - timestampOf(groupSummaryItem(a)),
-  );
+  // Precompute each group's sort key once. Deriving rank and newest-scan
+  // timestamp inside the comparator re-walked (and re-Date-parsed) every
+  // group's items O(log n) times per sort — and this sort runs on every
+  // contracts churn while ranked mode is on.
+  const keys = new Map<ContractScanGroup<T>, { rank: number; ts: number }>();
+  for (const group of groups) {
+    keys.set(group, { rank: groupRank(group), ts: timestampOf(groupSummaryItem(group)) });
+  }
+  return [...groups].sort((a, b) => {
+    const ka = keys.get(a)!;
+    const kb = keys.get(b)!;
+    return kb.rank - ka.rank || kb.ts - ka.ts;
+  });
 }

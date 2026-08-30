@@ -54,10 +54,13 @@ export function groupContractFeedByAddress<T extends ContractFeedItem>(
   windowMs: number = CONTRACT_RESCAN_GROUP_WINDOW_MS,
 ): ContractScanGroup<T>[] {
   const groups: ContractScanGroup<T>[] = [];
-  // Tracks the most recent group created/extended for each address so a
-  // same-address item later in the list can find and extend it, even if
-  // other addresses' rows are interleaved in between.
-  const currentGroupByAddress = new Map<string, ContractScanGroup<T>>();
+  // Tracks the most recent group created/extended for each address — plus the
+  // already-parsed timestamp of its last appended item, so each item's
+  // timestamp is Date-parsed exactly once instead of once as itself and again
+  // as the next same-address item's "last" — so a same-address item later in
+  // the list can find and extend it, even if other addresses' rows are
+  // interleaved in between.
+  const currentGroupByAddress = new Map<string, { group: ContractScanGroup<T>; lastTs: number }>();
 
   for (const item of items) {
     const address = item.entry.address.toLowerCase();
@@ -66,21 +69,20 @@ export function groupContractFeedByAddress<T extends ContractFeedItem>(
 
     const current = currentGroupByAddress.get(address);
     if (current) {
-      const lastItem = current.items[current.items.length - 1];
-      const lastTs = new Date(lastItem.entry.timestamp).getTime();
-      const withinWindow = Number.isFinite(ts) && Number.isFinite(lastTs)
-        ? Math.abs(lastTs - ts) <= windowMs
+      const withinWindow = Number.isFinite(ts) && Number.isFinite(current.lastTs)
+        ? Math.abs(current.lastTs - ts) <= windowMs
         : false;
       if (withinWindow) {
-        current.items.push(item);
-        if (isNew) current.hasNew = true;
+        current.group.items.push(item);
+        current.lastTs = ts;
+        if (isNew) current.group.hasNew = true;
         continue;
       }
     }
 
     const group: ContractScanGroup<T> = { address, items: [item], hasNew: isNew };
     groups.push(group);
-    currentGroupByAddress.set(address, group);
+    currentGroupByAddress.set(address, { group, lastTs: ts });
   }
 
   return groups;
