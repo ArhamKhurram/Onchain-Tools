@@ -1,19 +1,8 @@
 import { WebSocketServer, WebSocket } from 'ws';
 import type { Server } from 'http';
-import { createClient, type SupabaseClient } from '@supabase/supabase-js';
 import type { FrontendMessage } from '../discord/types.js';
 import { isHostedMode } from '../storage/index.js';
-
-let _verifier: SupabaseClient | null = null;
-
-function getVerifier(): SupabaseClient {
-  if (_verifier) return _verifier;
-  const url = process.env.SUPABASE_URL;
-  const key = process.env.SUPABASE_SERVICE_KEY;
-  if (!url || !key) throw new Error('SUPABASE_URL and SUPABASE_SERVICE_KEY required');
-  _verifier = createClient(url, key, { auth: { persistSession: false } });
-  return _verifier;
-}
+import { verifyAccessToken } from '../auth/middleware.js';
 
 interface ClientState {
   subscribedRooms: Set<string>;
@@ -75,14 +64,17 @@ export class WsServer {
         const state = this.clients.get(ws);
         if (!state) break;
 
-        getVerifier().auth.getUser(msg.token).then(({ data, error }) => {
-          if (error || !data.user) {
+        // Shared cache-first verifier (auth/middleware.ts): the console's REST
+        // polling has usually just verified this same JWT, so a WS connect (or
+        // a redeploy-triggered reconnect storm) costs no extra GoTrue round-trip.
+        verifyAccessToken(msg.token).then((userId) => {
+          if (!userId) {
             ws.send(JSON.stringify({ type: 'auth_error', error: 'Invalid token' }));
             return;
           }
-          state.userId = data.user.id;
+          state.userId = userId;
           if (this.onUserConnect) {
-            this.onUserConnect(data.user.id);
+            this.onUserConnect(userId);
           }
         }).catch(() => {
           ws.send(JSON.stringify({ type: 'auth_error', error: 'Auth verification failed' }));
