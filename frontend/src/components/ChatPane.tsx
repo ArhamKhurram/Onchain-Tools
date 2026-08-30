@@ -16,6 +16,10 @@ const MAX_PANES = 4;
 
 const SCROLL_THRESHOLD = 150;
 
+// Stable fallback so the per-room message selector returns the same identity
+// for a room with no messages yet (a fresh [] every pass would re-render).
+const EMPTY_MESSAGES: FrontendMessage[] = [];
+
 function formatTime(ts: string | number | Date) {
   return new Date(ts).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
 }
@@ -54,7 +58,11 @@ export default function ChatPane({ roomId, paneIndex, paneCount, editMode, varia
   const isPopout = variant === 'popout';
   const isWorkspace = variant === 'workspace';
   const rooms = useAppStore((s) => s.rooms);
-  const messages = useAppStore((s) => s.messages);
+  // Subscribe to THIS room's list only — `addMessage` keeps untouched rooms'
+  // arrays identity-stable, so traffic in other rooms never re-renders this
+  // pane. (Subscribing to the whole `s.messages` map re-rendered every pane,
+  // in every split, for every message in ANY room.)
+  const allRoomMessages = useAppStore((s) => s.messages[roomId] ?? EMPTY_MESSAGES);
   const config = useAppStore((s) => s.config);
   const openConfigModal = useAppStore((s) => s.openConfigModal);
 
@@ -116,6 +124,11 @@ export default function ChatPane({ roomId, paneIndex, paneCount, editMode, varia
   const [quickReplyChannelId, setQuickReplyChannelId] = useState<string | null>(null);
   const [switcherOpen, setSwitcherOpen] = useState(false);
 
+  // Only the open switcher dropdown needs the full per-room message map (to
+  // list DM/TG chats and label them from their first message). Select null
+  // while it is closed so cross-room traffic cannot re-render the pane.
+  const switcherMessages = useAppStore((s) => (switcherOpen ? s.messages : null));
+
   const chattingEnabled = config?.chattingEnabled ?? false;
 
   const isDMView = roomId.startsWith('dm:');
@@ -126,7 +139,6 @@ export default function ChatPane({ roomId, paneIndex, paneCount, editMode, varia
   const activeDM = isDMView ? dmChannels.find((dm) => dm.id === dmChannelId) : null;
 
   const activeRoom = isAnyDMView || isMentionsView ? undefined : rooms.find((r) => r.id === roomId);
-  const allRoomMessages = messages[roomId] ?? [];
 
   // Colour lookup that understands @handle-keyed entries, not just ids — a
   // colour saved against "@handle" must paint that user's rows. Memoised per
@@ -462,6 +474,7 @@ export default function ChatPane({ roomId, paneIndex, paneCount, editMode, varia
     const opts: { id: string; label: string; kind: 'mentions' | 'room' | 'dm' | 'tg' }[] = [];
     opts.push({ id: 'mentions', label: 'Mentions', kind: 'mentions' });
     for (const r of rooms) opts.push({ id: r.id, label: r.name, kind: 'room' });
+    const messages = switcherMessages ?? {};
     const dmLookup = new Map(dmChannels.map((dm) => [dm.id, dm]));
     for (const key of Object.keys(messages)) {
       if ((messages[key]?.length ?? 0) === 0) continue;
@@ -475,7 +488,7 @@ export default function ChatPane({ roomId, paneIndex, paneCount, editMode, varia
       }
     }
     return opts;
-  }, [rooms, dmChannels, messages]);
+  }, [rooms, dmChannels, switcherMessages]);
 
   const dmRecipientNames = activeDM
     ? activeDM.recipients.map((r) => r.global_name || r.username || 'Unknown').join(', ')
