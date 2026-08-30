@@ -7,6 +7,7 @@ const envPath = path.resolve(__envDir, '../.env');
 // Never let a bundled/empty .env override Railway/Vercel injected secrets.
 dotenvConfig({ path: envPath, override: false });
 import express from 'express';
+import compression from 'compression';
 import cors from 'cors';
 import helmet from 'helmet';
 import rateLimit from 'express-rate-limit';
@@ -678,6 +679,19 @@ if (isHostedMode()) {
 // would force it below `new WsServer(...)`, i.e. below the cors() call it must
 // precede. The Fires tab polls instead.
 app.use('/sniper/v1', createSniperRouter());
+
+// Response compression for everything mounted below (deliberately NOT the
+// sniper control plane above — it inherits nothing from this stack). Railway's
+// proxy does not gzip response bodies, so without this every polled JSON
+// payload (contracts, caller scores, FOMO trades, journal) leaves the server
+// at full size — user-visible latency AND billed Railway egress. The polled
+// /api responses are highly repetitive JSON that compresses ~7x (measured:
+// GET /api/contracts?limit=500 — 463,220 B identity, 71,124 B gzip, 65,095 B
+// brotli, at negligible added latency). Defaults are right for
+// us: >1 kB bodies only, compressible content-types only, and WebSocket
+// upgrades never touch the middleware stack. There are no SSE/streaming
+// responses on this app (they would need res.flush()).
+app.use(compression());
 
 // CORS: restrict origins in hosted mode, allow all in local mode
 if (isHostedMode()) {
