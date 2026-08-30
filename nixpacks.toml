@@ -22,7 +22,11 @@ aptPkgs = [
 ]
 
 [phases.install]
-cmds = ["npm ci --include=dev"]
+# Backend-only deploy: install just the backend workspace (+ @oct/shared, which
+# the root `prepare` script builds). A bare `npm ci` here installs every
+# workspace — including the two Astro/Starlight docs sites, the Vite frontend,
+# the landing site and fomo-worker — none of which this image builds or runs.
+cmds = ["npm ci --include=dev -w backend -w @oct/shared"]
 
 [phases.build]
 cmds = [
