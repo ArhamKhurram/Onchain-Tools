@@ -1,4 +1,6 @@
-@import url('https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,900&family=IBM+Plex+Mono:wght@400;500&display=swap');
+/* Fonts are loaded from index.html (<link rel="stylesheet"> + preconnect) so the
+   request starts at document parse instead of after the bundled CSS downloads.
+   Don't re-add an @import here — it re-creates a 3-deep render-blocking chain. */
 
 @tailwind base;
 @tailwind components;
