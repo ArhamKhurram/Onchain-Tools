@@ -17,7 +17,7 @@
     "build:landing": "npm run build -w landing",
     "build:vercel": "npm run build:shared && npm run build -w landing && npm run build -w frontend && node scripts/merge-vercel-output.mjs",
     "start": "npm run build && npm run start -w backend",
-    "typecheck": "npm run build:shared && npm run typecheck -w backend && npm run typecheck -w frontend",
+    "typecheck": "tsc -b packages/shared && tsc -b backend frontend --noEmit",
     "test": "npm run build:shared && npm run test -w backend && npm run test -w frontend && npm run test -w fomo-worker",
     "prepare": "npm run build:shared",
     "docs:dev": "npm run dev -w docs",
