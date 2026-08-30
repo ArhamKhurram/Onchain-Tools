@@ -1,15 +1,16 @@
 import type { Room, AppConfig, FrontendMessage, ContractEntry } from '../types';
-import {
-  DEMO_ROOMS,
-  DEMO_CONFIG,
-  DEMO_GUILDS,
-  DEMO_DM_CHANNELS,
-  DEMO_MESSAGES,
-  DEMO_CONTRACTS,
-  DEMO_MASKED_TOKENS,
-} from './demoData';
 
 export const isDemoMode = import.meta.env.VITE_DEMO_MODE === 'true';
+
+// Fixtures load via dynamic import. A static `import { DEMO_ROOMS, ... }` here
+// pinned demoData (~17 kB of sample fixtures) into the initial index chunk of
+// every PRODUCTION build: rollup refuses to move a module into a lazy chunk
+// while any eager module still declares a static import edge to it — even this
+// one, whose own code is entirely tree-shaken when VITE_DEMO_MODE is off.
+// In the demo build the fetch starts at module init and every fixture-reading
+// override awaits it, so the only observable change is fixtures arriving one
+// microtask-plus-chunk-fetch after boot.
+const fixturesPromise = isDemoMode ? import('./demoData') : null;
 
 type SetFn = (
   partial:
@@ -26,6 +27,10 @@ function clone<T>(obj: T): T {
 let _roomCounter = 100;
 
 export function createDemoOverrides(set: SetFn, get: GetFn) {
+  // Non-null: createDemoOverrides is only reachable when isDemoMode is true
+  // (every caller gates on it), and fixturesPromise is created in that mode.
+  const fixtures = () => fixturesPromise!;
+
   return {
     checkAuth: () => {
       set({ authStatus: { configured: true, connected: true }, authLoading: false });
@@ -35,48 +40,55 @@ export function createDemoOverrides(set: SetFn, get: GetFn) {
     addToken: () => ({ success: true }),
     removeToken: () => ({ success: true }),
 
-    fetchMaskedTokens: () => {
-      set({ maskedTokens: clone(DEMO_MASKED_TOKENS) });
+    fetchMaskedTokens: async () => {
+      const F = await fixtures();
+      set({ maskedTokens: clone(F.DEMO_MASKED_TOKENS) });
     },
 
-    fetchRooms: () => {
+    fetchRooms: async () => {
+      const F = await fixtures();
       const state = get();
       const rooms = (state.rooms as Room[]);
       if (rooms.length === 0) {
-        const demoRooms = clone(DEMO_ROOMS);
+        const demoRooms = clone(F.DEMO_ROOMS);
         const firstId = demoRooms[0]?.id ?? null;
         set({ rooms: demoRooms, activeRoomId: firstId, paneRoomIds: firstId ? [firstId] : [] });
       }
     },
 
-    fetchHistory: () => {
+    fetchHistory: async () => {
+      const F = await fixtures();
       set((state: Record<string, unknown>) => {
         const existing = state.messages as Record<string, FrontendMessage[]>;
         const hasData = Object.values(existing).some((msgs) => msgs.length > 0);
         if (hasData) return state;
-        return { messages: clone(DEMO_MESSAGES) };
+        return { messages: clone(F.DEMO_MESSAGES) };
       });
     },
 
-    fetchGuilds: () => {
-      set({ guilds: clone(DEMO_GUILDS) });
+    fetchGuilds: async () => {
+      const F = await fixtures();
+      set({ guilds: clone(F.DEMO_GUILDS) });
     },
 
-    fetchDMChannels: () => {
-      set({ dmChannels: clone(DEMO_DM_CHANNELS) });
+    fetchDMChannels: async () => {
+      const F = await fixtures();
+      set({ dmChannels: clone(F.DEMO_DM_CHANNELS) });
     },
 
-    fetchConfig: () => {
+    fetchConfig: async () => {
+      const F = await fixtures();
       const state = get();
       if (!state.config) {
-        set({ config: clone(DEMO_CONFIG) });
+        set({ config: clone(F.DEMO_CONFIG) });
       }
     },
 
-    fetchContracts: () => {
+    fetchContracts: async () => {
+      const F = await fixtures();
       const state = get();
       if ((state.contracts as ContractEntry[]).length === 0) {
-        const contracts = clone(DEMO_CONTRACTS) as ContractEntry[];
+        const contracts = clone(F.DEMO_CONTRACTS) as ContractEntry[];
         const addressChains: Record<string, string> = {};
         for (const c of contracts) {
           if (c.chain === 'evm' && c.evmChain) addressChains[c.address.toLowerCase()] = c.evmChain;
