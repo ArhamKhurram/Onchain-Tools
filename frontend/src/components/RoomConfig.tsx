@@ -1,8 +1,9 @@
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect } from 'react';
 import { useAppStore } from '../stores/appStore';
 import type { ChannelRef, KeywordPattern, KeywordMatchMode, HighlightMode } from '../types';
 import { X } from 'lucide-react';
 import { normalizeUserIdentifier, appendUserIdentifiers } from '../utils/userIdentifiers';
+import { useUserNameMap } from '../hooks/useUserNameMap';
 import ChannelsTab from './room-config/ChannelsTab';
 import UsersTab from './room-config/UsersTab';
 import FilterTab from './room-config/FilterTab';
@@ -22,25 +23,13 @@ export default function RoomConfig() {
   const fetchDMChannels = useAppStore((s) => s.fetchDMChannels);
   const fetchConfig = useAppStore((s) => s.fetchConfig);
   const updateConfig = useAppStore((s) => s.updateConfig);
-  const allMessages = useAppStore((s) => s.messages);
   const telegramChats = useAppStore((s) => s.telegramChats);
   const fetchTelegramChats = useAppStore((s) => s.fetchTelegramChats);
   const authStatus = useAppStore((s) => s.authStatus);
 
-  const userNameMap = useMemo(() => {
-    const map = new Map<string, string>();
-    if (config?.userNameCache) {
-      for (const [id, name] of Object.entries(config.userNameCache)) {
-        map.set(id, name);
-      }
-    }
-    for (const msgs of Object.values(allMessages)) {
-      for (const msg of msgs) {
-        map.set(msg.author.id, msg.author.displayName);
-      }
-    }
-    return map;
-  }, [allMessages, config?.userNameCache]);
+  // Live author-name lookup without a whole-messages-map subscription (which
+  // re-rendered the open modal on every incoming message in any room).
+  const userNameMap = useUserNameMap();
 
   const [name, setName] = useState('');
   const [selectedChannels, setSelectedChannels] = useState<ChannelRef[]>([]);

@@ -14,7 +14,7 @@ export default function PushoverSection({ form }: { form: SettingsForm }) {
   const {
     config, updateConfig, guilds, rooms, dmChannels, fetchGuilds,
     fetchDMChannels, fetchConfig, maskedTokens, fetchMaskedTokens, addToken, removeToken,
-    allMessages, navigate, settingsSection, sidebarCollapsed, toggleSidebar, authStatus,
+    navigate, settingsSection, sidebarCollapsed, toggleSidebar, authStatus,
     telegramDisconnect, fetchRooms, userNameMap, section, setSection, globalUsers,
     setGlobalUsers, newUserId, setNewUserId, contractDetection, setContractDetection, guildColors,
     setGuildColors, dmColors, setDmColors, telegramColors, setTelegramColors, enabledGuilds,
