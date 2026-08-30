@@ -202,7 +202,10 @@ export class TelegramClientWrapper extends EventEmitter {
         const message = event.message;
         if (!message) return;
 
-        const raw = await this.buildRawMessage(message);
+        // Edits only propagate {messageId, channelId, content} downstream, and
+        // bot channels edit stat messages continuously — skip the reply/forward
+        // context fetches (one MTProto round-trip each) that would be discarded.
+        const raw = await this.buildRawMessage(message, { skipContext: true });
         if (raw) {
           this.emit('messageUpdate', raw);
         }
@@ -212,7 +215,16 @@ export class TelegramClientWrapper extends EventEmitter {
     }, new EditedMessage({}));
   }
 
-  private async buildRawMessage(message: Api.Message): Promise<TelegramRawMessage | null> {
+  /**
+   * ``skipContext`` (the edit path) elides the reply and forward *network* resolution:
+   * the replied-to message fetch (one getMessages round-trip per event) and the
+   * forward-source getEntity. Everything the update consumer reads — chat, topic,
+   * sender, text — still resolves exactly as before, from caches.
+   */
+  private async buildRawMessage(
+    message: Api.Message,
+    opts?: { skipContext?: boolean },
+  ): Promise<TelegramRawMessage | null> {
     const chat = await this.resolveChat(message);
     if (!chat) return null;
 
@@ -221,7 +233,7 @@ export class TelegramClientWrapper extends EventEmitter {
 
     const rawReplyTo = message.replyTo;
     let replyTo: TelegramRawMessage['replyTo'] = null;
-    if (rawReplyTo && isGenuineReply(rawReplyTo) && 'replyToMsgId' in rawReplyTo && rawReplyTo.replyToMsgId) {
+    if (!opts?.skipContext && rawReplyTo && isGenuineReply(rawReplyTo) && 'replyToMsgId' in rawReplyTo && rawReplyTo.replyToMsgId) {
       try {
         const replyMsgId = rawReplyTo.replyToMsgId;
         const replyMsg = await this.client.getMessages(message.peerId!, {
@@ -245,7 +257,9 @@ export class TelegramClientWrapper extends EventEmitter {
       const fwd = message.fwdFrom;
       let senderName = 'Unknown';
       let chatTitle: string | undefined;
-      if (fwd.fromId) {
+      if (opts?.skipContext) {
+        senderName = fwd.fromName ?? 'Unknown';
+      } else if (fwd.fromId) {
         try {
           const entity = await this.client.getEntity(fwd.fromId);
           if (entity instanceof Api.User) {
