@@ -2,7 +2,6 @@ import { birdeyeGet, birdeyePost, isBirdeyeConfigured, type BirdeyeChain, type B
 import { mapSequential } from '../utils/sequential.js';
 import type { DailyPnlResult } from './pnlAggregator.js';
 import {
-  EVM_GMGN_CHAINS,
   type GmgnChain,
   type OctWalletChain,
   type WalletActivityItem,
@@ -192,7 +191,7 @@ function mergeStats(list: WalletStats[]): WalletStats {
   };
 }
 
-export async function fetchWalletStatsBirdeye(
+async function fetchWalletStatsBirdeye(
   chain: BirdeyeChain,
   address: string,
   period: '7d' | '30d',
@@ -223,7 +222,7 @@ export async function fetchWalletStatsMergedBirdeye(
   return { ok: true, data: mergeStats(okData) };
 }
 
-export async function fetchWalletPnlChartBirdeye(
+async function fetchWalletPnlChartBirdeye(
   chain: BirdeyeChain,
   address: string,
   periodDays: 7 | 30,
@@ -468,7 +467,7 @@ function mapTxItem(item: TxListItem, chain: BirdeyeChain): WalletActivityItem {
   };
 }
 
-export async function fetchWalletActivityBirdeye(
+async function fetchWalletActivityBirdeye(
   chain: BirdeyeChain,
   address: string,
   limit: number,
@@ -521,8 +520,5 @@ export async function fetchWalletActivityMergedBirdeye(
 
   return { ok: true, data: { activities: activities.slice(0, limit) } };
 }
-
-/** Re-export EVM chain list for resolve compatibility. */
-export { EVM_GMGN_CHAINS };
 
 export type { GmgnChain, OctWalletChain };
