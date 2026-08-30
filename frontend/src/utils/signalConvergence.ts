@@ -2,7 +2,7 @@ import type { AppConfig, ContractEntry, FrontendMessage } from '../types';
 import type { FomoTrade } from '../types/fomo';
 
 /** Default window: contract in feed + FOMO buy within 30 minutes. */
-export const SIGNAL_CONVERGENCE_WINDOW_MS = 30 * 60 * 1000;
+const SIGNAL_CONVERGENCE_WINDOW_MS = 30 * 60 * 1000;
 export const DEFAULT_SIGNAL_CONVERGENCE_WINDOW_MINUTES = 30;
 
 export interface SignalConvergenceMatch {

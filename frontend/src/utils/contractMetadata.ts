@@ -23,7 +23,7 @@ export type ContractMetadata = Pick<
   | 'firstCallAt'
 >;
 
-export function hasContractMetadata(entry: ContractEntry): boolean {
+function hasContractMetadata(entry: ContractEntry): boolean {
   return !!(entry.tokenSymbol || entry.tokenName);
 }
 

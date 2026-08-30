@@ -441,14 +441,8 @@ function renderEmbedDescription(text: string, showFull: boolean = false): ReactN
 }
 
 export {
-  formatDiscordTimestamp,
-  linkifyText,
-  contractClickTitle,
-  handleContractClick,
-  applyInlineFormatting,
   renderInlineMarkdown,
   renderContent,
-  splitByRegex,
   detectAddresses,
   renderEmbedDescription,
 };

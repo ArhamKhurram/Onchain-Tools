@@ -58,7 +58,7 @@ function isV2Layout(saved: WorkspaceLayoutPersisted): saved is WorkspaceLayout {
 }
 
 /** Migrate v1 grid coordinates into column stacks (left/right split at col 6). */
-export function migrateGridToColumns(panels: WorkspacePanelLegacy[]): WorkspaceLayout {
+function migrateGridToColumns(panels: WorkspacePanelLegacy[]): WorkspaceLayout {
   const sorted = [...panels].sort((a, b) => a.x - b.x || a.y - b.y);
   const left = sorted.filter((p) => p.x < 6);
   const right = sorted.filter((p) => p.x >= 6);
@@ -216,23 +216,6 @@ export function addColumn(layout: WorkspaceLayout): WorkspaceLayout {
   return {
     version: 2,
     columns: [...layout.columns, { id: newColumnId(), panels: [] }],
-  };
-}
-
-export function removeColumn(layout: WorkspaceLayout, columnId: string): WorkspaceLayout {
-  if (layout.columns.length <= 1) return layout;
-  const target = layout.columns.find((c) => c.id === columnId);
-  if (!target) return layout;
-
-  const remaining = layout.columns.filter((c) => c.id !== columnId);
-  const fallbackCol = remaining[remaining.length - 1];
-  return {
-    version: 2,
-    columns: remaining.map((col) =>
-      col.id === fallbackCol.id
-        ? { ...col, panels: [...col.panels, ...target.panels] }
-        : col,
-    ),
   };
 }
 

@@ -8,8 +8,8 @@ export const API_BASE = import.meta.env.VITE_API_URL
 export const MAX_MESSAGES_PER_ROOM = 1000;
 export const MAX_ALERTS = 50;
 export const MAX_NOTIFICATION_HISTORY = 10;
-export const NOTIFICATION_HISTORY_KEY = 'oct.notificationHistory';
-export const NOTIFICATIONS_LAST_READ_KEY = 'oct.notificationsLastReadAt';
+const NOTIFICATION_HISTORY_KEY = 'oct.notificationHistory';
+const NOTIFICATIONS_LAST_READ_KEY = 'oct.notificationsLastReadAt';
 export const MAX_CONTRACTS = 2000;
 export const MAX_PANES = 4;
 
