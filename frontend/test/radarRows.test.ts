@@ -105,3 +105,88 @@ describe('buildRadar', () => {
     expect(slop.allMuted).toBe(true);
   });
 });
+
+describe('buildRadar identity reuse', () => {
+  const feed = [
+    entry({ messageId: 'm1', authorId: 'a1', timestamp: new Date(T0).toISOString() }),
+    entry({ messageId: 'm2', authorId: 'a2', timestamp: new Date(T0 + 60_000).toISOString() }),
+    entry({ messageId: 'm3', address: 'OtherToken', authorId: 'a1' }),
+  ];
+
+  it('returns the previous row objects when nothing visible changed', () => {
+    const first = buildRadar(feed);
+    const second = buildRadar(feed, undefined, first);
+    expect(second).toHaveLength(first.length);
+    for (const row of second) {
+      expect(first).toContain(row); // same object, not a structural copy
+    }
+  });
+
+  it('replaces only the touched row when one contract arrives', () => {
+    const first = buildRadar(feed);
+    const grown = [...feed, entry({ messageId: 'm4', authorId: 'a3', timestamp: new Date(T0 + 120_000).toISOString() })];
+    const second = buildRadar(grown, undefined, first);
+    const main = second.find((r) => r.address === 'TokenAddrAAAA')!;
+    const other = second.find((r) => r.address === 'OtherToken')!;
+    expect(first).not.toContain(main); // changed row: fresh object
+    expect(first).toContain(other); // untouched row: same object
+    expect(main.mentions).toBe(3);
+  });
+
+  it('replaces the row when enrichment lands (same mention count)', () => {
+    const first = buildRadar(feed);
+    const enriched = feed.map((c) =>
+      c.messageId === 'm1' ? { ...c, tokenSymbol: 'NEW' } : c,
+    );
+    const second = buildRadar(enriched, undefined, first);
+    const main = second.find((r) => r.address === 'TokenAddrAAAA')!;
+    expect(first).not.toContain(main);
+    expect(main.symbol).toBe('NEW');
+  });
+
+  it('reused output is projection-identical to a fresh build under fuzzing', () => {
+    let seed = 777;
+    const rnd = () => ((seed = (seed * 48271) % 2147483647) / 2147483647);
+    const proj = (r: ReturnType<typeof buildRadar>[number]) => ({
+      ...r,
+      callers: r.callers.size,
+      groups: r.groups.size,
+    });
+    let contracts = Array.from({ length: 120 }, (_, i) =>
+      entry({
+        address: `Tok${Math.floor(rnd() * 25)}`,
+        messageId: `f${i}`,
+        authorId: `a${Math.floor(rnd() * 10)}`,
+        timestamp: new Date(T0 + Math.floor(rnd() * 3_600_000)).toISOString(),
+        fdvAtCall: rnd() < 0.4 ? 1_000 + rnd() * 10_000 : undefined,
+        fdvAtCallDisplay: rnd() < 0.4 ? '1K' : undefined,
+      }),
+    );
+    let prev = buildRadar(contracts);
+    for (let step = 0; step < 30; step++) {
+      // Mutate the feed like the store does: append, enrich, or drop-oldest.
+      const op = rnd();
+      if (op < 0.5) {
+        contracts = [...contracts, entry({
+          address: `Tok${Math.floor(rnd() * 25)}`,
+          messageId: `g${step}`,
+          authorId: `a${Math.floor(rnd() * 10)}`,
+          timestamp: new Date(T0 + Math.floor(rnd() * 3_600_000)).toISOString(),
+        })];
+      } else if (op < 0.8) {
+        const i = Math.floor(rnd() * contracts.length);
+        contracts = contracts.map((c, j) => (j === i ? { ...c, tokenSymbol: `S${step}` } : c));
+      } else {
+        contracts = contracts.slice(1);
+      }
+      const reused = buildRadar(contracts, undefined, prev);
+      const fresh = buildRadar(contracts);
+      const sortByAddr = (a: { address: string }, b: { address: string }) =>
+        a.address.localeCompare(b.address);
+      expect([...reused].sort(sortByAddr).map(proj)).toEqual(
+        [...fresh].sort(sortByAddr).map(proj),
+      );
+      prev = reused;
+    }
+  });
+});

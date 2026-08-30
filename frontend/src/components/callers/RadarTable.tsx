@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { RefreshCw, Eye, EyeOff } from 'lucide-react';
 import { useAppStore } from '../../stores/appStore';
 import { SortHeader } from '../common/SortHeader';
@@ -27,6 +27,7 @@ import {
   pickGlobalFirst,
   MENTION_WINDOW_MS,
   type LiveMc,
+  type RadarRow,
 } from './radarRows';
 import RadarTableRow, { MULT_TITLE } from './RadarTableRow';
 import { resolveRadarEmojiRules, type RadarMultipleEmojiRule } from '@oct/shared';
@@ -195,10 +196,15 @@ export default function RadarTable({ embedded: _embedded = false }: { embedded?:
 
   // One buildRadar pass per (contracts, quality) change; the muted counter and
   // the visible table both derive from it rather than each paying for their own.
-  const radarRows = useMemo(
-    () => buildRadar(contracts, qualityForContractGlobal),
-    [contracts, qualityForContractGlobal],
-  );
+  // Feeding the previous build back in preserves row object identity for rows
+  // whose visible data didn't change, so the memoized row components can skip
+  // them — a single new contract re-renders one row, not the whole table.
+  const prevRadarRows = useRef<RadarRow[]>([]);
+  const radarRows = useMemo(() => {
+    const next = buildRadar(contracts, qualityForContractGlobal, prevRadarRows.current);
+    prevRadarRows.current = next;
+    return next;
+  }, [contracts, qualityForContractGlobal]);
 
   // One convergence pass per data change, O(1) per row at render time. The
   // old per-row findConvergenceForAddress rescanned every contract (and its
