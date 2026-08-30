@@ -1,16 +1,8 @@
 import { useEffect } from 'react';
 import { X } from 'lucide-react';
-import {
-  CartesianGrid,
-  Line,
-  LineChart,
-  ResponsiveContainer,
-  Tooltip,
-  XAxis,
-  YAxis,
-} from 'recharts';
+import PnlLineChart from './PnlLineChart';
 import type { DailyPnlResponse } from '../../types/portfolio';
-import { formatPortfolioError, formatUsd } from '../../types/portfolio';
+import { formatPortfolioError } from '../../types/portfolio';
 
 interface PnlChartModalProps {
   open: boolean;
@@ -75,25 +67,7 @@ export default function PnlChartModal({ open, onClose, data, loading, error }: P
               ) : null}
             </div>
           )}
-          {!loading && !error && chartData.length > 0 && (
-            <ResponsiveContainer width="100%" height="100%">
-              <LineChart data={chartData} margin={{ top: 8, right: 12, left: 0, bottom: 0 }}>
-                <CartesianGrid stroke="#333" strokeDasharray="3 3" />
-                <XAxis dataKey="date" tick={{ fill: '#888', fontSize: 10 }} />
-                <YAxis
-                  tick={{ fill: '#888', fontSize: 10 }}
-                  tickFormatter={(v) => formatUsd(v, { signed: true })}
-                  width={72}
-                />
-                <Tooltip
-                  formatter={(value: number) => [formatUsd(value, { signed: true }), 'Cumulative']}
-                  labelFormatter={(label) => `Date: ${label}`}
-                  contentStyle={{ background: '#111', border: '2px solid #000', fontFamily: 'monospace', fontSize: 11 }}
-                />
-                <Line type="monotone" dataKey="cumulativePnl" stroke="#ff3b3b" strokeWidth={2} dot={{ r: 3, fill: '#ff3b3b' }} />
-              </LineChart>
-            </ResponsiveContainer>
-          )}
+          {!loading && !error && chartData.length > 0 && <PnlLineChart data={chartData} />}
         </div>
       </div>
     </div>
