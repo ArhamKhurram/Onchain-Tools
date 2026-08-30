@@ -139,42 +139,45 @@ export class WsServer {
     };
   }
 
-  private shouldSendToClient(state: ClientState, roomIds: string[], userId?: string): boolean {
-    if (isHostedMode() && userId && state.userId !== userId) return false;
+  /**
+   * Serialize-once fan-out to every open socket, filtered to `userId`'s
+   * sockets in hosted mode. `isHostedMode()` reads `process.env` (an
+   * interceptor call, not a plain property read), so it is evaluated once
+   * per broadcast here rather than once per client in each loop.
+   */
+  private fanout(payload: string, userId?: string): void {
+    const filterByUser = isHostedMode() && !!userId;
+    for (const [ws, state] of this.clients) {
+      if (ws.readyState !== WebSocket.OPEN) continue;
+      if (filterByUser && state.userId !== userId) continue;
+      ws.send(payload);
+    }
+  }
 
-    return state.subscribedRooms.has('__all__') ||
-      roomIds.some((id) => state.subscribedRooms.has(id));
+  /** Fan-out additionally gated on the client's room subscriptions. */
+  private fanoutToRooms(payload: string, roomIds: string[], userId?: string): void {
+    const filterByUser = isHostedMode() && !!userId;
+    for (const [ws, state] of this.clients) {
+      if (ws.readyState !== WebSocket.OPEN) continue;
+      if (filterByUser && state.userId !== userId) continue;
+      if (
+        !state.subscribedRooms.has('__all__') &&
+        !roomIds.some((id) => state.subscribedRooms.has(id))
+      ) continue;
+      ws.send(payload);
+    }
   }
 
   broadcastMessage(message: FrontendMessage, roomIds: string[], userId?: string): void {
-    const payload = JSON.stringify({ type: 'message', data: message, roomIds });
-
-    for (const [ws, state] of this.clients) {
-      if (ws.readyState !== WebSocket.OPEN) continue;
-      if (this.shouldSendToClient(state, roomIds, userId)) {
-        ws.send(payload);
-      }
-    }
+    this.fanoutToRooms(JSON.stringify({ type: 'message', data: message, roomIds }), roomIds, userId);
   }
 
   broadcastMessageUpdate(update: { messageId: string; channelId: string; embeds?: FrontendMessage['embeds']; content?: string; attachments?: FrontendMessage['attachments']; editedTimestamp?: string | null }, roomIds: string[], userId?: string): void {
-    const payload = JSON.stringify({ type: 'message_update', data: update, roomIds });
-    for (const [ws, state] of this.clients) {
-      if (ws.readyState !== WebSocket.OPEN) continue;
-      if (this.shouldSendToClient(state, roomIds, userId)) {
-        ws.send(payload);
-      }
-    }
+    this.fanoutToRooms(JSON.stringify({ type: 'message_update', data: update, roomIds }), roomIds, userId);
   }
 
   broadcastMessageDelete(data: { messageId: string; channelId: string }, roomIds: string[], userId?: string): void {
-    const payload = JSON.stringify({ type: 'message_delete', data, roomIds });
-    for (const [ws, state] of this.clients) {
-      if (ws.readyState !== WebSocket.OPEN) continue;
-      if (this.shouldSendToClient(state, roomIds, userId)) {
-        ws.send(payload);
-      }
-    }
+    this.fanoutToRooms(JSON.stringify({ type: 'message_delete', data, roomIds }), roomIds, userId);
   }
 
   /**
@@ -188,12 +191,7 @@ export class WsServer {
   }
 
   broadcastAlert(alert: { type: string; message: FrontendMessage; reason: string }, userId?: string): void {
-    const payload = JSON.stringify({ type: 'alert', data: alert });
-    for (const [ws, state] of this.clients) {
-      if (ws.readyState !== WebSocket.OPEN) continue;
-      if (isHostedMode() && userId && state.userId !== userId) continue;
-      ws.send(payload);
-    }
+    this.fanout(JSON.stringify({ type: 'alert', data: alert }), userId);
 
     for (const listener of this.alertListeners) {
       try {
@@ -207,30 +205,15 @@ export class WsServer {
   }
 
   broadcastReactionUpdate(data: { channelId: string; messageId: string; emoji: { id: string | null; name: string; animated?: boolean }; delta: number }, userId?: string): void {
-    const payload = JSON.stringify({ type: 'reaction_update', data });
-    for (const [ws, state] of this.clients) {
-      if (ws.readyState !== WebSocket.OPEN) continue;
-      if (isHostedMode() && userId && state.userId !== userId) continue;
-      ws.send(payload);
-    }
+    this.fanout(JSON.stringify({ type: 'reaction_update', data }), userId);
   }
 
   broadcastContract(data: any, userId?: string): void {
-    const payload = JSON.stringify({ type: 'contract', data });
-    for (const [ws, state] of this.clients) {
-      if (ws.readyState !== WebSocket.OPEN) continue;
-      if (isHostedMode() && userId && state.userId !== userId) continue;
-      ws.send(payload);
-    }
+    this.fanout(JSON.stringify({ type: 'contract', data }), userId);
   }
 
   broadcastChainUpdate(address: string, evmChain: string, userId?: string): void {
-    const payload = JSON.stringify({ type: 'chain_update', data: { address, evmChain } });
-    for (const [ws, state] of this.clients) {
-      if (ws.readyState !== WebSocket.OPEN) continue;
-      if (isHostedMode() && userId && state.userId !== userId) continue;
-      ws.send(payload);
-    }
+    this.fanout(JSON.stringify({ type: 'chain_update', data: { address, evmChain } }), userId);
   }
 
   /**
@@ -239,12 +222,7 @@ export class WsServer {
    * Payload shape: RevivalAlertData (@oct/shared).
    */
   broadcastRevivalAlert(data: any, userId?: string): void {
-    const payload = JSON.stringify({ type: 'revival_alert', data });
-    for (const [ws, state] of this.clients) {
-      if (ws.readyState !== WebSocket.OPEN) continue;
-      if (isHostedMode() && userId && state.userId !== userId) continue;
-      ws.send(payload);
-    }
+    this.fanout(JSON.stringify({ type: 'revival_alert', data }), userId);
   }
 
   /**
@@ -253,30 +231,15 @@ export class WsServer {
    * Payload shape: BreakoutAlertData (@oct/shared).
    */
   broadcastBreakoutAlert(data: any, userId?: string): void {
-    const payload = JSON.stringify({ type: 'breakout_alert', data });
-    for (const [ws, state] of this.clients) {
-      if (ws.readyState !== WebSocket.OPEN) continue;
-      if (isHostedMode() && userId && state.userId !== userId) continue;
-      ws.send(payload);
-    }
+    this.fanout(JSON.stringify({ type: 'breakout_alert', data }), userId);
   }
 
   broadcastContractEnrichment(data: any, userId?: string): void {
-    const payload = JSON.stringify({ type: 'contract_enrichment', data });
-    for (const [ws, state] of this.clients) {
-      if (ws.readyState !== WebSocket.OPEN) continue;
-      if (isHostedMode() && userId && state.userId !== userId) continue;
-      ws.send(payload);
-    }
+    this.fanout(JSON.stringify({ type: 'contract_enrichment', data }), userId);
   }
 
   broadcastRaw(msg: Record<string, any>, userId?: string): void {
-    const payload = JSON.stringify(msg);
-    for (const [ws, state] of this.clients) {
-      if (ws.readyState !== WebSocket.OPEN) continue;
-      if (isHostedMode() && userId && state.userId !== userId) continue;
-      ws.send(payload);
-    }
+    this.fanout(JSON.stringify(msg), userId);
   }
 
   /**
@@ -286,12 +249,7 @@ export class WsServer {
    * FOMO fan-out poller to route a trade to exactly the OCT user(s) tracking it.
    */
   sendToUser(userId: string, msg: Record<string, any>): void {
-    const payload = JSON.stringify(msg);
-    for (const [ws, state] of this.clients) {
-      if (ws.readyState !== WebSocket.OPEN) continue;
-      if (isHostedMode() && state.userId !== userId) continue;
-      ws.send(payload);
-    }
+    this.fanout(JSON.stringify(msg), userId);
   }
 
   hasActiveClients(userId: string): boolean {
