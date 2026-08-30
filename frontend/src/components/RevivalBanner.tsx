@@ -6,7 +6,7 @@ import {
   revivalNetworkLabel,
   DEFAULT_LINK_TEMPLATES,
 } from '../utils/contractUrl';
-import { formatMcap } from '../types/pumpfun';
+import { formatMcap } from '../utils/formatMcap';
 
 /**
  * Persistent full-width revival ignition banner(s), mounted at the top of the

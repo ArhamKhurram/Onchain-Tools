@@ -361,15 +361,11 @@ export function formatMultiplier(m: number | null): string {
   return `${rounded}x`;
 }
 
-/** Compact USD market cap: 1_234_567 -> "$1.2M". Null -> em dash. */
-export function formatMcap(n: number | null): string {
-  if (n === null || !Number.isFinite(n)) return '—';
-  const abs = Math.abs(n);
-  if (abs >= 1_000_000_000) return `$${(n / 1_000_000_000).toFixed(2)}B`;
-  if (abs >= 1_000_000) return `$${(n / 1_000_000).toFixed(2)}M`;
-  if (abs >= 1_000) return `$${(n / 1_000).toFixed(1)}K`;
-  return `$${Math.round(n)}`;
-}
+// formatMcap moved to utils/formatMcap.ts — the boot path (useWebSocket,
+// RevivalBanner) needs it, and importing it from this module dragged all of
+// this file's runtime code into the index chunk. Re-exported here so the lazy
+// pumpfun/revival consumers keep their single import site.
+export { formatMcap } from '../utils/formatMcap';
 
 /** Format a SOL amount to a readable figure. Null -> em dash. */
 export function formatSol(n: number | null): string {
