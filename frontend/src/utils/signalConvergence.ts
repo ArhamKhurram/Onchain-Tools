@@ -88,6 +88,55 @@ export function findConvergenceForAddress(
   return null;
 }
 
+/**
+ * Convergence for every address at once: one pass over contracts and trades
+ * instead of a full rescan per address. For each address that has a match the
+ * map holds exactly the trade `findConvergenceForAddress` would return —
+ * contracts are walked in order, and within a contract the trades are tried
+ * in order, so the first (contract, trade) pair wins identically. Keys are
+ * normalized (trimmed, lowercased) addresses.
+ *
+ * Built for render loops: the radar rebuilds this once per data change and
+ * does O(1) lookups per row, where it used to rescan everything per row per
+ * render.
+ */
+export function buildConvergenceIndex(
+  contracts: ContractEntry[],
+  trades: FomoTrade[],
+  windowMs = SIGNAL_CONVERGENCE_WINDOW_MS,
+): Map<string, FomoTrade> {
+  const result = new Map<string, FomoTrade>();
+  if (contracts.length === 0 || trades.length === 0) return result;
+
+  // Buy-side trades grouped by token, preserving trades order — the order
+  // findConvergenceForContract scans them in.
+  const tradesByToken = new Map<string, FomoTrade[]>();
+  for (const trade of trades) {
+    if (!isFomoBuySide(trade.side) || !trade.tokenAddress) continue;
+    const token = normalizeAddress(trade.tokenAddress);
+    const list = tradesByToken.get(token);
+    if (list) list.push(trade);
+    else tradesByToken.set(token, [trade]);
+  }
+  if (tradesByToken.size === 0) return result;
+
+  for (const contract of contracts) {
+    const address = normalizeAddress(contract.address);
+    if (result.has(address)) continue;
+    const candidates = tradesByToken.get(address);
+    if (!candidates) continue;
+    const contractTime = new Date(contract.timestamp).getTime();
+    if (Number.isNaN(contractTime)) continue;
+    for (const trade of candidates) {
+      if (Math.abs(trade.occurredAt - contractTime) <= windowMs) {
+        result.set(address, trade);
+        break;
+      }
+    }
+  }
+  return result;
+}
+
 export function convergenceAlertReason(contract: ContractEntry, trade: FomoTrade): string {
   const trader = trade.displayName || (trade.fomoHandle ? `@${trade.fomoHandle}` : 'Tracked trader');
   const token = trade.tokenSymbol || contract.tokenSymbol || contract.address.slice(0, 8);
