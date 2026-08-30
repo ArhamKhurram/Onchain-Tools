@@ -11,7 +11,6 @@
 // at runtime, even though the section only renders the newest 8 entries.
 import { UPDATES } from 'virtual:oct-updates';
 
-export type { UpdateEntry } from './parseChangelog';
 export { UPDATES };
 
 export function formatUpdateDate(dateStr: string): string {
