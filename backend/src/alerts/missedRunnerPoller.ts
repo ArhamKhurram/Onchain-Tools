@@ -195,6 +195,20 @@ export function buildMissedRunnerAlertRow(
   };
 }
 
+/**
+ * Rows of still-active `missed_runner_alerts` → the address set the sweep
+ * filters candidates against. Addresses are lowercased on both sides —
+ * the table's CHECK constraint stores them lowercase, and the sweep compares
+ * `token.address.toLowerCase()` — so a mixed-case candidate still matches.
+ */
+export function activeCooldownAddresses(rows: Array<{ token_address: string }>): Set<string> {
+  const out = new Set<string>();
+  for (const row of rows) {
+    if (row.token_address) out.add(row.token_address.toLowerCase());
+  }
+  return out;
+}
+
 export function formatMissedRunnerAge(firstSeenAt: string): string {
   const mins = Math.floor((Date.now() - new Date(firstSeenAt).getTime()) / 60_000);
   if (mins < 60) return `${Math.max(1, mins)}m`;
@@ -337,16 +351,25 @@ class MissedRunnerPoller {
     return (data ?? []) as TrackedWalletRow[];
   }
 
-  private async isOnCooldown(userId: string, tokenAddress: string): Promise<boolean> {
-    if (!this.db) return true;
+  // One SELECT per user per sweep instead of one per candidate: the sweep
+  // used to ask "is this token on cooldown?" once per candidate token (up to
+  // hundreds of round-trips per user every 3 minutes). The table holds at most
+  // one small row per (user, token) ever alerted, so loading every
+  // still-active cooldown for the user in one scoped query is strictly
+  // cheaper. Error path matches the old per-token behaviour: treat as not on
+  // cooldown — the recordAlert upsert re-arms the row either way.
+  private async loadActiveCooldowns(userId: string): Promise<Set<string>> {
+    if (!this.db) return new Set();
     const { data, error } = await this.db
       .from('missed_runner_alerts')
-      .select('cooldown_until')
+      .select('token_address')
       .eq('user_id', userId)
-      .eq('token_address', tokenAddress.toLowerCase())
-      .maybeSingle();
-    if (error || !data) return false;
-    return new Date(data.cooldown_until).getTime() > Date.now();
+      .gt('cooldown_until', new Date().toISOString());
+    if (error) {
+      console.warn(`[MissedRunnerPoller] Cooldown load failed for ${userId}:`, error.message);
+      return new Set();
+    }
+    return activeCooldownAddresses(data ?? []);
   }
 
   private async recordAlert(
@@ -389,10 +412,11 @@ class MissedRunnerPoller {
     if (candidates.length === 0) return;
 
     const wallets = await this.loadHoldingWallets(userId);
+    const cooldowns = await this.loadActiveCooldowns(userId);
 
     for (const token of candidates) {
       if (mr.minMcAtCall != null && token.mcAtCall < mr.minMcAtCall) continue;
-      if (await this.isOnCooldown(userId, token.address)) continue;
+      if (cooldowns.has(token.address.toLowerCase())) continue;
 
       const live = await fetchLiveMarketCap(token.address, token.evmChain ?? undefined);
       if (!live?.mcNow || live.mcNow <= 0) continue;
