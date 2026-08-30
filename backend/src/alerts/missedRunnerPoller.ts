@@ -209,6 +209,27 @@ export function activeCooldownAddresses(rows: Array<{ token_address: string }>):
   return out;
 }
 
+/**
+ * Assemble the sweep's working config from the three settings subtrees it
+ * actually consumes. Behaviour matches a full getConfig() for everything the
+ * sweep touches: resolveMissedRunnerConfig / resolveNotifyVia / canSendPushover
+ * apply their own defaults over raw subtrees (same trick loadActiveUserIds
+ * uses), sendPushover has `?? 1` / `?? 'siren'` fallbacks identical to
+ * DEFAULT_SETTINGS, and buildContractUrl's `?? 'gmgn'` / `?? 'axiom'` preset
+ * fallbacks make an empty templates object equivalent to the defaults.
+ */
+export function buildSlimSweepConfig(row: {
+  missed_runner?: unknown;
+  pushover?: unknown;
+  link_templates?: unknown;
+} | null | undefined): AppConfig {
+  return {
+    missedRunner: (row?.missed_runner ?? undefined) as AppConfig['missedRunner'],
+    pushover: (row?.pushover ?? undefined) as AppConfig['pushover'],
+    contractLinkTemplates: ((row?.link_templates ?? {}) as AppConfig['contractLinkTemplates']),
+  } as AppConfig;
+}
+
 export function formatMissedRunnerAge(firstSeenAt: string): string {
   const mins = Math.floor((Date.now() - new Date(firstSeenAt).getTime()) / 60_000);
   if (mins < 60) return `${Math.max(1, mins)}m`;
@@ -338,6 +359,28 @@ class MissedRunnerPoller {
     })) as ContractEntry[];
   }
 
+  // Same column-scoping for the per-user config read: getConfig() pulls the
+  // user's entire settings JSONB (tens of KB in prod — the blob size that made
+  // the loadActiveUserIds scan the top egress source) every 3-min sweep, while
+  // the sweep only reads three subtrees. getConfig's 10s repo cache never
+  // survives a 3-min interval, so this was a full-blob fetch per active user
+  // per sweep.
+  private async loadConfigSlim(userId: string): Promise<AppConfig> {
+    if (!this.db) return getStorageProvider().getConfig(userId);
+    const { data, error } = await this.db
+      .from('user_configs')
+      .select(
+        'missed_runner:settings->missedRunner, pushover:settings->pushover, link_templates:settings->contractLinkTemplates',
+      )
+      .eq('user_id', userId)
+      .maybeSingle();
+    if (error) {
+      console.warn(`[MissedRunnerPoller] Slim config load failed for ${userId}:`, error.message);
+      return getStorageProvider().getConfig(userId);
+    }
+    return buildSlimSweepConfig(data as Parameters<typeof buildSlimSweepConfig>[0]);
+  }
+
   private async loadHoldingWallets(userId: string): Promise<TrackedWalletRow[]> {
     if (!this.db) return [];
     const { data, error } = await this.db
@@ -396,8 +439,7 @@ class MissedRunnerPoller {
   }
 
   private async processUser(userId: string): Promise<void> {
-    const storage = getStorageProvider();
-    const config = await storage.getConfig(userId);
+    const config = await this.loadConfigSlim(userId);
     const mr = resolveMissedRunnerConfig(config);
     if (!mr.enabled) return;
 
