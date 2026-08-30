@@ -1,4 +1,4 @@
-import { useRef, useState } from 'react';
+import { Suspense, lazy, useRef, useState } from 'react';
 import { LazyMotion } from 'framer-motion';
 import { GateScreen } from './components/landing/GateScreen';
 import { LandingNav } from './components/landing/LandingNav';
@@ -6,7 +6,14 @@ import { HeroSection } from './components/landing/HeroSection';
 import { StackSection } from './components/landing/StackSection';
 import { EnterSection } from './components/landing/EnterSection';
 import { SecurityStrip } from './components/landing/SecurityStrip';
-import { UpdatesSection } from './components/landing/UpdatesSection';
+// Lazy: WHAT'S NEW is the last section (four viewports below the fold) and its
+// build-time-inlined changelog payload (~15 kB and growing with every release)
+// doesn't belong in the render-blocking chunk. The Suspense fallback keeps the
+// section id + snap geometry so the scroll rail and anchor jumps still work
+// during the (brief) load.
+const UpdatesSection = lazy(() =>
+  import('./components/landing/UpdatesSection').then((mod) => ({ default: mod.UpdatesSection })),
+);
 import { ScrollRail } from './components/landing/ScrollRail';
 import { ScrollFooter } from './components/landing/ScrollFooter';
 import { useScrollSections } from './hooks/useScrollSections';
@@ -64,7 +71,11 @@ export default function App() {
         <StackSection scrollRef={scrollRef} />
         <EnterSection scrollRef={scrollRef} />
         <SecurityStrip scrollRef={scrollRef} />
-        <UpdatesSection scrollRef={scrollRef} />
+        <Suspense
+          fallback={<section id="updates" className="snap-start snap-always min-h-[100dvh] bg-black" />}
+        >
+          <UpdatesSection scrollRef={scrollRef} />
+        </Suspense>
       </main>
     </LazyMotion>
   );
