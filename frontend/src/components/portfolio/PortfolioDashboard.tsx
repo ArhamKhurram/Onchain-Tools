@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useState, lazy, Suspense } from 'react';
 import { BarChart3, CalendarDays, PieChart, Plus, Pencil, RefreshCw, Trash2 } from 'lucide-react';
 import ConsoleEmptyState from '../console/ConsoleEmptyState';
 import ConfirmModal from '../ConfirmModal';
@@ -8,7 +8,9 @@ import PortfolioHoldingsTable from './PortfolioHoldingsTable';
 import PortfolioSummary from './PortfolioSummary';
 import PortfolioWalletPicker from './PortfolioWalletPicker';
 import PnlCalendarModal from './PnlCalendarModal';
-import PnlChartModal from './PnlChartModal';
+// recharts (≈d3, the bulk of the Portfolio chunk) lives only inside this modal, so load it lazily
+// and only once the chart is actually opened — a Portfolio visit no longer pays for it up front.
+const PnlChartModal = lazy(() => import('./PnlChartModal'));
 import { useAuthSession } from '../../hooks/useAuthSession';
 import { useHoldingWallets } from '../../hooks/useHoldingWallets';
 import type { HoldingWallet } from '../../types/holdingWallets';
@@ -363,13 +365,17 @@ export default function PortfolioDashboard() {
         </div>
       </div>
 
-      <PnlChartModal
-        open={chartOpen}
-        onClose={() => setChartOpen(false)}
-        data={pnlData}
-        loading={pnlLoading && pnlData.days.length === 0}
-        error={pnlData.days.length === 0 ? pnlError : null}
-      />
+      {chartOpen && (
+        <Suspense fallback={null}>
+          <PnlChartModal
+            open={chartOpen}
+            onClose={() => setChartOpen(false)}
+            data={pnlData}
+            loading={pnlLoading && pnlData.days.length === 0}
+            error={pnlData.days.length === 0 ? pnlError : null}
+          />
+        </Suspense>
+      )}
       <PnlCalendarModal
         open={calendarOpen}
         onClose={() => setCalendarOpen(false)}
