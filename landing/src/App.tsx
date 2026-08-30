@@ -1,5 +1,5 @@
 import { useRef, useState } from 'react';
-import { LazyMotion, domAnimation } from 'framer-motion';
+import { LazyMotion } from 'framer-motion';
 import { GateScreen } from './components/landing/GateScreen';
 import { LandingNav } from './components/landing/LandingNav';
 import { HeroSection } from './components/landing/HeroSection';
@@ -32,8 +32,10 @@ export default function App() {
     // uses (domAnimation: animate/whileInView/exit/gestures). The full `motion`
     // import statically bundled the drag + layout-projection subsystems
     // (~90 kB pre-minify) that no live landing component uses. `strict` throws
-    // if a full `motion.` component ever sneaks back in.
-    <LazyMotion features={domAnimation} strict>
+    // if a full `motion.` component ever sneaks back in. The features load via
+    // dynamic import (src/motionFeatures.ts) so they stay out of the critical
+    // chunk — see that file for why this can't blank the gate screen.
+    <LazyMotion features={() => import('./motionFeatures').then((mod) => mod.default)} strict>
       <GateScreen onEnter={() => setEntered(true)} />
 
       <LandingNav entered={entered} lightNav={isDarkSection} />
