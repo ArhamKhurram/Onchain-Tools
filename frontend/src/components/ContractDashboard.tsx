@@ -17,7 +17,13 @@ import ConfirmModal from './ConfirmModal';
 import ContractFeedToolbar, { type ContractViewMode, type ContractChainFilter } from './contract-feed/ContractFeedToolbar';
 import SignalConvergenceBadge from './SignalConvergenceBadge';
 import TokenHoldersDrawer, { type HoldersTarget } from './fomo/TokenHoldersDrawer';
-import { useConvergenceForContract } from '../hooks/useSignalConvergence';
+import {
+  buildFomoBuyIndex,
+  findConvergenceInIndex,
+  getSignalConvergenceWindowMs,
+  DEFAULT_SIGNAL_CONVERGENCE_WINDOW_MINUTES,
+} from '../utils/signalConvergence';
+import type { FomoTrade } from '../types/fomo';
 import type { ContractEntry } from '../types';
 import { colorWithExtraAlpha } from './ColorPickerWithAlpha';
 import { groupContractFeedByAddress } from '../utils/contractFeedGrouping';
@@ -230,6 +236,20 @@ export default function ContractDashboard({ embedded = false, topOnly = false }:
   // first" has to look past the 20-minute rescan group the row belongs to.
   const firstCallerIndex = useMemo(() => buildFirstCallerIndex(contracts), [contracts]);
 
+  // Convergence, hoisted: one buys-by-address index per fomoTrades change
+  // instead of every row subscribing to the trades list and scanning it
+  // (O(rows × trades) per frame). The matched trade rides down as a prop, so
+  // the row memo keeps un-matched rows from re-rendering on fomo churn.
+  const fomoTrades = useAppStore((s) => s.fomoTrades);
+  const convergenceWindowMinutes =
+    config?.signalConvergenceWindowMinutes ?? DEFAULT_SIGNAL_CONVERGENCE_WINDOW_MINUTES;
+  const convergenceWindowMs = getSignalConvergenceWindowMs(config);
+  const fomoBuyIndex = useMemo(() => buildFomoBuyIndex(fomoTrades), [fomoTrades]);
+  const convergenceFor = useCallback(
+    (entry: ContractEntry) => findConvergenceInIndex(entry, fomoBuyIndex, convergenceWindowMs),
+    [fomoBuyIndex, convergenceWindowMs],
+  );
+
   // Every row callback below is identity-stable (useCallback) so the memoized
   // rows can skip re-rendering on unrelated store churn — an enrichment frame
   // for one address must not re-paint the other few hundred rows.
@@ -410,6 +430,8 @@ export default function ContractDashboard({ embedded = false, topOnly = false }:
                     hideBandBadge={hideBadges}
                     showStats={topOnly}
                     timeTick={timeTick}
+                    convergenceTrade={convergenceFor(head.entry)}
+                    convergenceWindowMinutes={convergenceWindowMinutes}
                   />
                   {isExpanded && (
                     <div className="pl-3 sm:pl-6 border-l-2 border-oct-border/60 ml-3 sm:ml-6">
@@ -432,6 +454,8 @@ export default function ContractDashboard({ embedded = false, topOnly = false }:
                           hideBandBadge={hideBadges}
                           isSubRow
                           timeTick={timeTick}
+                          convergenceTrade={convergenceFor(entry)}
+                          convergenceWindowMinutes={convergenceWindowMinutes}
                         />
                       ))}
                     </div>
@@ -465,6 +489,8 @@ export default function ContractDashboard({ embedded = false, topOnly = false }:
                 hideBandBadge={hideBadges}
                 showStats={topOnly}
                 timeTick={timeTick}
+                convergenceTrade={convergenceFor(head.entry)}
+                convergenceWindowMinutes={convergenceWindowMinutes}
               />
               );
             })}
@@ -550,6 +576,14 @@ interface ContractItemProps {
    * the relative "Xm ago" timestamps keep ticking. Not read by the row.
    */
   timeTick?: number;
+  /**
+   * The tracked FOMO buy that converges with this row, resolved once at the
+   * dashboard level (`buildFomoBuyIndex`) instead of per-row store
+   * subscriptions — display-only routing, the underlying signals stay
+   * independent.
+   */
+  convergenceTrade?: FomoTrade | null;
+  convergenceWindowMinutes?: number;
 }
 
 /**
@@ -734,6 +768,8 @@ const ContractRow = memo(function ContractRow({
   hideBandBadge = false,
   isSubRow = false,
   showStats = false,
+  convergenceTrade,
+  convergenceWindowMinutes,
 }: ContractItemProps) {
   const color = entry.chain === 'evm' ? evmColor : solColor;
   const isMuted = quality?.tier === 'muted';
@@ -748,7 +784,6 @@ const ContractRow = memo(function ContractRow({
   // (`<:sol:941653282420576296> Solana @ Pump`); strip it for this plain-text
   // line. Empty after stripping (emoji-only) falls back to the source label.
   const desc = entry.description ? stripDiscordCustomEmoji(entry.description) : '';
-  const { trade: convergenceTrade, windowMinutes } = useConvergenceForContract(entry);
 
   return (
     <div
@@ -794,7 +829,7 @@ const ContractRow = memo(function ContractRow({
         )}
 
         {convergenceTrade && (
-          <SignalConvergenceBadge trade={convergenceTrade} windowMinutes={windowMinutes} />
+          <SignalConvergenceBadge trade={convergenceTrade} windowMinutes={convergenceWindowMinutes} />
         )}
 
         <div className="flex items-center gap-1.5 min-w-0 flex-1 sm:flex-none">
@@ -927,6 +962,8 @@ const ContractCard = memo(function ContractCard({
   markUnrated,
   hideBandBadge = false,
   showStats = false,
+  convergenceTrade,
+  convergenceWindowMinutes,
 }: ContractItemProps) {
   const color = entry.chain === 'evm' ? evmColor : solColor;
   const jumpToFirst = firstCallerIsElsewhere(firstCall, entry) ? firstCall : undefined;
@@ -936,7 +973,6 @@ const ContractCard = memo(function ContractCard({
 
   const isNew = forceIsNew ?? (entry.firstSeen !== false);
   const { ticker, subtitle } = contractDisplay(entry, false);
-  const { trade: convergenceTrade, windowMinutes } = useConvergenceForContract(entry);
 
   return (
     <div className="oct-card p-3 flex flex-col gap-2.5 transition-all hover:-translate-y-0.5 hover:shadow-oct-soft-lg hover:border-oct-border-bright group relative">
@@ -974,7 +1010,7 @@ const ContractCard = memo(function ContractCard({
           </span>
         )}
         {convergenceTrade && (
-          <SignalConvergenceBadge trade={convergenceTrade} windowMinutes={windowMinutes} />
+          <SignalConvergenceBadge trade={convergenceTrade} windowMinutes={convergenceWindowMinutes} />
         )}
         <span className="text-xs text-oct-muted ml-auto pr-5 font-mono">{timeAgo(entry.timestamp)}</span>
       </div>

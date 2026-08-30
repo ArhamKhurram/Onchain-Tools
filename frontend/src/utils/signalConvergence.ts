@@ -73,6 +73,43 @@ export function findConvergenceForContract(
   return null;
 }
 
+/**
+ * One-pass index of FOMO buys by normalized token address, preserving the
+ * trades' own order. Lets a feed of hundreds of rows answer "does a tracked
+ * buy converge with this row?" per row without re-scanning the whole trades
+ * list per row (`findConvergenceForContract` is O(trades) each call).
+ */
+export function buildFomoBuyIndex(trades: FomoTrade[]): Map<string, FomoTrade[]> {
+  const index = new Map<string, FomoTrade[]>();
+  for (const trade of trades) {
+    if (!isFomoBuySide(trade.side) || !trade.tokenAddress) continue;
+    const key = normalizeAddress(trade.tokenAddress);
+    const existing = index.get(key);
+    if (existing) existing.push(trade);
+    else index.set(key, [trade]);
+  }
+  return index;
+}
+
+/**
+ * Same match (and same first-match-wins order) as `findConvergenceForContract`,
+ * against a prebuilt `buildFomoBuyIndex` result.
+ */
+export function findConvergenceInIndex(
+  contract: ContractEntry,
+  index: Map<string, FomoTrade[]>,
+  windowMs = SIGNAL_CONVERGENCE_WINDOW_MS,
+): FomoTrade | null {
+  const candidates = index.get(normalizeAddress(contract.address));
+  if (!candidates) return null;
+  const contractTime = new Date(contract.timestamp).getTime();
+  if (Number.isNaN(contractTime)) return null;
+  for (const trade of candidates) {
+    if (Math.abs(trade.occurredAt - contractTime) <= windowMs) return trade;
+  }
+  return null;
+}
+
 export function findConvergenceForAddress(
   address: string,
   contracts: ContractEntry[],

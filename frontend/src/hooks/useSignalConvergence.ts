@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef } from 'react';
+import { useEffect, useRef } from 'react';
 import { useAppStore } from '../stores/appStore';
 import type { Alert, ContractEntry } from '../types';
 import type { FomoTrade } from '../types/fomo';
@@ -94,17 +94,8 @@ export function useSignalConvergence() {
   }, [addAlert]);
 }
 
-/** Whether a contract row has a matching FOMO buy within the configured window. */
-export function useConvergenceForContract(entry: ContractEntry) {
-  const fomoTrades = useAppStore((s) => s.fomoTrades);
-  const config = useAppStore((s) => s.config);
-  const windowMs = getSignalConvergenceWindowMs(config);
-  const windowMinutes = config?.signalConvergenceWindowMinutes ?? 30;
-
-  const trade = useMemo(
-    () => findConvergenceForContract(entry, fomoTrades, windowMs),
-    [entry, fomoTrades, windowMs],
-  );
-
-  return { trade, windowMinutes };
-}
+// NOTE: the old per-row `useConvergenceForContract` hook was removed — the
+// contract feed now resolves convergence once per fomoTrades change via
+// `buildFomoBuyIndex` / `findConvergenceInIndex` (utils/signalConvergence.ts)
+// and passes the matched trade down as a prop, so hundreds of rows don't each
+// subscribe to (and rescan) the whole trades list.
