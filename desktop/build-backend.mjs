@@ -17,7 +17,44 @@ if (!existsSync(entry)) {
   process.exit(1);
 }
 
+// The in-process FOMO client (backend/src/fomo/client.ts) drives a stealth
+// Playwright Chromium. That path can never work in the packaged desktop app:
+// no Playwright browsers are installed, and the stealth plugin's merge-deep
+// dependency does a runtime require('kind-of') that esbuild cannot see — so a
+// packaged backend crashed at BOOT (fomo/client.ts calls
+// `chromium.use(stealth())` at module load). Stub the whole in-process
+// Playwright stack; FomoClient.launch throws a clear error instead, and the
+// proxy-mode client (FOMO_PROXY_URL) is unaffected.
+const playwrightStubPlugin = {
+  name: 'desktop-playwright-stub',
+  setup(pluginBuild) {
+    pluginBuild.onResolve(
+      { filter: /^(playwright|playwright-extra|puppeteer-extra-plugin-stealth)$/ },
+      (args) => ({ path: args.path, namespace: 'playwright-stub' }),
+    );
+    pluginBuild.onLoad({ filter: /.*/, namespace: 'playwright-stub' }, (args) => {
+      if (args.path === 'puppeteer-extra-plugin-stealth') {
+        return { contents: 'module.exports = () => ({ name: "stealth-stub" });', loader: 'js' };
+      }
+      return {
+        contents: `
+          const unavailable = () => {
+            throw new Error(
+              'In-process Playwright is not available in the desktop build. ' +
+                'Set FOMO_PROXY_URL + FOMO_WORKER_SECRET to use the remote FOMO worker.',
+            );
+          };
+          const chromium = { use: () => {}, launch: unavailable, connect: unavailable };
+          module.exports = { chromium, firefox: chromium, webkit: chromium };
+        `,
+        loader: 'js',
+      };
+    });
+  },
+};
+
 await build({
+  plugins: [playwrightStubPlugin],
   entryPoints: [entry],
   bundle: true,
   platform: 'node',
