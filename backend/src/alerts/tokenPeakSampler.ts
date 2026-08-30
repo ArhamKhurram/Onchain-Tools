@@ -105,7 +105,12 @@ class TokenPeakSampler {
       const targets = new Map<string, SampleTarget>();
       for (const userId of await this.userIds()) {
         try {
-          const contracts = await storage.getContracts(userId, 500, since);
+          // Column-scoped read: collectSampleTargets reads only address/chain/
+          // evm_chain/timestamp, all of which getContractsForScoring returns.
+          // getContracts' select('*') would drag every enrichment/display column
+          // across the wire for up to 500 rows per user per pass — pure egress
+          // waste on the hosted path (locally it's the same full read).
+          const contracts = await storage.getContractsForScoring(userId, 500, since);
           for (const t of collectSampleTargets(contracts)) {
             const key = t.address.toLowerCase();
             const existing = targets.get(key);

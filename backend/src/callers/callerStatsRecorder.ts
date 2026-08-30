@@ -240,7 +240,12 @@ class CallerStatsReconciler {
       await runReconcilePass(since, {
         roster: async (cutoff) => (await activeUserIds(cutoff)) ?? (await userIds()),
         getConfig: (userId) => storage.getConfig(userId),
-        getContracts: (userId, limit, cutoff) => storage.getContracts(userId, limit, cutoff),
+        // Column-scoped read: the reconcile pass folds rows through foldCallerCalls,
+        // which reads only the nine fields getContractsForScoring returns. Using the
+        // full select('*') here dragged the message text + enrichment block across the
+        // wire for up to MAX_CONTRACTS_PER_USER rows per user per pass — the same
+        // hosted-egress waste the board's derived path already fixed.
+        getContracts: (userId, limit, cutoff) => storage.getContractsForScoring(userId, limit, cutoff),
         recordCalls: (userId, calls) => store.recordCalls(userId, calls),
       });
     } finally {
