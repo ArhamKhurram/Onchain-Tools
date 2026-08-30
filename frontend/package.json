@@ -15,13 +15,13 @@
   "dependencies": {
     "@oct/shared": "*",
     "@supabase/supabase-js": "^2.98.0",
+    "@tanstack/react-virtual": "^3.14.10",
     "lucide-react": "^0.474.0",
     "posthog-js": "^1.418.9",
     "react": "^19.0.0",
     "react-dom": "^19.0.0",
     "react-resizable-panels": "^2.1.9",
     "react-router-dom": "^7.18.1",
-    "recharts": "^2.15.4",
     "zustand": "^5.0.3"
   },
   "devDependencies": {

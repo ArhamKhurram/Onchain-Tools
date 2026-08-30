@@ -3,6 +3,17 @@ builder = "NIXPACKS"
 
 [deploy]
 startCommand = "npm run start -w backend"
+# LIVENESS ONLY — do not repoint this at /health/deep.
+#
+# /health is a dumb "the event loop is answering" probe that always returns 200.
+# /health/deep reports per-subsystem state and returns 503 when one is degraded.
+# Because restartPolicyType is ON_FAILURE, pointing the healthcheck at a probe
+# that can fail on subsystem state would make Railway restart the container into
+# the same degradation on every cycle — a restart storm that turns one dead
+# dependency (e.g. the FOMO VPS worker) into a total outage.
+#
+# /health/deep is for an external uptime monitor, which alerts instead of
+# restarting. Rationale in full: backend/src/health/deepHealth.ts.
 healthcheckPath = "/health"
 healthcheckTimeout = 120
 restartPolicyType = "ON_FAILURE"

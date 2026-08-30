@@ -99,6 +99,9 @@ function firstCallerTitle(resolution: FirstCallerResolution): string {
   return `${lead}.${skipped}${rick}`;
 }
 
+/** localStorage key for the "hide caller-band chips" preference (shared by every feed pane). */
+const HIDE_BADGES_STORAGE_KEY = 'oct-contract-feed-hide-badges';
+
 interface ContractDashboardProps {
   embedded?: boolean;
   /**
@@ -127,6 +130,24 @@ export default function ContractDashboard({ embedded = false, topOnly = false }:
   const [revealMuted, setRevealMuted] = useState(false);
   const [expandedGroups, setExpandedGroups] = useState<Set<string>>(new Set());
   const [goodOnly, setGoodOnly] = useState(false);
+  // Persisted, unlike the other toolbar state: hiding the band chips is a lasting
+  // taste choice about row density, not a per-session investigation like the
+  // sort override or the muted reveal.
+  const [hideBadges, setHideBadgesState] = useState<boolean>(() => {
+    try {
+      return localStorage.getItem(HIDE_BADGES_STORAGE_KEY) === '1';
+    } catch {
+      return false;
+    }
+  });
+  const setHideBadges = (value: boolean) => {
+    setHideBadgesState(value);
+    try {
+      localStorage.setItem(HIDE_BADGES_STORAGE_KEY, value ? '1' : '0');
+    } catch {
+      // storage unavailable — the toggle still works for this session
+    }
+  };
   // `null` = follow the Settings toggle. A click here overrides it for this
   // session only, so flipping the sort to answer "is the feed broken?" doesn't
   // quietly rewrite a saved preference.
@@ -296,6 +317,8 @@ export default function ContractDashboard({ embedded = false, topOnly = false }:
           mutedCount={mutedCount}
           revealMuted={revealMuted}
           onRevealMuted={setRevealMuted}
+          hideBadges={hideBadges}
+          onHideBadges={setHideBadges}
           topOnly={topOnly}
         />
       </div>
@@ -366,6 +389,7 @@ export default function ContractDashboard({ embedded = false, topOnly = false }:
                     onToggleExpand={scanCount > 1 ? () => toggleGroupExpanded(group.address) : undefined}
                     firstCall={firstCallerIndex.get(group.address)}
                     markUnrated={goodOnly}
+                    hideBandBadge={hideBadges}
                     showStats={topOnly}
                   />
                   {isExpanded && (
@@ -386,6 +410,7 @@ export default function ContractDashboard({ embedded = false, topOnly = false }:
                           onShowHolders={(e) => setHoldersTarget(holdersTargetFor(e))}
                           firstCall={firstCallerIndex.get(group.address)}
                           markUnrated={goodOnly}
+                          hideBandBadge={hideBadges}
                           isSubRow
                         />
                       ))}
@@ -417,6 +442,7 @@ export default function ContractDashboard({ embedded = false, topOnly = false }:
                 scanCount={scanCount}
                 firstCall={firstCallerIndex.get(group.address)}
                 markUnrated={goodOnly}
+                hideBandBadge={hideBadges}
                 showStats={topOnly}
               />
               );
@@ -478,6 +504,13 @@ interface ContractItemProps {
    * through unvouched-for have to look different from the vetted ones.
    */
   markUnrated?: boolean;
+  /**
+   * Suppress the caller-band chip (ELITE / UNRATED / …) on this row. A display
+   * preference from the toolbar — the band still exists and still drives ranking
+   * and filtering; only the chip is hidden, for people who read the feed by
+   * ticker and want the row prefix quiet.
+   */
+  hideBandBadge?: boolean;
   /** Renders as a condensed history row nested under a group's head. */
   isSubRow?: boolean;
   /**
@@ -619,6 +652,7 @@ function ContractRow({
   onToggleExpand,
   firstCall,
   markUnrated,
+  hideBandBadge = false,
   isSubRow = false,
   showStats = false,
 }: ContractItemProps) {
@@ -653,7 +687,7 @@ function ContractRow({
             {isExpanded ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
           </button>
         )}
-        <CallerBandBadge quality={quality} markUnrated={markUnrated} />
+        {!hideBandBadge && <CallerBandBadge quality={quality} markUnrated={markUnrated} />}
         <span
           className={ROW_PILL}
           style={{ backgroundColor: colorWithExtraAlpha(color, 0.125), color }}
@@ -812,6 +846,7 @@ function ContractCard({
   scanCount,
   firstCall,
   markUnrated,
+  hideBandBadge = false,
   showStats = false,
 }: ContractItemProps) {
   const color = entry.chain === 'evm' ? evmColor : solColor;
@@ -835,7 +870,7 @@ function ContractCard({
       </button>
 
       <div className="flex items-center gap-2 flex-wrap">
-        <CallerBandBadge quality={quality} markUnrated={markUnrated} />
+        {!hideBandBadge && <CallerBandBadge quality={quality} markUnrated={markUnrated} />}
         <span
           className={ROW_PILL}
           style={{ backgroundColor: colorWithExtraAlpha(color, 0.125), color }}

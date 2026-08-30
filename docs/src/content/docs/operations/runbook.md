@@ -70,7 +70,7 @@ session if not (see `backend/.env.example` for the cookie procedure).
 | Check | How |
 | --- | --- |
 | Backend liveness | `GET https://<railway-host>/health` → `{"status":"ok"}` |
-| Provider env | `GET /api/portfolio/status` (public probe) |
+| Provider env | `GET /api/portfolio/status` (needs a bearer token in hosted mode) |
 | FOMO pipeline | `GET /api/fomo/status` (poller active, last poll, last error, worker health) |
 | Bot | Railway logs: `[Bot] OCT bot online as …` vs `DISCORD_BOT_TOKEN not set` |
 | Worker | `GET http://<vps>:3100/health` |
@@ -94,6 +94,20 @@ session string may be revoked: user must re-login via
 **FOMO trades stopped** — `GET /api/fomo/status`: `pollerActive: false`
 means no Supabase or no tracked users; `lastPollError` naming Cloudflare
 means the worker needs a restart or a fresh refresh token.
+
+**FOMO trades stopped, and every call is `403 Forbidden`** — a different
+failure from the Cloudflare one above, and a restart will not fix it. Check
+`GET http://<vps>:3100/v1/status`: if `breaker.open` is true, the worker has
+already stopped calling and is probing on a growing backoff.
+
+Read the 403 body carefully. Cloudflare blocks return **HTML**; fomo's own
+`{"success":false,"message":"Forbidden","statusCode":403}` envelope means the
+browser cleared Cloudflare, reached the app, and *the app refused the account*.
+Restarting re-fetches a fresh JWT from Privy every time, so a persistent 403
+across restarts is not a token problem — the fomo.family account itself is
+being refused (revoked session, flagged account, or a changed requirement).
+That needs a human to log into fomo.family and check; nothing on the box will
+fix it.
 
 **Bot offline** — it lives in the backend process; check Railway logs for
 the `[Bot]` boot line. If `DISCORD_BOT_TOKEN not set`, the variable is

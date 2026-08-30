@@ -5,34 +5,13 @@ import { buildContractUrl, buildRevivalContractUrl, revivalNetworkLabel } from '
 import { showDesktopNotification } from '../utils/desktopNotification';
 import { fomoTradeDisplay, buildFomoTradeAlertMessage } from '../utils/fomoTradeDisplay';
 import { formatMcap, type PumpCalloutEvent } from '../types/pumpfun';
-import { isDemoMode } from '../demo/demoStore';
 import { isHostedMode, getSupabase } from '../lib/supabase';
 import { isClientGatewayMode } from '../discord/clientGateway';
 import { hasLocalDiscordTokens } from '../discord/tokenStore';
-import { buildStreamMessage, STREAM_POOL } from '../demo/demoData';
 import type { WsIncoming, Alert, FrontendMessage, ContractEntry, RevivalAlertData, BreakoutAlertData, JournalAlertData, PriceAlertData } from '../types';
 import type { FomoTradeEvent } from '../types/fomo';
 
 let idCounter = 0;
-
-function useDemoStream() {
-  const addMessage = useAppStore((s) => s.addMessage);
-  const setConnected = useAppStore((s) => s.setConnected);
-  const poolIndex = useRef(0);
-
-  useEffect(() => {
-    if (!isDemoMode) return;
-    setConnected(true);
-
-    const interval = setInterval(() => {
-      const { message, roomIds } = buildStreamMessage(poolIndex.current);
-      poolIndex.current = (poolIndex.current + 1) % STREAM_POOL.length;
-      addMessage(message, roomIds);
-    }, 6000 + Math.random() * 4000);
-
-    return () => clearInterval(interval);
-  }, [addMessage, setConnected]);
-}
 
 export function useWebSocket() {
   const wsRef = useRef<WebSocket | null>(null);
@@ -59,11 +38,7 @@ export function useWebSocket() {
   const bumpJournalRefresh = useAppStore((s) => s.bumpJournalRefresh);
   const bumpPriceAlertRefresh = useAppStore((s) => s.bumpPriceAlertRefresh);
 
-  useDemoStream();
-
   useEffect(() => {
-    if (isDemoMode) return;
-
     let disposed = false;
     let reconnectTimer: ReturnType<typeof setTimeout>;
 

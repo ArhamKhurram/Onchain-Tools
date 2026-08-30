@@ -15,7 +15,7 @@ import { GatewayManager } from './discord/gatewayManager.js';
 import { createProxyBundle } from './discord/proxy.js';
 import { configStore } from './config/store.js';
 import { TelegramClientManager } from './telegram/clientManager.js';
-import { processTelegramMessage } from './telegram/messageProcessor.js';
+import { processTelegramMessage, telegramChannelId } from './telegram/messageProcessor.js';
 import type { TelegramRawMessage } from './telegram/types.js';
 import type { TelegramMessageProcessorContext } from './telegram/messageProcessor.js';
 import { WsServer } from './ws/server.js';
@@ -28,6 +28,8 @@ import { startDailyDigestScheduler } from './bot/dailyDigest.js';
 import { getStorageProvider, isHostedMode } from './storage/index.js';
 import { authMiddleware } from './auth/middleware.js';
 import { getGateway, setGateway } from './gateway/state.js';
+import { recordIngest } from './health/ingestHeartbeat.js';
+import { buildDeepHealth, collectDeepHealthFacts, deepHealthHttpStatus } from './health/deepHealth.js';
 import { UserGatewayPool } from './gateway/userGatewayPool.js';
 import { buildContractUrl, detectEvmChainFromContent, extractEvmChainFromGmgnLinks, resolveEvmChainFromApi } from './utils/contract.js';
 import { tryParseTokenEnrichment, buildRickReplyContext } from './utils/rickEmbedParser.js';
@@ -58,6 +60,12 @@ import {
 } from './callers/callerStatsRecorder.js';
 import type { DiscordMessage, PushoverConfig, FrontendMessage, ContractLinkTemplates } from './discord/types.js';
 import type { ContractEnrichmentPatch } from './utils/contractLog.js';
+import { installProcessGuards, guardAsyncHandler } from './utils/processGuards.js';
+
+// Installed here rather than in bootstrap.ts because bootstrap.ts is not the
+// only entry point: Railway runs `node dist/bootstrap.js`, but the desktop app
+// bundles and forks `backend/dist/index.js` directly.
+installProcessGuards();
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const PORT = parseInt(process.env.PORT ?? '3001', 10);
@@ -93,7 +101,14 @@ function checkPushover(cfg: PushoverConfig, msg: FrontendMessage, evmChainHint: 
   if (!triggered) return;
 
   if (f.userIds.length > 0 && !f.userIds.includes(msg.author.id)) return;
-  if (f.channelIds.length > 0 && !f.channelIds.includes(msg.channelId)) return;
+  // A Telegram forum-topic message carries `chatId:topicId`; a filter saved for the
+  // whole group (bare chatId — every pre-topics filter) must keep matching, so the
+  // group half of the id counts too. Discord ids never contain ':', so this is inert there.
+  if (
+    f.channelIds.length > 0 &&
+    !f.channelIds.includes(msg.channelId) &&
+    !f.channelIds.includes(msg.channelId.split(':')[0])
+  ) return;
   if (f.guildIds.length > 0 && msg.guildId && !f.guildIds.includes(msg.guildId)) return;
 
   let title: string;
@@ -226,7 +241,10 @@ function wireGatewayEvents(gw: GatewayManager, wsServer: WsServer, userId: strin
     wsServer.broadcastRaw({ type: 'gateway_ready', data: { username: user.username } }, userId);
   });
 
-  gw.on('message', async (rawMsg: DiscordMessage & { _channelName: string; _guildName: string | null }) => {
+  gw.on('message', guardAsyncHandler('App:discord-message', async (rawMsg: DiscordMessage & { _channelName: string; _guildName: string | null }) => {
+    // Before room gating on purpose: the heartbeat means "the gateway is
+    // delivering traffic", not "the traffic matched a room".
+    recordIngest();
     const isDM = !rawMsg.guild_id && gw.getDMChannels().some((dm) => dm.id === rawMsg.channel_id);
     const rooms = await storage.getRoomsForChannel(userId, rawMsg.channel_id);
 
@@ -351,9 +369,9 @@ function wireGatewayEvents(gw: GatewayManager, wsServer: WsServer, userId: strin
     broadcastFrontendAlerts(wsServer, userId, frontendMsg, config);
 
     wsServer.broadcastMessage(frontendMsg, roomIds, userId);
-  });
+  }));
 
-  gw.on('messageUpdate', async (rawMsg: Partial<DiscordMessage> & { id: string; channel_id: string; guild_id?: string; _channelName: string; _guildName: string | null }) => {
+  gw.on('messageUpdate', guardAsyncHandler('App:discord-message-update', async (rawMsg: Partial<DiscordMessage> & { id: string; channel_id: string; guild_id?: string; _channelName: string; _guildName: string | null }) => {
     const rooms = await storage.getRoomsForChannel(userId, rawMsg.channel_id);
     const isDM = !rawMsg.guild_id && gw.getDMChannels().some((dm) => dm.id === rawMsg.channel_id);
     if (rooms.length === 0 && !isDM) return;
@@ -387,9 +405,9 @@ function wireGatewayEvents(gw: GatewayManager, wsServer: WsServer, userId: strin
         messageId: rickReply.messageId,
       });
     }
-  });
+  }));
 
-  gw.on('messageDelete', async (data: { id: string; channel_id: string; guild_id?: string | null }) => {
+  gw.on('messageDelete', guardAsyncHandler('App:discord-message-delete', async (data: { id: string; channel_id: string; guild_id?: string | null }) => {
     const rooms = await storage.getRoomsForChannel(userId, data.channel_id);
     const isDM = !data.guild_id && gw.getDMChannels().some((dm) => dm.id === data.channel_id);
     if (rooms.length === 0 && !isDM) return;
@@ -401,7 +419,7 @@ function wireGatewayEvents(gw: GatewayManager, wsServer: WsServer, userId: strin
       messageId: data.id,
       channelId: data.channel_id,
     }, roomIds, userId);
-  });
+  }));
 
   gw.on('reactionUpdate', (data) => {
     wsServer.broadcastReactionUpdate(data, userId);
@@ -468,13 +486,32 @@ export function getUserGateway(userId: string): GatewayManager | null {
 function wireTelegramEvents(tg: TelegramClientManager, wsServer: WsServer, userId: string): void {
   const storage = getStorageProvider();
 
+  // Rooms a Telegram message routes to. A topic message reaches rooms subscribed to EITHER its
+  // topic-channel OR the parent group — so a "whole group" subscription still receives every topic
+  // (backward-compatible), while a per-topic subscription gets just that topic. Non-topic messages
+  // resolve exactly as before. Deduped by room id in case a room subscribes to both.
+  const resolveTelegramRooms = async (raw: TelegramRawMessage) => {
+    if (raw.topicId == null) {
+      return storage.getRoomsForChannel(userId, raw.chatId);
+    }
+    const [topicRooms, groupRooms] = await Promise.all([
+      storage.getRoomsForChannel(userId, telegramChannelId(raw.chatId, raw.topicId)),
+      storage.getRoomsForChannel(userId, raw.chatId),
+    ]);
+    const byId = new Map(groupRooms.map((r) => [r.id, r]));
+    for (const r of topicRooms) byId.set(r.id, r);
+    return [...byId.values()];
+  };
+
   tg.on('ready', (user: { id: string; username: string | null; firstName: string }) => {
     console.log(`[App] Telegram logged in as ${user.firstName} (@${user.username ?? 'no-username'})`);
     wsServer.broadcastRaw({ type: 'telegram_ready', data: { username: user.username, firstName: user.firstName } }, userId);
   });
 
-  tg.on('message', async (raw: TelegramRawMessage) => {
-    const rooms = await storage.getRoomsForChannel(userId, raw.chatId);
+  tg.on('message', guardAsyncHandler('App:telegram-message', async (raw: TelegramRawMessage) => {
+    // See the Discord handler above: heartbeat before room gating.
+    recordIngest();
+    const rooms = await resolveTelegramRooms(raw);
     const isTgDm = raw.chatType === 'user';
 
     if (rooms.length === 0 && !isTgDm) return;
@@ -548,10 +585,10 @@ function wireTelegramEvents(tg: TelegramClientManager, wsServer: WsServer, userI
     broadcastFrontendAlerts(wsServer, userId, frontendMsg, config);
 
     wsServer.broadcastMessage(frontendMsg, roomIds, userId);
-  });
+  }));
 
-  tg.on('messageUpdate', async (raw: TelegramRawMessage) => {
-    const rooms = await storage.getRoomsForChannel(userId, raw.chatId);
+  tg.on('messageUpdate', guardAsyncHandler('App:telegram-message-update', async (raw: TelegramRawMessage) => {
+    const rooms = await resolveTelegramRooms(raw);
     const isTgDm = raw.chatType === 'user';
     if (rooms.length === 0 && !isTgDm) return;
 
@@ -564,7 +601,7 @@ function wireTelegramEvents(tg: TelegramClientManager, wsServer: WsServer, userI
       channelId: frontendMsg.channelId,
       content: frontendMsg.content,
     }, roomIds, userId);
-  });
+  }));
 
   tg.on('fatal', (err: Error) => {
     console.error('[App] Fatal Telegram error:', err.message);
@@ -694,6 +731,22 @@ if (isHostedMode()) {
       req.method === 'POST' && req.originalUrl.includes('/alerts/missed-runner/test'),
   });
   app.use('/api', generalLimiter);
+
+  // /health/deep is unauthenticated by design (a monitor should not need a
+  // credential), so a limiter is the only thing bounding it. Generous enough for
+  // a 10s-interval uptime check plus retries, tight enough that it cannot be
+  // scraped in a loop. NOT applied to /health — Railway's own probe polls that
+  // one, and a rate-limited liveness probe is a restart storm waiting to happen.
+  app.use(
+    '/health/deep',
+    rateLimit({
+      windowMs: 60 * 1000,
+      max: 60,
+      standardHeaders: true,
+      legacyHeaders: false,
+      message: { error: 'Too many requests, please try again later.' },
+    }),
+  );
 }
 
 const httpServer = createServer(app);
@@ -713,7 +766,30 @@ app.use('/api/v1/bot', requireBotAuth, createBotRouter());
 
 app.use('/api', authMiddleware, createRouter(wsServer));
 
+// LIVENESS. Railway polls THIS (railway.toml `healthcheckPath = "/health"`) and
+// its restart policy is ON_FAILURE, so it must never report on subsystems: a
+// degraded FOMO worker returning non-200 here would make Railway restart the
+// container into the same degradation, forever. Keep it a dumb 200.
 app.get('/health', (_req, res) => res.json({ status: 'ok' }));
+
+// READINESS — a separate path precisely so it is allowed to fail. Returns 503
+// when a subsystem is degraded; intended for an external uptime monitor only.
+// Do NOT point railway.toml's healthcheckPath at it. Rationale in full:
+// backend/src/health/deepHealth.ts.
+app.get('/health/deep', (_req, res) => {
+  const hosted = isHostedMode();
+  const localGateway = hosted ? null : getGateway();
+  const report = buildDeepHealth(
+    collectDeepHealthFacts({
+      // Boolean, never the pooled count. This endpoint is unauthenticated, so
+      // publishing gatewayPool.getActiveCount() told any anonymous caller how
+      // many people were using OCT at that moment. A monitor needs up/down.
+      connected: hosted ? gatewayPool.getActiveCount() > 0 : localGateway !== null,
+      invalidTokens: hosted ? null : (localGateway?.getInvalidTokenIndices().length ?? 0),
+    }),
+  );
+  res.status(deepHealthHttpStatus(report)).json(report);
+});
 
 const frontendDist = process.env.OCT_FRONTEND_DIST || process.env.TRENCHCORD_FRONTEND_DIST || path.resolve(__dirname, '../../frontend/dist');
 app.use(express.static(frontendDist));

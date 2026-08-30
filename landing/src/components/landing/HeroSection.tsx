@@ -1,5 +1,5 @@
 import { RefObject, useRef } from 'react';
-import { motion, useScroll, useTransform } from 'framer-motion';
+import { m, useScroll, useTransform } from 'framer-motion';
 import { CrystalVisual } from './CrystalVisual';
 import { HeroCanvas } from './HeroCanvas';
 
@@ -22,15 +22,15 @@ export function HeroSection({ scrollRef }: { scrollRef: RefObject<HTMLElement | 
       ref={sectionRef}
       className="relative snap-start snap-always min-h-[100dvh] flex flex-col items-center justify-center bg-oct-flame text-black overflow-hidden px-6 pr-12 sm:pr-14 pt-20 pb-24"
     >
-      <motion.div style={{ y: fieldY, scale: fieldScale }} className="absolute inset-0 -z-0">
+      <m.div style={{ y: fieldY, scale: fieldScale }} className="absolute inset-0 -z-0">
         <HeroCanvas />
-      </motion.div>
+      </m.div>
 
-      <motion.div
+      <m.div
         style={{ y: contentY, opacity: contentOpacity }}
         className="relative z-10 w-full max-w-6xl mx-auto flex flex-col items-center justify-center text-center min-h-[70vh]"
       >
-        <motion.p
+        <m.p
           initial={{ opacity: 0, y: 10 }}
           whileInView={{ opacity: 1, y: 0 }}
           viewport={{ once: true }}
@@ -38,9 +38,9 @@ export function HeroSection({ scrollRef }: { scrollRef: RefObject<HTMLElement | 
           className="font-mono text-xs sm:text-sm tracking-[0.2em] mb-6 sm:mb-10"
         >
           [ ONCHAIN TERMINAL ]
-        </motion.p>
+        </m.p>
 
-        <motion.h1
+        <m.h1
           initial={{ opacity: 0, scale: 0.98 }}
           whileInView={{ opacity: 1, scale: 1 }}
           viewport={{ once: true }}
@@ -49,9 +49,9 @@ export function HeroSection({ scrollRef }: { scrollRef: RefObject<HTMLElement | 
         >
           <span className="block">ALPHA IN</span>
           <span className="block">ONE CONSOLE</span>
-        </motion.h1>
+        </m.h1>
 
-        <motion.div
+        <m.div
           initial={{ opacity: 0, y: 16 }}
           whileInView={{ opacity: 1, y: 0 }}
           viewport={{ once: true }}
@@ -59,8 +59,8 @@ export function HeroSection({ scrollRef }: { scrollRef: RefObject<HTMLElement | 
           className="mt-6 sm:mt-10 flex justify-center"
         >
           <CrystalVisual />
-        </motion.div>
-      </motion.div>
+        </m.div>
+      </m.div>
     </section>
   );
 }

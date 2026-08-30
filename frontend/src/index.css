@@ -126,7 +126,13 @@ html {
 
 body {
   font-family: 'Space Grotesk', system-ui, sans-serif;
-  font-size: 14px;
+  /* Matches `text-sm` in tailwind.config.js, which is the console's default body
+     size. Leaving this at 14px while `text-sm` is 15px would split every dense
+     surface into two body sizes — the Radar table measured 96 cells at the
+     inherited size next to 66 at `text-sm`. `line-height` deliberately stays a
+     unitless ratio: the ~400 legacy `text-[Npx]` sites inherit it, and pinning
+     it to a pixel value would give an 11px label a 22px line. */
+  font-size: 15px;
   line-height: 1.5;
   color: rgb(var(--oct-text));
   background-color: rgb(var(--oct-bg));
@@ -222,11 +228,11 @@ h3 {
    tabs are the first adopters. Prefer them over one-off inline chrome.
 
    Type scale (replaces the ad-hoc text-[9px]/[10px]/[11px] sprinkle):
-     .oct-eyebrow     11px  section kicker / column labels
-     .oct-label       12px  form + inline labels
-     .oct-section-title  14px semibold section heading
+     .oct-eyebrow     11px  section kicker / column labels (mono, wide tracking)
+     .oct-label       13px  form + inline labels          == text-xs
+     .oct-section-title  16px semibold section heading    == text-base
      .oct-stat-value  22px  headline numbers
-   Body copy should sit at text-[13px]/text-sm; mono data at text-xs/text-[13px].
+   Body copy should sit at text-sm (15px); mono data at text-xs (13px).
    ══════════════════════════════════════════════════════════════════════════ */
 @layer components {
   /* Elevated card: a top→bottom gradient, a 1px border, a hairline top highlight
@@ -414,7 +420,13 @@ h3 {
 }
 
 @layer utilities {
-  /* Type-scale helpers — the documented replacements for the tiny sizes. */
+  /* Type-scale helpers — the documented replacements for the tiny sizes.
+     These are single-class selectors declared AFTER Tailwind's utilities, so they
+     BEAT any `text-*` on the same element. They must therefore track the fontSize
+     scale in tailwind.config.js: `.oct-label` == `text-xs` (13px) and
+     `.oct-section-title` == `text-base` (16px). Leaving them on the old 12/14
+     ramp is what made eight modal headers (`oct-section-title text-base`) render
+     a 14px title above 15px body copy. If you change the scale, change these. */
   .oct-eyebrow {
     font-family: 'JetBrains Mono', ui-monospace, monospace;
     font-size: 11px;
@@ -425,13 +437,13 @@ h3 {
     color: rgb(var(--oct-muted));
   }
   .oct-label {
-    font-size: 12px;
+    font-size: 13px; /* == text-xs */
     font-weight: 600;
     letter-spacing: 0.01em;
   }
   .oct-section-title {
-    font-size: 14px;
-    line-height: 1.25;
+    font-size: 16px; /* == text-base */
+    line-height: 1.5rem;
     font-weight: 700;
     letter-spacing: -0.005em;
     color: rgb(var(--oct-text));

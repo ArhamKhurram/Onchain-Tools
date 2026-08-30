@@ -19,6 +19,8 @@ export default defineConfig({
           if (id.includes('react-router')) return 'vendor-router';
           if (id.includes('@supabase')) return 'vendor-supabase';
           if (id.includes('lucide-react')) return 'vendor-icons';
+          // No vendor-charts chunk anymore: recharts was replaced by the
+          // hand-rolled SVG PnlLineChart (zero chart vendor code).
         },
       },
     },

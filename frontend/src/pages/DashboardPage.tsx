@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom';
 import { useAuthSession } from '../hooks/useAuthSession';
 import { useAppStore } from '../stores/appStore';
 import { routes } from '../lib/routes';
+import { USER_DOCS_URL } from '../lib/links';
 
 const modules = [
   {
@@ -162,16 +163,28 @@ export default function DashboardPage() {
                 <p className="text-sm text-oct-muted leading-relaxed">
                   {discordConfigured
                     ? 'Open Feed to stream channels, or configure rooms in Settings.'
-                    : 'Connect Discord in Feed or Settings → Tokens to start streaming.'}
+                    : 'Open Feed to watch the demo feed — no token needed. Connect Discord there when you want your own servers.'}
                 </p>
               </div>
-              <Link
-                to={discordConfigured ? routes.feed : routes.settings}
-                className="oct-btn-primary mt-5 self-start px-4 py-2 font-mono text-xs uppercase tracking-[0.12em]"
-              >
-                {discordConfigured ? 'Open Feed' : 'Connect Discord'}
-                <ArrowRight size={14} />
-              </Link>
+              {/* Un-connected users go to Feed, not Settings: the demo feed and
+                  the token form both live on Feed; Settings only has the form. */}
+              <div className="mt-5 flex flex-wrap items-center gap-4">
+                <Link
+                  to={routes.feed}
+                  className="oct-btn-primary self-start px-4 py-2 font-mono text-xs uppercase tracking-[0.12em]"
+                >
+                  Open Feed
+                  <ArrowRight size={14} />
+                </Link>
+                <a
+                  href={USER_DOCS_URL}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="font-mono text-[11px] uppercase tracking-[0.12em] text-oct-muted underline underline-offset-4 transition-colors hover:text-oct-text"
+                >
+                  User guide
+                </a>
+              </div>
             </div>
           </div>
         </div>

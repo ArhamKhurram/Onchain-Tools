@@ -188,7 +188,8 @@ class JournalVolumeDeathPoller {
     if (!this.db) return [];
     const { data, error } = await this.db
       .from('journal_positions')
-      .select('*')
+      // Column-scoped: the mapper below reads only these fields (egress hygiene on a 3-min poll).
+      .select('id, wallet_id, wallet_address, mint, symbol, acquired_token, remaining_token, cost_sol, cost_usd, realized_pnl_sol, realized_pnl_usd, pnl_incomplete, opened_at, last_trade_at, last_price_usd, last_price_at, user_id')
       .eq('status', 'open')
       .limit(1000);
     if (error) {

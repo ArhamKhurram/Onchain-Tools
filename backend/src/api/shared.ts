@@ -1,9 +1,9 @@
 import multer from 'multer';
 import { existsSync, mkdirSync } from 'fs';
-import { join, dirname, extname } from 'path';
+import { join, dirname } from 'path';
 import { fileURLToPath } from 'url';
 import { isHostedMode } from '../storage/index.js';
-import type { SoundType } from '../discord/types.js';
+import { soundExtension, soundFileName, channelSoundFileName } from './soundNames.js';
 
 // Stateless helpers, multer instances, and paths shared across the API
 // sub-routers. Kept in `api/` (not `api/routes/`) so SOUNDS_DIR resolves relative
@@ -24,16 +24,20 @@ export function getUserId(req: any): string {
 }
 
 export const soundFileFilter = (_req: Express.Request, file: Express.Multer.File, cb: multer.FileFilterCallback) => {
-  const allowed = ['.mp3', '.wav', '.ogg', '.webm', '.m4a'];
-  cb(null, allowed.includes(extname(file.originalname).toLowerCase()));
+  cb(null, soundExtension(file.originalname) !== null);
 };
 
+// The filename callbacks below are the last line of defence, not the first: the
+// routes reject a bad `:soundType`/`:channelId` before multer ever runs. They
+// still refuse to build a name from an unvalidated param, so that reordering the
+// middleware chain later cannot silently reopen a path traversal.
 export const upload = multer({
   storage: multer.diskStorage({
     destination: SOUNDS_DIR,
-    filename: (_req, file, cb) => {
-      const soundType = _req.params.soundType as string;
-      cb(null, `${soundType}${extname(file.originalname)}`);
+    filename: (req, file, cb) => {
+      const name = soundFileName(req.params.soundType, file.originalname);
+      if (!name) return cb(new Error('Invalid sound type'), '');
+      cb(null, name);
     },
   }),
   fileFilter: soundFileFilter,
@@ -43,9 +47,10 @@ export const upload = multer({
 export const channelSoundUpload = multer({
   storage: multer.diskStorage({
     destination: SOUNDS_DIR,
-    filename: (_req, file, cb) => {
-      const channelId = _req.params.channelId as string;
-      cb(null, `ch_${channelId}${extname(file.originalname)}`);
+    filename: (req, file, cb) => {
+      const name = channelSoundFileName(req.params.channelId, file.originalname);
+      if (!name) return cb(new Error('Invalid channel ID'), '');
+      cb(null, name);
     },
   }),
   fileFilter: soundFileFilter,
@@ -63,4 +68,6 @@ export const messageUpload = multer({
   limits: { fileSize: 25 * 1024 * 1024, files: 10 },
 });
 
-export const validSoundTypes: SoundType[] = ['highlight', 'contractAlert', 'keywordAlert', 'fomoTrade', 'pumpCallout', 'revival', 'breakout'];
+// Canonical home is `soundNames.ts`; re-exported here so the long-standing
+// `shared.js` import surface keeps working for any caller that still uses it.
+export { validSoundTypes } from './soundNames.js';

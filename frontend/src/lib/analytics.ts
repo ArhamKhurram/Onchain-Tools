@@ -18,48 +18,92 @@
 // without the key send nothing. The key is PostHog's *project* API key
 // (starts `phc_`), which is public by design — safe to ship in the bundle.
 
-import posthog from 'posthog-js';
+// posthog-js is imported DYNAMICALLY, not statically, and that is load-bearing:
+// the library is ~85 kB gzipped, this module is the only thing that touches it,
+// and it does nothing at all without a key. A static import put those bytes in
+// the entry chunk of every single page load — paid on the critical path even in
+// local dev and on any deploy where VITE_POSTHOG_KEY is unset. Fetching it from
+// inside the key check moves it off the critical path, and lets the bundler drop
+// it outright when the key is unset. Type-only import; erased at build.
+import type { PostHog } from 'posthog-js';
 
 const KEY = import.meta.env.VITE_POSTHOG_KEY as string | undefined;
 const HOST = (import.meta.env.VITE_POSTHOG_HOST as string | undefined) || 'https://us.i.posthog.com';
 
 let started = false;
+let client: PostHog | null = null;
+let unavailable = false;
 
-/** True once PostHog is actually running (key present + init done). */
-function live(): boolean {
-  return started && !!KEY;
+// Calls made after initAnalytics() but before the posthog-js chunk resolves.
+// Deferring the import opens a window across first paint, and the session's most
+// valuable events live in it — app_opened, the first $pageview, the sign-in
+// identify. Queue them and replay in call order rather than dropping them.
+// Bounded so a chunk that never loads cannot grow this without limit.
+const pending: Array<(ph: PostHog) => void> = [];
+const PENDING_MAX = 50;
+
+/**
+ * Run `fn` against the live client, queueing it if the chunk is still in
+ * flight. No-op when analytics never started (no key, or before init) — the
+ * same silence the old `live()` guard gave.
+ */
+function withPostHog(fn: (ph: PostHog) => void): void {
+  if (!started || !KEY || unavailable) return;
+  if (client) {
+    fn(client);
+    return;
+  }
+  if (pending.length < PENDING_MAX) pending.push(fn);
 }
 
 /**
  * Boot PostHog once, early. No-op without a key. Safe to call before render —
- * mirrors initTheme() in main.tsx.
+ * mirrors initTheme() in main.tsx. Returns immediately; the library loads and
+ * initialises asynchronously, and events raised meanwhile are queued.
  */
 export function initAnalytics(): void {
   if (started || !KEY) return;
   started = true;
-  posthog.init(KEY, {
-    api_host: HOST,
-    autocapture: false, // never scrape the DOM — wallets/CAs live there
-    // Pageviews ARE captured (traffic, top pages, referrers) but they only ever
-    // carry a URL, never DOM content — and `sanitize_properties` scrubs the URL
-    // first (query/hash dropped, address-like path segments masked). The truly
-    // invasive channels (autocapture, session recording) stay off.
-    capture_pageview: true,
-    disable_session_recording: true, // never record a screen full of holdings
-    mask_all_text: true,
-    persistence: 'localStorage',
-    respect_dnt: true,
-    // Keep PostHog from auto-identifying via anything but our explicit id.
-    person_profiles: 'identified_only',
-    sanitize_properties: (properties) => {
-      for (const key of URL_PROPERTY_KEYS) {
-        const value = properties[key];
-        if (typeof value === 'string') properties[key] = sanitizeUrl(value);
-      }
-      return properties;
-    },
-  });
-  track('app_opened');
+  const key = KEY;
+  void import('posthog-js')
+    .then(({ default: posthog }) => {
+      posthog.init(key, {
+        api_host: HOST,
+        autocapture: false, // never scrape the DOM — wallets/CAs live there
+        // Pageviews ARE captured (traffic, top pages, referrers) but they only ever
+        // carry a URL, never DOM content — and `sanitize_properties` scrubs the URL
+        // first (query/hash dropped, address-like path segments masked). The truly
+        // invasive channels (autocapture, session recording) stay off.
+        capture_pageview: true,
+        disable_session_recording: true, // never record a screen full of holdings
+        mask_all_text: true,
+        persistence: 'localStorage',
+        respect_dnt: true,
+        // Keep PostHog from auto-identifying via anything but our explicit id.
+        person_profiles: 'identified_only',
+        sanitize_properties: (properties) => {
+          for (const key of URL_PROPERTY_KEYS) {
+            const value = properties[key];
+            if (typeof value === 'string') properties[key] = sanitizeUrl(value);
+          }
+          return properties;
+        },
+      });
+      client = posthog;
+      // Order is deliberate and matches the old synchronous path: init fires the
+      // session's first $pageview, then app_opened, then whatever queued while
+      // the chunk was loading (identify included, so app_opened stays anonymous
+      // exactly as it was before).
+      track('app_opened');
+      for (const fn of pending.splice(0)) fn(posthog);
+    })
+    .catch(() => {
+      // Analytics must never break the app. If the chunk can't load — offline,
+      // blocked, a bad deploy — go quiet for the rest of the session instead of
+      // queueing events nothing will ever drain.
+      unavailable = true;
+      pending.length = 0;
+    });
 }
 
 // PostHog auto-props that carry a URL. We rewrite each so a wallet or contract
@@ -95,14 +139,13 @@ export function sanitizeUrl(raw: string): string {
  * PII. Call when a session resolves; call `resetAnalytics()` on sign-out.
  */
 export function identifyUser(userId: string): void {
-  if (!live() || !userId) return;
-  posthog.identify(userId);
+  if (!userId) return;
+  withPostHog((ph) => ph.identify(userId));
 }
 
 /** Clear identity on sign-out so the next user isn't merged into this one. */
 export function resetAnalytics(): void {
-  if (!live()) return;
-  posthog.reset();
+  withPostHog((ph) => ph.reset());
 }
 
 /**
@@ -110,6 +153,5 @@ export function resetAnalytics(): void {
  * user-identifying on-chain value (wallet, token, CA). Counts and enums only.
  */
 export function track(event: string, props?: Record<string, string | number | boolean>): void {
-  if (!live()) return;
-  posthog.capture(event, props);
+  withPostHog((ph) => ph.capture(event, props));
 }

@@ -1,6 +1,5 @@
 import type { StateCreator } from 'zustand';
 import type { AppState } from '../appStore';
-import { buildPreviewSeed, resetPreviewStream } from '../../preview/previewFeed';
 import { deriveAddressChains, savePaneRoomIds } from '../appStore.helpers';
 import { track } from '../../lib/analytics';
 
@@ -27,24 +26,30 @@ export const createPreviewSlice: StateCreator<AppState, [], [], PreviewSlice> = 
   previewSeeded: false,
 
   enterPreview: () => {
-    const seed = buildPreviewSeed();
-    resetPreviewStream();
-    savePaneRoomIds(seed.paneRoomIds);
-    set({
-      previewMode: true,
-      previewSeeded: true,
-      rooms: seed.rooms,
-      config: seed.config,
-      guilds: seed.guilds,
-      messages: seed.messages,
-      contracts: seed.contracts,
-      addressChains: deriveAddressChains(seed.contracts),
-      activeRoomId: seed.activeRoomId,
-      paneRoomIds: seed.paneRoomIds,
-      activeView: 'chat',
-      _layoutHydrated: true,
+    // Dynamic import: the preview seed + sample fixtures (~28 kB) load only
+    // when someone actually enters the demo feed, instead of riding in the
+    // initial index chunk of every load. The seed appears one chunk-fetch
+    // (~tens of ms, then cached) after the click.
+    void import('../../preview/previewFeed').then(({ buildPreviewSeed, resetPreviewStream }) => {
+      const seed = buildPreviewSeed();
+      resetPreviewStream();
+      savePaneRoomIds(seed.paneRoomIds);
+      set({
+        previewMode: true,
+        previewSeeded: true,
+        rooms: seed.rooms,
+        config: seed.config,
+        guilds: seed.guilds,
+        messages: seed.messages,
+        contracts: seed.contracts,
+        addressChains: deriveAddressChains(seed.contracts),
+        activeRoomId: seed.activeRoomId,
+        paneRoomIds: seed.paneRoomIds,
+        activeView: 'chat',
+        _layoutHydrated: true,
+      });
+      track('preview_entered');
     });
-    track('preview_entered');
   },
 
   exitPreview: () => {

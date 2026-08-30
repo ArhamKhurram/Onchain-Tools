@@ -64,8 +64,9 @@ import { getFomoServiceClient } from '../fomo/store.js';
 import { sendPushover } from '../utils/pushover.js';
 import { formatCompact } from '../wallets/balanceChecker.js';
 import { DEFAULT_REVIVAL_CONFIG, evaluateRevival, type RevivalEvaluation } from './detector.js';
+import { fetchCandlesForToken } from './candleSource.js';
+import { fetchBroadTier, isBroadTierEnabled } from './broadUniverse.js';
 import {
-  fetchRevivalCandles,
   isBackedOff,
   resolveRequestSpacingMs,
   revivalRequestCounters,
@@ -678,7 +679,8 @@ class RevivalPoller {
       if (!this.db) return;
       const { data, error } = await this.db
         .from('revival_alerts')
-        .select('*')
+        // Column-scoped: the mapper below reads only these fields (egress hygiene on a 5-min poll).
+        .select('id, kind, mint, symbol, network, price_usd, mcap_usd, atr_z, rvol, baseline_price_usd, run_multiple, drawdown_from_peak, triggered_at, peak_price_usd, peak_mcap_usd, peak_multiple, peak_at, outcome_window_closed_at, user_id')
         .is('outcome_window_closed_at', null)
         .limit(500);
       if (error) {
@@ -724,7 +726,44 @@ class RevivalPoller {
     this.outcomes.resumeEntries(open.map((e) => ({ entry: e, userId: e.userId })));
   }
 
+  /**
+   * Feed universe PLUS the optional market-wide broad tier.
+   *
+   * The feed tier answers "what did our callers mention in the last 48h" — which structurally
+   * cannot see an old token waking up (see broadUniverse.ts). The broad tier fills exactly that
+   * hole and is off unless OCT_REVIVAL_BROAD_TIER is set.
+   */
   private async loadUniverse(): Promise<RevivalUniverse> {
+    const universe = await this.loadFeedUniverse();
+    if (!isBroadTierEnabled()) return universe;
+
+    // Broad-tier tokens belong to no one in particular, so they go to everyone already receiving
+    // revival alerts. With no such users there is nobody to tell, and discovery would be wasted
+    // requests.
+    const audience = new Set<string>();
+    for (const entry of universe.values()) for (const u of entry.subscribers) audience.add(u);
+    if (audience.size === 0) return universe;
+
+    let added = 0;
+    for (const network of resolveRevivalNetworks()) {
+      for (const token of await fetchBroadTier(network)) {
+        const key = universeKey(network, token.address);
+        const existing = universe.get(key);
+        if (existing) {
+          // Already in someone's feed — keep the feed entry, it has the real subscriber list.
+          continue;
+        }
+        universe.set(key, { address: token.address, network, subscribers: new Set(audience) });
+        added += 1;
+      }
+    }
+    if (added > 0) {
+      console.log(`[RevivalPoller] broad tier added ${added} token(s) beyond the feed universe.`);
+    }
+    return universe;
+  }
+
+  private async loadFeedUniverse(): Promise<RevivalUniverse> {
     const since = new Date(Date.now() - UNIVERSE_LOOKBACK_MS).toISOString();
     const enabled = new Set(resolveRevivalNetworks());
     if (enabled.size === 0) return new Map();
@@ -904,7 +943,10 @@ class RevivalPoller {
   ): Promise<{ drawdownBlocked: boolean; breakout: boolean }> {
     const { address: mint, network, subscribers } = target;
     const none = { drawdownBlocked: false, breakout: false };
-    const candles = await fetchRevivalCandles(network, mint);
+    // Routed: Solana/BNB go to Pinax when it is configured and its per-pool USD calibration
+    // succeeded, Robinhood always to GeckoTerminal, and any Pinax miss falls back rather than
+    // reporting the token as dataless.
+    const candles = await fetchCandlesForToken(network, mint);
     if (!candles) return none;
 
     const now = Date.now();

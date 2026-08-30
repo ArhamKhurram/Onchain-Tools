@@ -15,7 +15,9 @@ export function parseTelegramMessageId(messageId: string): { chatId: string; msg
 /** Author + channel line under a contract feed row. */
 export function contractAttribution(entry: ContractEntry): string {
   if (isTelegramContract(entry)) {
-    return `${entry.authorName} · TG · ${entry.channelName}`;
+    // A forum-topic detection carries the group as guildName and the topic as
+    // channelName — show both, mirroring the Discord "guild / #channel" shape.
+    return `${entry.authorName} · TG · ${entry.guildName ? `${entry.guildName} / ` : ''}${entry.channelName}`;
   }
   return `${entry.authorName} · ${entry.guildName ? `${entry.guildName} / ` : ''}#${entry.channelName}`;
 }

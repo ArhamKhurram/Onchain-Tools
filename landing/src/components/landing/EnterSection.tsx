@@ -1,6 +1,6 @@
 import { RefObject } from 'react';
-import { motion } from 'framer-motion';
-import { APP_CONSOLE_PATH } from '../../constants';
+import { m } from 'framer-motion';
+import { APP_CONSOLE_PATH, USER_DOCS_URL } from '../../constants';
 import { useSectionScroll } from '../../hooks/useSectionScroll';
 
 const mockLines = [
@@ -19,49 +19,62 @@ export function EnterSection({ scrollRef }: { scrollRef: RefObject<HTMLElement |
       className="relative snap-start snap-always min-h-[100dvh] flex flex-col justify-center bg-black text-white px-6 sm:px-10 pr-12 sm:pr-14 py-24"
     >
       <div className="max-w-6xl mx-auto w-full grid grid-cols-1 lg:grid-cols-2 gap-12 lg:gap-16 items-center">
-        <motion.div style={{ y: headingY }}>
-          <motion.p
+        <m.div style={{ y: headingY }}>
+          <m.p
             initial={{ opacity: 0 }}
             whileInView={{ opacity: 1 }}
             viewport={{ once: true }}
             className="font-mono text-xs tracking-[0.2em] text-white/60 mb-6"
           >
             [ LAUNCH ]
-          </motion.p>
+          </m.p>
 
-          <motion.h2
+          <m.h2
             initial={{ opacity: 0, y: 16 }}
             whileInView={{ opacity: 1, y: 0 }}
             viewport={{ once: true }}
             className="font-display text-[clamp(2.5rem,8vw,5rem)] leading-[0.95] tracking-tight mb-6"
           >
             OPEN THE CONSOLE.
-          </motion.h2>
+          </m.h2>
 
-          <motion.p
+          <m.p
             initial={{ opacity: 0 }}
             whileInView={{ opacity: 1 }}
             viewport={{ once: true }}
             transition={{ delay: 0.1 }}
             className="font-mono text-sm leading-relaxed text-white/65 max-w-md mb-10"
           >
-            No install. Sign in, paste your Discord token in-browser, and start streaming.
-            Your token never touches our servers — it connects directly from your browser.
-          </motion.p>
+            No install. Sign in, watch the demo feed stream live, and paste your Discord token
+            only when you want your own servers. Your token never touches our servers — it
+            connects directly from your browser.
+          </m.p>
 
-          <motion.a
-            href={APP_CONSOLE_PATH}
+          <m.div
             initial={{ opacity: 0, y: 8 }}
             whileInView={{ opacity: 1, y: 0 }}
             viewport={{ once: true }}
             transition={{ delay: 0.15 }}
-            className="inline-block font-mono text-sm sm:text-base tracking-wide border-2 border-white px-8 py-4 hover:bg-white hover:text-black transition-colors"
+            className="flex flex-wrap items-center gap-x-8 gap-y-4"
           >
-            [ TAKE ME TO CONSOLE → ]
-          </motion.a>
-        </motion.div>
+            <a
+              href={APP_CONSOLE_PATH}
+              className="inline-block font-mono text-sm sm:text-base tracking-wide border-2 border-white px-8 py-4 hover:bg-white hover:text-black transition-colors"
+            >
+              [ TAKE ME TO CONSOLE → ]
+            </a>
+            <a
+              href={USER_DOCS_URL}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="font-mono text-xs sm:text-sm tracking-wide text-white/65 hover:text-white underline underline-offset-4 transition-colors"
+            >
+              Read the user guide
+            </a>
+          </m.div>
+        </m.div>
 
-        <motion.div
+        <m.div
           style={{ y: bodyY }}
           initial={{ opacity: 0, x: 20 }}
           whileInView={{ opacity: 1, x: 0 }}
@@ -75,7 +88,7 @@ export function EnterSection({ scrollRef }: { scrollRef: RefObject<HTMLElement |
           </div>
           <div className="p-4 space-y-4 min-h-[220px]">
             {mockLines.map((line, i) => (
-              <motion.div
+              <m.div
                 key={i}
                 initial={{ opacity: 0, x: -8 }}
                 whileInView={{ opacity: 1, x: 0 }}
@@ -94,10 +107,10 @@ export function EnterSection({ scrollRef }: { scrollRef: RefObject<HTMLElement |
                     </span>
                   )}
                 </span>
-              </motion.div>
+              </m.div>
             ))}
           </div>
-        </motion.div>
+        </m.div>
       </div>
     </section>
   );

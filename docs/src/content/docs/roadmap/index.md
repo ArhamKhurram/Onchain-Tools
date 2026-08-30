@@ -12,33 +12,67 @@ once shipped.
 
 ## In progress
 
-_(Nothing actively in flight — pick from Planned next.)_
+Two things are genuinely in flight. Everything else on this page is either
+already shipped (see [Recently shipped](#recently-shipped-aug-2026)) or still
+an idea we haven't committed to.
+
+### Production hardening pass
+
+A batch of small changes is in review against `main`. It isn't one feature —
+it's a sweep, and each piece lands on its own as it passes review:
+
+- **Failure isolation** — process-level error guards so a single transient
+  ingest error can't take the server down for everyone, plus a `/health/deep`
+  readiness probe kept deliberately separate from the liveness check the
+  platform restarts on.
+- **Auth and input hardening** — authentication required on the portfolio
+  status endpoint in hosted mode, and non-finite sniper spend caps rejected
+  (a non-numeric cap disabled the limit instead of raising it).
+- **Performance** — the caller-stats sweep walks active users rather than every
+  registered one; analytics loads on demand instead of on every page load.
+- **Readability** — a real type scale for the console, so body text clears the
+  12px tier.
+
+### Research spike — trading agent
+
+A separate branch (`research/trading-agent`) is exploring whether a
+reinforcement-learning agent can trade newly launched pairs. So far that means
+a replay simulator and paper ledger, a point-in-time feature store with a
+leakage firewall, multi-venue curve models, and a first learner.
+
+**Nothing from this ships today and none of it is promised.** It lives off
+`main`, touches no part of the console, and its first honest evaluation gate
+came back **no-go** — recorded as such rather than quietly rerun until it
+passed. It is listed here because it is real work in progress, not because it
+is a planned feature.
 
 ## Planned next
 
 ### Caller quality — follow-ups
 
-Phases 1 and 2 shipped Jul 30 (see [Recently shipped](#recently-shipped-jul-2026)
-below). Remaining:
+Phases 1 and 2 shipped Jul 30, and a second pass in August moved scoring onto a
+durable record and put peak MC and caller bands on the feed itself (see
+[Recently shipped](#recently-shipped-aug-2026)). Remaining:
 
-- **Backfill.** Scores only start accumulating once the peak sampler has been
-  running — a token called before the first pass has no peak, so early scores are
-  thin. Consider a one-off backfill over recent contracts.
-- **Peak fidelity.** The sampler polls every 3 min, so a spike between passes is
-  missed. Fine for banding, wrong for anything that claims to be an exact ATH —
-  don't surface `bestMultiple` as a precise number without fixing this.
+- **Backfill.** Scores only accumulate once the peak refresh has been running —
+  a token called before the first pass has no peak, so early scores are thin.
+  Consider a one-off backfill over recent contracts.
+- **Peak fidelity.** Peaks are sampled periodically, so a spike between passes
+  is missed. That is fine for banding, and every surfaced figure is presented as
+  a floor ("at least this high") for exactly that reason — but it means no peak
+  number should ever be dressed up as an exact all-time high.
 - **Per-room scores.** Scores are currently global per caller. A caller can be
   sharp in one room and noise in another; the manual tier covers that case by
   hand today.
-- **Radar `allMuted` cost.** `buildRadar` runs twice per render (once for the
-  muted counter). Fine at 2,000 contracts, worth memoising if the cap rises.
 
 ### FOMO prod reliability rework
 
-Prod FOMO works locally but breaks on Railway: Cloudflare blocks datacenter IPs
-(`upstream 0`), leaderboard/holders fail without a warm browser session, and API
-volume is uncached. **Do not** solve with 20 manual accounts — one shared
-service account is correct; fix infra + caching instead.
+Prod FOMO used to work locally and break on Railway: Cloudflare blocks datacenter
+IPs (`upstream 0`), leaderboard/holders failed without a warm browser session,
+and API volume was uncached. The fix was never 20 manual accounts — one shared
+service account is correct, with the infrastructure and caching fixed around it.
+Most of that has now shipped; this section is kept because the reasoning still
+governs anything that touches FOMO upstream calls.
 
 **Root causes (three different limits):**
 
@@ -48,25 +82,25 @@ service account is correct; fix infra + caching instead.
 - **OCT express limiter** — 120 req/min on `/api` in hosted mode; needs
   `trust proxy` behind Railway.
 
-**Tier 0 (current):** one shared account, fan-out poller, no caching — breaks in prod.
+**Phases 1 and 2 have shipped.** What landed:
 
-**Recommended path:**
+- The browser is initialised **once** at boot and the shared client is reused
+  across routes, instead of re-initialising per leaderboard request.
+- **Server-side cache** — leaderboard 5 min, hodlers overlap 15 min, theses
+  3 min, each overridable by env.
+- **Adaptive poll interval** — the poller backs off to a slower cadence when no
+  authenticated client is connected.
+- **`trust proxy`** is set in hosted mode, so express-rate-limit sees the real
+  client IP behind the platform proxy.
+- **`/api/fomo/status`** reports poll and session health.
+- **Dedicated FOMO worker** on an always-on VPS with a persistent Playwright
+  profile that survives redeploys; the backend calls it as an internal proxy.
+  See [fomo-worker](../architecture/fomo-worker/).
 
-*Phase 1 — stop the bleeding (1–2 days)*
-- Init the browser **once** at boot; reuse the shared client for all routes (no
-  re-`init()` per leaderboard request).
-- **Server-side cache** — leaderboard 5–15 min, hodlers overlap 15 min.
-- **Adaptive poll interval** — 10s when users are connected, 30–60s when idle.
-- **`trust proxy`** on Railway for express-rate-limit.
-- Richer **`/api/fomo/status`** — last successful poll, last CF error, token age.
+Still open: an optional residential proxy if Cloudflare blocks the worker's IP
+anyway, and the account pool below.
 
-*Phase 2 — prod behaves like dev (3–5 days)*
-- **Dedicated FOMO worker** on an always-on VPS/Fly with a persistent Playwright
-  profile (survives redeploys). OCT backend calls the internal proxy. — **Shipped**,
-  see [fomo-worker](../architecture/fomo-worker/).
-- Optional residential proxy if Cloudflare still blocks.
-
-*Phase 3 — account pool (only if 429s persist after Phase 1–2)*
+*Phase 3 — account pool (only if 429s persist)*
 - `fomo_service_accounts` table; 2–3 service accounts; auto-rotate on 429.
 - Fully automated — no manual cookie copying.
 
@@ -75,6 +109,73 @@ an uncached leaderboard + overlap + poller from one cold Railway container.
 
 **Privy refresh token:** already auto-rotates into `fomo_poll_state` — a manual
 update is only needed when the session is fully revoked.
+
+## Recently shipped (Aug 2026)
+
+Written up for users in
+[`CHANGELOG.md`](https://github.com/ArhamKhurram/Onchain-Tools/blob/main/CHANGELOG.md);
+the structural summary is below.
+
+### A fourth and fifth signal
+
+- **Revival alerts** — a token that died and then came back gets its own alert,
+  with 24-hour outcome tracking on every one.
+- **Breakout alerts** — revival's sibling: a token consolidating near its highs
+  and then igniting is a different setup, so it fires its own amber alert with
+  its own sound rather than being folded into revival.
+- **Price alerts** — a manual level watch. Nothing is detected or scored: you
+  name a token and a level, it fires once on the crossing. The first reading
+  after arming is a baseline only, so a token already past the level doesn't
+  ping immediately.
+- **FOMO new-join alerts** — a ping when a notable account joins fomo.family,
+  on the theory that the join is the signal and the first buys are already late.
+
+These stay separate detections, per the design principle below.
+
+### Caller quality, second pass
+
+- **Durable caller record** — ranking reads a persistent record written on scan
+  and re-folded by a reconciler, rather than the rolling contract log. A caller
+  appears on the board milliseconds after a scan, and the sweep re-prices the
+  same row once enrichment fills `fdvAtCall` in.
+- **Peak MC on the feed** — contract rows show MC at call, highest MC since, and
+  the multiple. Peaks are floors by construction, a run before someone's call is
+  never credited to them, and the UI says so.
+- **Caller bands on the CA feed** — Elite / Solid / Mixed / Slop, or an honest
+  Unrated below the evidence threshold — never a made-up neutral score.
+- **Global first on the radar** — earliest known call anyone made, from Rick's
+  cross-server data plus an anonymous network pool of first sightings that
+  stores only token, time, and market cap — never who saw it or where.
+
+### Sniper (alpha)
+
+Operator-declared buys at a custodial venue, shipped from `main`. A new rule is
+a dry run; arming, going live, and firing are three further confirmations; a
+kill switch blocks every console buy at once and survives restart. The venue
+token is written to an encrypted vault by the user's own browser and read only
+at the moment of firing. **Triggers still live in the venue account, not in
+OCT** — the automatic loop fires without OCT and never calls back, so OCT's caps
+bind console-fired buys only. See the
+[sniper overview](../architecture/sniper/).
+
+### pump.fun
+
+Trader tracking (live buys/sells, per-token realized and unrealized PnL), a live
+callout feed with the market cap at each call, opt-in callout DMs, and per-caller
+mutes.
+
+### Console and platform
+
+- **Onboarding** — a demo feed on first run instead of an empty console, plus a
+  token trust panel.
+- **Top Callers Feed pane** — a Workspace pane restricted to elite and trusted
+  callers, with inline stats.
+- **Rescan collapsing** — repeat scans of one contract fold into a single row
+  with a scan count instead of flooding the feed.
+- **Daily digest DM** — opt-in bot DM covering your alerts and how they resolved.
+- **Circuit breaker on DexScreener enrichment** — fail fast during provider
+  outages rather than queueing into one.
+- **Privacy-first analytics** — pageview capture with URL sanitisation.
 
 ## Recently shipped (Jul 2026)
 
@@ -160,6 +261,32 @@ Rank contract calls by who sent them.
 
 ## Deferred / backlog
 
+### Liquidation heatmap (Hyperliquid) — might do
+
+An on-chain liquidation map: every leveraged position's liquidation price plotted
+against time, shorts above spot and longs below, with cluster size shown as
+intensity. Liquidations are forced market orders, so dense clusters are pools of
+guaranteed counterparty flow — which is why price tends to accelerate through them
+and stall where the map is empty.
+
+Feasible because Hyperliquid is an on-chain perp DEX: positions, leverage and
+margin are public, so liquidation prices can be **computed** rather than inferred.
+Most liquidation heatmaps estimate from volume and open interest; this would not
+have to.
+
+Two honest reasons it is deferred rather than planned:
+
+- **It is a different product.** OCT is new-pair memecoin intelligence on Solana
+  and EVM. This is perp-market structure on a venue we do not otherwise touch, for
+  an audience that overlaps ours only partly.
+- **It is a map of fuel, not a prediction.** Clusters get taken out, ignored, or sit
+  untouched for weeks. Shipped without that caveat attached, it would be read as a
+  forecast — which is exactly the kind of overclaiming the caller-quality work has
+  been careful to avoid.
+
+Prerequisite if it is ever picked up: a real-time Hyperliquid position feed and
+somewhere to put a chart this dense — the Workspace, not the Feed.
+
 ### On-chain wallet detection engine
 
 The Wallets page is currently a **watchlist only** (`user_tracked_wallets` CRUD in
@@ -223,8 +350,8 @@ issues:
   block) when the VPS proxy isn't in front; see [Planned next](#planned-next).
 - **Vercel** — confirm `VITE_API_URL` → Railway and `VITE_SUPABASE_ANON_KEY` are
   set (sensitive vars can't be auto-verified).
-- **Express** — `trust proxy` not set in hosted mode produces rate-limit warnings
-  in Railway logs.
+- ~~**Express** — `trust proxy` not set in hosted mode produces rate-limit
+  warnings in Railway logs~~ — fixed; hosted mode sets `trust proxy`.
 - ~~Confirm whether `/feed/tradingActivity` is a global firehose or
   following-only~~ — moot: the tracked-trader poller pulls from
   `/v2/users/{id}/activity`, not `/feed/tradingActivity`, so following-scope

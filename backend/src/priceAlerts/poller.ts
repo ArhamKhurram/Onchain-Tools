@@ -164,7 +164,8 @@ class PriceAlertPoller {
     if (!this.db) return [];
     const { data, error } = await this.db
       .from('price_alerts')
-      .select('*')
+      // Column-scoped: the mapper below reads only these; select('*') on a 25s poll is wasted egress.
+      .select('id, chain, mint, symbol, direction, target_usd, metric, note, last_seen_usd, last_seen_at, created_at, user_id')
       .eq('status', 'armed')
       .limit(ARMED_ALERT_LIMIT);
     if (error) {

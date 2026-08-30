@@ -1,5 +1,5 @@
 import { RefObject } from 'react';
-import { motion } from 'framer-motion';
+import { m } from 'framer-motion';
 import { APP_CONSOLE_PATH } from '../../constants';
 import { useSectionScroll } from '../../hooks/useSectionScroll';
 
@@ -28,17 +28,17 @@ export function StackSection({ scrollRef }: { scrollRef: RefObject<HTMLElement |
       className="relative snap-start snap-always min-h-[100dvh] flex flex-col bg-oct-flame text-black px-6 sm:px-10 pr-12 sm:pr-14 pt-20 pb-24 sm:py-24"
     >
       <div className="flex-1 max-w-6xl mx-auto w-full flex flex-col">
-        <motion.div style={{ y: headingY }}>
-          <motion.p
+        <m.div style={{ y: headingY }}>
+          <m.p
             initial={{ opacity: 0 }}
             whileInView={{ opacity: 1 }}
             viewport={{ once: true }}
             className="font-mono text-xs sm:text-sm tracking-[0.2em] mb-8"
           >
             [ THE STACK ]
-          </motion.p>
+          </m.p>
 
-          <motion.h2
+          <m.h2
             initial={{ opacity: 0, y: 16 }}
             whileInView={{ opacity: 1, y: 0 }}
             viewport={{ once: true }}
@@ -46,12 +46,12 @@ export function StackSection({ scrollRef }: { scrollRef: RefObject<HTMLElement |
             className="font-display text-[clamp(2.5rem,10vw,6.5rem)] leading-[0.92] tracking-tight mb-12 sm:mb-20 max-w-3xl"
           >
             FEED. TRACK. CALL.
-          </motion.h2>
-        </motion.div>
+          </m.h2>
+        </m.div>
 
-        <motion.div style={{ y: bodyY }} className="grid grid-cols-1 md:grid-cols-3 gap-10 md:gap-8 flex-1">
+        <m.div style={{ y: bodyY }} className="grid grid-cols-1 md:grid-cols-3 gap-10 md:gap-8 flex-1">
           {pillars.map((p, i) => (
-            <motion.a
+            <m.a
               key={p.title}
               href={APP_CONSOLE_PATH}
               initial={{ opacity: 0, y: 24 }}
@@ -65,9 +65,9 @@ export function StackSection({ scrollRef }: { scrollRef: RefObject<HTMLElement |
               <span className="font-mono text-xs sm:text-sm mt-6 tracking-wide group-hover:translate-x-1 transition-transform inline-block">
                 OPEN CONSOLE →
               </span>
-            </motion.a>
+            </m.a>
           ))}
-        </motion.div>
+        </m.div>
       </div>
     </section>
   );

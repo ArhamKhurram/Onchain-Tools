@@ -9,6 +9,7 @@ import { AuthImage, AuthVideo, AuthAudio } from './AuthMedia';
 import ImageLightbox from './ImageLightbox';
 import UserContextMenu from './UserContextMenu';
 import { buildContractUrl, DEFAULT_LINK_TEMPLATES } from '../utils/contractUrl';
+import { requestMessageJump } from '../utils/messageListWindow';
 import { colorWithExtraAlpha } from './ColorPickerWithAlpha';
 import { getAvatarUrl, formatTimestamp } from './message/avatar';
 import { type AddressColors, renderContent, renderInlineMarkdown, renderEmbedDescription } from './message/content';
@@ -201,10 +202,7 @@ function Message({ message, isCompact, messageDisplay = 'default', compactModeAv
           {message.referencedMessage && (
             <div
               className="flex items-center gap-1 text-xs text-oct-muted mb-0.5 cursor-pointer hover:text-oct-text max-w-full overflow-hidden"
-              onClick={() => {
-                const el = document.getElementById(`msg-${message.referencedMessage!.id}`);
-                if (el) { el.scrollIntoView({ behavior: 'smooth', block: 'center' }); el.classList.add('bg-oct-surface-raised'); setTimeout(() => el.classList.remove('bg-oct-surface-raised'), 2000); }
-              }}
+              onClick={(e) => requestMessageJump(e.currentTarget, message.referencedMessage!.id)}
             >
               <div className="w-8 h-3 border-l-2 border-t-2 border-oct-border-bright rounded-cockpit ml-1 shrink-0" />
               <span className="font-medium text-oct-muted shrink-0">{message.referencedMessage.author}</span>
@@ -469,10 +467,7 @@ function Message({ message, isCompact, messageDisplay = 'default', compactModeAv
           {message.referencedMessage && (
             <div
               className="flex items-center gap-1 text-xs text-oct-muted mb-0.5 cursor-pointer hover:text-oct-text max-w-full overflow-hidden"
-              onClick={() => {
-                const el = document.getElementById(`msg-${message.referencedMessage!.id}`);
-                if (el) { el.scrollIntoView({ behavior: 'smooth', block: 'center' }); el.classList.add('bg-oct-surface-raised'); setTimeout(() => el.classList.remove('bg-oct-surface-raised'), 2000); }
-              }}
+              onClick={(e) => requestMessageJump(e.currentTarget, message.referencedMessage!.id)}
             >
               <div className="w-8 h-3 border-l-2 border-t-2 border-oct-border-bright rounded-cockpit ml-1 shrink-0" />
               <span className="font-medium text-oct-muted shrink-0">{message.referencedMessage.author}</span>
@@ -731,14 +726,7 @@ function Message({ message, isCompact, messageDisplay = 'default', compactModeAv
         {message.referencedMessage && (
           <div
             className="flex items-center gap-1.5 text-sm text-oct-muted mt-0.5 mb-0.5 cursor-pointer hover:text-oct-text transition-colors"
-            onClick={() => {
-              const el = document.getElementById(`msg-${message.referencedMessage!.id}`);
-              if (el) {
-                el.scrollIntoView({ behavior: 'smooth', block: 'center' });
-                el.classList.add('bg-oct-accent-dim');
-                setTimeout(() => el.classList.remove('bg-oct-accent-dim'), 2000);
-              }
-            }}
+            onClick={(e) => requestMessageJump(e.currentTarget, message.referencedMessage!.id)}
           >
             <div className="w-8 h-3 border-l-2 border-t-2 border-oct-border-bright rounded-cockpit ml-1 shrink-0" />
             <span className="font-medium text-oct-muted shrink-0">{message.referencedMessage.author}</span>

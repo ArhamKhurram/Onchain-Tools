@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Key, Search, Plus, Trash2, Eye, EyeOff, Volume2, Upload, Play, Users, Shield, Tag, Zap, Settings2, ArrowLeft, HelpCircle, Bell, PanelLeftOpen, Send, Download, AlertTriangle, AtSign } from 'lucide-react';
+import { Key, Search, Plus, Trash2, Eye, EyeOff, Volume2, Upload, Play, Users, Shield, Tag, Zap, Settings2, ArrowLeft, HelpCircle, Bell, PanelLeftOpen, Send, Download, AlertTriangle, AtSign, BookOpen, ExternalLink } from 'lucide-react';
 import type { SolPlatform, EvmPlatform, ContractClickAction, BadgeClickAction, KeywordPattern, KeywordMatchMode, SoundSettings, SoundType, SoundConfig, PushoverPriority, PushoverSound, PushoverTriggers, PushoverFilters, MessageDisplay, SplitLayout, MissedRunnerConfig, MissedRunnerNotifyVia, ToastPosition } from '../../../types';
 import { PUSHOVER_SOUNDS, TOAST_POSITIONS, MISSED_RUNNER_NOTIFY_OPTIONS } from '../../../types';
 import { requestNotificationPermission } from '../../../utils/desktopNotification';
@@ -8,6 +8,7 @@ import ColorPickerWithAlpha from '../../ColorPickerWithAlpha';
 import TelegramSetup from '../../TelegramSetup';
 import { isHostedMode } from '../../../lib/supabase';
 import { isClientGatewayMode } from '../../../discord/clientGateway';
+import { USER_DOCS_URL } from '../../../lib/links';
 import { Toggle } from '../fields';
 import type { SettingsForm } from '../useSettingsForm';
 
@@ -279,9 +280,24 @@ export default function HelpSection({ form }: { form: SettingsForm }) {
               <>
                 <div>
                   <h3 className="font-display text-2xl sm:text-3xl tracking-tight text-oct-text mb-1">Help &amp; Features</h3>
-                  <p className="text-sm text-oct-muted mb-6">
+                  <p className="text-sm text-oct-muted mb-4">
                     Everything you need to know about using OCT.
                   </p>
+
+                  {/* This in-app manual is the short version. The full guide is
+                      a separate site and used to be linked from nowhere. */}
+                  <a
+                    href={USER_DOCS_URL}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="inline-flex items-center gap-2 mb-6 rounded-oct border border-oct-accent/40 bg-oct-accent-dim px-3.5 py-2.5 text-oct-accent transition-colors hover:border-oct-accent hover:bg-oct-accent/15"
+                  >
+                    <BookOpen size={15} className="shrink-0" />
+                    <span className="font-mono text-[11px] font-semibold uppercase tracking-[0.14em]">
+                      Full user guide
+                    </span>
+                    <ExternalLink size={13} className="shrink-0 opacity-70" />
+                  </a>
 
                   <div className="flex flex-col lg:flex-row gap-4">
                     <nav className="shrink-0 lg:w-56 rounded-oct border border-oct-border bg-oct-surface overflow-hidden">

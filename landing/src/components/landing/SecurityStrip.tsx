@@ -1,5 +1,5 @@
 import { RefObject } from 'react';
-import { motion } from 'framer-motion';
+import { m } from 'framer-motion';
 import { useSectionScroll } from '../../hooks/useSectionScroll';
 
 const points = [
@@ -12,8 +12,8 @@ const points = [
     body: 'Rooms, config, and Telegram sessions are encrypted at rest with AES-256-GCM. Row-level security isolates every account.',
   },
   {
-    title: 'OPEN SOURCE',
-    body: 'Inspect the encryption, gateway, and client-side token flow yourself. Don\'t trust — verify.',
+    title: 'VERIFY IT YOURSELF',
+    body: 'Open your browser\'s network tab. The gateway connects straight to Discord, and no request carries your token to us. Don\'t trust — check.',
   },
 ];
 
@@ -27,29 +27,29 @@ export function SecurityStrip({ scrollRef }: { scrollRef: RefObject<HTMLElement 
       className="relative snap-start min-h-[100dvh] flex flex-col justify-center bg-oct-flame text-black px-6 sm:px-10 pr-12 sm:pr-14 pt-24 pb-36"
     >
       <div className="max-w-6xl mx-auto w-full">
-        <motion.div style={{ y: headingY }}>
-          <motion.p
+        <m.div style={{ y: headingY }}>
+          <m.p
             initial={{ opacity: 0 }}
             whileInView={{ opacity: 1 }}
             viewport={{ once: true }}
             className="font-mono text-xs tracking-[0.2em] mb-6"
           >
             [ SECURITY ]
-          </motion.p>
+          </m.p>
 
-          <motion.h2
+          <m.h2
             initial={{ opacity: 0, y: 12 }}
             whileInView={{ opacity: 1, y: 0 }}
             viewport={{ once: true }}
             className="font-display text-[clamp(2rem,7vw,4.5rem)] leading-[0.95] tracking-tight mb-12 sm:mb-16 max-w-2xl"
           >
             YOUR KEYS. YOUR MACHINE.
-          </motion.h2>
-        </motion.div>
+          </m.h2>
+        </m.div>
 
-        <motion.div style={{ y: bodyY }} className="grid grid-cols-1 md:grid-cols-3 gap-10 md:gap-8">
+        <m.div style={{ y: bodyY }} className="grid grid-cols-1 md:grid-cols-3 gap-10 md:gap-8">
           {points.map((p, i) => (
-            <motion.div
+            <m.div
               key={p.title}
               initial={{ opacity: 0, y: 20 }}
               whileInView={{ opacity: 1, y: 0 }}
@@ -59,11 +59,11 @@ export function SecurityStrip({ scrollRef }: { scrollRef: RefObject<HTMLElement 
             >
               <h3 className="font-display text-2xl sm:text-3xl mb-3">{p.title}</h3>
               <p className="font-mono text-xs sm:text-sm leading-relaxed text-black/90">{p.body}</p>
-            </motion.div>
+            </m.div>
           ))}
-        </motion.div>
+        </m.div>
 
-        <motion.p
+        <m.p
           initial={{ opacity: 0 }}
           whileInView={{ opacity: 1 }}
           viewport={{ once: true }}
@@ -71,7 +71,7 @@ export function SecurityStrip({ scrollRef }: { scrollRef: RefObject<HTMLElement 
         >
           OCT is an independent project and is not affiliated with Discord Inc. Using self-bots
           violates Discord&apos;s Terms of Service. For personal and educational use only — use at your&nbsp;own risk.
-        </motion.p>
+        </m.p>
       </div>
     </section>
   );

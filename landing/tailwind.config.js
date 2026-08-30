@@ -7,9 +7,9 @@ export default {
         oct: {
           bg: '#000000',
           surface: '#0a0a0a',
-          flame: '#ff1744',
-          accent: '#ff1744',
-          'accent-hover': '#ff4569',
+          flame: '#dc1a3d',
+          accent: '#dc1a3d',
+          'accent-hover': '#e54862',
           text: '#ffffff',
           muted: '#888888',
         },

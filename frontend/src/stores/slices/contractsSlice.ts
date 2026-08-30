@@ -1,7 +1,6 @@
 import type { StateCreator } from 'zustand';
 import type { ContractEntry } from '../../types';
 import type { AppState } from '../appStore';
-import { isDemoMode, createDemoOverrides } from '../../demo/demoStore';
 import { hydrateContractFromCatalog } from '../../utils/contractMetadata';
 import { apiFetch, API_BASE, MAX_CONTRACTS, mergeContractLists, deriveAddressChains } from '../appStore.helpers';
 
@@ -24,8 +23,6 @@ export interface ContractsSlice {
 }
 
 export const createContractsSlice: StateCreator<AppState, [], [], ContractsSlice> = (set, get) => {
-  const demo = isDemoMode ? createDemoOverrides(set as any, get as any) : null;
-
   return {
     contracts: [],
     addressChains: {},
@@ -58,7 +55,6 @@ export const createContractsSlice: StateCreator<AppState, [], [], ContractsSlice
     },
 
     persistContract: async (entry) => {
-      if (demo) return;
       try {
         await apiFetch(`${API_BASE}/contracts`, {
           method: 'POST',
@@ -167,7 +163,6 @@ export const createContractsSlice: StateCreator<AppState, [], [], ContractsSlice
     },
 
     deleteContract: async (messageId, address) => {
-      if (demo) return demo.deleteContract(messageId, address);
       try {
         const res = await apiFetch(`${API_BASE}/contracts/${messageId}/${encodeURIComponent(address)}`, { method: 'DELETE' });
         if (!res.ok) return;
@@ -180,7 +175,6 @@ export const createContractsSlice: StateCreator<AppState, [], [], ContractsSlice
     },
 
     deleteAllContracts: async () => {
-      if (demo) return demo.deleteAllContracts();
       try {
         const res = await apiFetch(`${API_BASE}/contracts`, { method: 'DELETE' });
         if (!res.ok) return;
@@ -191,7 +185,6 @@ export const createContractsSlice: StateCreator<AppState, [], [], ContractsSlice
     },
 
     fetchContracts: async () => {
-      if (demo) return demo.fetchContracts();
       try {
         const res = await apiFetch(`${API_BASE}/contracts`);
         if (!res.ok) {

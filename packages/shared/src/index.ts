@@ -185,6 +185,7 @@ export type {
   WorkspaceLayoutPersisted,
   // display types
   TelegramChatInfo,
+  TelegramForumTopicInfo,
   GuildInfo,
   DMChannel,
   FrontendReaction,

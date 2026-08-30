@@ -1,7 +1,6 @@
 import type { StateCreator } from 'zustand';
 import type { FrontendMessage, FrontendReaction, ReactionUser } from '../../types';
 import type { AppState } from '../appStore';
-import { isDemoMode, createDemoOverrides } from '../../demo/demoStore';
 import { getClientGatewayManager, isClientGatewayMode } from '../../discord/clientGateway';
 import { apiFetch, API_BASE, MAX_MESSAGES_PER_ROOM } from '../appStore.helpers';
 
@@ -18,8 +17,6 @@ export interface MessagesSlice {
 }
 
 export const createMessagesSlice: StateCreator<AppState, [], [], MessagesSlice> = (set, get) => {
-  const demo = isDemoMode ? createDemoOverrides(set as any, get as any) : null;
-
   return {
     messages: {},
 
@@ -125,7 +122,6 @@ export const createMessagesSlice: StateCreator<AppState, [], [], MessagesSlice> 
     },
 
     fetchHistory: async () => {
-      if (demo) return demo.fetchHistory();
       try {
         const res = await apiFetch(`${API_BASE}/history`);
         if (!res.ok) return;
@@ -153,7 +149,6 @@ export const createMessagesSlice: StateCreator<AppState, [], [], MessagesSlice> 
     },
 
     fetchReactionUsers: async (channelId, messageId, emoji) => {
-      if (demo) return [];
       if (isClientGatewayMode()) {
         const gw = getClientGatewayManager();
         if (!gw) throw new Error('Discord is not connected.');

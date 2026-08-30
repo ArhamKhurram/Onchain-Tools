@@ -82,9 +82,20 @@ function bad(res: Response, status: number, reason: string, detail?: string): vo
   res.status(status).json({ error: reason, reason, ...(detail ? { detail } : {}) });
 }
 
+/**
+ * A real, bounded amount. `> 0` alone is NOT that — `Infinity > 0` is true, so
+ * a bare `> 0` admits an unbounded cap, and the reservation then reads
+ * `spentToday + amountWithFees > dailyCap` as permanently false: the cap is off,
+ * not raised. The DB CHECK is not a backstop either, since Infinity never
+ * survives JSON serialization to reach it.
+ */
+function positiveFinite(n: number): boolean {
+  return Number.isFinite(n) && n > 0;
+}
+
 function positiveNumber(v: unknown): number | null {
   const n = typeof v === 'number' ? v : Number(v);
-  return Number.isFinite(n) && n > 0 ? n : null;
+  return positiveFinite(n) ? n : null;
 }
 
 /**
@@ -94,7 +105,13 @@ function positiveNumber(v: unknown): number | null {
  */
 function validateWalletShape(w: WalletConfig): string | null {
   if (!SOL_ADDRESS.test(w.address)) return 'invalid_address';
-  if (!(w.perFireCap > 0) || !(w.dailyCap > 0) || !(w.maxOpen > 0)) return 'invalid_caps';
+  // Finiteness matters on this path specifically because PATCH does not go
+  // through `positiveNumber` — it takes a raw `Number(body.dailyCap)`, and JSON
+  // carries Infinity as the plain string "Infinity". So POST refused what PATCH
+  // would then happily write.
+  if (!positiveFinite(w.perFireCap) || !positiveFinite(w.dailyCap) || !positiveFinite(w.maxOpen)) {
+    return 'invalid_caps';
+  }
   // A daily cap below one fire's cap refuses every fire after the first,
   // silently, at the reservation.
   if (w.dailyCap < w.perFireCap) return 'daily_below_per_fire';

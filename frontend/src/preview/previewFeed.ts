@@ -5,10 +5,9 @@
 // being asked to paste anything. It flips "trust us, then get value" into "get
 // value, then trust us" — the #1 activation fix from the activation playbook.
 //
-// Distinct from `demo/` (VITE_DEMO_MODE, a whole marketing build): preview mode
-// is available to every hosted user at runtime, so this seed lives on its own
-// and never touches the backend. Everything here is PURE and deterministic given
-// a seq/now, which is what makes it unit-testable.
+// Preview mode is available to every hosted user at runtime, so this seed
+// lives on its own and never touches the backend. Everything here is PURE and
+// deterministic given a seq/now, which is what makes it unit-testable.
 
 import type {
   Room,
@@ -18,7 +17,6 @@ import type {
   ContractEntry,
   CallerTierEntry,
 } from '../types';
-import { DEMO_CONFIG } from '../demo/demoData';
 
 // ---------------------------------------------------------------------------
 // IDs — stable so React keys and pane wiring behave across re-seeds.
@@ -141,12 +139,70 @@ const CALLER_TIERS: CallerTierEntry[] = Object.values(CALLERS)
   .map((c) => ({ key: `discord:${c.id}`, displayName: c.displayName, tier: c.tier }));
 
 // ---------------------------------------------------------------------------
-// Config — reuse the demo AppConfig base (dozens of required fields) and only
-// override what the preview needs, rather than restating the whole shape.
+// Config — a generic AppConfig base (dozens of required fields, formerly the
+// retired VITE_DEMO_MODE build's DEMO_CONFIG); buildPreviewConfig overrides
+// the preview-specific fields on top of it.
 // ---------------------------------------------------------------------------
 
+const PREVIEW_BASE_CONFIG: AppConfig = {
+  discordTokens: [],
+  rooms: [],
+  globalHighlightedUsers: [],
+  contractDetection: true,
+  guildColors: {},
+  dmColors: {},
+  enabledGuilds: [],
+  evmAddressColor: '#fee75c',
+  solAddressColor: '#14f195',
+  openInDiscordApp: false,
+  openInTelegramApp: false,
+  hiddenUsers: {},
+  messageSounds: false,
+  soundSettings: {
+    highlight: { enabled: true, volume: 80, useCustom: false },
+    contractAlert: { enabled: true, volume: 80, useCustom: false },
+    keywordAlert: { enabled: true, volume: 80, useCustom: false },
+    fomoTrade: { enabled: true, volume: 80, useCustom: false },
+    pumpCallout: { enabled: true, volume: 80, useCustom: false },
+    revival: { enabled: true, volume: 100, useCustom: false, repeatUntilDismissed: true },
+    breakout: { enabled: true, volume: 80, useCustom: false },
+  },
+  pushover: { enabled: false, appToken: '', userKey: '', priority: 0, sound: 'pushover', triggers: { highlightedUser: false, highlightedUserContract: false, contract: false, keyword: false, signalConvergence: false, missedRunner: false }, filters: { userIds: [], channelIds: [], guildIds: [] } },
+  missedRunner: { enabled: false, minMultiplier: 1.5, lookbackHours: 24, cooldownHours: 24, notifyVia: 'toast' },
+  contractLinkTemplates: { evm: '', sol: '', solPlatform: 'axiom', evmPlatform: 'gmgn' },
+  contractClickAction: 'copy_open',
+  showFullContractAddress: false,
+  autoOpenHighlightedContracts: false,
+  signalConvergenceWindowMinutes: 30,
+  globalKeywordPatterns: [
+    { pattern: 'airdrop', matchMode: 'includes', label: 'airdrop' },
+  ],
+  keywordAlertsEnabled: true,
+  desktopNotifications: false,
+  toastAlertsEnabled: true,
+  toastPosition: 'top-right',
+  mentionsUserEnabled: true,
+  mentionsRoleEnabled: true,
+  mentionsHereEnabled: false,
+  mentionsEveryoneEnabled: false,
+  badgeClickAction: 'discord',
+  channelSounds: {},
+  userNameCache: {},
+  chattingEnabled: false,
+  messageDisplay: 'default',
+  compactModeAvatars: true,
+  roleColors: true,
+  mobileZoomScale: 1,
+  splitLayout: 'row',
+  paneRoomIds: [],
+  paneLocks: [],
+  gridMirror: false,
+  seenAnnouncements: [],
+  telegramColors: {},
+};
+
 export function buildPreviewConfig(): AppConfig {
-  const base: AppConfig = JSON.parse(JSON.stringify(DEMO_CONFIG));
+  const base: AppConfig = JSON.parse(JSON.stringify(PREVIEW_BASE_CONFIG));
   return {
     ...base,
     rooms: PREVIEW_ROOMS,

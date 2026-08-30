@@ -1,6 +1,5 @@
 import type { StateCreator } from 'zustand';
 import type { AppState } from '../appStore';
-import { isDemoMode, createDemoOverrides } from '../../demo/demoStore';
 import {
   apiFetch,
   API_BASE,
@@ -44,8 +43,6 @@ export interface LayoutSlice {
 }
 
 export const createLayoutSlice: StateCreator<AppState, [], [], LayoutSlice> = (set, get) => {
-  const demo = isDemoMode ? createDemoOverrides(set as any, get as any) : null;
-
   return {
     paneRoomIds: loadPaneRoomIds(),
     paneLocks: [],
@@ -241,7 +238,7 @@ export const createLayoutSlice: StateCreator<AppState, [], [], LayoutSlice> = (s
     // Persist the current split layout (panes + mirror) to the backend config so
     // it survives restarts even when localStorage is unavailable (desktop app).
     persistLayout: () => {
-      if (demo || IS_POPOUT) return;
+      if (IS_POPOUT) return;
       const { paneRoomIds, paneLocks, gridMirror } = get();
       apiFetch(`${API_BASE}/config`, {
         method: 'PUT',

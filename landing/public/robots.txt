@@ -1,0 +1,11 @@
+# https://www.onchaintools.tech/
+# The console at /dashboard/ is an authenticated single-page app: it renders
+# nothing useful without a session, so crawling it only burns crawl budget on
+# an empty shell. The marketing page and the user guide are the indexable
+# surfaces.
+
+User-agent: *
+Allow: /
+Disallow: /dashboard/
+
+Sitemap: https://www.onchaintools.tech/sitemap.xml

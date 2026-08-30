@@ -1,4 +1,15 @@
-import React, { useCallback, useMemo } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { createTrailingCommit } from '../utils/trailingCommit';
+
+/**
+ * Quiet time after the last picker tick before the value is committed via
+ * `onChange`. Native color inputs and range sliders fire continuously during a
+ * drag; several consumers wire `onChange` straight into `updateConfig` (a
+ * network round trip), so per-tick commits flooded the backend and lagged the
+ * whole console. The swatch previews instantly from local state; only the
+ * settled value is committed upstream.
+ */
+const COMMIT_DELAY_MS = 250;
 
 export function parseHexAlpha(color: string): { base: string; alpha: number } {
   if (!color || !color.startsWith('#')) return { base: '#000000', alpha: 1 };
@@ -41,25 +52,54 @@ export default function ColorPickerWithAlpha({
   showTextInput = false,
   className = '',
 }: ColorPickerWithAlphaProps) {
-  const { base, alpha } = useMemo(() => parseHexAlpha(value || defaultColor), [value, defaultColor]);
+  // Value being previewed mid-gesture, before it has been committed upstream.
+  // `null` means "mirror the prop".
+  const [live, setLive] = useState<string | null>(null);
+
+  const onChangeRef = useRef(onChange);
+  onChangeRef.current = onChange;
+  const committer = useMemo(
+    () => createTrailingCommit<string>((c) => onChangeRef.current(c), COMMIT_DELAY_MS),
+    [],
+  );
+  // Flush — not drop — a still-pending value when the picker unmounts, so
+  // closing the modal right after choosing a colour keeps the choice.
+  useEffect(() => () => committer.flush(), [committer]);
+
+  // When the committed value echoes back through the prop (or an external
+  // Reset changes it), go back to mirroring the prop.
+  useEffect(() => {
+    setLive(null);
+  }, [value]);
+
+  const shown = live ?? value;
+  const { base, alpha } = useMemo(() => parseHexAlpha(shown || defaultColor), [shown, defaultColor]);
   const pct = Math.round(alpha * 100);
 
+  const push = useCallback(
+    (c: string) => {
+      setLive(c);
+      committer.push(c);
+    },
+    [committer],
+  );
+
   const handleColorChange = useCallback(
-    (e: React.ChangeEvent<HTMLInputElement>) => onChange(buildHexAlpha(e.target.value, alpha)),
-    [onChange, alpha],
+    (e: React.ChangeEvent<HTMLInputElement>) => push(buildHexAlpha(e.target.value, alpha)),
+    [push, alpha],
   );
 
   const handleAlphaChange = useCallback(
-    (e: React.ChangeEvent<HTMLInputElement>) => onChange(buildHexAlpha(base, Number(e.target.value) / 100)),
-    [onChange, base],
+    (e: React.ChangeEvent<HTMLInputElement>) => push(buildHexAlpha(base, Number(e.target.value) / 100)),
+    [push, base],
   );
 
   const handleTextChange = useCallback(
     (e: React.ChangeEvent<HTMLInputElement>) => {
       const v = e.target.value;
-      if (/^#?[0-9a-fA-F]{0,8}$/.test(v)) onChange(v.startsWith('#') ? v : `#${v}`);
+      if (/^#?[0-9a-fA-F]{0,8}$/.test(v)) push(v.startsWith('#') ? v : `#${v}`);
     },
-    [onChange],
+    [push],
   );
 
   const swatchSize = size === 'sm' ? 'w-5 h-5' : 'w-8 h-8';
@@ -72,7 +112,7 @@ export default function ColorPickerWithAlpha({
       {/* Color swatch with checkerboard behind for alpha preview */}
       <div className={`${swatchSize} rounded border border-discord-divider shrink-0 relative overflow-hidden`}>
         <div className="absolute inset-0" style={{ background: checkerBg }} />
-        <div className="absolute inset-0" style={{ backgroundColor: value || defaultColor }} />
+        <div className="absolute inset-0" style={{ backgroundColor: shown || defaultColor }} />
         <input
           type="color"
           value={base}
@@ -100,7 +140,7 @@ export default function ColorPickerWithAlpha({
       {showTextInput && (
         <input
           type="text"
-          value={value}
+          value={shown}
           onChange={handleTextChange}
           placeholder={defaultColor}
           className="w-[5.5rem] bg-discord-dark border-none rounded px-2 py-1 text-[11px] text-discord-text outline-none focus:ring-1 focus:ring-discord-blurple font-mono"

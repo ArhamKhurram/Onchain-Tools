@@ -127,7 +127,10 @@ async function run(lookbackDays: number, force: boolean): Promise<void> {
   const targets = new Map<string, SampleTarget>();
   for (const userId of await userIds()) {
     try {
-      const contracts = await storage.getContracts(userId, MAX_CONTRACTS_PER_USER, since);
+      // Column-scoped read (same rationale as the live sampler): collectSampleTargets
+      // reads only address/chain/evm_chain/timestamp. Avoids select('*') egress on the
+      // hosted path for up to MAX_CONTRACTS_PER_USER rows per user.
+      const contracts = await storage.getContractsForScoring(userId, MAX_CONTRACTS_PER_USER, since);
       for (const t of collectSampleTargets(contracts)) {
         const key = t.address.toLowerCase();
         const existing = targets.get(key);

@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  The marketing site is a single page; its sections (#features, #how-it-works,
+  #security, #changelog, #setup) are anchors on that one document, not separate
+  URLs, so listing them here would be a lie a crawler can check.
+
+  The user guide is a separate Astro site on docs.onchaintools.tech and emits its
+  own sitemap; a sitemap may only list URLs on its own host, so it is not merged
+  in here.
+-->
+<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
+  <url>
+    <loc>https://www.onchaintools.tech/</loc>
+    <changefreq>weekly</changefreq>
+    <priority>1.0</priority>
+  </url>
+</urlset>

@@ -87,6 +87,7 @@ function buildStatus(): WorkerStatus {
     pageAgeSec: client?.pageAgeSec ?? null,
     callsSincePageOpen: client?.callsSincePageOpen ?? 0,
     rssMb: Math.round(process.memoryUsage().rss / 1024 / 1024),
+    breaker: client?.breaker,
   };
 }
 

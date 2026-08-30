@@ -1,7 +1,6 @@
 import type { StateCreator } from 'zustand';
 import type { Room, AppConfig, CallerTier } from '../../types';
 import type { AppState } from '../appStore';
-import { isDemoMode, createDemoOverrides } from '../../demo/demoStore';
 import { apiFetch, API_BASE, MAX_PANES, savePaneRoomIds } from '../appStore.helpers';
 
 export interface ConfigSlice {
@@ -21,7 +20,14 @@ export interface ConfigSlice {
 }
 
 export const createConfigSlice: StateCreator<AppState, [], [], ConfigSlice> = (set, get) => {
-  const demo = isDemoMode ? createDemoOverrides(set as any, get as any) : null;
+  // Config PUTs are serialized and applied latest-wins. Rapid successive
+  // updates (a colour picker gesture is several commits) used to race: two
+  // in-flight PUTs could resolve out of order, and the stale response's
+  // `set({ config })` would overwrite the newer state — "the colour I set
+  // didn't stick". The chain keeps server writes in call order; the sequence
+  // number keeps an older response from publishing over a newer one.
+  let configPutSeq = 0;
+  let configPutChain: Promise<unknown> = Promise.resolve();
 
   return {
     config: null,
@@ -96,7 +102,6 @@ export const createConfigSlice: StateCreator<AppState, [], [], ConfigSlice> = (s
     },
 
     fetchConfig: async () => {
-      if (demo) return demo.fetchConfig();
       try {
         const res = await apiFetch(`${API_BASE}/config`);
         if (!res.ok) return;
@@ -121,22 +126,42 @@ export const createConfigSlice: StateCreator<AppState, [], [], ConfigSlice> = (s
     },
 
     updateConfig: async (data) => {
-      if (demo) return demo.updateConfig(data);
-      const res = await apiFetch(`${API_BASE}/config`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(data),
-      });
-      if (!res.ok) {
-        const errBody = await res.text().catch(() => '');
-        throw new Error(errBody || `Failed to save settings (${res.status})`);
-      }
-      const config: AppConfig = await res.json();
-      set((state) => (state._layoutHydrated ? { config } : { config, _layoutHydrated: true }));
+      const mySeq = ++configPutSeq;
+      // Optimistic merge: the UI (and the base snapshot the next update spreads
+      // from) reflects the edit immediately instead of after the round trip.
+      // The server route merges shallowly per top-level key, so this mirrors
+      // what the PUT will do.
+      set((state) => (state.config ? { config: { ...state.config, ...data } } : {}));
+      const run = async () => {
+        try {
+          const res = await apiFetch(`${API_BASE}/config`, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(data),
+          });
+          if (!res.ok) {
+            const errBody = await res.text().catch(() => '');
+            throw new Error(errBody || `Failed to save settings (${res.status})`);
+          }
+          const config: AppConfig = await res.json();
+          // Only the newest update may publish the server snapshot — an older
+          // response would roll back optimistic edits made after it was sent.
+          if (mySeq === configPutSeq) {
+            set((state) => (state._layoutHydrated ? { config } : { config, _layoutHydrated: true }));
+          }
+        } catch (err) {
+          // The optimistic merge is unconfirmed; resync from the server unless
+          // a newer update is pending (that one will publish its own snapshot).
+          if (mySeq === configPutSeq) void get().fetchConfig();
+          throw err;
+        }
+      };
+      const result = configPutChain.then(run, run);
+      configPutChain = result.catch(() => {});
+      return result;
     },
 
     hideUser: async (guildId, channelId, userId, displayName) => {
-      if (demo) return demo.hideUser(guildId, channelId, userId, displayName);
       const config = get().config;
       if (!config) return;
       const key = `${guildId ?? 'null'}:${channelId}`;
@@ -147,7 +172,6 @@ export const createConfigSlice: StateCreator<AppState, [], [], ConfigSlice> = (s
     },
 
     unhideUser: async (guildId, channelId, userId) => {
-      if (demo) return demo.unhideUser(guildId, channelId, userId);
       const config = get().config;
       if (!config) return;
       const key = `${guildId ?? 'null'}:${channelId}`;
