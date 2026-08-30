@@ -53,4 +53,3 @@ export async function withGmgnLimit<T>(fn: () => Promise<T>): Promise<T> {
   }
 }
 
-export { mapSequential } from './sequential.js';
