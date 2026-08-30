@@ -20,7 +20,8 @@ import {
 } from './radarColumns';
 import { isHostedMode, getAccessToken } from '../../lib/supabase';
 import { useNetworkFirstScans, type NetworkFirstScan } from '../../hooks/useNetworkFirstScans';
-import { useCallerQuality, refreshTokenPeak, type CallerQuality } from '../../hooks/useCallerQuality';
+import { useCallerQuality, refreshTokenPeak } from '../../hooks/useCallerQuality';
+import { buildRadar, type RadarRow } from './radarRows';
 import {
   BAND_DOT_CLASS,
   BAND_TEXT_CLASS,
@@ -33,7 +34,6 @@ import {
   BAND_LABELS,
   radarEmojiForMultiple,
   resolveRadarEmojiRules,
-  type CallerBand,
   type RadarMultipleEmojiRule,
 } from '@oct/shared';
 import type { ContractEntry } from '../../types';
@@ -49,39 +49,6 @@ async function apiFetch(input: string, init?: RequestInit): Promise<Response> {
     if (token) headers.set('Authorization', `Bearer ${token}`);
   }
   return fetch(input, { ...init, headers, credentials: 'include' });
-}
-
-interface RadarRow {
-  address: string;
-  chain: 'evm' | 'sol';
-  evmChain?: string;
-  symbol?: string;
-  name?: string;
-  mentions: number;
-  callers: Set<string>;
-  groups: Set<string>;
-  firstCaller?: string;
-  firstSeenAt: number;
-  lastMentionAt: number;
-  timestamps: number[];
-  mcAtCall?: number;
-  mcAtCallDisplay?: string;
-  /** Best band among the callers who posted this token. */
-  bestBand?: CallerBand;
-  /**
-   * Band of the first caller specifically — distinct from bestBand, which is the
-   * best across everyone who posted it. The First caller column names one person,
-   * so it must show that person's own band, not the row's best.
-   */
-  firstCallerBand?: CallerBand;
-  bestRank: number;
-  /** Every caller on this token is muted — the row is pure slop by your own rules. */
-  allMuted: boolean;
-  // Rick's cross-server first-caller footer, earliest reading across this
-  // token's rows ("espadabtw @ 49.3K · 86x · 10h" → name, mcap, absolute ms).
-  rickFirstCallerName?: string;
-  rickFirstCallMcapUsd?: number;
-  rickFirstCallAtMs?: number;
 }
 
 interface LiveMc {
@@ -134,115 +101,6 @@ function platformMeta(chain: 'evm' | 'sol', evmChain?: string): { label: string;
   const dot = (evmChain && CHAIN_DOTS[evmChain]) ?? '#2B4EFF';
   return { label, dot };
 }
-
-function buildRadar(
-  contracts: ContractEntry[],
-  qualityForContract?: (entry: ContractEntry) => CallerQuality,
-): RadarRow[] {
-  const map = new Map<string, RadarRow>();
-  for (const c of contracts) {
-    const key = c.address.toLowerCase();
-    const ts = new Date(c.timestamp).getTime();
-    let row = map.get(key);
-    if (!row) {
-      row = {
-        address: c.address,
-        chain: c.chain,
-        evmChain: c.evmChain,
-        symbol: c.tokenSymbol,
-        name: c.tokenName,
-        mentions: 0,
-        callers: new Set(),
-        groups: new Set(),
-        firstCaller: c.authorName,
-        firstCallerBand: qualityForContract ? qualityForContract(c).band : undefined,
-        firstSeenAt: ts,
-        lastMentionAt: ts,
-        timestamps: [],
-        bestRank: -Infinity,
-        allMuted: true,
-      };
-      map.set(key, row);
-    }
-
-    // A token is only as good as its best caller: one trusted name calling it
-    // matters more than five muted ones also calling it.
-    if (qualityForContract) {
-      const q = qualityForContract(c);
-      if (q.rank > row.bestRank) {
-        row.bestRank = q.rank;
-        row.bestBand = q.band;
-      }
-      if (q.tier !== 'muted') row.allMuted = false;
-    } else {
-      row.allMuted = false;
-    }
-
-    // Rick's global-first footer is token-level; keep the earliest reading.
-    // A timestamped reading beats an untimestamped one, an earlier timestamp
-    // beats a later one, and the first untimestamped reading otherwise sticks.
-    if (c.firstCallerName != null || c.firstCallMcapUsd != null || c.firstCallAt != null) {
-      const atMs = c.firstCallAt ? new Date(c.firstCallAt).getTime() : NaN;
-      const hasAt = Number.isFinite(atMs);
-      const rowHasAt = row.rickFirstCallAtMs != null;
-      const rowHasAny =
-        row.rickFirstCallerName != null || row.rickFirstCallMcapUsd != null || rowHasAt;
-      const wins =
-        !rowHasAny || (hasAt && (!rowHasAt || atMs < (row.rickFirstCallAtMs as number)));
-      if (wins) {
-        row.rickFirstCallerName = c.firstCallerName;
-        row.rickFirstCallMcapUsd = c.firstCallMcapUsd;
-        row.rickFirstCallAtMs = hasAt ? atMs : undefined;
-      }
-    }
-
-    row.mentions += 1;
-    row.timestamps.push(ts);
-    row.callers.add(c.authorId);
-    if (c.guildId) row.groups.add(c.guildId);
-    else if (c.channelId) row.groups.add(c.channelId);
-    if (ts < row.firstSeenAt) {
-      row.firstSeenAt = ts;
-      row.firstCaller = c.authorName;
-      row.firstCallerBand = qualityForContract ? qualityForContract(c).band : undefined;
-    }
-    if (ts > row.lastMentionAt) row.lastMentionAt = ts;
-    row.symbol = row.symbol ?? c.tokenSymbol;
-    row.name = row.name ?? c.tokenName;
-    row.evmChain = row.evmChain ?? c.evmChain;
-  }
-
-  for (const row of map.values()) {
-    const group = contracts.filter((c) => c.address.toLowerCase() === row.address.toLowerCase());
-    const sorted = [...group].sort(
-      (a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime(),
-    );
-    // MC@call is the FIRST call's market cap. Take the earliest row that has an
-    // FDV, but only if it was captured close to first-seen — otherwise a repeat
-    // mention hours later (which now gets its own FDV) would have its live MC
-    // stamped onto the original call, turning an honest blank into a wrong
-    // denominator in the multiple. Missing beats wrong.
-    const firstMs = new Date(sorted[0].timestamp).getTime();
-    const withMc = sorted.find(
-      (c) =>
-        c.fdvAtCall != null &&
-        c.fdvAtCall > 0 &&
-        new Date(c.timestamp).getTime() - firstMs <= MC_AT_CALL_MAX_LAG_MS,
-    );
-    if (withMc) {
-      row.mcAtCall = withMc.fdvAtCall;
-      row.mcAtCallDisplay = withMc.fdvAtCallDisplay;
-    }
-  }
-
-  return [...map.values()];
-}
-
-// An FDV counts as the group's MC@call only if captured within this of the
-// first mention — the arrival burst of one call event, not a re-mention hours
-// later. Beyond it, the group's MC@call stays blank rather than borrowing a
-// later row's live market cap.
-const MC_AT_CALL_MAX_LAG_MS = 900_000; // 15 min
 
 interface GlobalFirstPick {
   /** Who saw it first — a Rick-named caller, or the anonymous pool. */
