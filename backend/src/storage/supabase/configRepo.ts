@@ -15,11 +15,23 @@ export class ConfigRepo extends BaseRepo {
     const cached = this.getCached<AppConfig>(cacheKey);
     if (cached) return cached;
 
-    const { data } = await this.supabase
-      .from('user_configs')
-      .select('settings')
-      .eq('user_id', userId)
-      .single();
+    // One concurrent stage for the five independent loads: this runs on every
+    // alert/notify path behind a 10s cache, so a cache miss used to cost seven
+    // sequential round-trip stages. The rooms bundle also carries the global
+    // highlight/keyword rows getRooms was already fetching (its or-filter
+    // includes room_id.is.null), which is what retires the two duplicate
+    // whole-table reads of highlighted_users and keywords this method made.
+    const [{ data }, tokens, roomsBundle, telegramCreds, telegramSessions] = await Promise.all([
+      this.supabase
+        .from('user_configs')
+        .select('settings')
+        .eq('user_id', userId)
+        .single(),
+      this.tokens.getTokens(userId),
+      this.rooms.getRoomsBundle(userId),
+      this.telegram.getTelegramApiCredentials(userId),
+      this.telegram.getTelegramSessions(userId),
+    ]);
 
     const settings = data?.settings ?? {};
     delete settings.telegramApiId;
@@ -62,21 +74,12 @@ export class ConfigRepo extends BaseRepo {
       },
     };
 
-    const tokens = await this.tokens.getTokens(userId);
-    const rooms = await this.rooms.getRooms(userId);
-    const [globalHighlights, globalKeywords] = await Promise.all([
-      this.rooms.loadHighlightRows(userId).then((rows) => rows.filter((row) => row.room_id === null)),
-      this.rooms.loadKeywordRows(userId).then((rows) => rows.filter((row) => row.room_id === null)),
-    ]);
-    const telegramCreds = await this.telegram.getTelegramApiCredentials(userId);
-    const telegramSessions = await this.telegram.getTelegramSessions(userId);
-
     const config = {
       ...merged,
-      globalHighlightedUsers: highlightRowsToApp(globalHighlights).highlightedUsers,
-      globalKeywordPatterns: keywordRowsToApp(globalKeywords),
+      globalHighlightedUsers: highlightRowsToApp(roomsBundle.globalHighlightRows).highlightedUsers,
+      globalKeywordPatterns: keywordRowsToApp(roomsBundle.globalKeywordRows),
       discordTokens: tokens,
-      rooms,
+      rooms: roomsBundle.rooms,
       telegramApiId: telegramCreds?.apiId,
       telegramApiHash: telegramCreds?.apiHash,
       telegramSessions,
