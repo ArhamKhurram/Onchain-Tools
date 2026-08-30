@@ -36,7 +36,7 @@ function timeLabel(iso: string | null): string {
  * what you'd expect — this field exists because they think in "150K mcap", and
  * making them count zeros is how a level gets set wrong.
  */
-export function parseTarget(raw: string): number | null {
+function parseTarget(raw: string): number | null {
   const cleaned = raw.trim().replace(/[$,\s]/g, '');
   if (!cleaned) return null;
   const m = /^([0-9]*\.?[0-9]+)([kmb])?$/i.exec(cleaned);

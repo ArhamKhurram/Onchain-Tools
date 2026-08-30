@@ -66,7 +66,7 @@ export const PRESET_SOUNDS = [
 
 export type PresetSoundId = (typeof PRESET_SOUNDS)[number]['id'];
 
-export function getPresetUrl(presetId: string): string | undefined {
+function getPresetUrl(presetId: string): string | undefined {
   return PRESET_SOUNDS.find((p) => p.id === presetId)?.file;
 }
 

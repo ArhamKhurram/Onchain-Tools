@@ -1,4 +1,4 @@
-import { useEffect, useState, useMemo, Fragment } from 'react';
+import { memo, useCallback, useEffect, useState, useMemo, Fragment } from 'react';
 import { ExternalLink, Copy, Check, Trash2, X, MessageSquare, PanelLeftOpen, Send, Users, ChevronDown, ChevronRight, Flag } from 'lucide-react';
 import { BAND_LABELS } from '@oct/shared';
 import { useAppStore } from '../stores/appStore';
@@ -230,34 +230,52 @@ export default function ContractDashboard({ embedded = false, topOnly = false }:
   // first" has to look past the 20-minute rescan group the row belongs to.
   const firstCallerIndex = useMemo(() => buildFirstCallerIndex(contracts), [contracts]);
 
-  const toggleGroupExpanded = (address: string) => {
+  // Every row callback below is identity-stable (useCallback) so the memoized
+  // rows can skip re-rendering on unrelated store churn — an enrichment frame
+  // for one address must not re-paint the other few hundred rows.
+  // Rows pass their own (mixed-case) address; group keys are lowercased.
+  const toggleGroupExpanded = useCallback((address: string) => {
+    const key = address.toLowerCase();
     setExpandedGroups((prev) => {
       const next = new Set(prev);
-      if (next.has(address)) next.delete(address);
-      else next.add(address);
+      if (next.has(key)) next.delete(key);
+      else next.add(key);
       return next;
     });
-  };
+  }, []);
 
-  const handleCopy = (addr: string) => {
+  const handleCopy = useCallback((addr: string) => {
     navigator.clipboard.writeText(addr);
     setCopiedAddr(addr);
     setTimeout(() => setCopiedAddr(null), 1500);
-  };
+  }, []);
 
-  const handleOpen = (addr: string, evmChain?: string) => {
+  const handleOpen = useCallback((addr: string, evmChain?: string) => {
     if (!config) return;
     const url = buildContractUrl(addr, config.contractLinkTemplates, evmChain);
     window.open(url, '_blank');
-  };
+  }, [config]);
 
-  const handleOpenDiscord = (entry: ContractEntry) => {
+  const handleOpenDiscord = useCallback((entry: ContractEntry) => {
     openContractSource(entry, config);
-  };
+  }, [config]);
 
-  const handleDelete = (entry: ContractEntry) => {
+  const handleDelete = useCallback((entry: ContractEntry) => {
     deleteContract(entry.messageId, entry.address);
-  };
+  }, [deleteContract]);
+
+  const handleShowHolders = useCallback((entry: ContractEntry) => {
+    setHoldersTarget(holdersTargetFor(entry));
+  }, []);
+
+  // Relative timestamps ("5m ago") used to refresh as a side effect of the
+  // constant full-feed re-renders. With rows memoized, refresh them on a
+  // deliberate 30s tick instead — one bounded re-render sweep per tick.
+  const [timeTick, setTimeTick] = useState(0);
+  useEffect(() => {
+    const timer = setInterval(() => setTimeTick((t) => t + 1), 30_000);
+    return () => clearInterval(timer);
+  }, []);
 
   const handleDeleteAll = () => {
     setShowDeleteAll(true);
@@ -382,15 +400,16 @@ export default function ContractDashboard({ embedded = false, topOnly = false }:
                     onOpen={handleOpen}
                     onOpenDiscord={handleOpenDiscord}
                     onDelete={handleDelete}
-                    onShowHolders={(e) => setHoldersTarget(holdersTargetFor(e))}
+                    onShowHolders={handleShowHolders}
                     forceIsNew={group.hasNew}
                     scanCount={scanCount}
                     isExpanded={isExpanded}
-                    onToggleExpand={scanCount > 1 ? () => toggleGroupExpanded(group.address) : undefined}
+                    onToggleExpand={scanCount > 1 ? toggleGroupExpanded : undefined}
                     firstCall={firstCallerIndex.get(group.address)}
                     markUnrated={goodOnly}
                     hideBandBadge={hideBadges}
                     showStats={topOnly}
+                    timeTick={timeTick}
                   />
                   {isExpanded && (
                     <div className="pl-3 sm:pl-6 border-l-2 border-oct-border/60 ml-3 sm:ml-6">
@@ -407,11 +426,12 @@ export default function ContractDashboard({ embedded = false, topOnly = false }:
                           onOpen={handleOpen}
                           onOpenDiscord={handleOpenDiscord}
                           onDelete={handleDelete}
-                          onShowHolders={(e) => setHoldersTarget(holdersTargetFor(e))}
+                          onShowHolders={handleShowHolders}
                           firstCall={firstCallerIndex.get(group.address)}
                           markUnrated={goodOnly}
                           hideBandBadge={hideBadges}
                           isSubRow
+                          timeTick={timeTick}
                         />
                       ))}
                     </div>
@@ -437,13 +457,14 @@ export default function ContractDashboard({ embedded = false, topOnly = false }:
                 onOpen={handleOpen}
                 onOpenDiscord={handleOpenDiscord}
                 onDelete={handleDelete}
-                onShowHolders={(e) => setHoldersTarget(holdersTargetFor(e))}
+                onShowHolders={handleShowHolders}
                 forceIsNew={group.hasNew}
                 scanCount={scanCount}
                 firstCall={firstCallerIndex.get(group.address)}
                 markUnrated={goodOnly}
                 hideBandBadge={hideBadges}
                 showStats={topOnly}
+                timeTick={timeTick}
               />
               );
             })}
@@ -491,7 +512,12 @@ interface ContractItemProps {
   /** Total scans collapsed into this row, when it's a group head (>1). */
   scanCount?: number;
   isExpanded?: boolean;
-  onToggleExpand?: () => void;
+  /**
+   * Toggle this row's scan-history group. Takes the row's address (any case)
+   * so one identity-stable callback serves every row — a per-group closure
+   * here would defeat the row memoization.
+   */
+  onToggleExpand?: (address: string) => void;
   /**
    * Earliest openable call of this address across the whole loaded log, when
    * one exists. Renders the "jump to the first caller" action — see
@@ -519,6 +545,59 @@ interface ContractItemProps {
    * ask — so each row says *why* the caller earned a place in the pane.
    */
   showStats?: boolean;
+  /**
+   * Bumped by the dashboard every 30s purely to invalidate the row memo so
+   * the relative "Xm ago" timestamps keep ticking. Not read by the row.
+   */
+  timeTick?: number;
+}
+
+/**
+ * Value-equality for the two props that are rebuilt (as fresh objects with
+ * unchanged contents) on every contracts-array churn. Without these two
+ * checks, React.memo on the rows would never skip anything: the `visible`
+ * memo re-wraps every row's `quality` and `buildFirstCallerIndex` re-creates
+ * every resolution whenever any contract changes.
+ */
+function qualityEqual(a?: CallerQuality, b?: CallerQuality): boolean {
+  if (a === b) return true;
+  if (!a || !b) return false;
+  return (
+    a.key === b.key &&
+    a.tier === b.tier &&
+    a.band === b.band &&
+    a.rank === b.rank &&
+    a.score === b.score &&
+    a.scoreScope === b.scoreScope
+  );
+}
+
+function firstCallEqual(a?: FirstCallerResolution, b?: FirstCallerResolution): boolean {
+  if (a === b) return true;
+  if (!a || !b) return false;
+  return (
+    a.entry === b.entry &&
+    a.earliest === b.earliest &&
+    a.isFirstLogged === b.isFirstLogged &&
+    a.skippedUnlinkable === b.skippedUnlinkable
+  );
+}
+
+/**
+ * Memo comparator for feed rows/cards. `entry` (and the entries inside
+ * `firstCall`) rely on the store's structural sharing: `enrichContract`,
+ * `updateTokenPeak` etc. only allocate new objects for the rows they touch,
+ * so reference identity is exactly "did this row's data change". Every
+ * callback prop is a `useCallback` from the dashboard, so identity holds.
+ */
+function contractItemPropsEqual(prev: ContractItemProps, next: ContractItemProps): boolean {
+  if (!qualityEqual(prev.quality, next.quality)) return false;
+  if (!firstCallEqual(prev.firstCall, next.firstCall)) return false;
+  for (const key of Object.keys(next) as (keyof ContractItemProps)[]) {
+    if (key === 'quality' || key === 'firstCall') continue;
+    if (!Object.is(prev[key], next[key])) return false;
+  }
+  return true;
 }
 
 /** Small pill shared by the chain / NEW / band markers on a feed row. */
@@ -634,7 +713,7 @@ function CallerStatsReadout({ quality }: { quality?: CallerQuality }) {
   );
 }
 
-function ContractRow({
+const ContractRow = memo(function ContractRow({
   entry,
   quality,
   evmColor,
@@ -680,7 +759,7 @@ function ContractRow({
       <div className="flex items-center gap-2 sm:gap-3 min-w-0">
         {onToggleExpand && (
           <button
-            onClick={onToggleExpand}
+            onClick={() => onToggleExpand(entry.address)}
             className="p-0.5 rounded hover:bg-oct-surface text-oct-muted hover:text-oct-text transition-colors shrink-0"
             title={isExpanded ? 'Collapse scan history' : 'Show scan history'}
           >
@@ -829,9 +908,9 @@ function ContractRow({
       )}
     </div>
   );
-}
+}, contractItemPropsEqual);
 
-function ContractCard({
+const ContractCard = memo(function ContractCard({
   entry,
   quality,
   evmColor,
@@ -984,4 +1063,4 @@ function ContractCard({
       </div>
     </div>
   );
-}
+}, contractItemPropsEqual);

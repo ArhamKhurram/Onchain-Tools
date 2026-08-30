@@ -23,6 +23,26 @@ function mockFetch(status: number, body: string) {
   return spy;
 }
 
+/**
+ * Run a client call that hits the REAL retry backoff (0.5–1.5s of setTimeout per
+ * attempt) under fake timers, flushing each scheduled sleep as it appears so the
+ * suite never waits out wall-clock backoff. Only time is virtualised — the
+ * mocked fetch, the call counts, and every assertion are untouched.
+ */
+async function withFlushedBackoff<T>(fn: () => Promise<T>): Promise<T> {
+  vi.useFakeTimers();
+  try {
+    const pending = fn();
+    // A rejection must not count as "unhandled" while the timers are flushed;
+    // the caller still observes it via the returned promise below.
+    pending.catch(() => {});
+    await vi.runAllTimersAsync();
+    return await pending;
+  } finally {
+    vi.useRealTimers();
+  }
+}
+
 beforeEach(() => {
   process.env.PUMPFUN_API_KEY = KEY;
   delete process.env.OCT_PUMPFUN_API_KEY;
@@ -399,7 +419,7 @@ describe('wallet transactions retry (transient-only, opt-in)', () => {
 
   it('retries a 502 and succeeds on the next attempt', async () => {
     const spy = mockFetchSequence({ status: 502, body: 'origin overloaded' }, OK);
-    const page = await api().getWalletTransactions(WALLET, { retries: 2 });
+    const page = await withFlushedBackoff(() => api().getWalletTransactions(WALLET, { retries: 2 }));
     expect(page.items).toHaveLength(0);
     expect(spy).toHaveBeenCalledTimes(2);
   });
@@ -407,14 +427,14 @@ describe('wallet transactions retry (transient-only, opt-in)', () => {
   it('retries a timeout (network status 0) and succeeds', async () => {
     const timeoutErr = Object.assign(new Error('The operation timed out'), { name: 'TimeoutError' });
     const spy = mockFetchSequence({ throw: timeoutErr }, OK);
-    const page = await api().getWalletTransactions(WALLET, { retries: 2 });
+    const page = await withFlushedBackoff(() => api().getWalletTransactions(WALLET, { retries: 2 }));
     expect(page.items).toHaveLength(0);
     expect(spy).toHaveBeenCalledTimes(2);
   });
 
   it('retries a 429 rate-limit', async () => {
     const spy = mockFetchSequence({ status: 429, body: 'slow down' }, OK);
-    await api().getWalletTransactions(WALLET, { retries: 2 });
+    await withFlushedBackoff(() => api().getWalletTransactions(WALLET, { retries: 2 }));
     expect(spy).toHaveBeenCalledTimes(2);
   });
 
@@ -438,7 +458,7 @@ describe('wallet transactions retry (transient-only, opt-in)', () => {
 
   it('gives up after exhausting retries and throws the transient error', async () => {
     const spy = mockFetchSequence({ status: 503, body: 'unavailable' });
-    await expect(api().getWalletTransactions(WALLET, { retries: 1 })).rejects.toMatchObject({
+    await expect(withFlushedBackoff(() => api().getWalletTransactions(WALLET, { retries: 1 }))).rejects.toMatchObject({
       kind: 'request-failed',
       status: 503,
     });
@@ -500,7 +520,7 @@ describe('keyed read retry (429 and friends)', () => {
   it('retries a 429 on the token callouts read and succeeds — the reported bug', async () => {
     process.env.PUMPFUN_READ_RETRIES = '2';
     const spy = mockFetchSequence(RATE_LIMITED, OK_CALLOUTS);
-    const out = await api().getTokenCallouts(MINT);
+    const out = await withFlushedBackoff(() => api().getTokenCallouts(MINT));
     expect(out).toHaveLength(1);
     expect(spy).toHaveBeenCalledTimes(2);
   });
@@ -508,7 +528,7 @@ describe('keyed read retry (429 and friends)', () => {
   it('retries a 429 on the community read too (the other half of the pair)', async () => {
     process.env.PUMPFUN_READ_RETRIES = '2';
     const spy = mockFetchSequence(RATE_LIMITED, { status: 200, body: JSON.stringify({ tokenSymbol: 'WSOL' }) });
-    const c = await api().getCommunity(MINT);
+    const c = await withFlushedBackoff(() => api().getCommunity(MINT));
     expect(c.tokenSymbol).toBe('WSOL');
     expect(spy).toHaveBeenCalledTimes(2);
   });
@@ -534,7 +554,10 @@ describe('keyed read retry (429 and friends)', () => {
   it('respects the budget: gives up after the configured extra attempts', async () => {
     process.env.PUMPFUN_READ_RETRIES = '1';
     const spy = mockFetchSequence(RATE_LIMITED);
-    await expect(api().getTokenCallouts(MINT)).rejects.toMatchObject({ kind: 'request-failed', status: 429 });
+    await expect(withFlushedBackoff(() => api().getTokenCallouts(MINT))).rejects.toMatchObject({
+      kind: 'request-failed',
+      status: 429,
+    });
     // Initial attempt + exactly 1 retry.
     expect(spy).toHaveBeenCalledTimes(2);
   });
@@ -551,7 +574,7 @@ describe('keyed read retry (429 and friends)', () => {
   it('retries by DEFAULT (no env set): three attempts on a persistent 429', async () => {
     delete process.env.PUMPFUN_READ_RETRIES;
     const spy = mockFetchSequence(RATE_LIMITED);
-    await expect(api().getTokenCallouts(MINT)).rejects.toMatchObject({ status: 429 });
+    await expect(withFlushedBackoff(() => api().getTokenCallouts(MINT))).rejects.toMatchObject({ status: 429 });
     // 1 initial + 2 default extra attempts.
     expect(spy).toHaveBeenCalledTimes(3);
   });
@@ -560,7 +583,7 @@ describe('keyed read retry (429 and friends)', () => {
     process.env.PUMPFUN_READ_RETRIES = '1';
     mockFetchSequence({ throw: new Error(`connect failed with header x-api-key: ${KEY}`) });
     try {
-      await api().getTokenCallouts(MINT);
+      await withFlushedBackoff(() => api().getTokenCallouts(MINT));
       throw new Error('expected the call to reject');
     } catch (err) {
       expect(err).toBeInstanceOf(PumpfunError);

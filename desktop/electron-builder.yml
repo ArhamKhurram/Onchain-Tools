@@ -20,6 +20,13 @@ files:
   - "!build-backend.mjs"
   - "!electron-builder.yml"
 
+# The app is English-only (no i18n anywhere in frontend/backend), but Electron
+# ships 55 Chromium locale files (~41MB unpacked on Windows). Keep en-US only;
+# Chromium falls back to it for any OS locale. Affects Chromium-internal UI
+# strings (context menus etc.), nothing in the app itself.
+electronLanguages:
+  - en-US
+
 extraResources:
   - from: "dist-backend/index.mjs"
     to: "backend/dist/index.mjs"

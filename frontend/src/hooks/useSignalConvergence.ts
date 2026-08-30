@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef } from 'react';
+import { useEffect, useRef } from 'react';
 import { useAppStore } from '../stores/appStore';
 import type { Alert, ContractEntry } from '../types';
 import type { FomoTrade } from '../types/fomo';
@@ -8,7 +8,9 @@ import {
   convergenceAlertMessage,
   convergenceAlertReason,
   convergenceKey,
+  DEFAULT_SIGNAL_CONVERGENCE_WINDOW_MINUTES,
   findConvergenceForContract,
+  findConvergenceForContractIndexed,
   findConvergenceForTrade,
   getSignalConvergenceWindowMs,
 } from '../utils/signalConvergence';
@@ -94,17 +96,21 @@ export function useSignalConvergence() {
   }, [addAlert]);
 }
 
-/** Whether a contract row has a matching FOMO buy within the configured window. */
+/**
+ * Whether a contract row has a matching FOMO buy within the configured window.
+ *
+ * Runs once per rendered contract row, so both subscriptions are narrowed: the
+ * whole-config and whole-fomoTrades subscriptions this used to hold re-rendered
+ * EVERY row on every trade frame and every config replacement. Selecting the
+ * matched trade itself (via the WeakMap-indexed lookup — cheap on unrelated
+ * store writes) keeps a row quiet until its own match appears or disappears.
+ */
 export function useConvergenceForContract(entry: ContractEntry) {
-  const fomoTrades = useAppStore((s) => s.fomoTrades);
-  const config = useAppStore((s) => s.config);
-  const windowMs = getSignalConvergenceWindowMs(config);
-  const windowMinutes = config?.signalConvergenceWindowMinutes ?? 30;
-
-  const trade = useMemo(
-    () => findConvergenceForContract(entry, fomoTrades, windowMs),
-    [entry, fomoTrades, windowMs],
+  const windowMinutes = useAppStore(
+    (s) => s.config?.signalConvergenceWindowMinutes ?? DEFAULT_SIGNAL_CONVERGENCE_WINDOW_MINUTES,
   );
+  const windowMs = Math.max(1, windowMinutes) * 60_000;
+  const trade = useAppStore((s) => findConvergenceForContractIndexed(entry, s.fomoTrades, windowMs));
 
   return { trade, windowMinutes };
 }

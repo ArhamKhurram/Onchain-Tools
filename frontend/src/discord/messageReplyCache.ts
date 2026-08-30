@@ -25,7 +25,3 @@ export function cacheDiscordMessage(msg: {
     if (key) cache.delete(key);
   }
 }
-
-export function lookupCachedMessage(id: string): CachedMessage | undefined {
-  return cache.get(id);
-}

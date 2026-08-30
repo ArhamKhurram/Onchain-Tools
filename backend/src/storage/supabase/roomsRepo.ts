@@ -1,4 +1,4 @@
-import { v4 as uuidv4 } from 'uuid';
+import { randomUUID as uuidv4 } from 'crypto';
 import type { Room, ChannelRef, KeywordPattern } from '../../discord/types.js';
 import { BaseRepo, throwIfError } from './client.js';
 import {
@@ -9,6 +9,20 @@ import {
   dbRoomToAppRoom,
 } from './mappers.js';
 import type { ConfigRepo } from './configRepo.js';
+
+/**
+ * One load of the rooms tables, with the global (room_id-null) highlight and
+ * keyword rows split out instead of thrown away. `loadHighlightRows` /
+ * `loadKeywordRows` already return the global rows alongside the per-room ones
+ * (their or-filter includes `room_id.is.null`), so callers that need both —
+ * getConfig — read them from here rather than fetching both tables a second
+ * time.
+ */
+export interface RoomsBundle {
+  rooms: Room[];
+  globalHighlightRows: HighlightRow[];
+  globalKeywordRows: KeywordRow[];
+}
 
 export class RoomsRepo extends BaseRepo {
   config!: ConfigRepo;
@@ -85,8 +99,12 @@ export class RoomsRepo extends BaseRepo {
   }
 
   async getRooms(userId: string): Promise<Room[]> {
+    return (await this.getRoomsBundle(userId)).rooms;
+  }
+
+  async getRoomsBundle(userId: string): Promise<RoomsBundle> {
     const cacheKey = `${userId}:rooms`;
-    const cached = this.getCached<Room[]>(cacheKey);
+    const cached = this.getCached<RoomsBundle>(cacheKey);
     if (cached) return cached;
 
     const { data: roomRows } = await this.supabase
@@ -95,7 +113,21 @@ export class RoomsRepo extends BaseRepo {
       .eq('user_id', userId)
       .order('created_at');
 
-    if (!roomRows || roomRows.length === 0) return [];
+    // Zero-room users still have global highlight/keyword rows to serve (the
+    // roomIds-less load returns every row; only the null-room ones matter).
+    if (!roomRows || roomRows.length === 0) {
+      const [highlightRows, keywordRows] = await Promise.all([
+        this.loadHighlightRows(userId),
+        this.loadKeywordRows(userId),
+      ]);
+      const bundle: RoomsBundle = {
+        rooms: [],
+        globalHighlightRows: highlightRows.filter((row) => row.room_id === null),
+        globalKeywordRows: keywordRows.filter((row) => row.room_id === null),
+      };
+      this.setCache(cacheKey, bundle);
+      return bundle;
+    }
 
     const roomIds = roomRows.map((r) => r.id);
     const [channelResult, highlightRows, keywordRows] = await Promise.all([
@@ -143,8 +175,13 @@ export class RoomsRepo extends BaseRepo {
         keywordsByRoom.get(r.id) ?? [],
       ),
     );
-    this.setCache(cacheKey, rooms);
-    return rooms;
+    const bundle: RoomsBundle = {
+      rooms,
+      globalHighlightRows: highlightRows.filter((row) => row.room_id === null),
+      globalKeywordRows: keywordRows.filter((row) => row.room_id === null),
+    };
+    this.setCache(cacheKey, bundle);
+    return bundle;
   }
 
   async getRoom(userId: string, roomId: string): Promise<Room | null> {

@@ -40,10 +40,12 @@ export function normalizeContractAddress(address: string): string {
 export function detectContractAddresses(content: string): ContractDetectionResult {
   const addresses: string[] = [];
 
-  // Strip URLs so we don't match addresses embedded in links
-  const stripped = content
-    .replace(/https?:\/\/[^\s<>)]+/g, ' ')
-    .replace(/\[([^\]]+)\]\([^)]+\)/g, '$1');
+  // Strip URLs so we don't match addresses embedded in links. Each replace is
+  // a full regex scan, and most messages carry neither a URL nor a markdown
+  // link — cheap substring gates skip the scans that cannot match.
+  let stripped = content;
+  if (stripped.includes('http')) stripped = stripped.replace(/https?:\/\/[^\s<>)]+/g, ' ');
+  if (stripped.includes('](')) stripped = stripped.replace(/\[([^\]]+)\]\([^)]+\)/g, '$1');
 
   const evmMatches = stripped.match(EVM_ADDRESS_REGEX);
   if (evmMatches) {
@@ -62,7 +64,8 @@ export function detectContractAddresses(content: string): ContractDetectionResul
   // is dropped — and it is mixed case, so it cleared the Solana heuristics
   // below. One checksummed address therefore reported twice: the real EVM one
   // and a phantom "x2Ec39B…" mint, each with its own row and its own toast.
-  const solScan = stripped.replace(EVM_ADDRESS_REGEX, ' ');
+  // (No EVM hits means the blanking pass is a no-op scan — skip it.)
+  const solScan = evmMatches ? stripped.replace(EVM_ADDRESS_REGEX, ' ') : stripped;
 
   const solMatches = solScan.match(SOL_ADDRESS_REGEX);
   if (solMatches) {

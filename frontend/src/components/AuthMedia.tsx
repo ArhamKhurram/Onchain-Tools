@@ -14,7 +14,7 @@ function needsAuthenticatedFetch(src: string): boolean {
 }
 
 /** Fetch Telegram media/avatars with Bearer auth (img tags cannot send headers). */
-export function useAuthenticatedMediaUrl(src: string | undefined): string | undefined {
+function useAuthenticatedMediaUrl(src: string | undefined): string | undefined {
   const [blobUrl, setBlobUrl] = useState<string | undefined>();
 
   useEffect(() => {

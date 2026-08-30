@@ -4,7 +4,10 @@ import { playHighlightSound, playContractAlertSound, playKeywordAlertSound, play
 import { buildContractUrl, buildRevivalContractUrl, revivalNetworkLabel } from '../utils/contractUrl';
 import { showDesktopNotification } from '../utils/desktopNotification';
 import { fomoTradeDisplay, buildFomoTradeAlertMessage } from '../utils/fomoTradeDisplay';
-import { formatMcap, type PumpCalloutEvent } from '../types/pumpfun';
+// import type + formatMcap from its own tiny module — a value import from
+// types/pumpfun would hoist that entire ~5 kB module into the index chunk.
+import type { PumpCalloutEvent } from '../types/pumpfun';
+import { formatMcap } from '../utils/formatMcap';
 import { isHostedMode, getSupabase } from '../lib/supabase';
 import { isClientGatewayMode } from '../discord/clientGateway';
 import { hasLocalDiscordTokens } from '../discord/tokenStore';

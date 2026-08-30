@@ -25,7 +25,7 @@
 
 import { getAccessToken, isHostedMode } from './supabase';
 
-export const SNIPER_BASE = `${import.meta.env.VITE_API_URL ?? ''}/sniper/v1`;
+const SNIPER_BASE = `${import.meta.env.VITE_API_URL ?? ''}/sniper/v1`;
 
 let controlToken: string | null = null;
 let inFlight: Promise<string | null> | null = null;
@@ -74,7 +74,7 @@ async function withCredential(init: RequestInit | undefined, force: boolean): Pr
   return { ...init, headers };
 }
 
-export async function sniperFetch(path: string, init?: RequestInit): Promise<Response> {
+async function sniperFetch(path: string, init?: RequestInit): Promise<Response> {
   const res = await fetch(`${SNIPER_BASE}${path}`, await withCredential(init, false));
   // Local mode only: a 401 means the backend rebooted and rotated the per-boot
   // token. Re-fetch it and retry once. Hosted 401s are a real session problem

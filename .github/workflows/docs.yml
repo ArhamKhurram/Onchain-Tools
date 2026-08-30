@@ -43,8 +43,11 @@ jobs:
           node-version: '20'
           cache: npm
 
+      # Scoped to the docs workspace — this job never touches the app
+      # workspaces (backend/frontend/landing/fomo-worker). @oct/shared rides
+      # along because the root `prepare` script builds it on every install.
       - name: Install (workspaces)
-        run: npm ci
+        run: npm ci --include=dev -w docs -w @oct/shared
 
       - name: Build docs site
         run: npm run build -w docs

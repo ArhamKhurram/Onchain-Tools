@@ -5,7 +5,7 @@ import path from 'path';
 import { chromium } from 'playwright-extra';
 import type { BrowserContext, Page } from 'playwright';
 import stealth from 'puppeteer-extra-plugin-stealth';
-import type { FomoCallResult, FomoCredentials, FomoTokenMetadata } from './types.js';
+import type { FomoCallResult, FomoCredentials } from './types.js';
 import { persistRefreshToken } from './store.js';
 import { isBrowserDeathMessage } from './watchdog.js';
 
@@ -89,6 +89,7 @@ export class FomoBrowserClient {
   private browserInit: Promise<Page> | null = null;
   private recycleInit: Promise<void> | null = null;
   private jwt: string | null = null;
+  private jwtRefresh: Promise<string> | null = null;
   private profileDir: string;
   private pageOpenedAt = 0;
   private callsOnPage = 0;
@@ -359,6 +360,23 @@ export class FomoBrowserClient {
     return accessToken;
   }
 
+  /**
+   * Single-flight JWT refresh. The poller fires ~20 calls at once, so a JWT
+   * expiry produces ~20 simultaneous 401s — without deduplication each one
+   * POSTs to Privy independently. That is 19 wasted round-trips, and worse:
+   * Privy ROTATES the refresh token on use, so concurrent refreshes race each
+   * other with a token that may already be rotated out from under them.
+   * Everyone in the burst awaits the same refresh here.
+   */
+  private ensureFreshJwt(attempts = 3): Promise<string> {
+    if (this.jwtRefresh) return this.jwtRefresh;
+    const refresh = retry(() => this.refreshJwt(), attempts, 1500).finally(() => {
+      this.jwtRefresh = null;
+    });
+    this.jwtRefresh = refresh;
+    return refresh;
+  }
+
   async init(): Promise<void> {
     await retry(async () => {
       await this.ensureBrowser();
@@ -435,20 +453,85 @@ export class FomoBrowserClient {
     }
 
     if (!this.jwt) {
-      await retry(() => this.refreshJwt(), 3, 1500);
+      await this.ensureFreshJwt();
     }
 
     // Claim the tab only after every await above has settled, so no concurrent
     // recycle can slip in between reading this.page and page.evaluate.
     const page = this.page ?? (await this.ensureBrowser());
     this.inFlight += 1;
-    this.callsOnPage += 1;
     this.lastCallPath = apiPath;
     this.lastCallAt = new Date();
 
     let result: FomoCallResult<T>;
     try {
-      result = (await page.evaluate(
+      const usedJwt = this.jwt!;
+      this.callsOnPage += 1;
+      result = await this.evaluateOnPage<T>(page, apiPath, method, body, usedJwt);
+
+      if (result.status === 401) {
+        // The JWT expired under us. Refresh (single-flight, shared with every
+        // other 401 in the burst) and retry in-place ONCE with the fresh JWT —
+        // the backend gets the real payload instead of a 401, so an expiry no
+        // longer costs a poll cycle plus a second Railway→VPS round-trip.
+        // `inFlight` stays held, so no recycle can close the tab under the retry.
+        if (this.jwt === usedJwt) this.jwt = null;
+        if (!this.jwt) await this.ensureFreshJwt();
+        this.callsOnPage += 1;
+        result = await this.evaluateOnPage<T>(page, apiPath, method, body, this.jwt!);
+      }
+    } finally {
+      this.inFlight -= 1;
+    }
+
+    if (result.status === 401) {
+      // Still 401 with a fresh JWT — return it as-is; never a third attempt.
+      this.lastError = '401 after JWT refresh';
+      console.error('[FomoWorker]', apiPath, this.lastError);
+    } else if (result.status === 403) {
+      // Try a fresh JWT exactly ONCE per outage: some rejections surface as 403
+      // rather than 401, and that case is worth one cheap attempt. Repeating it
+      // would just move the hammering from fomo.family to Privy.
+      if (!this.refreshedThisOutage) {
+        this.refreshedThisOutage = true;
+        this.jwt = null;
+        try {
+          await this.ensureFreshJwt(2);
+          console.warn('[FomoWorker] 403 — refreshed the JWT once; retrying on the next call.');
+        } catch (err) {
+          console.warn('[FomoWorker] 403 — JWT refresh also failed:', (err as Error)?.message);
+        }
+      }
+      this.breakerTrip();
+      this.lastError = result.text?.slice?.(0, 500) || 'HTTP 403';
+      // Logged once per streak, not once per call — the flood was the old bug.
+      if (this.deniedStreak <= BREAKER_THRESHOLD) {
+        console.error('[FomoWorker]', apiPath, this.lastError);
+      }
+    } else if (!result.status || result.status < 200 || result.status >= 300) {
+      // A throw inside page.evaluate comes back as status 0 with an empty body,
+      // which used to log as a bare path and nothing else. Prefer the real error.
+      this.lastError = result.errorMessage
+        ? `${result.errorName ?? 'Error'}: ${result.errorMessage}`
+        : result.text?.slice?.(0, 500) || `HTTP ${result.status}`;
+      console.error('[FomoWorker]', apiPath, this.lastError);
+    } else {
+      this.lastError = null;
+      this.breakerReset();
+    }
+
+    return result;
+  }
+
+  /** One in-page fetch round-trip. Caller owns `inFlight`/`callsOnPage` accounting. */
+  private async evaluateOnPage<T>(
+    page: Page,
+    apiPath: string,
+    method: string,
+    body: string | null,
+    jwt: string,
+  ): Promise<FomoCallResult<T>> {
+    return (await page.evaluate(
         async ({ url, method, body, jwt }: { url: string; method: string; body: string | null; jwt: string }) => {
           const headers: Record<string, string> = {
             'x-supported-chains': '1,56,143,8453,1399811149',
@@ -479,83 +562,10 @@ export class FomoBrowserClient {
             };
           }
         },
-        { url: `${BASE}${apiPath}`, method, body, jwt: this.jwt! },
+        { url: `${BASE}${apiPath}`, method, body, jwt },
       )) as FomoCallResult<T>;
-    } finally {
-      this.inFlight -= 1;
-    }
-
-    if (result.status === 401) {
-      this.jwt = null;
-      await retry(() => this.refreshJwt(), 3, 1500);
-      this.lastError = '401 — refreshed JWT';
-    } else if (result.status === 403) {
-      // Try a fresh JWT exactly ONCE per outage: some rejections surface as 403
-      // rather than 401, and that case is worth one cheap attempt. Repeating it
-      // would just move the hammering from fomo.family to Privy.
-      if (!this.refreshedThisOutage) {
-        this.refreshedThisOutage = true;
-        this.jwt = null;
-        try {
-          await retry(() => this.refreshJwt(), 2, 1500);
-          console.warn('[FomoWorker] 403 — refreshed the JWT once; retrying on the next call.');
-        } catch (err) {
-          console.warn('[FomoWorker] 403 — JWT refresh also failed:', (err as Error)?.message);
-        }
-      }
-      this.breakerTrip();
-      this.lastError = result.text?.slice?.(0, 500) || 'HTTP 403';
-      // Logged once per streak, not once per call — the flood was the old bug.
-      if (this.deniedStreak <= BREAKER_THRESHOLD) {
-        console.error('[FomoWorker]', apiPath, this.lastError);
-      }
-    } else if (!result.status || result.status < 200 || result.status >= 300) {
-      // A throw inside page.evaluate comes back as status 0 with an empty body,
-      // which used to log as a bare path and nothing else. Prefer the real error.
-      this.lastError = result.errorMessage
-        ? `${result.errorName ?? 'Error'}: ${result.errorMessage}`
-        : result.text?.slice?.(0, 500) || `HTTP ${result.status}`;
-      console.error('[FomoWorker]', apiPath, this.lastError);
-    } else {
-      this.lastError = null;
-      this.breakerReset();
-    }
-
-    return result;
   }
 
-  getTopHolders(tokenAddress: string, networkId: number) {
-    const holdersQuery = encodeURIComponent(JSON.stringify([{ address: tokenAddress, networkId }]));
-    return this.call(`/hodlers/top?tokens=${holdersQuery}`);
-  }
-
-  searchUsers(searchTerm: string) {
-    return this.call(`/v2/users/fuzzy-search?searchTerm=${encodeURIComponent(searchTerm)}`);
-  }
-
-  getUserByHandle(userHandle: string) {
-    return this.call(`/v2/users/userHandle/${encodeURIComponent(userHandle)}`);
-  }
-
-  getUserBalances(userId: string) {
-    return this.call(`/v2/users/${userId}/balances`);
-  }
-
-  getLeaderboard(limit = 50, window?: '24h') {
-    return this.call(window ? `/v2/leaderboard/${window}?limit=${limit}` : `/v2/leaderboard?limit=${limit}`);
-  }
-
-  getTradingActivity(limit = 50) {
-    return this.call(`/feed/tradingActivity?limit=${limit}`);
-  }
-
-  getUserActivity(userId: string, limit = 20) {
-    return this.call(`/v2/users/${encodeURIComponent(userId)}/activity?limit=${limit}`);
-  }
-
-  getTokenAllowList() {
-    return this.call('/tokenAllowList/detailed');
-  }
 }
 
 export function resolveProfileDir(): string {

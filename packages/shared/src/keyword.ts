@@ -5,18 +5,51 @@
 
 import type { KeywordMatchMode, KeywordPattern } from './types.js';
 
-const regexCache = new Map<string, RegExp>();
+// Failed compiles are cached as null so a bad pattern isn't re-compiled (and
+// re-thrown) on every message. Patterns come from user config, so the caches
+// stay small and stable.
+const regexCache = new Map<string, RegExp | null>();
 
 function getCompiledRegex(pattern: string): RegExp | null {
   const cached = regexCache.get(pattern);
-  if (cached) return cached;
+  if (cached !== undefined) return cached;
+  let re: RegExp | null;
   try {
-    const re = new RegExp(pattern, 'i');
-    regexCache.set(pattern, re);
-    return re;
+    re = new RegExp(pattern, 'i');
   } catch {
-    return null;
+    re = null;
   }
+  regexCache.set(pattern, re);
+  return re;
+}
+
+// Exact mode wraps the escaped pattern in word boundaries. Cache by the RAW
+// pattern so the escape + concat work happens once per pattern instead of once
+// per message per pattern.
+const exactRegexCache = new Map<string, RegExp | null>();
+
+function getExactRegex(pattern: string): RegExp | null {
+  const cached = exactRegexCache.get(pattern);
+  if (cached !== undefined) return cached;
+  let re: RegExp | null;
+  try {
+    re = new RegExp(`\\b${pattern.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\b`, 'i');
+  } catch {
+    re = null;
+  }
+  exactRegexCache.set(pattern, re);
+  return re;
+}
+
+// Includes mode compares lowercase-to-lowercase; cache the lowered pattern.
+const lowerPatternCache = new Map<string, string>();
+
+function getLowerPattern(pattern: string): string {
+  const cached = lowerPatternCache.get(pattern);
+  if (cached !== undefined) return cached;
+  const lower = pattern.toLowerCase();
+  lowerPatternCache.set(pattern, lower);
+  return lower;
 }
 
 function resolveMode(kw: KeywordPattern): KeywordMatchMode {
@@ -28,7 +61,9 @@ export function matchKeywords(content: string, patterns: KeywordPattern[]): stri
   if (!content || patterns.length === 0) return [];
 
   const matched: string[] = [];
-  const lowerContent = content.toLowerCase();
+  // Lowering the whole message is the priciest step here — do it only if an
+  // includes-mode pattern actually needs it.
+  let lowerContent: string | null = null;
 
   for (const kw of patterns) {
     if (!kw.pattern) continue;
@@ -42,13 +77,14 @@ export function matchKeywords(content: string, patterns: KeywordPattern[]): stri
         break;
       }
       case 'exact': {
-        const re = getCompiledRegex(`\\b${kw.pattern.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\b`);
+        const re = getExactRegex(kw.pattern);
         if (re?.test(content)) matched.push(label);
         break;
       }
       case 'includes':
       default: {
-        if (lowerContent.includes(kw.pattern.toLowerCase())) matched.push(label);
+        if (lowerContent === null) lowerContent = content.toLowerCase();
+        if (lowerContent.includes(getLowerPattern(kw.pattern))) matched.push(label);
         break;
       }
     }

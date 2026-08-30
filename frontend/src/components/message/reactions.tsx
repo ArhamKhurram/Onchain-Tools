@@ -121,4 +121,4 @@ function ReactionPills({ message }: { message: FrontendMessage }) {
   );
 }
 
-export { ReactionUserList, ReactionPills };
+export { ReactionPills };

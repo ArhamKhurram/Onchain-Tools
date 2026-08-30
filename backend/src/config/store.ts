@@ -3,7 +3,7 @@ import { join, dirname } from 'path';
 import { fileURLToPath } from 'url';
 import type { AppConfig, Room } from '../discord/types.js';
 import { DEFAULT_RADAR_MULTIPLE_EMOJI_RULES } from '@oct/shared';
-import { v4 as uuidv4 } from 'uuid';
+import { randomUUID as uuidv4 } from 'crypto';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const BUNDLED_DATA_DIR = join(__dirname, '../../data');

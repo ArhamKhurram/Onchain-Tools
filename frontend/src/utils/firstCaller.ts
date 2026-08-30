@@ -48,24 +48,38 @@ function timeOf(entry: ContractEntry): number {
 export function buildFirstCallerIndex(
   contracts: readonly ContractEntry[],
 ): Map<string, FirstCallerResolution> {
+  // Timestamps carried alongside the entries so each one is Date-parsed once,
+  // not re-parsed on every comparison against a later same-address row.
   interface Acc {
     earliest: ContractEntry;
+    earliestTs: number;
     earliestLinkable?: ContractEntry;
+    earliestLinkableTs: number;
   }
   const acc = new Map<string, Acc>();
 
   for (const entry of contracts) {
     const address = entry.address.toLowerCase();
     const linkable = canOpenContractSource(entry);
+    const ts = timeOf(entry);
     const existing = acc.get(address);
 
     if (!existing) {
-      acc.set(address, { earliest: entry, earliestLinkable: linkable ? entry : undefined });
+      acc.set(address, {
+        earliest: entry,
+        earliestTs: ts,
+        earliestLinkable: linkable ? entry : undefined,
+        earliestLinkableTs: linkable ? ts : Number.MAX_SAFE_INTEGER,
+      });
       continue;
     }
-    if (timeOf(entry) < timeOf(existing.earliest)) existing.earliest = entry;
-    if (linkable && (!existing.earliestLinkable || timeOf(entry) < timeOf(existing.earliestLinkable))) {
+    if (ts < existing.earliestTs) {
+      existing.earliest = entry;
+      existing.earliestTs = ts;
+    }
+    if (linkable && (!existing.earliestLinkable || ts < existing.earliestLinkableTs)) {
       existing.earliestLinkable = entry;
+      existing.earliestLinkableTs = ts;
     }
   }
 

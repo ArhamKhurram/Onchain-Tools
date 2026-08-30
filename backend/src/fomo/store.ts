@@ -164,38 +164,6 @@ function firstNumber(...vals: unknown[]): number | null {
 }
 
 /**
- * Best-effort extraction of a single raw trade object into a NormalizedTrade.
- *
- * Every access here is a GUESS until verified against a real FOMO response.
- * The function reads several plausible aliases for each field and never throws;
- * unknown fields become null so a partially-understood payload still flows
- * through fan-out (a trade with no tradeId simply can't be deduped and is
- * skipped by the poller).
- */
-export function normalizeTrade(raw: any): NormalizedTrade {
-  const r = raw ?? {};
-  const user = r.user ?? r.trader ?? r.account ?? r.profile ?? {};
-  const token = r.token ?? r.asset ?? {};
-
-  return {
-    tradeId: firstString(r.id, r.tradeId, r.trade_id, r.txHash, r.transactionHash, r.signature, r.inTradeId),
-    fomoUserId: firstString(user.id, user.userId, r.userId, r.user_id, r.traderId, user.userHandle),
-    fomoHandle: firstString(user.userHandle, user.handle, user.username, r.userHandle),
-    displayName: firstString(user.displayName, user.name, r.displayName),
-    side: (firstString(r.side, r.type, r.action, r.direction, r.activityType) ?? '').toLowerCase() || null,
-    tokenAddress: firstString(token.address, r.tokenAddress, r.token_address, r.contractAddress, r.inTokenAddress, r.outTokenAddress),
-    tokenSymbol: firstString(token.symbol, token.ticker, r.tokenSymbol, r.ticker),
-    // FOMO never provides these; resolveTradeTokenInfo fills them in downstream.
-    tokenName: null,
-    marketCap: null,
-    marketCapDisplay: null,
-    networkId: firstNumber(token.networkId, r.networkId, r.network_id, r.chainId, r.inNetworkId, r.outNetworkId),
-    usdValue: firstNumber(r.usdValue, r.valueUsd, r.value_usd, r.amountUsd, r.usdAmount, r.humanUsdAmountIn, r.humanUsdAmountOut),
-    raw,
-  };
-}
-
-/**
  * Normalize a `/v2/users/{id}/activity` swap row into a tracked-user trade.
  * Buy = quote → token; sell = token → quote. Works for Solana, EVM (ETH/Base/BSC),
  * Robinhood Chain (FOMO networkId 143), and cross-chain swaps (e.g. SOL USDC → HOOD token).
@@ -302,7 +270,7 @@ export function extractUserActivitiesArray(json: any): any[] {
  *
  * TODO(verify): confirm the real envelope key for the trades array.
  */
-export function extractTradesArray(json: any): any[] {
+function extractTradesArray(json: any): any[] {
   if (Array.isArray(json)) return json;
   if (!json || typeof json !== 'object') return [];
   const obj = json.responseObject;

@@ -7,8 +7,6 @@ import {
   isEvmAddress,
   normalizeContractAddress,
   REFERRALS,
-  getPresetTemplate,
-  injectReferralIntoCustomTemplate,
 } from '@oct/shared';
 
 export {
@@ -16,10 +14,7 @@ export {
   buildContractUrl,
   isEvmAddress,
   normalizeContractAddress,
-  getPresetTemplate,
-  injectReferralIntoCustomTemplate,
 };
-export { REFERRALS };
 export type { ContractDetectionResult } from '@oct/shared';
 
 const GMGN_EVM_CHAINS = new Set([
@@ -50,14 +45,6 @@ const CHAIN_TEXT_MAP: Record<string, string> = {
   robinhood: 'robinhood', hood: 'robinhood',
 };
 
-export const EVM_CHAIN_LABELS: Record<string, string> = {
-  eth: 'ETH', bsc: 'BNB', base: 'BASE', arb: 'ARB',
-  blast: 'BLAST', polygon: 'POLY', avax: 'AVAX', fantom: 'FTM',
-  linea: 'LINEA', mantle: 'MANTLE', scroll: 'SCROLL', zksync: 'ZKSYNC',
-  sonic: 'SONIC', abstract: 'ABS', berachain: 'BERA',
-  pulsechain: 'PLS', tron: 'TRON', hyperliquid: 'HL',
-  robinhood: 'HOOD',
-};
 
 type EmbedLike = { description?: string; fields?: { name: string; value: string }[] };
 
@@ -81,8 +68,10 @@ export function extractEvmChainFromGmgnLinks(
   embeds?: EmbedLike[],
 ): { address: string; chain: string }[] {
   const fullText = content + ' ' + collectEmbedText(embeds);
-  const regex = /gmgn\.ai\/(\w+)\/token\/(?:\w+_)?(0x[a-fA-F0-9]{40})/g;
   const results: { address: string; chain: string }[] = [];
+  // Cheap substring gate: most messages carry no gmgn link at all.
+  if (!fullText.includes('gmgn.ai')) return results;
+  const regex = /gmgn\.ai\/(\w+)\/token\/(?:\w+_)?(0x[a-fA-F0-9]{40})/g;
   let m;
   while ((m = regex.exec(fullText)) !== null) {
     const slug = m[1].toLowerCase();
@@ -99,27 +88,35 @@ export function detectEvmChainFromContent(
 ): string | null {
   const fullText = content + ' ' + collectEmbedText(embeds);
 
-  const gmgnRegex = /gmgn\.ai\/(\w+)\/token\//g;
-  let m;
-  while ((m = gmgnRegex.exec(fullText)) !== null) {
-    const slug = m[1].toLowerCase();
-    if (GMGN_EVM_CHAINS.has(slug)) return slug;
+  // This runs for every ingested message, so each regex pass is gated by a
+  // cheap substring check for a literal the pattern cannot match without.
+  if (fullText.includes('gmgn.ai')) {
+    const gmgnRegex = /gmgn\.ai\/(\w+)\/token\//g;
+    let m;
+    while ((m = gmgnRegex.exec(fullText)) !== null) {
+      const slug = m[1].toLowerCase();
+      if (GMGN_EVM_CHAINS.has(slug)) return slug;
+    }
   }
 
   // Rick-style bots label the chain on its own line, e.g. "🌐 Base @ Uniswap"
   // or "🌐 Robinhood". Non-EVM chains (e.g. Solana) fall through to null.
-  const globeMatch = fullText.match(/\u{1F310}\s*(\w+)/u);
-  if (globeMatch) {
-    const key = globeMatch[1].toLowerCase();
-    if (CHAIN_TEXT_MAP[key]) return CHAIN_TEXT_MAP[key];
+  if (fullText.includes('\u{1F310}')) {
+    const globeMatch = fullText.match(/\u{1F310}\s*(\w+)/u);
+    if (globeMatch) {
+      const key = globeMatch[1].toLowerCase();
+      if (CHAIN_TEXT_MAP[key]) return CHAIN_TEXT_MAP[key];
+    }
   }
 
-  const chainAtMatch = fullText.match(
-    /\b(\w+)\s*@\s*(?:Uniswap|Pancake|Sushi|TraderJoe|Camelot|Raydium)/i,
-  );
-  if (chainAtMatch) {
-    const key = chainAtMatch[1].toLowerCase();
-    if (CHAIN_TEXT_MAP[key]) return CHAIN_TEXT_MAP[key];
+  if (fullText.includes('@')) {
+    const chainAtMatch = fullText.match(
+      /\b(\w+)\s*@\s*(?:Uniswap|Pancake|Sushi|TraderJoe|Camelot|Raydium)/i,
+    );
+    if (chainAtMatch) {
+      const key = chainAtMatch[1].toLowerCase();
+      if (CHAIN_TEXT_MAP[key]) return CHAIN_TEXT_MAP[key];
+    }
   }
 
   const tipMatch = fullText.match(/top choice for (\w+)/i);

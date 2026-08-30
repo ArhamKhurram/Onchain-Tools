@@ -2,7 +2,7 @@ import type { AppConfig, ContractEntry, FrontendMessage } from '../types';
 import type { FomoTrade } from '../types/fomo';
 
 /** Default window: contract in feed + FOMO buy within 30 minutes. */
-export const SIGNAL_CONVERGENCE_WINDOW_MS = 30 * 60 * 1000;
+const SIGNAL_CONVERGENCE_WINDOW_MS = 30 * 60 * 1000;
 export const DEFAULT_SIGNAL_CONVERGENCE_WINDOW_MINUTES = 30;
 
 export interface SignalConvergenceMatch {
@@ -73,6 +73,54 @@ export function findConvergenceForContract(
   return null;
 }
 
+// Buy-side trades bucketed by normalized token address, cached per trades-array
+// identity. The per-row convergence subscription runs its selector on EVERY
+// store write (that is how zustand decides whether to re-render), so the lookup
+// must be O(1) unless the trades array actually changed reference.
+const buyIndexCache = new WeakMap<FomoTrade[], Map<string, FomoTrade[]>>();
+
+function buyTradesByToken(trades: FomoTrade[]): Map<string, FomoTrade[]> {
+  let index = buyIndexCache.get(trades);
+  if (!index) {
+    index = new Map();
+    // Array order is preserved inside each bucket so the first match is the
+    // same trade findConvergenceForContract would have returned.
+    for (const trade of trades) {
+      if (!isFomoBuySide(trade.side) || !trade.tokenAddress) continue;
+      const key = normalizeAddress(trade.tokenAddress);
+      const bucket = index.get(key);
+      if (bucket) bucket.push(trade);
+      else index.set(key, [trade]);
+    }
+    buyIndexCache.set(trades, index);
+  }
+  return index;
+}
+
+/**
+ * `findConvergenceForContract`, but suitable for use inside a zustand selector:
+ * the trades scan is replaced by a WeakMap-cached by-token index, so the common
+ * per-store-write call is a couple of map lookups instead of an O(trades) scan
+ * per contract row. Returns the identical trade object (identity-stable while
+ * the match is unchanged, so Object.is keeps the subscriber quiet).
+ */
+export function findConvergenceForContractIndexed(
+  contract: ContractEntry,
+  trades: FomoTrade[],
+  windowMs = SIGNAL_CONVERGENCE_WINDOW_MS,
+): FomoTrade | null {
+  const candidates = buyTradesByToken(trades).get(normalizeAddress(contract.address));
+  if (!candidates) return null;
+  const contractTime = new Date(contract.timestamp).getTime();
+  if (Number.isNaN(contractTime)) return null;
+  for (const trade of candidates) {
+    if (Math.abs(trade.occurredAt - contractTime) <= windowMs) {
+      return trade;
+    }
+  }
+  return null;
+}
+
 export function findConvergenceForAddress(
   address: string,
   contracts: ContractEntry[],
@@ -86,6 +134,55 @@ export function findConvergenceForAddress(
     if (trade) return trade;
   }
   return null;
+}
+
+/**
+ * Convergence for every address at once: one pass over contracts and trades
+ * instead of a full rescan per address. For each address that has a match the
+ * map holds exactly the trade `findConvergenceForAddress` would return —
+ * contracts are walked in order, and within a contract the trades are tried
+ * in order, so the first (contract, trade) pair wins identically. Keys are
+ * normalized (trimmed, lowercased) addresses.
+ *
+ * Built for render loops: the radar rebuilds this once per data change and
+ * does O(1) lookups per row, where it used to rescan everything per row per
+ * render.
+ */
+export function buildConvergenceIndex(
+  contracts: ContractEntry[],
+  trades: FomoTrade[],
+  windowMs = SIGNAL_CONVERGENCE_WINDOW_MS,
+): Map<string, FomoTrade> {
+  const result = new Map<string, FomoTrade>();
+  if (contracts.length === 0 || trades.length === 0) return result;
+
+  // Buy-side trades grouped by token, preserving trades order — the order
+  // findConvergenceForContract scans them in.
+  const tradesByToken = new Map<string, FomoTrade[]>();
+  for (const trade of trades) {
+    if (!isFomoBuySide(trade.side) || !trade.tokenAddress) continue;
+    const token = normalizeAddress(trade.tokenAddress);
+    const list = tradesByToken.get(token);
+    if (list) list.push(trade);
+    else tradesByToken.set(token, [trade]);
+  }
+  if (tradesByToken.size === 0) return result;
+
+  for (const contract of contracts) {
+    const address = normalizeAddress(contract.address);
+    if (result.has(address)) continue;
+    const candidates = tradesByToken.get(address);
+    if (!candidates) continue;
+    const contractTime = new Date(contract.timestamp).getTime();
+    if (Number.isNaN(contractTime)) continue;
+    for (const trade of candidates) {
+      if (Math.abs(trade.occurredAt - contractTime) <= windowMs) {
+        result.set(address, trade);
+        break;
+      }
+    }
+  }
+  return result;
 }
 
 export function convergenceAlertReason(contract: ContractEntry, trade: FomoTrade): string {

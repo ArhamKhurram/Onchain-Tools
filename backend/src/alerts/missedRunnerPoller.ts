@@ -195,6 +195,85 @@ export function buildMissedRunnerAlertRow(
   };
 }
 
+/**
+ * Rows of still-active `missed_runner_alerts` → the address set the sweep
+ * filters candidates against. Addresses are lowercased on both sides —
+ * the table's CHECK constraint stores them lowercase, and the sweep compares
+ * `token.address.toLowerCase()` — so a mixed-case candidate still matches.
+ */
+export function activeCooldownAddresses(rows: Array<{ token_address: string }>): Set<string> {
+  const out = new Set<string>();
+  for (const row of rows) {
+    if (row.token_address) out.add(row.token_address.toLowerCase());
+  }
+  return out;
+}
+
+/**
+ * Assemble the sweep's working config from the three settings subtrees it
+ * actually consumes. Behaviour matches a full getConfig() for everything the
+ * sweep touches: resolveMissedRunnerConfig / resolveNotifyVia / canSendPushover
+ * apply their own defaults over raw subtrees (same trick loadActiveUserIds
+ * uses), sendPushover has `?? 1` / `?? 'siren'` fallbacks identical to
+ * DEFAULT_SETTINGS, and buildContractUrl's `?? 'gmgn'` / `?? 'axiom'` preset
+ * fallbacks make an empty templates object equivalent to the defaults.
+ */
+export function buildSlimSweepConfig(row: {
+  missed_runner?: unknown;
+  pushover?: unknown;
+  link_templates?: unknown;
+} | null | undefined): AppConfig {
+  return {
+    missedRunner: (row?.missed_runner ?? undefined) as AppConfig['missedRunner'],
+    pushover: (row?.pushover ?? undefined) as AppConfig['pushover'],
+    contractLinkTemplates: ((row?.link_templates ?? {}) as AppConfig['contractLinkTemplates']),
+  } as AppConfig;
+}
+
+export type LiveMcResult = Awaited<ReturnType<typeof fetchLiveMarketCap>>;
+
+/**
+ * Sweep-scoped memo over `fetchLiveMarketCap`.
+ *
+ * Candidate sets are per user but heavily correlated — users in the same
+ * Discord rooms scan the same contracts — so the sweep used to fetch the same
+ * token's live MC once per subscriber every 3 minutes. One upstream call per
+ * unique token per sweep is enough: within a sweep the calls are seconds
+ * apart, so no freshness is lost, and GMGN/DexScreener rate budget stops
+ * scaling with subscriber count.
+ *
+ * Peak recording rides along here (once per fresh fetch, never on a memo hit):
+ * the fetch already happened for the alert check, so folding it into the token
+ * peaks costs nothing upstream and catches spikes the 3-min sampler sleeps
+ * through — while a duplicate observation of the same value would cost a
+ * pointless token_peaks SELECT+write per extra subscriber. The signals stay
+ * separate — this feeds the shared peak *data*, not the missed-runner
+ * detection.
+ */
+export async function fetchLiveMcMemoized(
+  memo: Map<string, LiveMcResult>,
+  token: Pick<TokenCandidate, 'address' | 'chain' | 'evmChain'>,
+  deps: {
+    fetcher?: typeof fetchLiveMarketCap;
+    record?: typeof recordPeakObservation;
+  } = {},
+): Promise<LiveMcResult> {
+  const key = `${token.evmChain ?? token.chain}:${token.address.toLowerCase()}`;
+  if (memo.has(key)) return memo.get(key) ?? null;
+
+  const live = await (deps.fetcher ?? fetchLiveMarketCap)(token.address, token.evmChain ?? undefined);
+  memo.set(key, live);
+  if (live?.mcNow != null && live.mcNow > 0) {
+    (deps.record ?? recordPeakObservation)({
+      address: token.address,
+      chain: token.chain,
+      evmChain: token.evmChain,
+      mcNow: live.mcNow,
+    });
+  }
+  return live;
+}
+
 export function formatMissedRunnerAge(firstSeenAt: string): string {
   const mins = Math.floor((Date.now() - new Date(firstSeenAt).getTime()) / 60_000);
   if (mins < 60) return `${Math.max(1, mins)}m`;
@@ -324,6 +403,28 @@ class MissedRunnerPoller {
     })) as ContractEntry[];
   }
 
+  // Same column-scoping for the per-user config read: getConfig() pulls the
+  // user's entire settings JSONB (tens of KB in prod — the blob size that made
+  // the loadActiveUserIds scan the top egress source) every 3-min sweep, while
+  // the sweep only reads three subtrees. getConfig's 10s repo cache never
+  // survives a 3-min interval, so this was a full-blob fetch per active user
+  // per sweep.
+  private async loadConfigSlim(userId: string): Promise<AppConfig> {
+    if (!this.db) return getStorageProvider().getConfig(userId);
+    const { data, error } = await this.db
+      .from('user_configs')
+      .select(
+        'missed_runner:settings->missedRunner, pushover:settings->pushover, link_templates:settings->contractLinkTemplates',
+      )
+      .eq('user_id', userId)
+      .maybeSingle();
+    if (error) {
+      console.warn(`[MissedRunnerPoller] Slim config load failed for ${userId}:`, error.message);
+      return getStorageProvider().getConfig(userId);
+    }
+    return buildSlimSweepConfig(data as Parameters<typeof buildSlimSweepConfig>[0]);
+  }
+
   private async loadHoldingWallets(userId: string): Promise<TrackedWalletRow[]> {
     if (!this.db) return [];
     const { data, error } = await this.db
@@ -337,16 +438,25 @@ class MissedRunnerPoller {
     return (data ?? []) as TrackedWalletRow[];
   }
 
-  private async isOnCooldown(userId: string, tokenAddress: string): Promise<boolean> {
-    if (!this.db) return true;
+  // One SELECT per user per sweep instead of one per candidate: the sweep
+  // used to ask "is this token on cooldown?" once per candidate token (up to
+  // hundreds of round-trips per user every 3 minutes). The table holds at most
+  // one small row per (user, token) ever alerted, so loading every
+  // still-active cooldown for the user in one scoped query is strictly
+  // cheaper. Error path matches the old per-token behaviour: treat as not on
+  // cooldown — the recordAlert upsert re-arms the row either way.
+  private async loadActiveCooldowns(userId: string): Promise<Set<string>> {
+    if (!this.db) return new Set();
     const { data, error } = await this.db
       .from('missed_runner_alerts')
-      .select('cooldown_until')
+      .select('token_address')
       .eq('user_id', userId)
-      .eq('token_address', tokenAddress.toLowerCase())
-      .maybeSingle();
-    if (error || !data) return false;
-    return new Date(data.cooldown_until).getTime() > Date.now();
+      .gt('cooldown_until', new Date().toISOString());
+    if (error) {
+      console.warn(`[MissedRunnerPoller] Cooldown load failed for ${userId}:`, error.message);
+      return new Set();
+    }
+    return activeCooldownAddresses(data ?? []);
   }
 
   private async recordAlert(
@@ -372,9 +482,8 @@ class MissedRunnerPoller {
     return true;
   }
 
-  private async processUser(userId: string): Promise<void> {
-    const storage = getStorageProvider();
-    const config = await storage.getConfig(userId);
+  private async processUser(userId: string, liveMcMemo: Map<string, LiveMcResult>): Promise<void> {
+    const config = await this.loadConfigSlim(userId);
     const mr = resolveMissedRunnerConfig(config);
     if (!mr.enabled) return;
 
@@ -389,24 +498,16 @@ class MissedRunnerPoller {
     if (candidates.length === 0) return;
 
     const wallets = await this.loadHoldingWallets(userId);
+    const cooldowns = await this.loadActiveCooldowns(userId);
 
     for (const token of candidates) {
       if (mr.minMcAtCall != null && token.mcAtCall < mr.minMcAtCall) continue;
-      if (await this.isOnCooldown(userId, token.address)) continue;
+      if (cooldowns.has(token.address.toLowerCase())) continue;
 
-      const live = await fetchLiveMarketCap(token.address, token.evmChain ?? undefined);
+      // Deduped across users within the sweep; also records the peak
+      // observation once per fresh fetch (see fetchLiveMcMemoized).
+      const live = await fetchLiveMcMemoized(liveMcMemo, token);
       if (!live?.mcNow || live.mcNow <= 0) continue;
-
-      // This fetch already happened for the alert check; folding it into the
-      // token peaks costs nothing upstream and catches spikes the 3-min
-      // sampler sleeps through. The signals stay separate — this feeds the
-      // shared peak *data*, not the missed-runner detection.
-      recordPeakObservation({
-        address: token.address,
-        chain: token.chain,
-        evmChain: token.evmChain,
-        mcNow: live.mcNow,
-      });
 
       const multiplier = live.mcNow / token.mcAtCall;
       if (multiplier < mr.minMultiplier) continue;
@@ -469,9 +570,11 @@ class MissedRunnerPoller {
     this.lastPollAt = new Date().toISOString();
     try {
       const userIds = await this.loadActiveUserIds();
+      // One live-MC fetch per unique token per sweep, shared across users.
+      const liveMcMemo = new Map<string, LiveMcResult>();
       for (const userId of userIds) {
         try {
-          await this.processUser(userId);
+          await this.processUser(userId, liveMcMemo);
         } catch (err) {
           console.error(`[MissedRunnerPoller] User ${userId} error:`, (err as Error)?.message);
         }

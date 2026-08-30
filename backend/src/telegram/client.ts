@@ -46,6 +46,22 @@ const HEALTH_CHECK_TIMEOUT_MS = 15_000;
 const RECONNECT_BASE_DELAY_MS = 5_000;
 const RECONNECT_MAX_DELAY_MS = 5 * 60_000;
 
+/** How long a resolved reply snippet stays served from cache (it is a cosmetic preview). */
+const REPLY_CACHE_TTL_MS = 5 * 60_000;
+/** Failed lookups (deleted messages, transient errors) are negative-cached briefly. */
+const REPLY_CACHE_MISS_TTL_MS = 60_000;
+const REPLY_CACHE_MAX = 1_000;
+
+/**
+ * How long a failed chat/sender getEntity is remembered before retrying. Failures
+ * (missing access hash, restricted entity) used to retry on EVERY message from
+ * that chat or sender — one network attempt per message, indefinitely. Kept short
+ * so an entity that becomes resolvable (e.g. after getDialogs primes the session
+ * cache) recovers quickly.
+ */
+const ENTITY_FAILURE_TTL_MS = 60_000;
+const ENTITY_FAILURE_MAX = 500;
+
 export class TelegramClientWrapper extends EventEmitter {
   private client: GramJSClient;
   private session: StringSession;
@@ -57,6 +73,14 @@ export class TelegramClientWrapper extends EventEmitter {
   private topicTitles = new Map<string, string>();
   /** Chats with a topic-title fetch already in flight, so one unknown topic = one fetch. */
   private topicFetchInFlight = new Set<string>();
+  /**
+   * `chatId:msgId` -> resolved reply snippet (null = known-missing). Trench chats pile
+   * dozens of replies onto the same root message, and without this every one of them
+   * cost a getMessages round-trip re-fetching that same root.
+   */
+  private replyCache = new Map<string, { value: TelegramRawMessage['replyTo']; ts: number; ttl: number }>();
+  /** `chat:<id>` / `sender:<id>` -> when the last getEntity for it failed. */
+  private entityFailures = new Map<string, number>();
   private connected = false;
   private handlersWired = false;
   private disposed = false;
@@ -202,7 +226,10 @@ export class TelegramClientWrapper extends EventEmitter {
         const message = event.message;
         if (!message) return;
 
-        const raw = await this.buildRawMessage(message);
+        // Edits only propagate {messageId, channelId, content} downstream, and
+        // bot channels edit stat messages continuously — skip the reply/forward
+        // context fetches (one MTProto round-trip each) that would be discarded.
+        const raw = await this.buildRawMessage(message, { skipContext: true });
         if (raw) {
           this.emit('messageUpdate', raw);
         }
@@ -212,7 +239,16 @@ export class TelegramClientWrapper extends EventEmitter {
     }, new EditedMessage({}));
   }
 
-  private async buildRawMessage(message: Api.Message): Promise<TelegramRawMessage | null> {
+  /**
+   * ``skipContext`` (the edit path) elides the reply and forward *network* resolution:
+   * the replied-to message fetch (one getMessages round-trip per event) and the
+   * forward-source getEntity. Everything the update consumer reads — chat, topic,
+   * sender, text — still resolves exactly as before, from caches.
+   */
+  private async buildRawMessage(
+    message: Api.Message,
+    opts?: { skipContext?: boolean },
+  ): Promise<TelegramRawMessage | null> {
     const chat = await this.resolveChat(message);
     if (!chat) return null;
 
@@ -221,22 +257,29 @@ export class TelegramClientWrapper extends EventEmitter {
 
     const rawReplyTo = message.replyTo;
     let replyTo: TelegramRawMessage['replyTo'] = null;
-    if (rawReplyTo && isGenuineReply(rawReplyTo) && 'replyToMsgId' in rawReplyTo && rawReplyTo.replyToMsgId) {
-      try {
-        const replyMsgId = rawReplyTo.replyToMsgId;
-        const replyMsg = await this.client.getMessages(message.peerId!, {
-          ids: [replyMsgId],
-        });
-        if (replyMsg.length > 0 && replyMsg[0]) {
-          const replySender = await this.resolveSender(replyMsg[0]);
-          replyTo = {
-            id: replyMsg[0].id,
-            senderName: replySender?.firstName ?? 'Unknown',
-            text: replyMsg[0].text ?? '',
-          };
+    if (!opts?.skipContext && rawReplyTo && isGenuineReply(rawReplyTo) && 'replyToMsgId' in rawReplyTo && rawReplyTo.replyToMsgId) {
+      const replyMsgId = rawReplyTo.replyToMsgId;
+      const cacheKey = `${chat.id}:${replyMsgId}`;
+      const cached = this.replyCacheGet(cacheKey);
+      if (cached !== undefined) {
+        replyTo = cached;
+      } else {
+        try {
+          const replyMsg = await this.client.getMessages(message.peerId!, {
+            ids: [replyMsgId],
+          });
+          if (replyMsg.length > 0 && replyMsg[0]) {
+            const replySender = await this.resolveSender(replyMsg[0]);
+            replyTo = {
+              id: replyMsg[0].id,
+              senderName: replySender?.firstName ?? 'Unknown',
+              text: replyMsg[0].text ?? '',
+            };
+          }
+        } catch {
+          // Reply resolution can fail for deleted messages
         }
-      } catch {
-        // Reply resolution can fail for deleted messages
+        this.replyCacheSet(cacheKey, replyTo);
       }
     }
 
@@ -245,7 +288,9 @@ export class TelegramClientWrapper extends EventEmitter {
       const fwd = message.fwdFrom;
       let senderName = 'Unknown';
       let chatTitle: string | undefined;
-      if (fwd.fromId) {
+      if (opts?.skipContext) {
+        senderName = fwd.fromName ?? 'Unknown';
+      } else if (fwd.fromId) {
         try {
           const entity = await this.client.getEntity(fwd.fromId);
           if (entity instanceof Api.User) {
@@ -376,11 +421,32 @@ export class TelegramClientWrapper extends EventEmitter {
     return buttons.length > 0 ? buttons : null;
   }
 
+  /** True while a recent getEntity failure for this key is still within its retry TTL. */
+  private entityRecentlyFailed(key: string): boolean {
+    const failedAt = this.entityFailures.get(key);
+    if (failedAt === undefined) return false;
+    if (Date.now() - failedAt > ENTITY_FAILURE_TTL_MS) {
+      this.entityFailures.delete(key);
+      return false;
+    }
+    return true;
+  }
+
+  private recordEntityFailure(key: string): void {
+    if (this.entityFailures.size >= ENTITY_FAILURE_MAX) {
+      // Insertion order = oldest first; dropping the head keeps the map bounded.
+      const oldest = this.entityFailures.keys().next().value;
+      if (oldest !== undefined) this.entityFailures.delete(oldest);
+    }
+    this.entityFailures.set(key, Date.now());
+  }
+
   private async resolveChat(message: Api.Message): Promise<TelegramChat | null> {
     if (!message.peerId) return null;
     const chatId = this.peerToId(message.peerId);
     const cached = this.chatCache.get(chatId);
     if (cached) return cached;
+    if (this.entityRecentlyFailed(`chat:${chatId}`)) return null;
 
     try {
       const entity = await this.client.getEntity(message.peerId);
@@ -418,6 +484,7 @@ export class TelegramClientWrapper extends EventEmitter {
       this.chatCache.set(chatId, chat);
       return chat;
     } catch {
+      this.recordEntityFailure(`chat:${chatId}`);
       return null;
     }
   }
@@ -497,6 +564,31 @@ export class TelegramClientWrapper extends EventEmitter {
     return null;
   }
 
+  /** Cached reply snippet: the value (possibly null = known-missing), or undefined on miss/expiry. */
+  private replyCacheGet(key: string): TelegramRawMessage['replyTo'] | undefined {
+    const entry = this.replyCache.get(key);
+    if (!entry) return undefined;
+    if (Date.now() - entry.ts > entry.ttl) {
+      this.replyCache.delete(key);
+      return undefined;
+    }
+    return entry.value;
+  }
+
+  private replyCacheSet(key: string, value: TelegramRawMessage['replyTo']): void {
+    // Map preserves insertion order, so evicting the first keys drops the oldest entries.
+    if (this.replyCache.size >= REPLY_CACHE_MAX) {
+      const drop = Math.ceil(REPLY_CACHE_MAX / 10);
+      let i = 0;
+      for (const k of this.replyCache.keys()) {
+        this.replyCache.delete(k);
+        if (++i >= drop) break;
+      }
+    }
+    const ttl = value === null ? REPLY_CACHE_MISS_TTL_MS : REPLY_CACHE_TTL_MS;
+    this.replyCache.set(key, { value, ts: Date.now(), ttl });
+  }
+
   private async resolveSender(message: Api.Message): Promise<TelegramSender | null> {
     const senderId = message.senderId?.toString();
     if (!senderId) {
@@ -518,6 +610,9 @@ export class TelegramClientWrapper extends EventEmitter {
 
     const cached = this.senderCache.get(senderId);
     if (cached) return cached;
+    if (this.entityRecentlyFailed(`sender:${senderId}`)) {
+      return { id: senderId, username: null, firstName: 'Unknown', lastName: null, photo: null };
+    }
 
     try {
       const entity = await this.client.getEntity(message.senderId!);
@@ -546,6 +641,7 @@ export class TelegramClientWrapper extends EventEmitter {
       this.senderCache.set(senderId, sender);
       return sender;
     } catch {
+      this.recordEntityFailure(`sender:${senderId}`);
       return { id: senderId, username: null, firstName: 'Unknown', lastName: null, photo: null };
     }
   }
@@ -712,6 +808,38 @@ export class TelegramClientWrapper extends EventEmitter {
     try {
       const entity = await this.client.getEntity(chatId);
       const result = await this.client.getMessages(entity, { limit });
+
+      // One batched fetch seeds the reply cache with every uncached reply root on the
+      // page — previously each reply-bearing message cost its own serial getMessages
+      // round-trip inside buildRawMessage (up to `limit` round-trips per history load).
+      let chatKey: string | null = null;
+      const wanted: number[] = [];
+      for (const msg of result) {
+        if (!msg || !(msg instanceof Api.Message) || !msg.peerId) continue;
+        chatKey ??= this.peerToId(msg.peerId);
+        const rt = msg.replyTo;
+        if (!rt || !isGenuineReply(rt) || !('replyToMsgId' in rt) || !rt.replyToMsgId) continue;
+        const id = rt.replyToMsgId;
+        if (!wanted.includes(id) && this.replyCacheGet(`${chatKey}:${id}`) === undefined) {
+          wanted.push(id);
+        }
+      }
+      if (chatKey && wanted.length > 0) {
+        try {
+          const replies = await this.client.getMessages(entity, { ids: wanted });
+          for (let i = 0; i < wanted.length; i++) {
+            const r = replies[i];
+            let value: TelegramRawMessage['replyTo'] = null;
+            if (r) {
+              const replySender = await this.resolveSender(r);
+              value = { id: r.id, senderName: replySender?.firstName ?? 'Unknown', text: r.text ?? '' };
+            }
+            this.replyCacheSet(`${chatKey}:${wanted[i]}`, value);
+          }
+        } catch {
+          // Batch failed — buildRawMessage falls back to per-message resolution below.
+        }
+      }
 
       for (const msg of result) {
         if (!msg || !(msg instanceof Api.Message)) continue;

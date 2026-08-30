@@ -5,7 +5,7 @@ export type PortfolioPeriod = '7d' | '30d';
 
 export type GmgnChain = 'sol' | 'base' | 'bsc' | 'eth' | 'robinhood';
 
-export const WALLET_CHAIN_TO_GMGN: Record<WalletChain, GmgnChain> = {
+const WALLET_CHAIN_TO_GMGN: Record<WalletChain, GmgnChain> = {
   solana: 'sol',
   base: 'base',
   bsc: 'bsc',
@@ -344,7 +344,7 @@ export function aggregateDailyPnlFromActivity(
   };
 }
 
-export function isGmgnRateLimitError(message: string | null | undefined): boolean {
+function isGmgnRateLimitError(message: string | null | undefined): boolean {
   if (!message) return false;
   const lower = message.toLowerCase();
   return lower.includes('rate_limit') || lower.includes('too many');

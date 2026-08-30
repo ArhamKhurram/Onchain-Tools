@@ -5,6 +5,12 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
     <link rel="apple-touch-icon" href="/favicon.svg" />
+    <!-- Self-hosted font subsets (see src/index.css @font-face). All three faces
+         are on screen at t=0 (gate: Fraunces "OCT" + Plex Mono UI), so preload
+         them alongside the bundle instead of discovering them via CSS. -->
+    <link rel="preload" href="/fonts/fraunces-900-latin.woff2" as="font" type="font/woff2" crossorigin />
+    <link rel="preload" href="/fonts/plex-mono-400-latin.woff2" as="font" type="font/woff2" crossorigin />
+    <link rel="preload" href="/fonts/plex-mono-500-latin.woff2" as="font" type="font/woff2" crossorigin />
     <title>OCT — Onchain Tools</title>
     <meta name="description" content="Live Discord & Telegram feed, private wallet tracking, and contract radar — all in one crypto terminal. Launch the OCT console." />
 

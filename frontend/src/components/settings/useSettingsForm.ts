@@ -6,6 +6,7 @@ import type { Section } from './constants';
 import { defaultSoundConfig, defaultRevivalSoundConfig, defaultTriggers, defaultFilters, defaultMissedRunner, defaultDiscordBotDm } from './constants';
 import { apiBase, authedFetch } from './fields';
 import { normalizeUserIdentifier, appendUserIdentifiers } from '../../utils/userIdentifiers';
+import { useUserNameMap } from '../../hooks/useUserNameMap';
 
 const FEED_CHROME_PRESETS: FeedChromePreset[] = ['terminal', 'masthead', 'rail'];
 
@@ -25,7 +26,6 @@ export function useSettingsForm() {
   const fetchMaskedTokens = useAppStore((s) => s.fetchMaskedTokens);
   const addToken = useAppStore((s) => s.addToken);
   const removeToken = useAppStore((s) => s.removeToken);
-  const allMessages = useAppStore((s) => s.messages);
   const navigate = useNavigate();
   const settingsSection = useAppStore((s) => s.settingsSection);
   const sidebarCollapsed = useAppStore((s) => s.sidebarCollapsed);
@@ -34,20 +34,9 @@ export function useSettingsForm() {
   const telegramDisconnect = useAppStore((s) => s.telegramDisconnect);
   const fetchRooms = useAppStore((s) => s.fetchRooms);
 
-  const userNameMap = useMemo(() => {
-    const map = new Map<string, string>();
-    if (config?.userNameCache) {
-      for (const [id, name] of Object.entries(config.userNameCache)) {
-        map.set(id, name);
-      }
-    }
-    for (const msgs of Object.values(allMessages)) {
-      for (const msg of msgs) {
-        map.set(msg.author.id, msg.author.displayName);
-      }
-    }
-    return map;
-  }, [allMessages, config?.userNameCache]);
+  // Live author-name lookup without a whole-messages-map subscription (which
+  // re-rendered the entire settings surface on every incoming message).
+  const userNameMap = useUserNameMap();
 
   const [section, setSection] = useState<Section>((settingsSection as Section) || 'tokens');
   const [globalUsers, setGlobalUsers] = useState<string[]>([]);
@@ -530,7 +519,7 @@ export function useSettingsForm() {
   return {
     config, updateConfig, guilds, rooms, dmChannels, fetchGuilds,
     fetchDMChannels, fetchConfig, maskedTokens, fetchMaskedTokens, addToken, removeToken,
-    allMessages, navigate, settingsSection, sidebarCollapsed, toggleSidebar, authStatus,
+    navigate, settingsSection, sidebarCollapsed, toggleSidebar, authStatus,
     telegramDisconnect, fetchRooms, userNameMap, section, setSection, globalUsers,
     setGlobalUsers, newUserId, setNewUserId, contractDetection, setContractDetection, guildColors,
     setGuildColors, dmColors, setDmColors, telegramColors, setTelegramColors, enabledGuilds,

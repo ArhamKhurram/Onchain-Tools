@@ -2,7 +2,7 @@
 // existing `../discord/types.js` importers across the backend keep working
 // unchanged. Values (GatewayOpcodes, PUSHOVER_SOUNDS) are re-exported as values;
 // everything else is type-only.
-export { GatewayOpcodes, PUSHOVER_SOUNDS } from '@oct/shared';
+export { GatewayOpcodes } from '@oct/shared';
 
 export type {
   DiscordUser,

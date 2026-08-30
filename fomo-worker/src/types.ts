@@ -20,18 +20,6 @@ export interface FomoCallResult<T = any> {
   errorStack?: string;
 }
 
-export interface FomoTokenMetadata {
-  ticker?: string | null;
-  name?: string | null;
-  iconLink?: string | null;
-  marketCap?: number | null;
-  price?: number | null;
-  description?: string | null;
-  twitter?: string | null;
-  telegram?: string | null;
-  website?: string | null;
-}
-
 export interface WorkerStatus {
   ok: boolean;
   browserReady: boolean;

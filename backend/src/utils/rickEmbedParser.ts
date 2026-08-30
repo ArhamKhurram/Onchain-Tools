@@ -186,7 +186,7 @@ export function parseGlobalFirstCall(
 }
 
 /** Rick footer lines like "jace444444 @ 341.3K" — caller entry MC. */
-export function parseFooterCallMc(blob: string): { username?: string; display: string; value?: number } | null {
+function parseFooterCallMc(blob: string): { username?: string; display: string; value?: number } | null {
   const m = blob.match(/(?:^|[\n|])\s*([A-Za-z0-9_]+)?\s*@\s*\$?\s*([\d.]+[KMBTkmbt]?)/);
   if (!m?.[2]) return null;
   const display = m[2].trim();
