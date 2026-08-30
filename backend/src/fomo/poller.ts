@@ -17,7 +17,7 @@ import {
   type DeadUserEntry,
 } from './deadUserCache.js';
 import {
-  loadActivityCursors,
+  ActivityCursorCache,
   storeAndFanOutTrade,
   upsertActivityCursor,
 } from './dispatch.js';
@@ -143,6 +143,12 @@ class FomoPoller {
   // newly-tracked trader joins within TTL) while cutting reads ~6x+.
   private trackedUsersCache: { list: TrackedFomoUserRef[]; at: number } | null = null;
 
+  // The poller is the only reader/writer of fomo_activity_cursors, so the
+  // per-tick cursor SELECT (another ~259k queries/month at the 10s interval)
+  // is replaced by this write-through cache — it only hits the DB for trader
+  // ids this process has never seen.
+  private cursorCache = new ActivityCursorCache();
+
   private async loadTrackedUsers(): Promise<TrackedFomoUserRef[]> {
     const ttl = Number.parseInt(process.env.FOMO_TRACKED_CACHE_MS ?? '', 10) || 60_000;
     if (this.trackedUsersCache && Date.now() - this.trackedUsersCache.at < ttl) {
@@ -180,7 +186,7 @@ class FomoPoller {
         return;
       }
 
-      const cursors = await loadActivityCursors(
+      const cursors = await this.cursorCache.load(
         this.db,
         tracked.map((t) => t.fomoUserId),
       );
@@ -251,6 +257,7 @@ class FomoPoller {
 
     if (!cursorSeeded) {
       await upsertActivityCursor(this.db!, userId, newestId, true);
+      this.cursorCache.noteUpserted(userId, newestId, true);
       if (DEBUG) {
         console.log(`[FomoPoller] Seeded activity cursor for ${trader.fomoHandle ?? userId}.`);
       }
@@ -274,6 +281,7 @@ class FomoPoller {
 
     if (newestId && newestId !== cursor) {
       await upsertActivityCursor(this.db!, userId, newestId, true);
+      this.cursorCache.noteUpserted(userId, newestId, true);
     }
   }
 }
