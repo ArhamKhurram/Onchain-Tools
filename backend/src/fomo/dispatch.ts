@@ -41,6 +41,53 @@ export async function loadActivityCursors(
   return map;
 }
 
+/**
+ * Write-through cache over `fomo_activity_cursors` for the FOMO poller.
+ *
+ * The poller is the table's only reader and writer, so once a trader's cursor
+ * has been read (or written) there is nothing a re-read can learn — yet the
+ * poller used to re-SELECT every tracked cursor on every tick (~259k
+ * queries/month at the pinned 10s prod interval). This cache makes the
+ * steady-state tick cost zero DB reads: it only queries for trader ids it has
+ * never seen, and `noteUpserted` keeps it in sync with the poller's own writes.
+ *
+ * Restart safety: the cache is in-memory, so a fresh process re-reads real
+ * rows from the DB on its first tick — exactly the old behaviour.
+ */
+export class ActivityCursorCache {
+  private rows = new Map<string, ActivityCursorRow>();
+  // Ids we've already asked the DB about — including ones with no row (an
+  // unseeded trader), so a trader whose seed upsert hasn't happened yet isn't
+  // re-queried every tick.
+  private known = new Set<string>();
+
+  /** Cursors for `fomoUserIds`, querying the DB only for ids never seen before. */
+  async load(db: SupabaseClient, fomoUserIds: string[]): Promise<Map<string, ActivityCursorRow>> {
+    const missing = fomoUserIds.filter((id) => !this.known.has(id));
+    if (missing.length > 0) {
+      const fetched = await loadActivityCursors(db, missing);
+      for (const id of missing) this.known.add(id);
+      for (const [id, row] of fetched) this.rows.set(id, row);
+    }
+    const out = new Map<string, ActivityCursorRow>();
+    for (const id of fomoUserIds) {
+      const row = this.rows.get(id);
+      if (row) out.set(id, row);
+    }
+    return out;
+  }
+
+  /** Mirror a successful `upsertActivityCursor` into the cache. */
+  noteUpserted(fomoUserId: string, lastActivityId: string | null, cursorSeeded: boolean): void {
+    this.known.add(fomoUserId);
+    this.rows.set(fomoUserId, {
+      fomo_user_id: fomoUserId,
+      last_activity_id: lastActivityId,
+      cursor_seeded: cursorSeeded,
+    });
+  }
+}
+
 export async function upsertActivityCursor(
   db: SupabaseClient,
   fomoUserId: string,
