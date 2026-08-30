@@ -7,8 +7,6 @@ import {
   isEvmAddress,
   normalizeContractAddress,
   REFERRALS,
-  getPresetTemplate,
-  injectReferralIntoCustomTemplate,
 } from '@oct/shared';
 
 export {
@@ -16,10 +14,7 @@ export {
   buildContractUrl,
   isEvmAddress,
   normalizeContractAddress,
-  getPresetTemplate,
-  injectReferralIntoCustomTemplate,
 };
-export { REFERRALS };
 export type { ContractDetectionResult } from '@oct/shared';
 
 const GMGN_EVM_CHAINS = new Set([
@@ -50,14 +45,6 @@ const CHAIN_TEXT_MAP: Record<string, string> = {
   robinhood: 'robinhood', hood: 'robinhood',
 };
 
-export const EVM_CHAIN_LABELS: Record<string, string> = {
-  eth: 'ETH', bsc: 'BNB', base: 'BASE', arb: 'ARB',
-  blast: 'BLAST', polygon: 'POLY', avax: 'AVAX', fantom: 'FTM',
-  linea: 'LINEA', mantle: 'MANTLE', scroll: 'SCROLL', zksync: 'ZKSYNC',
-  sonic: 'SONIC', abstract: 'ABS', berachain: 'BERA',
-  pulsechain: 'PLS', tron: 'TRON', hyperliquid: 'HL',
-  robinhood: 'HOOD',
-};
 
 type EmbedLike = { description?: string; fields?: { name: string; value: string }[] };
 
