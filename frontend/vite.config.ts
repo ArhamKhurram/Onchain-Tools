@@ -18,7 +18,8 @@ export default defineConfig({
           if (id.includes('react-dom') || id.includes('/react/')) return 'vendor-react';
           if (id.includes('react-router')) return 'vendor-router';
           if (id.includes('@supabase')) return 'vendor-supabase';
-          if (id.includes('lucide-react')) return 'vendor-icons';
+          // lucide-react: no manual vendor chunk — let each icon module land in
+          // the chunk(s) that use it, so boot only loads the chrome's icons.
           // No vendor-charts chunk anymore: recharts was replaced by the
           // hand-rolled SVG PnlLineChart (zero chart vendor code).
         },
