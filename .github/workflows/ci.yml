@@ -39,6 +39,8 @@ jobs:
       # an identical lockfile produces an identical tree, so this is safe.
       # The one script `npm ci` would have run that matters (root `prepare`
       # building @oct/shared) is covered by the explicit build step below.
+      # Key carries a 'scoped' marker: the tree below is the five-workspace
+      # scoped install, so it must never collide with a full-tree cache.
       - name: Restore node_modules
         id: nm-cache
         uses: actions/cache@v4
@@ -49,16 +51,17 @@ jobs:
             frontend/node_modules
             landing/node_modules
             fomo-worker/node_modules
-            docs/node_modules
-            user-docs/node_modules
             packages/*/node_modules
           # NOTE: 'node20' pins the tree to the Node major above — bump it in
           # lockstep with node-version so native-module builds never go stale.
-          key: nm-${{ runner.os }}-node20-${{ hashFiles('package-lock.json') }}
+          key: nm-scoped-${{ runner.os }}-node20-${{ hashFiles('package-lock.json') }}
 
+      # Scoped to the five workspaces this job verifies — a bare `npm ci`
+      # also installs the two Astro/Starlight docs sites, which docs.yml
+      # builds with its own scoped install.
       - name: Install (workspaces)
         if: steps.nm-cache.outputs.cache-hit != 'true'
-        run: npm ci
+        run: npm ci --include=dev -w backend -w frontend -w landing -w fomo-worker -w @oct/shared
 
       # Build the shared package first — backend/frontend resolve @oct/shared
       # from its built dist. (The root `prepare` script also builds it on
