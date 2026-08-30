@@ -52,6 +52,8 @@ jobs:
             docs/node_modules
             user-docs/node_modules
             packages/*/node_modules
+          # NOTE: 'node20' pins the tree to the Node major above — bump it in
+          # lockstep with node-version so native-module builds never go stale.
           key: nm-${{ runner.os }}-node20-${{ hashFiles('package-lock.json') }}
 
       - name: Install (workspaces)
