@@ -7,7 +7,12 @@ import { verifyAccessToken } from '../auth/middleware.js';
 interface ClientState {
   subscribedRooms: Set<string>;
   userId: string | null;
+  /** Liveness flag for the heartbeat sweep: cleared each sweep, set by pong. */
+  isAlive: boolean;
 }
+
+/** Sweep cadence; a dead peer is terminated within two intervals (~60s). */
+const HEARTBEAT_INTERVAL_MS = 30_000;
 
 /** Observer for outgoing alerts; see WsServer.onAlert. */
 export type AlertListener = (
@@ -27,7 +32,12 @@ export class WsServer {
 
     this.wss.on('connection', (ws) => {
       console.log('[WS] Client connected');
-      this.clients.set(ws, { subscribedRooms: new Set(), userId: null });
+      const state: ClientState = { subscribedRooms: new Set(), userId: null, isAlive: true };
+      this.clients.set(ws, state);
+
+      ws.on('pong', () => {
+        state.isAlive = true;
+      });
 
       ws.on('message', (data) => {
         try {
@@ -47,6 +57,31 @@ export class WsServer {
         this.clients.delete(ws);
       });
     });
+
+    // Heartbeat: without it a peer that vanishes without a FIN (mobile sleep,
+    // network drop, killed process) stays readyState OPEN forever — fan-out
+    // keeps buffering frames into its dead socket, and one ghost pins every
+    // adaptive poller (fomo 10s, callouts 12s, wallet movement 30s) at its
+    // fast interval because getAuthenticatedClientCount() never reaches 0.
+    // terminate() fires the 'close' handler above, so cleanup and
+    // onUserDisconnect run exactly as they do for a graceful close.
+    const heartbeat = setInterval(() => this.sweepDeadConnections(), HEARTBEAT_INTERVAL_MS);
+    heartbeat.unref();
+    this.wss.on('close', () => clearInterval(heartbeat));
+  }
+
+  /** Ping every open socket; terminate any that never ponged the previous ping. */
+  private sweepDeadConnections(): void {
+    for (const [ws, state] of this.clients) {
+      if (ws.readyState !== WebSocket.OPEN) continue;
+      if (!state.isAlive) {
+        console.log('[WS] Terminating unresponsive client');
+        ws.terminate();
+        continue;
+      }
+      state.isAlive = false;
+      ws.ping();
+    }
   }
 
   setUserLifecycleCallbacks(
