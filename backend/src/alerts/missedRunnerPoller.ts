@@ -230,6 +230,50 @@ export function buildSlimSweepConfig(row: {
   } as AppConfig;
 }
 
+export type LiveMcResult = Awaited<ReturnType<typeof fetchLiveMarketCap>>;
+
+/**
+ * Sweep-scoped memo over `fetchLiveMarketCap`.
+ *
+ * Candidate sets are per user but heavily correlated — users in the same
+ * Discord rooms scan the same contracts — so the sweep used to fetch the same
+ * token's live MC once per subscriber every 3 minutes. One upstream call per
+ * unique token per sweep is enough: within a sweep the calls are seconds
+ * apart, so no freshness is lost, and GMGN/DexScreener rate budget stops
+ * scaling with subscriber count.
+ *
+ * Peak recording rides along here (once per fresh fetch, never on a memo hit):
+ * the fetch already happened for the alert check, so folding it into the token
+ * peaks costs nothing upstream and catches spikes the 3-min sampler sleeps
+ * through — while a duplicate observation of the same value would cost a
+ * pointless token_peaks SELECT+write per extra subscriber. The signals stay
+ * separate — this feeds the shared peak *data*, not the missed-runner
+ * detection.
+ */
+export async function fetchLiveMcMemoized(
+  memo: Map<string, LiveMcResult>,
+  token: Pick<TokenCandidate, 'address' | 'chain' | 'evmChain'>,
+  deps: {
+    fetcher?: typeof fetchLiveMarketCap;
+    record?: typeof recordPeakObservation;
+  } = {},
+): Promise<LiveMcResult> {
+  const key = `${token.evmChain ?? token.chain}:${token.address.toLowerCase()}`;
+  if (memo.has(key)) return memo.get(key) ?? null;
+
+  const live = await (deps.fetcher ?? fetchLiveMarketCap)(token.address, token.evmChain ?? undefined);
+  memo.set(key, live);
+  if (live?.mcNow != null && live.mcNow > 0) {
+    (deps.record ?? recordPeakObservation)({
+      address: token.address,
+      chain: token.chain,
+      evmChain: token.evmChain,
+      mcNow: live.mcNow,
+    });
+  }
+  return live;
+}
+
 export function formatMissedRunnerAge(firstSeenAt: string): string {
   const mins = Math.floor((Date.now() - new Date(firstSeenAt).getTime()) / 60_000);
   if (mins < 60) return `${Math.max(1, mins)}m`;
@@ -438,7 +482,7 @@ class MissedRunnerPoller {
     return true;
   }
 
-  private async processUser(userId: string): Promise<void> {
+  private async processUser(userId: string, liveMcMemo: Map<string, LiveMcResult>): Promise<void> {
     const config = await this.loadConfigSlim(userId);
     const mr = resolveMissedRunnerConfig(config);
     if (!mr.enabled) return;
@@ -460,19 +504,10 @@ class MissedRunnerPoller {
       if (mr.minMcAtCall != null && token.mcAtCall < mr.minMcAtCall) continue;
       if (cooldowns.has(token.address.toLowerCase())) continue;
 
-      const live = await fetchLiveMarketCap(token.address, token.evmChain ?? undefined);
+      // Deduped across users within the sweep; also records the peak
+      // observation once per fresh fetch (see fetchLiveMcMemoized).
+      const live = await fetchLiveMcMemoized(liveMcMemo, token);
       if (!live?.mcNow || live.mcNow <= 0) continue;
-
-      // This fetch already happened for the alert check; folding it into the
-      // token peaks costs nothing upstream and catches spikes the 3-min
-      // sampler sleeps through. The signals stay separate — this feeds the
-      // shared peak *data*, not the missed-runner detection.
-      recordPeakObservation({
-        address: token.address,
-        chain: token.chain,
-        evmChain: token.evmChain,
-        mcNow: live.mcNow,
-      });
 
       const multiplier = live.mcNow / token.mcAtCall;
       if (multiplier < mr.minMultiplier) continue;
@@ -535,9 +570,11 @@ class MissedRunnerPoller {
     this.lastPollAt = new Date().toISOString();
     try {
       const userIds = await this.loadActiveUserIds();
+      // One live-MC fetch per unique token per sweep, shared across users.
+      const liveMcMemo = new Map<string, LiveMcResult>();
       for (const userId of userIds) {
         try {
-          await this.processUser(userId);
+          await this.processUser(userId, liveMcMemo);
         } catch (err) {
           console.error(`[MissedRunnerPoller] User ${userId} error:`, (err as Error)?.message);
         }
