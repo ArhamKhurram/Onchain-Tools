@@ -12,7 +12,7 @@ export interface Announcement {
 // Absolute URL to a static JSON feed with open CORS, so all clients (desktop,
 // localhost website, hosted web) can read it without any backend/database.
 // Published by editing announcements.json at the repo root and pushing to main.
-export const ANNOUNCEMENTS_URL: string | null =
+const ANNOUNCEMENTS_URL: string | null =
   import.meta.env.VITE_ANNOUNCEMENTS_URL ?? null;
 
 const SEEN_KEY = 'oct_seen_announcements';

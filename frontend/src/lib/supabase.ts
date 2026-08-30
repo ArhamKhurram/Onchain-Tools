@@ -28,11 +28,3 @@ export async function getAccessToken(): Promise<string | null> {
   const { data } = await getSupabase().auth.getSession();
   return data.session?.access_token ?? null;
 }
-
-export function authHeaders(token: string | null): Record<string, string> {
-  const headers: Record<string, string> = { 'Content-Type': 'application/json' };
-  if (token) {
-    headers['Authorization'] = `Bearer ${token}`;
-  }
-  return headers;
-}

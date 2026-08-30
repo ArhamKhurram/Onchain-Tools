@@ -4,7 +4,7 @@ export function isTelegramContract(entry: ContractEntry): boolean {
   return entry.source === 'telegram' || entry.messageId.startsWith('tg_');
 }
 
-export function parseTelegramMessageId(messageId: string): { chatId: string; msgId: string } | null {
+function parseTelegramMessageId(messageId: string): { chatId: string; msgId: string } | null {
   if (!messageId.startsWith('tg_')) return null;
   const rest = messageId.slice(3);
   const idx = rest.lastIndexOf('_');
@@ -29,7 +29,7 @@ export function contractAttribution(entry: ContractEntry): string {
  * URL shape; plain groups and DMs don't, so those rows are unlinkable rather
  * than broken.
  */
-export function telegramMessageUrl(entry: ContractEntry): string | null {
+function telegramMessageUrl(entry: ContractEntry): string | null {
   const parsed = parseTelegramMessageId(entry.messageId);
   if (!parsed) return null;
   const { chatId, msgId } = parsed;

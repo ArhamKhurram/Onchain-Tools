@@ -11,7 +11,7 @@ import { createTrailingCommit } from '../utils/trailingCommit';
  */
 const COMMIT_DELAY_MS = 250;
 
-export function parseHexAlpha(color: string): { base: string; alpha: number } {
+function parseHexAlpha(color: string): { base: string; alpha: number } {
   if (!color || !color.startsWith('#')) return { base: '#000000', alpha: 1 };
   if (color.length === 9) {
     return { base: color.slice(0, 7), alpha: parseInt(color.slice(7, 9), 16) / 255 };
@@ -19,7 +19,7 @@ export function parseHexAlpha(color: string): { base: string; alpha: number } {
   return { base: color.length >= 7 ? color.slice(0, 7) : color, alpha: 1 };
 }
 
-export function buildHexAlpha(base: string, alpha: number): string {
+function buildHexAlpha(base: string, alpha: number): string {
   const hex6 = base.startsWith('#') ? base.slice(0, 7) : `#${base.slice(0, 6)}`;
   if (alpha >= 1) return hex6;
   const a = Math.round(Math.max(0, Math.min(1, alpha)) * 255);

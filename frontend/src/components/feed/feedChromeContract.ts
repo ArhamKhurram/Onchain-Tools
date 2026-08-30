@@ -54,7 +54,7 @@ export interface FeedChromeCapabilities {
   ownsPaneHeader: (paneCount: number) => boolean;
 }
 
-export const FEED_CHROME_CAPABILITIES: Record<FeedChromePreset, FeedChromeCapabilities> = {
+const FEED_CHROME_CAPABILITIES: Record<FeedChromePreset, FeedChromeCapabilities> = {
   terminal: { ownsPaneHeader: (paneCount) => paneCount <= 1 },
   masthead: { ownsPaneHeader: (paneCount) => paneCount <= 1 },
   rail: { ownsPaneHeader: (paneCount) => paneCount <= 1 },
