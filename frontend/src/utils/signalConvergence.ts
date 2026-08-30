@@ -73,6 +73,54 @@ export function findConvergenceForContract(
   return null;
 }
 
+// Buy-side trades bucketed by normalized token address, cached per trades-array
+// identity. The per-row convergence subscription runs its selector on EVERY
+// store write (that is how zustand decides whether to re-render), so the lookup
+// must be O(1) unless the trades array actually changed reference.
+const buyIndexCache = new WeakMap<FomoTrade[], Map<string, FomoTrade[]>>();
+
+function buyTradesByToken(trades: FomoTrade[]): Map<string, FomoTrade[]> {
+  let index = buyIndexCache.get(trades);
+  if (!index) {
+    index = new Map();
+    // Array order is preserved inside each bucket so the first match is the
+    // same trade findConvergenceForContract would have returned.
+    for (const trade of trades) {
+      if (!isFomoBuySide(trade.side) || !trade.tokenAddress) continue;
+      const key = normalizeAddress(trade.tokenAddress);
+      const bucket = index.get(key);
+      if (bucket) bucket.push(trade);
+      else index.set(key, [trade]);
+    }
+    buyIndexCache.set(trades, index);
+  }
+  return index;
+}
+
+/**
+ * `findConvergenceForContract`, but suitable for use inside a zustand selector:
+ * the trades scan is replaced by a WeakMap-cached by-token index, so the common
+ * per-store-write call is a couple of map lookups instead of an O(trades) scan
+ * per contract row. Returns the identical trade object (identity-stable while
+ * the match is unchanged, so Object.is keeps the subscriber quiet).
+ */
+export function findConvergenceForContractIndexed(
+  contract: ContractEntry,
+  trades: FomoTrade[],
+  windowMs = SIGNAL_CONVERGENCE_WINDOW_MS,
+): FomoTrade | null {
+  const candidates = buyTradesByToken(trades).get(normalizeAddress(contract.address));
+  if (!candidates) return null;
+  const contractTime = new Date(contract.timestamp).getTime();
+  if (Number.isNaN(contractTime)) return null;
+  for (const trade of candidates) {
+    if (Math.abs(trade.occurredAt - contractTime) <= windowMs) {
+      return trade;
+    }
+  }
+  return null;
+}
+
 export function findConvergenceForAddress(
   address: string,
   contracts: ContractEntry[],
