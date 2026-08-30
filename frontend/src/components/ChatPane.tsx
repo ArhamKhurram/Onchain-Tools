@@ -1,4 +1,5 @@
 import { useEffect, useRef, useCallback, useState, useMemo } from 'react';
+import { useShallow } from 'zustand/react/shallow';
 import { useAppStore } from '../stores/appStore';
 import { useThemeStore } from '../stores/themeStore';
 import Message from './Message';
@@ -6,6 +7,7 @@ import ChatInput from './ChatInput';
 import VirtualMessageList, { type VirtualMessageListHandle } from './VirtualMessageList';
 import { useCallerQuality, type CallerQuality } from '../hooks/useCallerQuality';
 import { createHighlightColorResolver } from '../utils/userIdentifiers';
+import { selectDmSwitcherEntries, parseDmSwitcherEntry } from '../utils/dmSwitcherEntries';
 import { computeFrozenWindow, scrollAnchorDecision, MESSAGE_JUMP_EVENT } from '../utils/messageListWindow';
 import { useFeedChromeContext } from './feed/feedChromeContract';
 import { callerKey } from '@oct/shared';
@@ -13,6 +15,9 @@ import type { FrontendMessage } from '../types';
 import { Hash, MessageCircle, Settings, ArrowDown, Filter, EyeOff, X, Trash2, Eye, Search, ChevronUp, ChevronDown, Send, AtSign, GripVertical, Plus, Rows2, Columns2, ArrowLeft, ArrowRight, Lock, Unlock, ExternalLink } from 'lucide-react';
 
 const MAX_PANES = 4;
+
+// Stable fallback so an empty room doesn't hand downstream memos a fresh [].
+const NO_MESSAGES: FrontendMessage[] = [];
 
 const SCROLL_THRESHOLD = 150;
 
@@ -54,7 +59,14 @@ export default function ChatPane({ roomId, paneIndex, paneCount, editMode, varia
   const isPopout = variant === 'popout';
   const isWorkspace = variant === 'workspace';
   const rooms = useAppStore((s) => s.rooms);
-  const messages = useAppStore((s) => s.messages);
+  // Subscribe to THIS pane's room only. `addMessage` gives every touched room a
+  // fresh array but leaves untouched rooms' references alone, so a whole-map
+  // subscription re-renders every pane on every message anywhere — with four
+  // split panes that's 4x the renders the traffic calls for.
+  const storedRoomMessages = useAppStore((s) => s.messages[roomId]);
+  // The room-switcher dropdown lists DM rooms that hold messages. Folded to
+  // label strings + shallow-compared so cross-room traffic stays quiet here too.
+  const dmSwitcherEntries = useAppStore(useShallow((s) => selectDmSwitcherEntries(s.messages)));
   const config = useAppStore((s) => s.config);
   const openConfigModal = useAppStore((s) => s.openConfigModal);
 
@@ -126,7 +138,7 @@ export default function ChatPane({ roomId, paneIndex, paneCount, editMode, varia
   const activeDM = isDMView ? dmChannels.find((dm) => dm.id === dmChannelId) : null;
 
   const activeRoom = isAnyDMView || isMentionsView ? undefined : rooms.find((r) => r.id === roomId);
-  const allRoomMessages = messages[roomId] ?? [];
+  const allRoomMessages = storedRoomMessages ?? NO_MESSAGES;
 
   // Colour lookup that understands @handle-keyed entries, not just ids — a
   // colour saved against "@handle" must paint that user's rows. Memoised per
@@ -463,19 +475,18 @@ export default function ChatPane({ roomId, paneIndex, paneCount, editMode, varia
     opts.push({ id: 'mentions', label: 'Mentions', kind: 'mentions' });
     for (const r of rooms) opts.push({ id: r.id, label: r.name, kind: 'room' });
     const dmLookup = new Map(dmChannels.map((dm) => [dm.id, dm]));
-    for (const key of Object.keys(messages)) {
-      if ((messages[key]?.length ?? 0) === 0) continue;
+    for (const entry of dmSwitcherEntries) {
+      const { key, channelName, authorName } = parseDmSwitcherEntry(entry);
       if (key.startsWith('dm:')) {
         const dm = dmLookup.get(key.slice(3));
-        const label = dm ? dm.recipients.map((r) => r.global_name || r.username || 'Unknown').join(', ') : (messages[key][0]?.author.displayName ?? 'DM');
+        const label = dm ? dm.recipients.map((r) => r.global_name || r.username || 'Unknown').join(', ') : (authorName || 'DM');
         opts.push({ id: key, label, kind: 'dm' });
-      } else if (key.startsWith('tg-dm:')) {
-        const label = messages[key][0]?.channelName ?? messages[key][0]?.author.displayName ?? 'Telegram Chat';
-        opts.push({ id: key, label, kind: 'tg' });
+      } else {
+        opts.push({ id: key, label: channelName || authorName || 'Telegram Chat', kind: 'tg' });
       }
     }
     return opts;
-  }, [rooms, dmChannels, messages]);
+  }, [rooms, dmChannels, dmSwitcherEntries]);
 
   const dmRecipientNames = activeDM
     ? activeDM.recipients.map((r) => r.global_name || r.username || 'Unknown').join(', ')
