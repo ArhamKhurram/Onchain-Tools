@@ -7,7 +7,7 @@ import { compareNumeric, compareText, type SortDir } from '../../lib/sort';
 import { useFomoHolderOverlap } from '../../hooks/useFomoHolderOverlap';
 import SignalConvergenceBadge from '../SignalConvergenceBadge';
 import {
-  findConvergenceForAddress,
+  buildConvergenceIndex,
   getSignalConvergenceWindowMs,
 } from '../../utils/signalConvergence';
 import RadarSettings from './RadarSettings';
@@ -316,6 +316,14 @@ export default function RadarTable({ embedded: _embedded = false }: { embedded?:
     [contracts, qualityForContractGlobal],
   );
 
+  // One convergence pass per data change, O(1) per row at render time. The
+  // old per-row findConvergenceForAddress rescanned every contract (and its
+  // trades) for every row on every commit — liveMc ticks included.
+  const convergenceByAddress = useMemo(
+    () => buildConvergenceIndex(contracts, fomoTrades, convergenceWindowMs),
+    [contracts, fomoTrades, convergenceWindowMs],
+  );
+
   // Anonymous network pool first-seen for the tokens on the radar — one
   // debounced, batched call; inert outside hosted mode (the hook self-gates).
   // Sorted so a mere reorder of the table never changes the request set.
@@ -621,12 +629,7 @@ export default function RadarTable({ embedded: _embedded = false }: { embedded?:
                 r.mcAtCall && mcNow && r.mcAtCall > 0 ? mcNow / r.mcAtCall : undefined;
               const tag = r.mentions >= 5 ? 'crowded' : r.mentions === 1 ? 'early' : null;
               const plat = platformMeta(r.chain, r.evmChain);
-              const convergenceTrade = findConvergenceForAddress(
-                r.address,
-                contracts,
-                fomoTrades,
-                convergenceWindowMs,
-              );
+              const convergenceTrade = convergenceByAddress.get(key) ?? null;
               const shortAddr = `${r.address.slice(0, 6)}...${r.address.slice(-4)}`;
               const ticker = r.symbol ? `$${r.symbol}` : shortAddr;
               const subtitle = r.name ?? (r.symbol ? shortAddr : null);

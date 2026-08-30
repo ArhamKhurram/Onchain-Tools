@@ -4,6 +4,8 @@ import {
   addressesMatch,
   getSignalConvergenceWindowMs,
   findConvergenceForContract,
+  findConvergenceForAddress,
+  buildConvergenceIndex,
   convergenceKey,
   DEFAULT_SIGNAL_CONVERGENCE_WINDOW_MINUTES,
 } from '../src/utils/signalConvergence';
@@ -106,3 +108,53 @@ describe('convergenceKey', () => {
   });
 });
 
+
+describe('buildConvergenceIndex', () => {
+  it('maps a converging address to its trade, keyed normalized', () => {
+    const idx = buildConvergenceIndex([contract()], [trade()]);
+    expect(idx.get('0xabcdef0000000000000000000000000000000001')?.key).toBe('k1');
+    expect(idx.size).toBe(1);
+  });
+
+  it('skips sells, other tokens, out-of-window trades, and bad timestamps', () => {
+    const idx = buildConvergenceIndex(
+      [
+        contract(),
+        contract({ address: '0xdead0000000000000000000000000000000beef0', timestamp: 'not-a-date' }),
+      ],
+      [
+        trade({ side: 'sell', key: 's' }),
+        trade({ occurredAt: T0 - 26 * 3_600_000, key: 'stale' }),
+        trade({ tokenAddress: '0xdead0000000000000000000000000000000beef0', key: 'other' }),
+      ],
+    );
+    expect(idx.size).toBe(0);
+  });
+
+  it('returns exactly what findConvergenceForAddress returns, per address, on a fuzzed feed', () => {
+    // Deterministic LCG so the case reproduces.
+    let seed = 1234;
+    const rnd = () => ((seed = (seed * 48271) % 2147483647) / 2147483647);
+    const addrs = Array.from({ length: 40 }, (_, i) => `0xToken${i.toString(16)}`);
+    const contracts = Array.from({ length: 400 }, (_, i) =>
+      contract({
+        address: rnd() < 0.5 ? addrs[Math.floor(rnd() * addrs.length)] : addrs[Math.floor(rnd() * addrs.length)].toUpperCase(),
+        timestamp: new Date(T0 + Math.floor(rnd() * 86_400_000)).toISOString(),
+        messageId: `m${i}`,
+      }),
+    );
+    const trades = Array.from({ length: 120 }, (_, i) =>
+      trade({
+        side: rnd() < 0.7 ? 'buy' : 'sell',
+        tokenAddress: rnd() < 0.9 ? addrs[Math.floor(rnd() * addrs.length)].toLowerCase() : null,
+        occurredAt: T0 + Math.floor(rnd() * 86_400_000),
+        key: `t${i}`,
+      }),
+    );
+    const idx = buildConvergenceIndex(contracts, trades);
+    for (const a of addrs) {
+      const expected = findConvergenceForAddress(a, contracts, trades);
+      expect(idx.get(a.toLowerCase()) ?? null).toBe(expected);
+    }
+  });
+});
