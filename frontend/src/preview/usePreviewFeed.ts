@@ -19,7 +19,7 @@ export function usePreviewFeed(): void {
     // so the "aha" (a contract rendered in the demo) has happened by now.
     track('preview_ca_seen');
 
-    // Dynamic import: previewFeed (and the demoData fixtures it pulls in) is
+    // Dynamic import: previewFeed (~17 kB of seed fixtures) is
     // only needed while the seeded preview streams — enterPreview has already
     // fetched the chunk by the time this effect runs, so this resolves from
     // the module cache.

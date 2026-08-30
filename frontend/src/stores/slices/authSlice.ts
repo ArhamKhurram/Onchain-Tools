@@ -1,7 +1,6 @@
 import type { StateCreator } from 'zustand';
 import type { AuthStatus, MaskedToken } from '../../types';
 import type { AppState } from '../appStore';
-import { isDemoMode, createDemoOverrides } from '../../demo/demoStore';
 import { markTokenEverConfigured } from '../../utils/tokenState';
 import { resolveAuthStatus } from '../authStatusResolve';
 import {
@@ -39,8 +38,6 @@ export interface AuthSlice {
 }
 
 export const createAuthSlice: StateCreator<AppState, [], [], AuthSlice> = (set, get) => {
-  const demo = isDemoMode ? createDemoOverrides(set as any, get as any) : null;
-
   return {
     authStatus: null,
     authLoading: true,
@@ -48,7 +45,6 @@ export const createAuthSlice: StateCreator<AppState, [], [], AuthSlice> = (set, 
     backendReachable: null,
 
     checkAuth: async () => {
-      if (demo) return demo.checkAuth();
 
       // The configured/connected decision lives in resolveAuthStatus (pure, and
       // unit-tested) because it is subtle: in client-gateway mode the token is
@@ -83,7 +79,6 @@ export const createAuthSlice: StateCreator<AppState, [], [], AuthSlice> = (set, 
     },
 
     submitToken: async (token: string) => {
-      if (demo) return demo.submitToken();
       if (isClientGatewayMode()) {
         try {
           const tokens = token.includes(',')
@@ -119,7 +114,6 @@ export const createAuthSlice: StateCreator<AppState, [], [], AuthSlice> = (set, 
     },
 
     fetchMaskedTokens: async () => {
-      if (demo) return demo.fetchMaskedTokens();
       if (isClientGatewayMode()) {
         const tokens = getLocalDiscordTokens();
         const gw = getClientGatewayManager();
@@ -142,7 +136,6 @@ export const createAuthSlice: StateCreator<AppState, [], [], AuthSlice> = (set, 
     },
 
     addToken: async (token: string) => {
-      if (demo) return demo.addToken();
       if (isClientGatewayMode()) {
         try {
           const trimmed = token.trim();
@@ -180,7 +173,6 @@ export const createAuthSlice: StateCreator<AppState, [], [], AuthSlice> = (set, 
     },
 
     removeToken: async (index: number) => {
-      if (demo) return demo.removeToken();
       if (isClientGatewayMode()) {
         try {
           const existing = getLocalDiscordTokens();

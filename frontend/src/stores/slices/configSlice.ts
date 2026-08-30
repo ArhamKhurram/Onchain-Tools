@@ -1,7 +1,6 @@
 import type { StateCreator } from 'zustand';
 import type { Room, AppConfig, CallerTier } from '../../types';
 import type { AppState } from '../appStore';
-import { isDemoMode, createDemoOverrides } from '../../demo/demoStore';
 import { apiFetch, API_BASE, MAX_PANES, savePaneRoomIds } from '../appStore.helpers';
 
 export interface ConfigSlice {
@@ -21,8 +20,6 @@ export interface ConfigSlice {
 }
 
 export const createConfigSlice: StateCreator<AppState, [], [], ConfigSlice> = (set, get) => {
-  const demo = isDemoMode ? createDemoOverrides(set as any, get as any) : null;
-
   // Config PUTs are serialized and applied latest-wins. Rapid successive
   // updates (a colour picker gesture is several commits) used to race: two
   // in-flight PUTs could resolve out of order, and the stale response's
@@ -105,7 +102,6 @@ export const createConfigSlice: StateCreator<AppState, [], [], ConfigSlice> = (s
     },
 
     fetchConfig: async () => {
-      if (demo) return demo.fetchConfig();
       try {
         const res = await apiFetch(`${API_BASE}/config`);
         if (!res.ok) return;
@@ -130,7 +126,6 @@ export const createConfigSlice: StateCreator<AppState, [], [], ConfigSlice> = (s
     },
 
     updateConfig: async (data) => {
-      if (demo) return demo.updateConfig(data);
       const mySeq = ++configPutSeq;
       // Optimistic merge: the UI (and the base snapshot the next update spreads
       // from) reflects the edit immediately instead of after the round trip.
@@ -167,7 +162,6 @@ export const createConfigSlice: StateCreator<AppState, [], [], ConfigSlice> = (s
     },
 
     hideUser: async (guildId, channelId, userId, displayName) => {
-      if (demo) return demo.hideUser(guildId, channelId, userId, displayName);
       const config = get().config;
       if (!config) return;
       const key = `${guildId ?? 'null'}:${channelId}`;
@@ -178,7 +172,6 @@ export const createConfigSlice: StateCreator<AppState, [], [], ConfigSlice> = (s
     },
 
     unhideUser: async (guildId, channelId, userId) => {
-      if (demo) return demo.unhideUser(guildId, channelId, userId);
       const config = get().config;
       if (!config) return;
       const key = `${guildId ?? 'null'}:${channelId}`;
