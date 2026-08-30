@@ -121,9 +121,55 @@ export interface RadarRow {
 // later row's live market cap.
 export const MC_AT_CALL_MAX_LAG_MS = 900_000; // 15 min
 
+/**
+ * True when two rows agree on every field the table renders or sorts by.
+ * Used to hand back the previous row OBJECT when nothing visible changed, so
+ * the memoized row components can skip reconciliation. Set membership is not
+ * compared directly (only sizes are rendered); the element-wise timestamps
+ * check pins the row to the exact same mention multiset in practice.
+ */
+function sameRowProjection(a: RadarRow, b: RadarRow): boolean {
+  if (
+    a.address !== b.address ||
+    a.chain !== b.chain ||
+    a.evmChain !== b.evmChain ||
+    a.symbol !== b.symbol ||
+    a.name !== b.name ||
+    a.mentions !== b.mentions ||
+    a.callers.size !== b.callers.size ||
+    a.groups.size !== b.groups.size ||
+    a.firstCaller !== b.firstCaller ||
+    a.firstCallerBand !== b.firstCallerBand ||
+    a.firstSeenAt !== b.firstSeenAt ||
+    a.lastMentionAt !== b.lastMentionAt ||
+    a.mcAtCall !== b.mcAtCall ||
+    a.mcAtCallDisplay !== b.mcAtCallDisplay ||
+    a.bestBand !== b.bestBand ||
+    a.bestRank !== b.bestRank ||
+    a.allMuted !== b.allMuted ||
+    a.rickFirstCallerName !== b.rickFirstCallerName ||
+    a.rickFirstCallMcapUsd !== b.rickFirstCallMcapUsd ||
+    a.rickFirstCallAtMs !== b.rickFirstCallAtMs ||
+    a.timestamps.length !== b.timestamps.length
+  ) {
+    return false;
+  }
+  for (let i = 0; i < a.timestamps.length; i++) {
+    if (a.timestamps[i] !== b.timestamps[i]) return false;
+  }
+  return true;
+}
+
 export function buildRadar(
   contracts: ContractEntry[],
   qualityForContract?: (entry: ContractEntry) => CallerQuality,
+  /**
+   * The previous build's rows. When given, any rebuilt row whose visible
+   * projection is unchanged is swapped for its previous object, preserving
+   * identity across builds — one new contract then changes ONE row reference
+   * instead of all of them, and React.memo rows skip the rest.
+   */
+  previous?: RadarRow[],
 ): RadarRow[] {
   const map = new Map<string, RadarRow>();
   // MC@call candidate per key: the earliest fdv-bearing mention (ties keep the
@@ -226,5 +272,12 @@ export function buildRadar(
     }
   }
 
-  return [...map.values()];
+  if (!previous?.length) return [...map.values()];
+
+  const prevByKey = new Map<string, RadarRow>();
+  for (const p of previous) prevByKey.set(p.address.toLowerCase(), p);
+  return [...map.entries()].map(([key, row]) => {
+    const prev = prevByKey.get(key);
+    return prev && sameRowProjection(prev, row) ? prev : row;
+  });
 }
