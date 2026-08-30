@@ -9,7 +9,6 @@ import { isDemoMode } from '../demo/demoStore';
 import { isHostedMode, getSupabase } from '../lib/supabase';
 import { isClientGatewayMode } from '../discord/clientGateway';
 import { hasLocalDiscordTokens } from '../discord/tokenStore';
-import { buildStreamMessage, STREAM_POOL } from '../demo/demoData';
 import type { WsIncoming, Alert, FrontendMessage, ContractEntry, RevivalAlertData, BreakoutAlertData, JournalAlertData, PriceAlertData } from '../types';
 import type { FomoTradeEvent } from '../types/fomo';
 
@@ -24,13 +23,24 @@ function useDemoStream() {
     if (!isDemoMode) return;
     setConnected(true);
 
-    const interval = setInterval(() => {
-      const { message, roomIds } = buildStreamMessage(poolIndex.current);
-      poolIndex.current = (poolIndex.current + 1) % STREAM_POOL.length;
-      addMessage(message, roomIds);
-    }, 6000 + Math.random() * 4000);
+    // Dynamic import: demoData (~17 kB of sample fixtures) only exists in the
+    // VITE_DEMO_MODE build's runtime path — a static import kept it in the
+    // initial index chunk of every production load.
+    let interval: ReturnType<typeof setInterval> | undefined;
+    let cancelled = false;
+    void import('../demo/demoData').then(({ buildStreamMessage, STREAM_POOL }) => {
+      if (cancelled) return;
+      interval = setInterval(() => {
+        const { message, roomIds } = buildStreamMessage(poolIndex.current);
+        poolIndex.current = (poolIndex.current + 1) % STREAM_POOL.length;
+        addMessage(message, roomIds);
+      }, 6000 + Math.random() * 4000);
+    });
 
-    return () => clearInterval(interval);
+    return () => {
+      cancelled = true;
+      if (interval) clearInterval(interval);
+    };
   }, [addMessage, setConnected]);
 }
 
