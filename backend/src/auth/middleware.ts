@@ -55,6 +55,25 @@ function getVerifier() {
   return _verifier;
 }
 
+/**
+ * Cache-first Supabase access-token verification, shared by the REST
+ * middleware below and the WS auth frame handler (ws/server.ts). The console
+ * authenticates its WebSocket with the same bearer token its REST polling
+ * has usually just verified, so routing WS auth through this cache turns the
+ * per-connect (and per-reconnect) GoTrue round-trip into a map lookup.
+ * Returns the userId, or null for an invalid/expired token. Only positive
+ * results are cached — same TTL tradeoff documented above.
+ */
+export async function verifyAccessToken(token: string): Promise<string | null> {
+  const cached = cachedUserId(token);
+  if (cached) return cached;
+
+  const { data, error } = await getVerifier().auth.getUser(token);
+  if (error || !data.user) return null;
+  rememberUserId(token, data.user.id);
+  return data.user.id;
+}
+
 export function authMiddleware(req: Request, res: Response, next: NextFunction): void {
   // NOTE: there is deliberately no per-path bypass here. `/portfolio/status`
   // used to skip auth, but its `probeChain`/`probeAddress` query params drive
@@ -76,21 +95,12 @@ export function authMiddleware(req: Request, res: Response, next: NextFunction):
 
   const token = header.slice(7);
 
-  const cached = cachedUserId(token);
-  if (cached) {
-    req.userId = cached;
-    next();
-    return;
-  }
-
-  const supabase = getVerifier();
-  supabase.auth.getUser(token).then(({ data, error }) => {
-    if (error || !data.user) {
+  verifyAccessToken(token).then((userId) => {
+    if (!userId) {
       res.status(401).json({ error: 'Invalid or expired session.' });
       return;
     }
-    rememberUserId(token, data.user.id);
-    req.userId = data.user.id;
+    req.userId = userId;
     next();
   }).catch(() => {
     res.status(401).json({ error: 'Authentication failed.' });
