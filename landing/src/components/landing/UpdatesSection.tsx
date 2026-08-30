@@ -1,5 +1,5 @@
 import { RefObject } from 'react';
-import { motion } from 'framer-motion';
+import { m } from 'framer-motion';
 import { UPDATES, formatUpdateDate } from '../../data/updates';
 import { useSectionScroll } from '../../hooks/useSectionScroll';
 
@@ -26,42 +26,42 @@ export function UpdatesSection({ scrollRef }: { scrollRef: RefObject<HTMLElement
       className="relative snap-start snap-always min-h-[100dvh] flex flex-col bg-black text-white px-6 sm:px-10 pr-12 sm:pr-14 pt-24 pb-32"
     >
       <div className="max-w-3xl mx-auto w-full flex-1">
-        <motion.div style={{ y: headingY }}>
-          <motion.p
+        <m.div style={{ y: headingY }}>
+          <m.p
             initial={{ opacity: 0 }}
             whileInView={{ opacity: 1 }}
             viewport={{ once: true }}
             className="font-mono text-xs tracking-[0.2em] text-white/60 mb-6"
           >
             [ UPDATES ]
-          </motion.p>
+          </m.p>
 
-          <motion.h2
+          <m.h2
             initial={{ opacity: 0, y: 12 }}
             whileInView={{ opacity: 1, y: 0 }}
             viewport={{ once: true }}
             className="font-display text-[clamp(2rem,7vw,4rem)] leading-[0.95] tracking-tight mb-4"
           >
             WHAT&apos;S NEW.
-          </motion.h2>
+          </m.h2>
 
           {/* Inside the parallax block on purpose: when the heading translated on scroll and this
               did not, the two overlapped mid-scroll. Moving together keeps them clear. */}
-          <motion.p
+          <m.p
             initial={{ opacity: 0 }}
             whileInView={{ opacity: 1 }}
             viewport={{ once: true }}
             className="font-mono text-xs sm:text-sm text-white/55 mb-12 max-w-lg"
           >
             Recent changes to the console, contract feed, and landing experience.
-          </motion.p>
-        </motion.div>
+          </m.p>
+        </m.div>
 
         <div className="relative">
           <div className="absolute left-[5px] top-2 bottom-2 w-px bg-white/15" aria-hidden />
 
           {UPDATES.map((entry, idx) => (
-            <motion.article
+            <m.article
               key={entry.date}
               initial={{ opacity: 0, y: 16 }}
               whileInView={{ opacity: 1, y: 0 }}
@@ -136,7 +136,7 @@ export function UpdatesSection({ scrollRef }: { scrollRef: RefObject<HTMLElement
                   </div>
                 )}
               </div>
-            </motion.article>
+            </m.article>
           ))}
         </div>
       </div>

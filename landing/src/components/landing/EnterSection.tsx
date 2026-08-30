@@ -1,5 +1,5 @@
 import { RefObject } from 'react';
-import { motion } from 'framer-motion';
+import { m } from 'framer-motion';
 import { APP_CONSOLE_PATH, USER_DOCS_URL } from '../../constants';
 import { useSectionScroll } from '../../hooks/useSectionScroll';
 
@@ -19,26 +19,26 @@ export function EnterSection({ scrollRef }: { scrollRef: RefObject<HTMLElement |
       className="relative snap-start snap-always min-h-[100dvh] flex flex-col justify-center bg-black text-white px-6 sm:px-10 pr-12 sm:pr-14 py-24"
     >
       <div className="max-w-6xl mx-auto w-full grid grid-cols-1 lg:grid-cols-2 gap-12 lg:gap-16 items-center">
-        <motion.div style={{ y: headingY }}>
-          <motion.p
+        <m.div style={{ y: headingY }}>
+          <m.p
             initial={{ opacity: 0 }}
             whileInView={{ opacity: 1 }}
             viewport={{ once: true }}
             className="font-mono text-xs tracking-[0.2em] text-white/60 mb-6"
           >
             [ LAUNCH ]
-          </motion.p>
+          </m.p>
 
-          <motion.h2
+          <m.h2
             initial={{ opacity: 0, y: 16 }}
             whileInView={{ opacity: 1, y: 0 }}
             viewport={{ once: true }}
             className="font-display text-[clamp(2.5rem,8vw,5rem)] leading-[0.95] tracking-tight mb-6"
           >
             OPEN THE CONSOLE.
-          </motion.h2>
+          </m.h2>
 
-          <motion.p
+          <m.p
             initial={{ opacity: 0 }}
             whileInView={{ opacity: 1 }}
             viewport={{ once: true }}
@@ -48,9 +48,9 @@ export function EnterSection({ scrollRef }: { scrollRef: RefObject<HTMLElement |
             No install. Sign in, watch the demo feed stream live, and paste your Discord token
             only when you want your own servers. Your token never touches our servers — it
             connects directly from your browser.
-          </motion.p>
+          </m.p>
 
-          <motion.div
+          <m.div
             initial={{ opacity: 0, y: 8 }}
             whileInView={{ opacity: 1, y: 0 }}
             viewport={{ once: true }}
@@ -71,10 +71,10 @@ export function EnterSection({ scrollRef }: { scrollRef: RefObject<HTMLElement |
             >
               Read the user guide
             </a>
-          </motion.div>
-        </motion.div>
+          </m.div>
+        </m.div>
 
-        <motion.div
+        <m.div
           style={{ y: bodyY }}
           initial={{ opacity: 0, x: 20 }}
           whileInView={{ opacity: 1, x: 0 }}
@@ -88,7 +88,7 @@ export function EnterSection({ scrollRef }: { scrollRef: RefObject<HTMLElement |
           </div>
           <div className="p-4 space-y-4 min-h-[220px]">
             {mockLines.map((line, i) => (
-              <motion.div
+              <m.div
                 key={i}
                 initial={{ opacity: 0, x: -8 }}
                 whileInView={{ opacity: 1, x: 0 }}
@@ -107,10 +107,10 @@ export function EnterSection({ scrollRef }: { scrollRef: RefObject<HTMLElement |
                     </span>
                   )}
                 </span>
-              </motion.div>
+              </m.div>
             ))}
           </div>
-        </motion.div>
+        </m.div>
       </div>
     </section>
   );

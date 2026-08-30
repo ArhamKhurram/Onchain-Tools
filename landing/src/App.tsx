@@ -1,4 +1,5 @@
 import { useRef, useState } from 'react';
+import { LazyMotion, domAnimation } from 'framer-motion';
 import { GateScreen } from './components/landing/GateScreen';
 import { LandingNav } from './components/landing/LandingNav';
 import { HeroSection } from './components/landing/HeroSection';
@@ -27,7 +28,12 @@ export default function App() {
   const isFlameSection = activeIndex === 0 || activeIndex === 1 || activeIndex === 3;
 
   return (
-    <>
+    // LazyMotion + `m.` components load only the animation features the landing
+    // uses (domAnimation: animate/whileInView/exit/gestures). The full `motion`
+    // import statically bundled the drag + layout-projection subsystems
+    // (~90 kB pre-minify) that no live landing component uses. `strict` throws
+    // if a full `motion.` component ever sneaks back in.
+    <LazyMotion features={domAnimation} strict>
       <GateScreen onEnter={() => setEntered(true)} />
 
       <LandingNav entered={entered} lightNav={isDarkSection} />
@@ -58,6 +64,6 @@ export default function App() {
         <SecurityStrip scrollRef={scrollRef} />
         <UpdatesSection scrollRef={scrollRef} />
       </main>
-    </>
+    </LazyMotion>
   );
 }
