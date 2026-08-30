@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
+  activeCooldownAddresses,
   buildMissedRunnerAlertRow,
   buildTokenCandidates,
   type TokenCandidate,
@@ -124,5 +125,24 @@ describe('buildTokenCandidates', () => {
 
   it('drops tokens with no MC@call at all', () => {
     expect(buildTokenCandidates([entry({ messageId: 'm1' })])).toHaveLength(0);
+  });
+});
+
+describe('activeCooldownAddresses', () => {
+  // The batched cooldown set replaced a per-candidate SELECT; its correctness
+  // hinges on case normalization matching the sweep's has(address.toLowerCase()).
+  it('lowercases stored addresses into the set', () => {
+    const set = activeCooldownAddresses([
+      { token_address: '0xAbCdEf1234567890abcdef1234567890ABCDEF12' },
+      { token_address: 'So11111111111111111111111111111111111111112'.toLowerCase() },
+    ]);
+    expect(set.has('0xabcdef1234567890abcdef1234567890abcdef12')).toBe(true);
+    // A mixed-case candidate matches once the sweep lowercases it.
+    expect(set.has(candidate().address.toLowerCase())).toBe(true);
+  });
+
+  it('ignores empty addresses and returns an empty set for no rows', () => {
+    expect(activeCooldownAddresses([]).size).toBe(0);
+    expect(activeCooldownAddresses([{ token_address: '' }]).size).toBe(0);
   });
 });
