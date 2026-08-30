@@ -5,7 +5,7 @@ import path from 'path';
 import { chromium } from 'playwright-extra';
 import type { BrowserContext, Page } from 'playwright';
 import stealth from 'puppeteer-extra-plugin-stealth';
-import type { FomoCallResult, FomoCredentials, FomoTokenMetadata } from './types.js';
+import type { FomoCallResult, FomoCredentials } from './types.js';
 import { persistRefreshToken } from './store.js';
 import { isBrowserDeathMessage } from './watchdog.js';
 
@@ -566,38 +566,6 @@ export class FomoBrowserClient {
       )) as FomoCallResult<T>;
   }
 
-  getTopHolders(tokenAddress: string, networkId: number) {
-    const holdersQuery = encodeURIComponent(JSON.stringify([{ address: tokenAddress, networkId }]));
-    return this.call(`/hodlers/top?tokens=${holdersQuery}`);
-  }
-
-  searchUsers(searchTerm: string) {
-    return this.call(`/v2/users/fuzzy-search?searchTerm=${encodeURIComponent(searchTerm)}`);
-  }
-
-  getUserByHandle(userHandle: string) {
-    return this.call(`/v2/users/userHandle/${encodeURIComponent(userHandle)}`);
-  }
-
-  getUserBalances(userId: string) {
-    return this.call(`/v2/users/${userId}/balances`);
-  }
-
-  getLeaderboard(limit = 50, window?: '24h') {
-    return this.call(window ? `/v2/leaderboard/${window}?limit=${limit}` : `/v2/leaderboard?limit=${limit}`);
-  }
-
-  getTradingActivity(limit = 50) {
-    return this.call(`/feed/tradingActivity?limit=${limit}`);
-  }
-
-  getUserActivity(userId: string, limit = 20) {
-    return this.call(`/v2/users/${encodeURIComponent(userId)}/activity?limit=${limit}`);
-  }
-
-  getTokenAllowList() {
-    return this.call('/tokenAllowList/detailed');
-  }
 }
 
 export function resolveProfileDir(): string {
