@@ -1,5 +1,5 @@
 import { useEffect, useState, useCallback } from 'react';
-import { motion, AnimatePresence } from 'framer-motion';
+import { m, AnimatePresence } from 'framer-motion';
 
 interface GateScreenProps {
   onEnter: () => void;
@@ -28,7 +28,7 @@ export function GateScreen({ onEnter }: GateScreenProps) {
   return (
     <AnimatePresence>
       {visible && (
-        <motion.div
+        <m.div
           initial={{ opacity: 1 }}
           exit={{ opacity: 0 }}
           transition={{ duration: 0.45, ease: [0.4, 0, 0.2, 1] }}
@@ -66,7 +66,7 @@ export function GateScreen({ onEnter }: GateScreenProps) {
           >
             [ PRESS ENTER ]
           </button>
-        </motion.div>
+        </m.div>
       )}
     </AnimatePresence>
   );
