@@ -19,20 +19,8 @@ export default defineConfig({
           if (id.includes('react-router')) return 'vendor-router';
           if (id.includes('@supabase')) return 'vendor-supabase';
           if (id.includes('lucide-react')) return 'vendor-icons';
-          // The recharts ecosystem (recharts + its d3/lodash/decimal.js-light deps) is
-          // ~830 kB and used ONLY by the lazy PnlChartModal (verified: no direct app
-          // imports of lodash/decimal.js-light). Grouping it into one stable vendor chunk
-          // keeps it off the initial path (it still only loads on chart open, via the
-          // lazy modal) AND makes it cacheable across app-code deploys — an app update no
-          // longer invalidates 396 kB of chart vendor code in returning users' caches.
-          if (
-            id.includes('recharts') ||
-            id.includes('/d3-') ||
-            id.includes('react-smooth') ||
-            id.includes('decimal.js-light') ||
-            id.includes('/lodash/')
-          )
-            return 'vendor-charts';
+          // No vendor-charts chunk anymore: recharts was replaced by the
+          // hand-rolled SVG PnlLineChart (zero chart vendor code).
         },
       },
     },

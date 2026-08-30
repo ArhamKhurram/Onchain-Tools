@@ -8,8 +8,8 @@ import PortfolioHoldingsTable from './PortfolioHoldingsTable';
 import PortfolioSummary from './PortfolioSummary';
 import PortfolioWalletPicker from './PortfolioWalletPicker';
 import PnlCalendarModal from './PnlCalendarModal';
-// recharts (≈d3, the bulk of the Portfolio chunk) lives only inside this modal, so load it lazily
-// and only once the chart is actually opened — a Portfolio visit no longer pays for it up front.
+// The chart modal (hand-rolled SVG since the recharts removal) still loads
+// lazily — a Portfolio visit doesn't pay for chart code until the chart opens.
 const PnlChartModal = lazy(() => import('./PnlChartModal'));
 import { useAuthSession } from '../../hooks/useAuthSession';
 import { useHoldingWallets } from '../../hooks/useHoldingWallets';
