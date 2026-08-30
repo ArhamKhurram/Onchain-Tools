@@ -1,7 +1,6 @@
 import type { StateCreator } from 'zustand';
 import type { GuildInfo, DMChannel, TelegramChatInfo } from '../../types';
 import type { AppState } from '../appStore';
-import { isDemoMode, createDemoOverrides } from '../../demo/demoStore';
 import { getClientGatewayManager, isClientGatewayMode } from '../../discord/clientGateway';
 import { apiFetch, API_BASE } from '../appStore.helpers';
 
@@ -20,15 +19,12 @@ export interface SourcesSlice {
 }
 
 export const createSourcesSlice: StateCreator<AppState, [], [], SourcesSlice> = (set, get) => {
-  const demo = isDemoMode ? createDemoOverrides(set as any, get as any) : null;
-
   return {
     guilds: [],
     dmChannels: [],
     telegramChats: [],
 
     fetchGuilds: async () => {
-      if (demo) return demo.fetchGuilds();
       if (isClientGatewayMode()) {
         const gw = getClientGatewayManager();
         if (gw) set({ guilds: gw.getGuilds() });
@@ -43,7 +39,6 @@ export const createSourcesSlice: StateCreator<AppState, [], [], SourcesSlice> = 
     },
 
     fetchDMChannels: async () => {
-      if (demo) return demo.fetchDMChannels();
       if (isClientGatewayMode()) {
         const gw = getClientGatewayManager();
         if (gw) set({ dmChannels: gw.getDMChannels() });

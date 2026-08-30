@@ -5,7 +5,6 @@ import { buildContractUrl, buildRevivalContractUrl, revivalNetworkLabel } from '
 import { showDesktopNotification } from '../utils/desktopNotification';
 import { fomoTradeDisplay, buildFomoTradeAlertMessage } from '../utils/fomoTradeDisplay';
 import { formatMcap, type PumpCalloutEvent } from '../types/pumpfun';
-import { isDemoMode } from '../demo/demoStore';
 import { isHostedMode, getSupabase } from '../lib/supabase';
 import { isClientGatewayMode } from '../discord/clientGateway';
 import { hasLocalDiscordTokens } from '../discord/tokenStore';
@@ -13,36 +12,6 @@ import type { WsIncoming, Alert, FrontendMessage, ContractEntry, RevivalAlertDat
 import type { FomoTradeEvent } from '../types/fomo';
 
 let idCounter = 0;
-
-function useDemoStream() {
-  const addMessage = useAppStore((s) => s.addMessage);
-  const setConnected = useAppStore((s) => s.setConnected);
-  const poolIndex = useRef(0);
-
-  useEffect(() => {
-    if (!isDemoMode) return;
-    setConnected(true);
-
-    // Dynamic import: demoData (~17 kB of sample fixtures) only exists in the
-    // VITE_DEMO_MODE build's runtime path — a static import kept it in the
-    // initial index chunk of every production load.
-    let interval: ReturnType<typeof setInterval> | undefined;
-    let cancelled = false;
-    void import('../demo/demoData').then(({ buildStreamMessage, STREAM_POOL }) => {
-      if (cancelled) return;
-      interval = setInterval(() => {
-        const { message, roomIds } = buildStreamMessage(poolIndex.current);
-        poolIndex.current = (poolIndex.current + 1) % STREAM_POOL.length;
-        addMessage(message, roomIds);
-      }, 6000 + Math.random() * 4000);
-    });
-
-    return () => {
-      cancelled = true;
-      if (interval) clearInterval(interval);
-    };
-  }, [addMessage, setConnected]);
-}
 
 export function useWebSocket() {
   const wsRef = useRef<WebSocket | null>(null);
@@ -69,11 +38,7 @@ export function useWebSocket() {
   const bumpJournalRefresh = useAppStore((s) => s.bumpJournalRefresh);
   const bumpPriceAlertRefresh = useAppStore((s) => s.bumpPriceAlertRefresh);
 
-  useDemoStream();
-
   useEffect(() => {
-    if (isDemoMode) return;
-
     let disposed = false;
     let reconnectTimer: ReturnType<typeof setTimeout>;
 

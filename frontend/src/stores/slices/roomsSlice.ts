@@ -1,7 +1,6 @@
 import type { StateCreator } from 'zustand';
 import type { Room } from '../../types';
 import type { AppState } from '../appStore';
-import { isDemoMode, createDemoOverrides } from '../../demo/demoStore';
 import { apiFetch, API_BASE, savePaneRoomIds, loadPaneRoomIds } from '../appStore.helpers';
 import { track } from '../../lib/analytics';
 
@@ -16,14 +15,11 @@ export interface RoomsSlice {
 }
 
 export const createRoomsSlice: StateCreator<AppState, [], [], RoomsSlice> = (set, get) => {
-  const demo = isDemoMode ? createDemoOverrides(set as any, get as any) : null;
-
   return {
     rooms: [],
     activeRoomId: loadPaneRoomIds()[0] ?? null,
 
     fetchRooms: async () => {
-      if (demo) return demo.fetchRooms();
       try {
         const res = await apiFetch(`${API_BASE}/rooms`);
         if (!res.ok) return;
@@ -38,7 +34,6 @@ export const createRoomsSlice: StateCreator<AppState, [], [], RoomsSlice> = (set
     },
 
     createRoom: async (name, channels, highlightedUsers, color, filteredUsers, filterEnabled) => {
-      if (demo) return demo.createRoom(name, channels, highlightedUsers, color, filteredUsers, filterEnabled);
       const res = await apiFetch(`${API_BASE}/rooms`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -57,7 +52,6 @@ export const createRoomsSlice: StateCreator<AppState, [], [], RoomsSlice> = (set
     },
 
     updateRoom: async (id, data) => {
-      if (demo) return demo.updateRoom(id, data);
       await apiFetch(`${API_BASE}/rooms/${id}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
@@ -67,7 +61,6 @@ export const createRoomsSlice: StateCreator<AppState, [], [], RoomsSlice> = (set
     },
 
     deleteRoom: async (id) => {
-      if (demo) return demo.deleteRoom(id);
       await apiFetch(`${API_BASE}/rooms/${id}`, { method: 'DELETE' });
       const state = get();
       const remaining = state.rooms.filter((r) => r.id !== id);
