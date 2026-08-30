@@ -34,7 +34,28 @@ jobs:
           node-version: '20'
           cache: npm
 
+      # Cache the installed node_modules trees keyed on the exact lockfile.
+      # On a hit we skip `npm ci` entirely (20-40s of extract/link work) —
+      # an identical lockfile produces an identical tree, so this is safe.
+      # The one script `npm ci` would have run that matters (root `prepare`
+      # building @oct/shared) is covered by the explicit build step below.
+      - name: Restore node_modules
+        id: nm-cache
+        uses: actions/cache@v4
+        with:
+          path: |
+            node_modules
+            backend/node_modules
+            frontend/node_modules
+            landing/node_modules
+            fomo-worker/node_modules
+            docs/node_modules
+            user-docs/node_modules
+            packages/*/node_modules
+          key: nm-${{ runner.os }}-node20-${{ hashFiles('package-lock.json') }}
+
       - name: Install (workspaces)
+        if: steps.nm-cache.outputs.cache-hit != 'true'
         run: npm ci
 
       # Build the shared package first — backend/frontend resolve @oct/shared
