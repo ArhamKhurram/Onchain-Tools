@@ -1,28 +1,5 @@
 import type { ContractEntry } from '../types';
 
-/** Fields copied from a prior detection of the same token address. */
-export type ContractMetadata = Pick<
-  ContractEntry,
-  | 'tokenName'
-  | 'tokenSymbol'
-  | 'tokenPair'
-  | 'description'
-  | 'fdvAtCall'
-  | 'fdvAtCallDisplay'
-  | 'liquidityUsd'
-  | 'liquidityDisplay'
-  | 'volumeUsd'
-  | 'volumeDisplay'
-  | 'priceUsd'
-  | 'tokenAge'
-  | 'enrichmentSource'
-  | 'enrichedAt'
-  | 'evmChain'
-  | 'firstCallerName'
-  | 'firstCallMcapUsd'
-  | 'firstCallAt'
->;
-
 function hasContractMetadata(entry: ContractEntry): boolean {
   return !!(entry.tokenSymbol || entry.tokenName);
 }
