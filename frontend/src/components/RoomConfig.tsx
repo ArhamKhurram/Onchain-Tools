@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useAppStore } from '../stores/appStore';
-import type { ChannelRef, KeywordPattern, KeywordMatchMode, HighlightMode } from '../types';
+import type { ChannelRef, KeywordPattern, HighlightMode } from '../types';
 import { X } from 'lucide-react';
 import { normalizeUserIdentifier, appendUserIdentifiers } from '../utils/userIdentifiers';
 import { useUserNameMap } from '../hooks/useUserNameMap';
