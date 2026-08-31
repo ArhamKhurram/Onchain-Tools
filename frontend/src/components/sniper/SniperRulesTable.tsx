@@ -20,12 +20,11 @@ interface SniperRulesTableProps {
 }
 
 function StateBadge({ state }: { state: SnipeRule['state'] }) {
+  // Only `armed` gets its own styling; `draft` and `disabled` share the muted look.
   const cls =
     state === 'armed'
       ? 'border-oct-accent/60 bg-oct-accent/15 text-oct-accent'
-      : state === 'disabled'
-        ? 'border-oct-border text-oct-muted'
-        : 'border-oct-border text-oct-muted';
+      : 'border-oct-border text-oct-muted';
   return <span className={`text-[10px] font-mono uppercase tracking-wider px-2 py-0.5 rounded-oct-sm border ${cls}`}>{state}</span>;
 }
 
