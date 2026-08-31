@@ -30,8 +30,8 @@ export const DEFAULT_RADAR_MULTIPLE_EMOJI_RULES: readonly RadarMultipleEmojiRule
  *  table cell both stay sane. */
 export const MAX_RADAR_EMOJI_RULES = 12;
 export const MAX_RADAR_EMOJI_LENGTH = 8;
-export const MIN_RADAR_EMOJI_THRESHOLD = 1.1;
-export const MAX_RADAR_EMOJI_THRESHOLD = 100_000;
+const MIN_RADAR_EMOJI_THRESHOLD = 1.1;
+const MAX_RADAR_EMOJI_THRESHOLD = 100_000;
 
 /**
  * Strip a pasted emoji down to something safe to render.

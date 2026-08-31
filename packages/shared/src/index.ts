@@ -5,20 +5,15 @@
 export { matchKeywords } from './keyword.js';
 export {
   SOL_ADDRESS_REGEX,
-  EVM_ADDRESS_REGEX,
   detectContractAddresses,
   isEvmAddress,
   normalizeContractAddress,
   REFERRALS,
-  getPresetTemplate,
-  injectReferralIntoCustomTemplate,
   buildContractUrl,
-  FOMO_NETWORK_CHAIN_SLUGS,
   chainSlugFromNetworkId,
   chainKindFromNetworkId,
   REVIVAL_NETWORKS,
   REVIVAL_NETWORK_CHAIN_SLUGS,
-  REVIVAL_NETWORK_LABELS,
   isRevivalNetwork,
   revivalNetworkForChain,
   revivalNetworkLabel,
@@ -30,8 +25,6 @@ export {
   DEFAULT_RADAR_MULTIPLE_EMOJI_RULES,
   MAX_RADAR_EMOJI_RULES,
   MAX_RADAR_EMOJI_LENGTH,
-  MIN_RADAR_EMOJI_THRESHOLD,
-  MAX_RADAR_EMOJI_THRESHOLD,
   sanitizeRadarEmoji,
   sanitizeRadarEmojiRules,
   resolveRadarEmojiRules,
@@ -39,7 +32,7 @@ export {
 } from './radarEmoji.js';
 
 export { processDiscordMessage } from './message.js';
-export type { MessageProcessorContext, MessageGateway } from './message.js';
+export type { MessageProcessorContext } from './message.js';
 
 // Shared number formatting.
 export { formatCompact } from './format.js';
@@ -88,7 +81,6 @@ export {
   pickRoomScore,
   effectiveBand,
   callerRank,
-  sortCallerScores,
   foldCallerCalls,
   rateCall,
   scoreFromAggregate,
