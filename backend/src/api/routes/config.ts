@@ -22,12 +22,6 @@ function trimTo(value: unknown, max: number): string {
 }
 
 /**
- * Caller tiers come straight from the client and are rendered back in the
- * console, so validate rather than trusting the shape. Entries with an
- * unparseable key or unknown tier are dropped, not coerced — a silently
- * rewritten mute is worse than a missing one.
- */
-/**
  * Scoring exclusions are free text (a caller key or a display name), so bound
  * the count and length the same way tiers are. Blank entries are dropped rather
  * than stored — an empty exclusion would match nothing but still cost a row.
@@ -45,6 +39,12 @@ function sanitizeCallerExclusions(input: unknown): string[] {
   return out;
 }
 
+/**
+ * Caller tiers come straight from the client and are rendered back in the
+ * console, so validate rather than trusting the shape. Entries with an
+ * unparseable key or unknown tier are dropped, not coerced — a silently
+ * rewritten mute is worse than a missing one.
+ */
 function sanitizeCallerTiers(input: unknown): CallerTierEntry[] {
   if (!Array.isArray(input)) return [];
   const seen = new Set<string>();
