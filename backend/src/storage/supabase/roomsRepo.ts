@@ -1,4 +1,5 @@
 import { randomUUID as uuidv4 } from 'crypto';
+import type { TablesUpdate } from '@oct/shared';
 import type { Room, ChannelRef, KeywordPattern } from '../../discord/types.js';
 import { BaseRepo, throwIfError } from './client.js';
 import {
@@ -253,7 +254,7 @@ export class RoomsRepo extends BaseRepo {
     const existing = await this.getRoom(userId, roomId);
     if (!existing) return null;
 
-    const updateFields: any = {};
+    const updateFields: TablesUpdate<'rooms'> = {};
     if (data.name !== undefined) updateFields.name = data.name;
     if (data.color !== undefined) updateFields.color = data.color;
     if (data.filteredUsers !== undefined) updateFields.filtered_users = data.filteredUsers;
