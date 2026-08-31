@@ -1,4 +1,4 @@
-import { execSync, spawnSync } from 'child_process';
+import { execSync } from 'child_process';
 import { writeFileSync, unlinkSync } from 'fs';
 import { tmpdir } from 'os';
 import { join, dirname } from 'path';
