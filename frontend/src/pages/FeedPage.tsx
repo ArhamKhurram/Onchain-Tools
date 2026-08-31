@@ -8,6 +8,7 @@ import GatewayAuthBanner from '../components/GatewayAuthBanner';
 import FeedChrome from '../components/feed/FeedChrome';
 import { DEFAULT_FEED_CHROME_PRESET, FeedChromeContext, chromeOwnsPaneHeader } from '../components/feed/feedChromeContract';
 import ConsoleEmptyState from '../components/console/ConsoleEmptyState';
+import FullPageSpinner from '../components/common/FullPageSpinner';
 import PreviewBanner from '../components/preview/PreviewBanner';
 import FirstRunGuide from '../components/preview/FirstRunGuide';
 import { routes } from '../lib/routes';
@@ -40,11 +41,7 @@ export default function FeedPage() {
   );
 
   if (!ready || (isAuthenticated && authLoading)) {
-    return (
-      <div className="flex items-center justify-center h-full bg-oct-bg">
-        <div className="w-6 h-6 border-2 border-oct-accent border-t-transparent rounded-full animate-spin" />
-      </div>
-    );
+    return <FullPageSpinner />;
   }
 
   if (!isAuthenticated) {

@@ -6,6 +6,7 @@ import ConsoleEmptyState from '../components/console/ConsoleEmptyState';
 import WorkspaceColumnLayout from '../components/workspace/WorkspaceColumnLayout';
 import WorkspaceToolbar from '../components/workspace/WorkspaceToolbar';
 import RoomPickerModal from '../components/workspace/RoomPickerModal';
+import FullPageSpinner from '../components/common/FullPageSpinner';
 import {
   addColumn,
   appendPanelToColumn,
@@ -110,11 +111,7 @@ export default function WorkspacePage() {
   };
 
   if (!ready) {
-    return (
-      <div className="flex items-center justify-center h-full bg-oct-bg">
-        <div className="w-6 h-6 border-2 border-oct-accent border-t-transparent rounded-full animate-spin" />
-      </div>
-    );
+    return <FullPageSpinner />;
   }
 
   if (!isAuthenticated) {
