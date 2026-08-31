@@ -1,7 +1,7 @@
 import { Fragment, useCallback, useState } from 'react';
 import { Panel, PanelGroup, PanelResizeHandle } from 'react-resizable-panels';
 import WorkspacePanelChrome from './WorkspacePanelChrome';
-import { movePanel } from '../../data/workspaceWidgets';
+import { countPanels, movePanel } from '../../data/workspaceWidgets';
 import type { WorkspaceColumn, WorkspaceLayout, WorkspacePanelSlot } from '../../types/workspace';
 
 interface WorkspaceColumnLayoutProps {
@@ -42,7 +42,7 @@ export default function WorkspaceColumnLayout({
     [layout, onChange],
   );
 
-  if (colCount === 0 || countAllPanels(columns) === 0) {
+  if (colCount === 0 || countPanels(layout) === 0) {
     return (
       <div className="flex-1 flex flex-col items-center justify-center min-h-0 border border-dashed border-oct-border-bright m-4 rounded-oct-lg">
         <p className="text-oct-text font-bold uppercase mb-1.5">No panels yet</p>
@@ -94,10 +94,6 @@ export default function WorkspaceColumnLayout({
       </PanelGroup>
     </div>
   );
-}
-
-function countAllPanels(columns: WorkspaceColumn[]): number {
-  return columns.reduce((n, c) => n + c.panels.length, 0);
 }
 
 interface ColumnStackProps {
