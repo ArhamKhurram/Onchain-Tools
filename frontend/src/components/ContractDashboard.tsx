@@ -115,11 +115,12 @@ export default function ContractDashboard({ embedded = false, topOnly = false }:
     const muted = withQuality.filter((r) => r.quality.tier === 'muted');
 
     // A muted caller can still be first on a runner, so the default is to collapse
-    // them behind a counter rather than drop them — you can always look.
-    let rows = showMuted && !revealMuted
-      ? withQuality.filter((r) => r.quality.tier !== 'muted')
-      : withQuality;
-    if (!showMuted) rows = withQuality.filter((r) => r.quality.tier !== 'muted');
+    // them behind a counter rather than drop them — you can always look. Muted rows
+    // ride along only when the setting keeps them AND this pane's reveal is on;
+    // every other combination hides them.
+    const rows = showMuted && revealMuted
+      ? withQuality
+      : withQuality.filter((r) => r.quality.tier !== 'muted');
 
     // NOTE: rank ordering deliberately does NOT happen here any more. Sorting
     // rows by rank before grouping shuffled same-address scans out of time

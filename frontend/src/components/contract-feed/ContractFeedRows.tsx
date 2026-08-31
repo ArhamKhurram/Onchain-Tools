@@ -47,7 +47,7 @@ function contractDisplay(entry: ContractEntry, showFull: boolean) {
     : `${entry.address.slice(0, 6)}...${entry.address.slice(-4)}`;
   const ticker = entry.tokenSymbol ? `$${entry.tokenSymbol}` : shortAddr;
   const subtitle = entry.tokenName ?? (entry.tokenSymbol ? shortAddr : null);
-  return { shortAddr, ticker, subtitle };
+  return { ticker, subtitle };
 }
 
 /**
