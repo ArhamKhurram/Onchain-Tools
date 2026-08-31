@@ -5,6 +5,7 @@ import { useThemeStore } from '../stores/themeStore';
 import Message from './Message';
 import ChatInput from './ChatInput';
 import VirtualMessageList, { type VirtualMessageListHandle } from './VirtualMessageList';
+import HiddenUsersPanel from './HiddenUsersPanel';
 import { useCallerQuality, type CallerQuality } from '../hooks/useCallerQuality';
 import { createHighlightColorResolver } from '../utils/userIdentifiers';
 import { selectDmSwitcherEntries, parseDmSwitcherEntry } from '../utils/dmSwitcherEntries';
@@ -12,7 +13,7 @@ import { computeFrozenWindow, scrollAnchorDecision, MESSAGE_JUMP_EVENT } from '.
 import { useFeedChromeContext } from './feed/feedChromeContract';
 import { callerKey } from '@oct/shared';
 import type { FrontendMessage } from '../types';
-import { Hash, MessageCircle, Settings, ArrowDown, Filter, EyeOff, X, Trash2, Eye, Search, ChevronUp, ChevronDown, Send, AtSign, GripVertical, Plus, Rows2, Columns2, ArrowLeft, ArrowRight, Lock, Unlock, ExternalLink } from 'lucide-react';
+import { Hash, MessageCircle, Settings, ArrowDown, Filter, EyeOff, X, Eye, Search, ChevronUp, ChevronDown, Send, AtSign, GripVertical, Plus, Rows2, Columns2, ArrowLeft, ArrowRight, Lock, Unlock, ExternalLink } from 'lucide-react';
 
 const MAX_PANES = 4;
 
@@ -821,43 +822,11 @@ export default function ChatPane({ roomId, paneIndex, paneCount, editMode, varia
 
       {/* Hidden users panel */}
       {hiddenPanelOpen && channelHiddenUsers.length > 0 && (
-        <div className="border-b-2 border-oct-border bg-oct-surface px-3 sm:px-4 py-3 shrink-0">
-          <div className="flex items-center justify-between mb-2">
-            <span className="font-mono text-xs uppercase tracking-[0.2em] text-oct-muted">
-              Hidden Users
-            </span>
-            <button
-              onClick={() => setHiddenPanelOpen(false)}
-              className="text-oct-muted hover:text-oct-accent transition-colors duration-100"
-            >
-              <X size={14} />
-            </button>
-          </div>
-          <div className="space-y-1 max-h-[200px] overflow-y-auto">
-            {channelHiddenUsers.map((entry) => (
-              <div
-                key={`${entry.guildId}:${entry.channelId}:${entry.userId}`}
-                className="flex items-center justify-between gap-2 px-2 sm:px-2.5 py-1.5 rounded-cockpit border-2 border-oct-border bg-oct-surface-raised"
-              >
-                <div className="flex items-center gap-2 min-w-0 flex-wrap">
-                  <EyeOff size={12} className="shrink-0 text-oct-flame/70" />
-                  <span className="text-sm text-oct-text font-medium truncate">{entry.displayName}</span>
-                  <span className="text-[10px] text-oct-muted font-mono hidden sm:inline">{entry.userId}</span>
-                  <span className="font-mono text-[10px] text-oct-muted truncate hidden sm:inline">
-                    {entry.guildName ? `${entry.guildName} / ` : ''}#{entry.channelName}
-                  </span>
-                </div>
-                <button
-                  onClick={() => unhideUser(entry.guildId, entry.channelId, entry.userId)}
-                  className="shrink-0 text-oct-muted hover:text-oct-flame transition-colors duration-100"
-                  title="Unhide user"
-                >
-                  <Trash2 size={14} />
-                </button>
-              </div>
-            ))}
-          </div>
-        </div>
+        <HiddenUsersPanel
+          entries={channelHiddenUsers}
+          onClose={() => setHiddenPanelOpen(false)}
+          onUnhide={unhideUser}
+        />
       )}
 
       {/* Messages */}
