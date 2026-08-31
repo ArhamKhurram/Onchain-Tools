@@ -346,7 +346,6 @@ export default function PortfolioDashboard() {
             chain={selectedWallet?.chain ?? 'robinhood'}
             loading={loading}
             error={holdingsError}
-            needsPrivateKey={false}
             showChainTag={isEvmAggregated || isAllWallets}
             showWalletTag={isAllWallets}
           />

@@ -278,9 +278,11 @@ Detail in [sniper execution](../sniper-execution/) and
 | --- | --- | --- | --- |
 | `auth/encryption.ts` (AES-256-GCM), `utils/contract.ts` detectors | `packages/shared` `KeywordPattern` → AND/OR/NOT groups; `MessageSource` unchanged (tweets never become `FrontendMessage`) | `telegram/clientManager.ts` dedupe window; `discord/gateway.ts` outbound WS heartbeat and backoff (drop the resume half — J7 has none); `fomo/poller.ts` dedupe-across-subscribers | Extending `StorageProvider` — its 20-method surface is Discord/Telegram/contract-shaped; `SniperStore` is a sibling |
 
-`utils/gmgnSigner.ts` and `utils/gmgnLimiter.ts` are **not** Phase 1 reuse — GMGN is
-not a Phase 1 venue. They become relevant at M11, when a user's own GMGN credential
-is the thing being signed with.
+`utils/gmgnLimiter.ts` is **not** Phase 1 reuse — GMGN is not a Phase 1 venue. It
+becomes relevant at M11, when a user's own GMGN credential is the venue. The old
+GMGN request-signing helpers (`gmgnSigner.ts` `signMessage`/`buildSignatureMessage`)
+were removed as an abandoned dead feature; the M11 signing path will be rebuilt
+against the per-user credential when that work lands.
 
 This page was written when the work was greenfield — a repo-wide grep for
 `sniper|slotshark|j7tracker|tweet` returned three incidental hits. It no longer
