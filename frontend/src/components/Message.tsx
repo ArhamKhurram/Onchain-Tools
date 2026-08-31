@@ -5,17 +5,19 @@ import type { CallerQuality } from '../hooks/useCallerQuality';
 import { BAND_NAME_COLOR, BAND_BADGE_CLASS, BAND_TITLE, bandIsNotable } from '../utils/callerBandStyle';
 import { BAND_LABELS } from '@oct/shared';
 import { useAppStore } from '../stores/appStore';
-import { AuthImage, AuthVideo, AuthAudio } from './AuthMedia';
+import { AuthImage } from './AuthMedia';
 import ImageLightbox from './ImageLightbox';
 import UserContextMenu from './UserContextMenu';
 import { buildContractUrl, DEFAULT_LINK_TEMPLATES } from '../utils/contractUrl';
 import { requestMessageJump } from '../utils/messageListWindow';
 import { colorWithExtraAlpha } from './ColorPickerWithAlpha';
 import { getAvatarUrl, formatTimestamp } from './message/avatar';
-import { type AddressColors, renderContent, renderInlineMarkdown, renderEmbedDescription } from './message/content';
+import { type AddressColors, renderContent, renderInlineMarkdown } from './message/content';
 import { ReactionPills } from './message/reactions';
 import { TelegramExtras } from './message/TelegramExtras';
 import { DeletedBadge, EditedIndicator } from './message/badges';
+import { MessageAttachments } from './message/MessageAttachments';
+import { MessageEmbeds } from './message/MessageEmbeds';
 
 interface MessageProps {
   message: FrontendMessage;
@@ -135,13 +137,12 @@ function Message({ message, isCompact, messageDisplay = 'default', compactModeAv
 
   const handleBadgeClick = () => {
     const hasContract = message.hasContractAddress && message.contractAddresses.length > 0;
+    // Only ever invoked from a call site already guarded by `hasContract`.
     const openPlatform = () => {
-      if (hasContract) {
-        const addr = message.contractAddresses[0];
-        const evmChain = useAppStore.getState().addressChains[addr.toLowerCase()];
-        const url = buildContractUrl(addr, templates, evmChain);
-        window.open(url, '_blank', 'noopener,noreferrer');
-      }
+      const addr = message.contractAddresses[0];
+      const evmChain = useAppStore.getState().addressChains[addr.toLowerCase()];
+      const url = buildContractUrl(addr, templates, evmChain);
+      window.open(url, '_blank', 'noopener,noreferrer');
     };
 
     switch (badgeAct) {
@@ -299,127 +300,9 @@ function Message({ message, isCompact, messageDisplay = 'default', compactModeAv
             <EditedIndicator message={message} addrColors={addrColors} templates={templates} clickAct={clickAct} showFull={showFull} />
           </div>
 
-          {message.attachments.length > 0 && (
-            <div className="flex flex-wrap gap-2 mt-1">
-              {message.attachments.map((att) =>
-                att.content_type?.startsWith('image/') ? (
-                  <AuthImage
-                    key={att.id}
-                    src={att.proxy_url}
-                    alt={att.filename}
-                    className="max-w-full sm:max-w-[400px] max-h-[300px] rounded-cockpit border-2 border-oct-border cursor-pointer hover:opacity-90 transition-opacity"
-                    onClick={() => setLightboxSrc(att.proxy_url)}
-                  />
-                ) : att.content_type?.startsWith('audio/') ? (
-                  <div key={att.id} className="flex flex-col gap-1 max-w-full sm:max-w-[400px]">
-                    <AuthAudio src={att.proxy_url} type={att.content_type} className="h-8 max-w-full" />
-                    <span className="font-mono text-[11px] text-oct-muted truncate">{att.filename}</span>
-                  </div>
-                ) : att.content_type?.startsWith('video/') ? (
-                  <AuthVideo
-                    key={att.id}
-                    src={att.proxy_url}
-                    className="max-w-full sm:max-w-[400px] max-h-[300px] rounded-cockpit border-2 border-oct-border"
-                  />
-                ) : (
-                  <a
-                    key={att.id}
-                    href={att.url}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="text-oct-accent hover:underline text-sm"
-                  >
-                    {att.filename}
-                  </a>
-                )
-              )}
-            </div>
-          )}
+          <MessageAttachments attachments={message.attachments} onImageClick={setLightboxSrc} />
 
-          {message.embeds.length > 0 && !disableEmbeds && (
-            <div className="flex flex-col gap-2 mt-1">
-              {message.embeds.map((embed, i) => (
-                <div
-                  key={i}
-                  className="rounded-cockpit border-2 border-oct-border border-l-4 bg-oct-surface-raised p-2 sm:p-3 max-w-full sm:max-w-[520px]"
-                  style={{ borderLeftColor: embed.color ? `#${embed.color.toString(16).padStart(6, '0')}` : 'rgb(var(--oct-border-bright))' }}
-                >
-                  {embed.author?.name && (
-                    <div className="flex items-center gap-2 mb-1">
-                      {embed.author.icon_url && (
-                        <img src={embed.author.icon_url} alt="" loading="lazy" decoding="async" className="w-6 h-6 rounded-full" />
-                      )}
-                      {embed.author.url ? (
-                        <a href={embed.author.url} target="_blank" rel="noopener noreferrer" className="text-sm font-medium text-oct-text hover:underline">
-                          {renderInlineMarkdown(embed.author.name, [], {})}
-                        </a>
-                      ) : (
-                        <span className="text-sm font-medium text-oct-text">
-                          {renderInlineMarkdown(embed.author.name, [], {})}
-                        </span>
-                      )}
-                    </div>
-                  )}
-                  {embed.title && (
-                    <div className="font-semibold text-sm">
-                      {embed.url ? (
-                        <a href={embed.url} target="_blank" rel="noopener noreferrer" className="hover:underline text-oct-accent">
-                          {renderInlineMarkdown(embed.title, [], {})}
-                        </a>
-                      ) : <span className="text-oct-text">{renderInlineMarkdown(embed.title, [], {})}</span>}
-                    </div>
-                  )}
-                  {embed.description && (
-                    <div className="text-[13px] text-oct-text mt-1 leading-[1.125rem]">
-                      {renderEmbedDescription(embed.description, showFull)}
-                    </div>
-                  )}
-                  {embed.fields && embed.fields.length > 0 && (
-                    <div className="grid gap-y-1 gap-x-2 mt-2" style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(140px, 1fr))' }}>
-                      {embed.fields.map((field, fi) => (
-                        <div key={fi} className={field.inline ? '' : 'col-span-full'}>
-                          <div className="font-mono text-xs font-semibold text-oct-text mb-0.5">
-                            {renderInlineMarkdown(field.name, [], {})}
-                          </div>
-                          <div className="text-[13px] text-oct-text leading-[1.125rem]">
-                            {renderEmbedDescription(field.value, showFull)}
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                  )}
-                  {embed.thumbnail && !embed.image && (
-                    <img
-                      src={embed.thumbnail.url}
-                      alt=""
-                      loading="lazy"
-                      decoding="async"
-                      className="max-w-[80px] max-h-[80px] rounded-cockpit border-2 border-oct-border mt-2 cursor-pointer hover:opacity-90 transition-opacity"
-                      onClick={() => setLightboxSrc(embed.thumbnail!.url)}
-                    />
-                  )}
-                  {embed.image && (
-                    <img
-                      src={embed.image.url}
-                      alt=""
-                      loading="lazy"
-                      decoding="async"
-                      className="max-w-full sm:max-w-[400px] max-h-[300px] rounded-cockpit border-2 border-oct-border mt-2 cursor-pointer hover:opacity-90 transition-opacity"
-                      onClick={() => setLightboxSrc(embed.image!.url)}
-                    />
-                  )}
-                  {embed.footer?.text && (
-                    <div className="flex items-center gap-2 mt-2 font-mono text-xs text-oct-muted">
-                      {embed.footer.icon_url && (
-                        <img src={embed.footer.icon_url} alt="" loading="lazy" decoding="async" className="w-5 h-5 rounded-full" />
-                      )}
-                      <span>{embed.footer.text}</span>
-                    </div>
-                  )}
-                </div>
-              ))}
-            </div>
-          )}
+          <MessageEmbeds embeds={message.embeds} disableEmbeds={disableEmbeds} showFull={showFull} onImageClick={setLightboxSrc} />
 
           <TelegramExtras message={message} />
           <ReactionPills message={message} />
@@ -488,127 +371,9 @@ function Message({ message, isCompact, messageDisplay = 'default', compactModeAv
             <EditedIndicator message={message} addrColors={addrColors} templates={templates} clickAct={clickAct} showFull={showFull} />
           </div>
 
-          {message.attachments.length > 0 && (
-            <div className="flex flex-wrap gap-2 mt-1">
-              {message.attachments.map((att) =>
-                att.content_type?.startsWith('image/') ? (
-                  <AuthImage
-                    key={att.id}
-                    src={att.proxy_url}
-                    alt={att.filename}
-                    className="max-w-full sm:max-w-[400px] max-h-[300px] rounded-cockpit border-2 border-oct-border cursor-pointer hover:opacity-90 transition-opacity"
-                    onClick={() => setLightboxSrc(att.proxy_url)}
-                  />
-                ) : att.content_type?.startsWith('audio/') ? (
-                  <div key={att.id} className="flex flex-col gap-1 max-w-full sm:max-w-[400px]">
-                    <AuthAudio src={att.proxy_url} type={att.content_type} className="h-8 max-w-full" />
-                    <span className="font-mono text-[11px] text-oct-muted truncate">{att.filename}</span>
-                  </div>
-                ) : att.content_type?.startsWith('video/') ? (
-                  <AuthVideo
-                    key={att.id}
-                    src={att.proxy_url}
-                    className="max-w-full sm:max-w-[400px] max-h-[300px] rounded-cockpit border-2 border-oct-border"
-                  />
-                ) : (
-                  <a
-                    key={att.id}
-                    href={att.url}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="text-oct-accent hover:underline text-sm"
-                  >
-                    {att.filename}
-                  </a>
-                )
-              )}
-            </div>
-          )}
+          <MessageAttachments attachments={message.attachments} onImageClick={setLightboxSrc} />
 
-          {message.embeds.length > 0 && !disableEmbeds && (
-            <div className="flex flex-col gap-2 mt-1">
-              {message.embeds.map((embed, i) => (
-                <div
-                  key={i}
-                  className="rounded-cockpit border-2 border-oct-border border-l-4 bg-oct-surface-raised p-2 sm:p-3 max-w-full sm:max-w-[520px]"
-                  style={{ borderLeftColor: embed.color ? `#${embed.color.toString(16).padStart(6, '0')}` : 'rgb(var(--oct-border-bright))' }}
-                >
-                  {embed.author?.name && (
-                    <div className="flex items-center gap-2 mb-1">
-                      {embed.author.icon_url && (
-                        <img src={embed.author.icon_url} alt="" loading="lazy" decoding="async" className="w-6 h-6 rounded-full" />
-                      )}
-                      {embed.author.url ? (
-                        <a href={embed.author.url} target="_blank" rel="noopener noreferrer" className="text-sm font-medium text-oct-text hover:underline">
-                          {renderInlineMarkdown(embed.author.name, [], {})}
-                        </a>
-                      ) : (
-                        <span className="text-sm font-medium text-oct-text">
-                          {renderInlineMarkdown(embed.author.name, [], {})}
-                        </span>
-                      )}
-                    </div>
-                  )}
-                  {embed.title && (
-                    <div className="font-semibold text-sm">
-                      {embed.url ? (
-                        <a href={embed.url} target="_blank" rel="noopener noreferrer" className="hover:underline text-oct-accent">
-                          {renderInlineMarkdown(embed.title, [], {})}
-                        </a>
-                      ) : <span className="text-oct-text">{renderInlineMarkdown(embed.title, [], {})}</span>}
-                    </div>
-                  )}
-                  {embed.description && (
-                    <div className="text-[13px] text-oct-text mt-1 leading-[1.125rem]">
-                      {renderEmbedDescription(embed.description, showFull)}
-                    </div>
-                  )}
-                  {embed.fields && embed.fields.length > 0 && (
-                    <div className="grid gap-y-1 gap-x-2 mt-2" style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(140px, 1fr))' }}>
-                      {embed.fields.map((field, fi) => (
-                        <div key={fi} className={field.inline ? '' : 'col-span-full'}>
-                          <div className="font-mono text-xs font-semibold text-oct-text mb-0.5">
-                            {renderInlineMarkdown(field.name, [], {})}
-                          </div>
-                          <div className="text-[13px] text-oct-text leading-[1.125rem]">
-                            {renderEmbedDescription(field.value, showFull)}
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                  )}
-                  {embed.thumbnail && !embed.image && (
-                    <img
-                      src={embed.thumbnail.url}
-                      alt=""
-                      loading="lazy"
-                      decoding="async"
-                      className="max-w-[80px] max-h-[80px] rounded-cockpit border-2 border-oct-border mt-2 cursor-pointer hover:opacity-90 transition-opacity"
-                      onClick={() => setLightboxSrc(embed.thumbnail!.url)}
-                    />
-                  )}
-                  {embed.image && (
-                    <img
-                      src={embed.image.url}
-                      alt=""
-                      loading="lazy"
-                      decoding="async"
-                      className="max-w-full sm:max-w-[400px] max-h-[300px] rounded-cockpit border-2 border-oct-border mt-2 cursor-pointer hover:opacity-90 transition-opacity"
-                      onClick={() => setLightboxSrc(embed.image!.url)}
-                    />
-                  )}
-                  {embed.footer?.text && (
-                    <div className="flex items-center gap-2 mt-2 font-mono text-xs text-oct-muted">
-                      {embed.footer.icon_url && (
-                        <img src={embed.footer.icon_url} alt="" loading="lazy" decoding="async" className="w-5 h-5 rounded-full" />
-                      )}
-                      <span>{embed.footer.text}</span>
-                    </div>
-                  )}
-                </div>
-              ))}
-            </div>
-          )}
+          <MessageEmbeds embeds={message.embeds} disableEmbeds={disableEmbeds} showFull={showFull} onImageClick={setLightboxSrc} />
 
           <TelegramExtras message={message} />
           <ReactionPills message={message} />
@@ -741,127 +506,9 @@ function Message({ message, isCompact, messageDisplay = 'default', compactModeAv
           <EditedIndicator message={message} addrColors={addrColors} templates={templates} clickAct={clickAct} showFull={showFull} />
         </div>
 
-        {message.attachments.length > 0 && (
-          <div className="flex flex-wrap gap-2 mt-1">
-            {message.attachments.map((att) =>
-              att.content_type?.startsWith('image/') ? (
-                <AuthImage
-                  key={att.id}
-                  src={att.proxy_url}
-                  alt={att.filename}
-                  className="max-w-full sm:max-w-[400px] max-h-[300px] rounded-cockpit border-2 border-oct-border cursor-pointer hover:opacity-90 transition-opacity"
-                  onClick={() => setLightboxSrc(att.proxy_url)}
-                />
-              ) : att.content_type?.startsWith('audio/') ? (
-                <div key={att.id} className="flex flex-col gap-1 max-w-full sm:max-w-[400px]">
-                  <AuthAudio src={att.proxy_url} type={att.content_type} className="h-8 max-w-full" />
-                  <span className="font-mono text-[11px] text-oct-muted truncate">{att.filename}</span>
-                </div>
-              ) : att.content_type?.startsWith('video/') ? (
-                <AuthVideo
-                  key={att.id}
-                  src={att.proxy_url}
-                  className="max-w-full sm:max-w-[400px] max-h-[300px] rounded-cockpit border-2 border-oct-border"
-                />
-              ) : (
-                <a
-                  key={att.id}
-                  href={att.url}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="text-oct-accent hover:underline text-sm"
-                >
-                  {att.filename}
-                </a>
-              )
-            )}
-          </div>
-        )}
+        <MessageAttachments attachments={message.attachments} onImageClick={setLightboxSrc} />
 
-        {message.embeds.length > 0 && !disableEmbeds && (
-          <div className="flex flex-col gap-2 mt-1">
-            {message.embeds.map((embed, i) => (
-              <div
-                key={i}
-                className="rounded-cockpit border-2 border-oct-border border-l-4 bg-oct-surface-raised p-2 sm:p-3 max-w-full sm:max-w-[520px]"
-                style={{ borderLeftColor: embed.color ? `#${embed.color.toString(16).padStart(6, '0')}` : 'rgb(var(--oct-border-bright))' }}
-              >
-                {embed.author?.name && (
-                  <div className="flex items-center gap-2 mb-1">
-                    {embed.author.icon_url && (
-                      <img src={embed.author.icon_url} alt="" loading="lazy" decoding="async" className="w-6 h-6 rounded-full" />
-                    )}
-                    {embed.author.url ? (
-                      <a href={embed.author.url} target="_blank" rel="noopener noreferrer" className="text-sm font-medium text-oct-text hover:underline">
-                        {renderInlineMarkdown(embed.author.name, [], {})}
-                      </a>
-                    ) : (
-                      <span className="text-sm font-medium text-oct-text">
-                        {renderInlineMarkdown(embed.author.name, [], {})}
-                      </span>
-                    )}
-                  </div>
-                )}
-                {embed.title && (
-                  <div className="font-semibold text-sm">
-                    {embed.url ? (
-                      <a href={embed.url} target="_blank" rel="noopener noreferrer" className="hover:underline text-oct-accent">
-                        {renderInlineMarkdown(embed.title, [], {})}
-                      </a>
-                    ) : <span className="text-oct-text">{renderInlineMarkdown(embed.title, [], {})}</span>}
-                  </div>
-                )}
-                {embed.description && (
-                  <div className="text-[13px] text-oct-text mt-1 leading-[1.125rem]">
-                    {renderEmbedDescription(embed.description, showFull)}
-                  </div>
-                )}
-                {embed.fields && embed.fields.length > 0 && (
-                  <div className="grid gap-y-1 gap-x-2 mt-2" style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(140px, 1fr))' }}>
-                    {embed.fields.map((field, fi) => (
-                      <div key={fi} className={field.inline ? '' : 'col-span-full'}>
-                        <div className="font-mono text-xs font-semibold text-oct-text mb-0.5">
-                          {renderInlineMarkdown(field.name, [], {})}
-                        </div>
-                        <div className="text-[13px] text-oct-text leading-[1.125rem]">
-                          {renderEmbedDescription(field.value, showFull)}
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                )}
-                {embed.thumbnail && !embed.image && (
-                  <img
-                    src={embed.thumbnail.url}
-                    alt=""
-                    loading="lazy"
-                    decoding="async"
-                    className="max-w-[80px] max-h-[80px] rounded-cockpit border-2 border-oct-border mt-2 cursor-pointer hover:opacity-90 transition-opacity"
-                    onClick={() => setLightboxSrc(embed.thumbnail!.url)}
-                  />
-                )}
-                {embed.image && (
-                  <img
-                    src={embed.image.url}
-                    alt=""
-                    loading="lazy"
-                    decoding="async"
-                    className="max-w-full sm:max-w-[400px] max-h-[300px] rounded-cockpit border-2 border-oct-border mt-2 cursor-pointer hover:opacity-90 transition-opacity"
-                    onClick={() => setLightboxSrc(embed.image!.url)}
-                  />
-                )}
-                {embed.footer?.text && (
-                  <div className="flex items-center gap-2 mt-2 font-mono text-xs text-oct-muted">
-                    {embed.footer.icon_url && (
-                      <img src={embed.footer.icon_url} alt="" loading="lazy" decoding="async" className="w-5 h-5 rounded-full" />
-                    )}
-                    <span>{embed.footer.text}</span>
-                  </div>
-                )}
-              </div>
-            ))}
-          </div>
-        )}
+        <MessageEmbeds embeds={message.embeds} disableEmbeds={disableEmbeds} showFull={showFull} onImageClick={setLightboxSrc} />
 
         <TelegramExtras message={message} />
         <ReactionPills message={message} />
