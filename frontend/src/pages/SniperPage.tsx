@@ -15,6 +15,7 @@ import SniperStatusBar from '../components/sniper/SniperStatusBar';
 import SniperWalletsTable from '../components/sniper/SniperWalletsTable';
 import TriggerRealityNotice from '../components/sniper/TriggerRealityNotice';
 import VenueConnectPanel from '../components/sniper/VenueConnectPanel';
+import FullPageSpinner from '../components/common/FullPageSpinner';
 import { routes } from '../lib/routes';
 
 // The sniper console: a control plane and a record, not a trigger engine. The
@@ -56,11 +57,7 @@ export default function SniperPage() {
   };
 
   if (!ready) {
-    return (
-      <div className="flex items-center justify-center h-full bg-oct-bg">
-        <div className="w-6 h-6 border-2 border-oct-accent border-t-transparent rounded-full animate-spin" />
-      </div>
-    );
+    return <FullPageSpinner />;
   }
 
   // Gated on `isAuthenticated` ONLY, deliberately not on `userId` as FomoPage is.

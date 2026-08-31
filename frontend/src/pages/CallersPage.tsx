@@ -8,6 +8,7 @@ import RevivalLog from '../components/callers/RevivalLog';
 import PriceAlerts from '../components/callers/PriceAlerts';
 import ConsoleEmptyState from '../components/console/ConsoleEmptyState';
 import ConsoleSubnav from '../components/console/ConsoleSubnav';
+import FullPageSpinner from '../components/common/FullPageSpinner';
 import { routes } from '../lib/routes';
 
 type CallersView = 'feed' | 'radar' | 'revival' | 'alerts';
@@ -35,11 +36,7 @@ export default function CallersPage() {
   };
 
   if (!ready) {
-    return (
-      <div className="flex items-center justify-center h-full bg-oct-bg">
-        <div className="w-6 h-6 border-2 border-oct-accent border-t-transparent rounded-full animate-spin" />
-      </div>
-    );
+    return <FullPageSpinner />;
   }
 
   if (!isAuthenticated) {

@@ -2,6 +2,7 @@ import { Wallet } from 'lucide-react';
 import { useAuthSession } from '../hooks/useAuthSession';
 import WalletTracker from '../components/wallets/WalletTracker';
 import ConsoleEmptyState from '../components/console/ConsoleEmptyState';
+import FullPageSpinner from '../components/common/FullPageSpinner';
 import { routes } from '../lib/routes';
 
 // The tracked-wallet directory: on-chain addresses you watch (useTrackedWallets).
@@ -12,11 +13,7 @@ export default function DirectoryPage() {
   const { isAuthenticated, ready, userId } = useAuthSession();
 
   if (!ready) {
-    return (
-      <div className="flex items-center justify-center h-full bg-oct-bg">
-        <div className="w-6 h-6 border-2 border-oct-accent border-t-transparent rounded-full animate-spin" />
-      </div>
-    );
+    return <FullPageSpinner />;
   }
 
   if (!isAuthenticated) {

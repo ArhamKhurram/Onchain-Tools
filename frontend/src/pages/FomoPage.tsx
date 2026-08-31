@@ -11,6 +11,7 @@ import FomoTrackedList from '../components/fomo/FomoTrackedList';
 import FomoHoldersLookup from '../components/fomo/FomoHoldersLookup';
 import FomoThesesLookup from '../components/fomo/FomoThesesLookup';
 import FomoTraderLookup from '../components/fomo/FomoTraderLookup';
+import FullPageSpinner from '../components/common/FullPageSpinner';
 import { routes } from '../lib/routes';
 
 // One home for everything fomo.family. Each tab is a distinct surface; the
@@ -71,11 +72,7 @@ export default function FomoPage() {
   };
 
   if (!ready) {
-    return (
-      <div className="flex items-center justify-center h-full bg-oct-bg">
-        <div className="w-6 h-6 border-2 border-oct-accent border-t-transparent rounded-full animate-spin" />
-      </div>
-    );
+    return <FullPageSpinner />;
   }
 
   if (!isAuthenticated || !userId) {
