@@ -16,10 +16,8 @@ function fingerprint(tokens: string[]): string {
 
 export class UserGatewayPool {
   private gateways = new Map<string, PoolEntry>();
-  private idleTimeoutMs: number;
 
-  constructor(idleTimeoutMs = DEFAULT_IDLE_TIMEOUT_MS) {
-    this.idleTimeoutMs = idleTimeoutMs;
+  constructor() {
     setInterval(() => this.disconnectIdle(), 60_000);
   }
 
@@ -86,7 +84,7 @@ export class UserGatewayPool {
   private disconnectIdle(): void {
     const now = Date.now();
     for (const [userId, entry] of this.gateways) {
-      if (entry.activeClients === 0 && now - entry.lastActive > this.idleTimeoutMs) {
+      if (entry.activeClients === 0 && now - entry.lastActive > DEFAULT_IDLE_TIMEOUT_MS) {
         console.log(`[GatewayPool] Disconnecting idle gateway for user ${userId.slice(0, 8)}...`);
         entry.manager.disconnect();
         this.gateways.delete(userId);

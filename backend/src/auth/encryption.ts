@@ -15,7 +15,7 @@ function getKey(): Buffer {
   return Buffer.from(hex, 'hex');
 }
 
-export interface EncryptedToken {
+interface EncryptedToken {
   encrypted: string;
   iv: string;
   tag: string;
