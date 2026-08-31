@@ -135,6 +135,19 @@ export function appHighlightsToRows(
   });
 }
 
+export function appChannelToRow(userId: string, roomId: string, channel: ChannelRef) {
+  return {
+    room_id: roomId,
+    user_id: userId,
+    source: channel.source ?? 'discord',
+    guild_id: channel.guildId,
+    channel_id: channel.channelId,
+    guild_name: channel.guildName,
+    channel_name: channel.channelName,
+    disable_embeds: channel.disableEmbeds ?? false,
+  };
+}
+
 export function appKeywordsToRows(userId: string, roomId: string | null, patterns: KeywordPattern[]) {
   return patterns.map((pattern) => ({
     user_id: userId,
