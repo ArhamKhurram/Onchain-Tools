@@ -45,10 +45,8 @@ export default function AppShell() {
     hydrateTheme();
   }, [hydrateTheme]);
 
-  const unseenCount = UPDATE_SLIDES.filter((s) => {
-    const seen = new Set([...getSeenIds(), ...(config?.seenAnnouncements ?? [])]);
-    return !seen.has(s.id);
-  }).length;
+  const seen = new Set([...getSeenIds(), ...(config?.seenAnnouncements ?? [])]);
+  const unseenCount = UPDATE_SLIDES.filter((s) => !seen.has(s.id)).length;
 
   const handleSignOut = async () => {
     if (isHostedMode) {
