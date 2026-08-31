@@ -1,5 +1,3 @@
-import { gmgnSignedGet, type GmgnResult } from '../utils/gmgnClient.js';
-
 export type OctWalletChain = 'bsc' | 'ethereum' | 'solana' | 'base' | 'robinhood';
 export type GmgnChain = 'sol' | 'base' | 'bsc' | 'eth' | 'robinhood';
 
@@ -39,37 +37,6 @@ export function normalizeGmgnChain(chain: string): GmgnChain | null {
   return null;
 }
 
-const CACHE_TTL_MS = 90_000;
-const cache = new Map<string, { expires: number; value: GmgnResult<unknown> }>();
-
-function cacheKey(endpoint: string, chain: string, address: string, extra: Record<string, unknown>): string {
-  return `${endpoint}:${chain}:${address}:${JSON.stringify(extra)}`;
-}
-
-function readCache<T>(key: string): GmgnResult<T> | null {
-  const hit = cache.get(key);
-  if (!hit || hit.expires <= Date.now()) {
-    if (hit) cache.delete(key);
-    return null;
-  }
-  return hit.value as GmgnResult<T>;
-}
-
-function writeCache(key: string, value: GmgnResult<unknown>): void {
-  cache.set(key, { expires: Date.now() + CACHE_TTL_MS, value });
-}
-
-async function cachedFetch<T>(
-  key: string,
-  fetcher: () => Promise<GmgnResult<T>>,
-): Promise<GmgnResult<T>> {
-  const hit = readCache<T>(key);
-  if (hit) return hit;
-  const result = await fetcher();
-  writeCache(key, result);
-  return result;
-}
-
 export type WalletStats = {
   realized_profit?: number | string;
   unrealized_profit?: number | string;
@@ -106,23 +73,6 @@ export type WalletHoldingsResponse = {
   holdings?: WalletHolding[];
   next?: string;
 };
-
-export async function fetchWalletHoldings(
-  chain: GmgnChain,
-  address: string,
-  extra: Record<string, string | number> = {},
-): Promise<GmgnResult<WalletHoldingsResponse>> {
-  const key = cacheKey('holdings', chain, address, extra);
-  return cachedFetch(key, () =>
-    gmgnSignedGet<WalletHoldingsResponse>('/v1/user/wallet_holdings', {
-      chain,
-      wallet_address: address,
-      order_by: 'usd_value',
-      direction: 'desc',
-      ...extra,
-    }),
-  );
-}
 
 export type WalletActivityItem = {
   chain?: GmgnChain;
