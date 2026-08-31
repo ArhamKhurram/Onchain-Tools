@@ -25,9 +25,8 @@ picks one:
 | Selected when | default | `FOMO_PROXY_URL` + `FOMO_WORKER_SECRET` set (`isFomoProxyMode()`) |
 | Used in production | — | ✔ (Railway → VPS) |
 
-Both expose the same surface: `call`, `getTopHolders`, `searchUsers`,
-`getUserByHandle`, `getUserBalances`, `getLeaderboard`, `getUserActivity`,
-`getTradingActivity`, `getTokenAllowList`, …
+Both expose the same surface: `call`, `searchUsers`, `getUserByHandle`,
+`getUserBalances`, `getLeaderboard`, `getUserActivity`, `getTokenTheses`, …
 
 ## Token rotation
 

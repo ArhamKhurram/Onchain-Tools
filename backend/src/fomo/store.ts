@@ -264,11 +264,12 @@ export function extractUserActivitiesArray(json: any): any[] {
 }
 
 /**
- * Pull the array of raw trade objects out of a FOMO getTradingActivity() JSON
- * body. The envelope shape is also UNVERIFIED, so this tries the conventions
- * seen elsewhere in the client (responseObject) plus common fallbacks.
+ * Best-effort extraction of an array of raw row objects from a FOMO JSON body.
+ * Used as a shared fallback by the activity and leaderboard extractors when
+ * their own envelope keys don't match, so it tries the conventions seen
+ * elsewhere in the client (responseObject) plus common fallbacks.
  *
- * TODO(verify): confirm the real envelope key for the trades array.
+ * TODO(verify): confirm the real envelope key for each list response.
  */
 function extractTradesArray(json: any): any[] {
   if (Array.isArray(json)) return json;
