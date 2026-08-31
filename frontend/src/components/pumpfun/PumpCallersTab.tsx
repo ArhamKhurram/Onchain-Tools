@@ -115,18 +115,16 @@ export default function PumpCallersTab({ onGoToFeed }: { onGoToFeed?: () => void
 
   // Add a single caller's wallet to the Directory. Idempotent: a unique-violation
   // (already present) is swallowed so the row simply flips to "Tracked".
-  const trackOnChain = async (address: string, username: string | null): Promise<string | null> => {
-    if (trackedSolAddresses.has(address)) return null;
+  const trackOnChain = async (address: string, username: string | null): Promise<void> => {
+    if (trackedSolAddresses.has(address)) return;
     setTrackError(null);
     setTrackBusy(true);
     try {
       await createWallet(callerWalletInsert(address, username));
-      return null;
     } catch (err) {
-      if (isDuplicateWallet(err)) return null;
+      if (isDuplicateWallet(err)) return;
       const msg = (err as Error)?.message ?? 'Failed to add wallet to Directory.';
       setTrackError(msg);
-      return msg;
     } finally {
       setTrackBusy(false);
     }
