@@ -4,6 +4,7 @@ import { BaseRepo, throwIfError } from './client.js';
 import {
   type HighlightRow,
   type KeywordRow,
+  appChannelToRow,
   appHighlightsToRows,
   appKeywordsToRows,
   dbRoomToAppRoom,
@@ -239,16 +240,7 @@ export class RoomsRepo extends BaseRepo {
     await this.syncKeywords(userId, roomId, data.keywordPatterns ?? []);
 
     if (data.channels && data.channels.length > 0) {
-      const channelRows = data.channels.map((ch) => ({
-        room_id: roomId,
-        user_id: userId,
-        source: ch.source ?? 'discord',
-        guild_id: ch.guildId,
-        channel_id: ch.channelId,
-        guild_name: ch.guildName,
-        channel_name: ch.channelName,
-        disable_embeds: ch.disableEmbeds ?? false,
-      }));
+      const channelRows = data.channels.map((ch) => appChannelToRow(userId, roomId, ch));
       const chResult = await this.supabase.from('room_channels').insert(channelRows);
       throwIfError(chResult, 'Failed to create room channels');
     }
@@ -288,16 +280,7 @@ export class RoomsRepo extends BaseRepo {
     if (data.channels !== undefined) {
       await this.supabase.from('room_channels').delete().eq('room_id', roomId);
       if (data.channels.length > 0) {
-        const channelRows = data.channels.map((ch) => ({
-          room_id: roomId,
-          user_id: userId,
-          source: ch.source ?? 'discord',
-          guild_id: ch.guildId,
-          channel_id: ch.channelId,
-          guild_name: ch.guildName,
-          channel_name: ch.channelName,
-          disable_embeds: ch.disableEmbeds ?? false,
-        }));
+        const channelRows = data.channels.map((ch) => appChannelToRow(userId, roomId, ch));
         await this.supabase.from('room_channels').insert(channelRows);
       }
     }
