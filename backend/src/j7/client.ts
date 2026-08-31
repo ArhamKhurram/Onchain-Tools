@@ -25,9 +25,10 @@ const RECONNECT_DELAY_MAX_MS = Number.parseInt(process.env.J7_RECONNECT_DELAY_MA
 // no-op gap-closer we never depend on — see the comment at the emit site.
 const SOCIAL_HISTORY_LIMIT = Number.parseInt(process.env.J7_SOCIAL_HISTORY_LIMIT ?? '', 10) || 50;
 
-// Server-pushed state snapshots on connect. We don't auto-subscribe (targets are
-// managed operator-side), so these are acknowledged as known events and
-// otherwise ignored — listing them keeps them off the unknown-event warning path.
+// Server-pushed state snapshots on connect — j7's view of what this socket is
+// scoped to. roster.ts owns that set over REST and reconnects the socket when it
+// changes, so the snapshots are acknowledged as known events and otherwise
+// ignored; listing them keeps them off the unknown-event warning path.
 const STATE_EVENTS = ['tracked_pump', 'tracked_fomo', 'tracked_telegram', 'tracked_subdomain'] as const;
 
 /** One configured j7 account: a display label and its manual JWT. */
@@ -126,6 +127,20 @@ class J7Socket {
     }
   }
 
+  /**
+   * Re-establish this connection so a changed target set takes effect.
+   *
+   * Measured live: j7 scopes a socket at CONNECT time — it pushes the
+   * `tracked_*` snapshots on connect — so a target subscribed via REST after the
+   * socket came up does not start delivering on that socket. The listeners are
+   * kept (they are bound to this instance, not the connection), so this is a
+   * transport bounce, not a rebuild.
+   */
+  reconnect(): void {
+    this.socket.disconnect();
+    this.socket.connect();
+  }
+
   close(): void {
     this.socket.removeAllListeners();
     this.socket.disconnect();
@@ -146,6 +161,21 @@ export class J7Consumer {
       this.sockets.push(new J7Socket(account, this.sink));
     }
     console.log(`[J7] Consumer started with ${this.sockets.length} socket(s).`);
+  }
+
+  /**
+   * Bounce one account's socket, addressed BY INDEX.
+   *
+   * Index, not username: `parseJ7Accounts` defaults a missing label to
+   * "account", so labels can collide, and the reconciler already works through
+   * the same ordered array. Reconnecting the wrong socket would silently leave
+   * a changed roster unscoped.
+   */
+  reconnectAccount(index: number, reason: string): void {
+    const socket = this.sockets[index];
+    if (!socket) return;
+    console.log(`[J7] (${this.accounts[index]?.username ?? index}) reconnecting — ${reason}.`);
+    socket.reconnect();
   }
 
   stop(): void {
