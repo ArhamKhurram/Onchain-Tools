@@ -208,7 +208,6 @@ export function usePortfolio(
     statsError,
     holdingsError,
     activityError,
-    birdeyeMissing,
     portfolioApiMissing: birdeyeMissing,
     totalHoldingsUsd,
     isAllWallets,
