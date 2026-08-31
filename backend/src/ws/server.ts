@@ -7,6 +7,42 @@ import { verifyAccessToken } from '../auth/middleware.js';
 interface ClientState {
   subscribedRooms: Set<string>;
   userId: string | null;
+  /** Frames dropped by the backpressure guard (observability only). */
+  skippedFrames: number;
+}
+
+// ---------------------------------------------------------------------------
+// Backpressure guard
+//
+// `ws.send()` never blocks: everything the kernel socket can't take right now
+// is buffered in server memory (`bufferedAmount`). A client that stops reading
+// — laptop lid closed mid-transfer, a zombie TCP connection, a mobile radio
+// stall — therefore grows an unbounded per-socket buffer while broadcasts keep
+// flowing. Two caps bound it:
+//
+//   * soft cap — stop queueing *non-essential* frames (feed traffic: messages,
+//     contracts, enrichment, reactions…) for that socket. Alerts still queue.
+//   * hard cap — the socket is beyond saving; terminate it. The frontend's
+//     useWebSocket auto-reconnects, so a genuinely alive client self-heals
+//     with a fresh socket and re-subscribes; a dead one stops costing memory.
+//
+// Healthy sockets (bufferedAmount at/below the soft cap, which in practice is
+// ~0) are completely unaffected: same frames, same order.
+// ---------------------------------------------------------------------------
+
+const DEFAULT_SOFT_BUFFER_LIMIT = 1 * 1024 * 1024; // 1 MiB
+const DEFAULT_HARD_BUFFER_LIMIT = 8 * 1024 * 1024; // 8 MiB
+
+/** Read a byte-count env override (OCT_* name first, TRENCHCORD_* fallback). */
+function readByteLimit(names: string[], fallback: number): number {
+  for (const name of names) {
+    const raw = process.env[name];
+    if (raw === undefined || raw === '') continue;
+    const parsed = Number(raw);
+    if (Number.isFinite(parsed) && parsed > 0) return Math.floor(parsed);
+    console.warn(`[WS] Ignoring invalid ${name}=${JSON.stringify(raw)} (want a positive byte count)`);
+  }
+  return fallback;
 }
 
 /** Observer for outgoing alerts; see WsServer.onAlert. */
@@ -21,13 +57,31 @@ export class WsServer {
   private alertListeners: AlertListener[] = [];
   private onUserConnect?: (userId: string) => void;
   private onUserDisconnect?: (userId: string) => void;
+  /** Above this many buffered bytes, non-essential frames are skipped. */
+  private readonly softBufferLimit: number;
+  /** Above this many buffered bytes, the socket is terminated. */
+  private readonly hardBufferLimit: number;
 
   constructor(server: Server) {
+    this.softBufferLimit = readByteLimit(
+      ['OCT_WS_BUFFER_SOFT_LIMIT', 'TRENCHCORD_WS_BUFFER_SOFT_LIMIT'],
+      DEFAULT_SOFT_BUFFER_LIMIT,
+    );
+    // A hard cap below the soft cap would terminate before ever skipping;
+    // clamp so the two-stage guard always holds.
+    this.hardBufferLimit = Math.max(
+      readByteLimit(
+        ['OCT_WS_BUFFER_HARD_LIMIT', 'TRENCHCORD_WS_BUFFER_HARD_LIMIT'],
+        DEFAULT_HARD_BUFFER_LIMIT,
+      ),
+      this.softBufferLimit,
+    );
+
     this.wss = new WebSocketServer({ server, path: '/ws' });
 
     this.wss.on('connection', (ws) => {
       console.log('[WS] Client connected');
-      this.clients.set(ws, { subscribedRooms: new Set(), userId: null });
+      this.clients.set(ws, { subscribedRooms: new Set(), userId: null, skippedFrames: 0 });
 
       ws.on('message', (data) => {
         try {
@@ -142,13 +196,13 @@ export class WsServer {
    * broadcasting for users whose console tabs are closed, and those
    * zero-recipient calls should cost a map walk, not a 2 KB serialization.
    */
-  private fanout(msg: Record<string, any>, userId?: string): void {
+  private fanout(msg: Record<string, any>, userId?: string, essential = false): void {
     const filterByUser = isHostedMode() && !!userId;
     let payload: string | undefined;
     for (const [ws, state] of this.clients) {
       if (ws.readyState !== WebSocket.OPEN) continue;
       if (filterByUser && state.userId !== userId) continue;
-      ws.send(payload ??= JSON.stringify(msg));
+      this.guardedSend(ws, state, payload ??= JSON.stringify(msg), essential);
     }
   }
 
@@ -163,8 +217,37 @@ export class WsServer {
         !state.subscribedRooms.has('__all__') &&
         !roomIds.some((id) => state.subscribedRooms.has(id))
       ) continue;
-      ws.send(payload ??= JSON.stringify(msg));
+      this.guardedSend(ws, state, payload ??= JSON.stringify(msg), false);
     }
+  }
+
+  /**
+   * Backpressure-guarded send (see the module comment above for the model).
+   * Essential frames (alerts) keep queueing between the soft and hard caps;
+   * everything else is skipped there. Past the hard cap the socket is
+   * terminated outright — the frontend auto-reconnects if it is still alive.
+   */
+  private guardedSend(ws: WebSocket, state: ClientState, payload: string, essential: boolean): void {
+    const buffered = ws.bufferedAmount;
+    if (buffered > this.hardBufferLimit) {
+      console.warn(
+        `[WS] Terminating stalled client: bufferedAmount=${buffered} exceeds hard cap ` +
+        `${this.hardBufferLimit} (${state.skippedFrames} frames already skipped)`,
+      );
+      ws.terminate();
+      return;
+    }
+    if (!essential && buffered > this.softBufferLimit) {
+      state.skippedFrames++;
+      if (state.skippedFrames === 1 || state.skippedFrames % 500 === 0) {
+        console.warn(
+          `[WS] Skipping non-essential frames for slow client: bufferedAmount=${buffered} ` +
+          `exceeds soft cap ${this.softBufferLimit} (${state.skippedFrames} skipped so far)`,
+        );
+      }
+      return;
+    }
+    ws.send(payload);
   }
 
   broadcastMessage(message: FrontendMessage, roomIds: string[], userId?: string): void {
@@ -190,7 +273,7 @@ export class WsServer {
   }
 
   broadcastAlert(alert: { type: string; message: FrontendMessage; reason: string }, userId?: string): void {
-    this.fanout({ type: 'alert', data: alert }, userId);
+    this.fanout({ type: 'alert', data: alert }, userId, true);
 
     for (const listener of this.alertListeners) {
       try {
@@ -221,7 +304,7 @@ export class WsServer {
    * Payload shape: RevivalAlertData (@oct/shared).
    */
   broadcastRevivalAlert(data: any, userId?: string): void {
-    this.fanout({ type: 'revival_alert', data }, userId);
+    this.fanout({ type: 'revival_alert', data }, userId, true);
   }
 
   /**
@@ -230,7 +313,7 @@ export class WsServer {
    * Payload shape: BreakoutAlertData (@oct/shared).
    */
   broadcastBreakoutAlert(data: any, userId?: string): void {
-    this.fanout({ type: 'breakout_alert', data }, userId);
+    this.fanout({ type: 'breakout_alert', data }, userId, true);
   }
 
   broadcastContractEnrichment(data: any, userId?: string): void {

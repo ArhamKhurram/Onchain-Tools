@@ -16,7 +16,7 @@
 import { readFileSync, writeFileSync, existsSync } from 'fs';
 import { join, dirname } from 'path';
 import { fileURLToPath } from 'url';
-import { createClient } from '@supabase/supabase-js';
+import { createClient, type SupabaseClient } from '@supabase/supabase-js';
 import type { Database } from '@oct/shared';
 import { isHostedMode } from '../storage/index.js';
 
@@ -34,11 +34,19 @@ export interface TokenPeak {
   updatedAt: string;
 }
 
+// Memoized: this used to build a fresh client (auth machinery and all) on
+// EVERY recordPeak/getPeaks call — up to hundreds of times per 3-min sampler
+// pass. Only a successfully created client is cached, so env loaded later
+// still gets picked up on the next call rather than caching the miss.
+let cachedServiceClient: SupabaseClient<Database> | null = null;
+
 function serviceClient() {
+  if (cachedServiceClient) return cachedServiceClient;
   const url = process.env.SUPABASE_URL;
   const key = process.env.SUPABASE_SERVICE_KEY ?? process.env.SUPABASE_SERVICE_ROLE_KEY;
   if (!url || !key) return null;
-  return createClient<Database>(url, key, { auth: { persistSession: false } });
+  cachedServiceClient = createClient<Database>(url, key, { auth: { persistSession: false } });
+  return cachedServiceClient;
 }
 
 // --- local JSON backing -----------------------------------------------------
@@ -97,6 +105,106 @@ export function resetPeakListeners(): void {
   peakListeners.length = 0;
 }
 
+// --- hosted prior-peak cache ------------------------------------------------
+//
+// This process is token_peaks' ONLY writer (recordPeak here; the sampler, the
+// missed-runner ride-along, snapshot refreshes and the backfill all come
+// through it), so once a token's prior peak has been read — or written — a
+// re-read can't learn anything. Yet the hosted path used to SELECT before
+// every upsert: 2 round-trips per observation, up to 240 per 3-min sampler
+// pass, ~10-20s of serial Supabase latency per pass on the SELECTs alone.
+// Same write-through shape as the FOMO poller's ActivityCursorCache (#224):
+// steady-state observations cost 1 upsert; only a first-sight token pays the
+// read. In-memory, so a fresh process re-reads real rows — the old behaviour.
+//
+// A "no row yet" answer is cached too (peakMc 0), mirroring the cursor
+// cache's `known` set. Entries are ~100 bytes; the cap is a blunt safety
+// valve, not an LRU — clearing merely re-reads on next sight.
+
+interface PriorPeak {
+  peakMc: number;
+  peakAt: string | null;
+}
+
+const HOSTED_PRIOR_CACHE_MAX = 50_000;
+const hostedPriors = new Map<string, PriorPeak>();
+
+function priorCacheKey(chain: 'evm' | 'sol', addressLower: string): string {
+  return `${chain}:${addressLower}`;
+}
+
+/** Test seam — drops the hosted prior-peak cache. */
+export function resetHostedPeakCache(): void {
+  hostedPriors.clear();
+}
+
+/**
+ * Hosted recording path, client injected for tests. The prior SELECT uses
+ * `.eq` — every writer lowercases the address (and getPeaks' `.in()` already
+ * relies on that), so the old `.ilike` bought nothing except forfeiting the
+ * unique-index lookup for a per-call scan.
+ */
+export async function recordPeakHosted(
+  client: SupabaseClient<Database>,
+  peak: { address: string; chain: 'evm' | 'sol'; evmChain?: string; mcNow: number },
+  now: string,
+): Promise<void> {
+  const key = peak.address.toLowerCase();
+  const cacheKey = priorCacheKey(peak.chain, key);
+
+  let prior = hostedPriors.get(cacheKey);
+  if (!prior) {
+    const { data, error } = await client
+      .from('token_peaks')
+      .select('peak_mc, peak_at')
+      .eq('address', key)
+      .eq('chain', peak.chain)
+      .maybeSingle();
+    prior = {
+      peakMc: data?.peak_mc != null ? Number(data.peak_mc) : 0,
+      peakAt: data?.peak_at ?? null,
+    };
+    // Write parity with the old path: a failed read behaves like "no prior
+    // row" — but it is never cached, so the next observation re-reads instead
+    // of trusting a blank forever.
+    if (!error) hostedPriors.set(cacheKey, prior);
+  }
+
+  const isNewPeak = peak.mcNow > prior.peakMc;
+  const peakMc = Math.max(prior.peakMc, peak.mcNow);
+  const peakAt = isNewPeak ? now : (prior.peakAt ?? now);
+
+  const { error } = await client.from('token_peaks').upsert(
+    {
+      address: key,
+      chain: peak.chain,
+      evm_chain: peak.evmChain ?? null,
+      peak_mc: peakMc,
+      peak_at: peakAt,
+      last_mc: peak.mcNow,
+      updated_at: now,
+    },
+    { onConflict: 'address,chain' },
+  );
+  if (error) {
+    console.error('[TokenPeaks] upsert failed:', error.message);
+    return;
+  }
+  if (hostedPriors.size > HOSTED_PRIOR_CACHE_MAX) hostedPriors.clear();
+  hostedPriors.set(cacheKey, { peakMc, peakAt });
+  if (isNewPeak) {
+    notifyPeakRaised({
+      address: peak.address,
+      chain: peak.chain,
+      evmChain: peak.evmChain,
+      peakMc: peak.mcNow,
+      peakAt: now,
+      lastMc: peak.mcNow,
+      updatedAt: now,
+    });
+  }
+}
+
 // --- public API -------------------------------------------------------------
 
 export async function recordPeak(peak: {
@@ -129,44 +237,7 @@ export async function recordPeak(peak: {
 
   const client = serviceClient();
   if (!client) return;
-
-  const { data } = await client
-    .from('token_peaks')
-    .select('peak_mc, peak_at')
-    .ilike('address', key)
-    .eq('chain', peak.chain)
-    .maybeSingle();
-
-  const priorPeak = data?.peak_mc != null ? Number(data.peak_mc) : 0;
-  const isNewPeak = peak.mcNow > priorPeak;
-
-  const { error } = await client.from('token_peaks').upsert(
-    {
-      address: key,
-      chain: peak.chain,
-      evm_chain: peak.evmChain ?? null,
-      peak_mc: Math.max(priorPeak, peak.mcNow),
-      peak_at: isNewPeak ? now : (data?.peak_at ?? now),
-      last_mc: peak.mcNow,
-      updated_at: now,
-    },
-    { onConflict: 'address,chain' },
-  );
-  if (error) {
-    console.error('[TokenPeaks] upsert failed:', error.message);
-    return;
-  }
-  if (isNewPeak) {
-    notifyPeakRaised({
-      address: peak.address,
-      chain: peak.chain,
-      evmChain: peak.evmChain,
-      peakMc: peak.mcNow,
-      peakAt: now,
-      lastMc: peak.mcNow,
-      updatedAt: now,
-    });
-  }
+  await recordPeakHosted(client, peak, now);
 }
 
 /**

@@ -1,8 +1,13 @@
 import React from 'react';
 import ReactDOM from 'react-dom/client';
 import App from './App';
-import AnnouncementModal from './components/AnnouncementModal';
-import UpdatesModal from './components/UpdatesModal';
+// Lazy: the updates + announcement modals (slide deck, hero art, changelog data)
+// are overlay chrome — nothing at boot depends on them, and statically importing
+// them here put ~25 kB of slide content into the index chunk on every load.
+// React.lazy moves them into their own chunk fetched after first paint; they
+// mount a tick later, which is invisible for overlays.
+const AnnouncementModal = React.lazy(() => import('./components/AnnouncementModal'));
+const UpdatesModal = React.lazy(() => import('./components/UpdatesModal'));
 // Lazy: the popout is a separate ?popout=1 window. A static import here dragged
 // the entire chat stack (ChatPane, Message, @tanstack/virtual, ChatInput, room
 // config) into the initial index chunk for EVERY normal page load, even though
@@ -25,8 +30,10 @@ ReactDOM.createRoot(document.getElementById('root')!).render(
     ) : (
       <>
         <App />
-        <UpdatesModal />
-        <AnnouncementModal />
+        <React.Suspense fallback={null}>
+          <UpdatesModal />
+          <AnnouncementModal />
+        </React.Suspense>
       </>
     )}
   </React.StrictMode>,
