@@ -144,9 +144,9 @@ export function mapHolders(
 }
 
 /**
- * Parse a FOMO /proxy/filterTokens payload into BotTokenInfo. Mirrors
- * FomoClient.getTokenMetadata (fomo/client.ts) but works on any FomoClientLike
- * result, so it is proxy-mode safe.
+ * Parse a FOMO /proxy/filterTokens payload into BotTokenInfo. The payload is
+ * fetched via the generic `FomoClientLike.call('/proxy/filterTokens', …)`
+ * (see getBotHolders), so this mapper works on any client — proxy-mode safe.
  */
 export function mapTokenInfo(filterJson: any, tokenAddress: string, networkId: number): BotTokenInfo {
   const entries: any[] = Array.isArray(filterJson?.responseObject) ? filterJson.responseObject : [];
