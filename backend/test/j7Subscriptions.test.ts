@@ -6,7 +6,9 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
   addPumpTarget,
   listPumpTargets,
+  listPumpTargetRows,
   listFomoTargets,
+  listFomoTargetRows,
 } from '../src/j7/subscriptions.js';
 
 function mockFetch(status: number, body: unknown): void {
@@ -58,5 +60,37 @@ describe('j7 subscriptions — list parsing', () => {
   it('throws a plain Error on a non-2xx add', async () => {
     mockFetch(400, { error: 'Internal server error' });
     await expect(addPumpTarget('jwt', 'nope')).rejects.toThrow(/HTTP 400/);
+  });
+});
+
+// The reconciler diffs OCT's demand (keyed by caller WALLET) against j7's list
+// (displayed by username), so it needs every identifier a row carries — matching
+// on the display field alone would see every target as both missing and
+// unwanted and churn the whole roster every cycle.
+describe('j7 subscriptions — row identifiers', () => {
+  it('keeps both the pump username and the wallet, id first', async () => {
+    mockFetch(200, {
+      pump_users: [{ wallet: 'WALLET111', username: 'cupsey' }, { wallet: 'WALLET222' }],
+      limit: 50,
+    });
+    const res = await listPumpTargetRows('jwt');
+    expect(res.rows).toEqual([
+      { id: 'cupsey', identifiers: ['cupsey', 'WALLET111'] },
+      // No username yet: the wallet is both the id and the only identifier.
+      { id: 'WALLET222', identifiers: ['WALLET222'] },
+    ]);
+    expect(res.limit).toBe(50);
+  });
+
+  it('keeps both the fomo handle and the fomo user id', async () => {
+    mockFetch(200, { fomo_users: [{ fomo_user_id: '36adb85a', handle: 'unipcs' }], limit: 50 });
+    expect((await listFomoTargetRows('jwt')).rows).toEqual([
+      { id: 'unipcs', identifiers: ['unipcs', '36adb85a'] },
+    ]);
+  });
+
+  it('tolerates flattened strings and drops rows with no identifier at all', async () => {
+    mockFetch(200, { pump_users: ['cupsey', '', { display_name: 'nameless' }], limit: 50 });
+    expect((await listPumpTargetRows('jwt')).rows).toEqual([{ id: 'cupsey', identifiers: ['cupsey'] }]);
   });
 });
