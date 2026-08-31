@@ -51,7 +51,6 @@ export default function PortfolioDashboard() {
     statsError,
     holdingsError,
     activityError,
-    birdeyeMissing,
     portfolioApiMissing,
     totalHoldingsUsd,
     isAllWallets,
