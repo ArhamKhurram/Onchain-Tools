@@ -11,23 +11,14 @@ export class GatewayManager extends EventEmitter {
   private invalidTokenIndices = new Set<number>();
   private recentMessageIds = new Map<string, number>();
   private dedupeTimer: ReturnType<typeof setInterval> | null = null;
-  private readyCount = 0;
-  private readyResolve: (() => void) | null = null;
-  private readyPromise: Promise<void>;
 
   constructor(tokens: string[]) {
     super();
-    this.readyPromise = new Promise<void>((resolve) => {
-      this.readyResolve = resolve;
-    });
     tokens.forEach((token, index) => {
       const gw = new BrowserDiscordGateway(token, index);
       this.gateways.push(gw);
       this.wireEvents(gw);
     });
-    if (tokens.length === 0) {
-      this.readyResolve?.();
-    }
   }
 
   private wireEvents(gw: BrowserDiscordGateway): void {
@@ -40,26 +31,13 @@ export class GatewayManager extends EventEmitter {
 
     gw.on('messageUpdate', (data) => this.emit('messageUpdate', data));
     gw.on('messageDelete', (data) => this.emit('messageDelete', data));
-    gw.on('ready', (user) => {
-      this.readyCount++;
-      if (this.readyCount >= this.gateways.length) {
-        this.readyResolve?.();
-      }
-      this.emit('ready', user);
-    });
+    gw.on('ready', (user) => this.emit('ready', user));
     gw.on('fatal', (err: Error) => this.emit('fatal', err));
     gw.on('auth_failed', (failure: GatewayAuthFailure) => {
       if (failure.invalid) this.invalidTokenIndices.add(failure.tokenIndex);
       this.emit('auth_failed', failure);
     });
     gw.on('reactionUpdate', (data) => this.emit('reactionUpdate', data));
-  }
-
-  waitUntilReady(timeoutMs = 15_000): Promise<void> {
-    return Promise.race([
-      this.readyPromise,
-      new Promise<void>((resolve) => setTimeout(resolve, timeoutMs)),
-    ]);
   }
 
   connect(): void {
@@ -156,24 +134,6 @@ export class GatewayManager extends EventEmitter {
       if (color) return color;
     }
     return null;
-  }
-
-  getSelfUserIds(): Set<string> {
-    const ids = new Set<string>();
-    for (const gw of this.gateways) {
-      const id = gw.getSelfUserId();
-      if (id) ids.add(id);
-    }
-    return ids;
-  }
-
-  async getSelfRoleIds(guildId: string): Promise<Set<string>> {
-    const merged = new Set<string>();
-    const results = await Promise.all(this.gateways.map((gw) => gw.getSelfRoleIds(guildId)));
-    for (const roleIds of results) {
-      for (const id of roleIds) merged.add(id);
-    }
-    return merged;
   }
 
   async sendChannelMessage(
