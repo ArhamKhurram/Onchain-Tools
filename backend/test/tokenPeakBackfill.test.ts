@@ -89,3 +89,25 @@ describe('collectSampleTargets (as used by the backfill)', () => {
     expect(evm?.evmChain).toBe('base');
   });
 });
+
+describe('resolveTargetsTtlMs', () => {
+  it('defaults to 15 minutes and accepts overrides, including 0 to disable', async () => {
+    const { resolveTargetsTtlMs } = await import('../src/alerts/tokenPeakSampler.js');
+    const prev = process.env.TOKEN_PEAK_TARGETS_TTL_MS;
+    try {
+      delete process.env.TOKEN_PEAK_TARGETS_TTL_MS;
+      expect(resolveTargetsTtlMs()).toBe(900_000);
+      process.env.TOKEN_PEAK_TARGETS_TTL_MS = '60000';
+      expect(resolveTargetsTtlMs()).toBe(60_000);
+      process.env.TOKEN_PEAK_TARGETS_TTL_MS = '0';
+      expect(resolveTargetsTtlMs()).toBe(0);
+      process.env.TOKEN_PEAK_TARGETS_TTL_MS = 'junk';
+      expect(resolveTargetsTtlMs()).toBe(900_000);
+      process.env.TOKEN_PEAK_TARGETS_TTL_MS = '-5';
+      expect(resolveTargetsTtlMs()).toBe(900_000);
+    } finally {
+      if (prev === undefined) delete process.env.TOKEN_PEAK_TARGETS_TTL_MS;
+      else process.env.TOKEN_PEAK_TARGETS_TTL_MS = prev;
+    }
+  });
+});
