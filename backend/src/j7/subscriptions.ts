@@ -63,12 +63,30 @@ async function j7Fetch(
   }
 }
 
-/** Narrow a list response keyed by `pump_users` / `fomo_users`. */
+/**
+ * Narrow a list response keyed by `pump_users` / `fomo_users`.
+ *
+ * j7 returns each tracked target as an OBJECT, not a string, and the identity
+ * field differs by tracker: pump rows carry `username` (e.g. `"cupsey"`), fomo
+ * rows carry `handle` (e.g. `"unipcs"`). We surface that identifier so the list
+ * round-trips with what `addPumpTarget`/`addFomoTarget` accept. A plain-string
+ * element is tolerated as a fallback in case the shape ever flattens.
+ */
 function extractList(raw: unknown, key: 'pump_users' | 'fomo_users'): J7ListResult {
   if (typeof raw !== 'object' || raw === null) return { targets: [], limit: null };
   const r = raw as Record<string, unknown>;
   const arr = Array.isArray(r[key]) ? (r[key] as unknown[]) : [];
-  const targets = arr.filter((x): x is string => typeof x === 'string');
+  const idField = key === 'pump_users' ? 'username' : 'handle';
+  const targets = arr
+    .map((x) => {
+      if (typeof x === 'string') return x;
+      if (typeof x === 'object' && x !== null) {
+        const id = (x as Record<string, unknown>)[idField];
+        return typeof id === 'string' ? id : null;
+      }
+      return null;
+    })
+    .filter((x): x is string => typeof x === 'string' && x !== '');
   const limit = typeof r.limit === 'number' && Number.isFinite(r.limit) ? r.limit : null;
   return { targets, limit };
 }
