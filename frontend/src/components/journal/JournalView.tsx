@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { BookOpen, Plus, RefreshCw, Trash2 } from 'lucide-react';
 import ConsoleEmptyState from '../console/ConsoleEmptyState';
 import JournalCurve from './JournalCurve';
+import FullPageSpinner from '../common/FullPageSpinner';
 import { useAuthSession } from '../../hooks/useAuthSession';
 import { useAppStore } from '../../stores/appStore';
 import { API_BASE, apiFetch } from '../../stores/appStore.helpers';
@@ -142,11 +143,7 @@ export default function JournalView() {
   );
 
   if (!ready || wallets === null) {
-    return (
-      <div className="flex items-center justify-center h-full bg-oct-bg">
-        <div className="w-6 h-6 border-2 border-oct-accent border-t-transparent rounded-full animate-spin" />
-      </div>
-    );
+    return <FullPageSpinner />;
   }
 
   if (isHostedMode && !isAuthenticated) {

@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { BellRing, Plus, Trash2, RefreshCw } from 'lucide-react';
 import ConsoleEmptyState from '../console/ConsoleEmptyState';
+import FullPageSpinner from '../common/FullPageSpinner';
 import { useAppStore } from '../../stores/appStore';
 import { API_BASE, apiFetch } from '../../stores/appStore.helpers';
 import type { PriceAlert, PriceAlertDirection, PriceAlertMetric } from '../../types';
@@ -146,11 +147,7 @@ export default function PriceAlerts() {
   };
 
   if (alerts == null) {
-    return (
-      <div className="flex items-center justify-center h-full bg-oct-bg">
-        <div className="w-6 h-6 border-2 border-oct-accent border-t-transparent rounded-full animate-spin" />
-      </div>
-    );
+    return <FullPageSpinner />;
   }
 
   const armed = alerts.filter((a) => a.status === 'armed');

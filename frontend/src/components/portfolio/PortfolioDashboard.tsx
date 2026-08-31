@@ -8,6 +8,7 @@ import PortfolioHoldingsTable from './PortfolioHoldingsTable';
 import PortfolioSummary from './PortfolioSummary';
 import PortfolioWalletPicker from './PortfolioWalletPicker';
 import PnlCalendarModal from './PnlCalendarModal';
+import FullPageSpinner from '../common/FullPageSpinner';
 // The chart modal (hand-rolled SVG since the recharts removal) still loads
 // lazily — a Portfolio visit doesn't pay for chart code until the chart opens.
 const PnlChartModal = lazy(() => import('./PnlChartModal'));
@@ -138,11 +139,7 @@ export default function PortfolioDashboard() {
   const pickerValue = selectedWalletId ?? (dedupedWallets.length > 1 ? PORTFOLIO_ALL_WALLETS : dedupedWallets[0]?.id ?? '');
 
   if (!ready) {
-    return (
-      <div className="flex items-center justify-center h-full bg-oct-bg">
-        <div className="w-6 h-6 border-2 border-oct-accent border-t-transparent rounded-full animate-spin" />
-      </div>
-    );
+    return <FullPageSpinner />;
   }
 
   if (!isAuthenticated) {
