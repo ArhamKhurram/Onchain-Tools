@@ -43,7 +43,7 @@ export default function PanelContent({ panel, onRoomChange }: PanelContentProps)
       case 'top-callers-feed':
         return <ContractDashboard embedded topOnly />;
       case 'radar':
-        return <RadarTable embedded />;
+        return <RadarTable />;
       case 'fomo-feed':
         return <FomoTradeFeed embedded />;
       case 'fomo-leaderboard':

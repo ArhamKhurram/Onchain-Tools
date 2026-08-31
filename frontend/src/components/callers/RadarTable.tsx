@@ -169,7 +169,7 @@ function applyMetadataToStore(address: string, meta: TokenMetadataResult): void 
   } as ContractEntry);
 }
 
-export default function RadarTable({ embedded: _embedded = false }: { embedded?: boolean }) {
+export default function RadarTable() {
   const contracts = useAppStore((s) => s.contracts);
   const fomoTrades = useAppStore((s) => s.fomoTrades);
   const config = useAppStore((s) => s.config);
