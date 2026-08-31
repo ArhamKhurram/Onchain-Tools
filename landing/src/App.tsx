@@ -17,6 +17,7 @@ const UpdatesSection = lazy(() =>
 import { ScrollRail } from './components/landing/ScrollRail';
 import { ScrollFooter } from './components/landing/ScrollFooter';
 import { useScrollSections } from './hooks/useScrollSections';
+import { scrollLandingToTop } from './lib/scroll';
 
 const SECTION_IDS = ['hero', 'stack', 'enter', 'security', 'updates'];
 
@@ -24,11 +25,6 @@ export default function App() {
   const [entered, setEntered] = useState(false);
   const scrollRef = useRef<HTMLElement>(null);
   const { activeIndex, scrollToSection } = useScrollSections(SECTION_IDS);
-
-  const scrollToTop = () => {
-    const container = document.getElementById('landing-scroll');
-    container?.scrollTo({ top: 0, behavior: 'smooth' });
-  };
 
   const isAtBottom = activeIndex === SECTION_IDS.length - 1;
   const isDarkSection = activeIndex === 2 || activeIndex === 4;
@@ -58,7 +54,7 @@ export default function App() {
       <ScrollFooter
         label={isAtBottom ? 'GO TO THE TOP' : 'SCROLL FOR MORE'}
         visible={entered && (isFlameSection || isAtBottom)}
-        onAction={isAtBottom ? scrollToTop : undefined}
+        onAction={isAtBottom ? scrollLandingToTop : undefined}
         compact={isAtBottom}
       />
 
