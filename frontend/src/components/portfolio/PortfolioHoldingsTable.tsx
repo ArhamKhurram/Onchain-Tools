@@ -10,7 +10,6 @@ interface PortfolioHoldingsTableProps {
   chain: WalletChain;
   loading: boolean;
   error: string | null;
-  needsPrivateKey: boolean;
   showChainTag: boolean;
   showWalletTag: boolean;
 }
@@ -20,7 +19,6 @@ export default function PortfolioHoldingsTable({
   chain,
   loading,
   error,
-  needsPrivateKey,
   showChainTag,
   showWalletTag,
 }: PortfolioHoldingsTableProps) {

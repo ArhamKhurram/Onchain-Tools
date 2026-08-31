@@ -169,8 +169,5 @@ supabase/.branches/
 .vercel
 .env*.local
 
-# GMGN signing keys (never commit)
-gmgn_*.pem
-
 # Astro build cache (docs site)
 docs/.astro/

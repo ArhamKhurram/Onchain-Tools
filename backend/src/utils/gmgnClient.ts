@@ -1,9 +1,4 @@
-import {
-  buildAuthQuery,
-  buildSignatureMessage,
-  detectAlgorithm,
-  signMessage,
-} from './gmgnSigner.js';
+import { buildAuthQuery } from './gmgnSigner.js';
 import { isGmgnRateLimited, markGmgnRateLimited, withGmgnLimit } from './gmgnLimiter.js';
 
 const GMGN_HOST = 'https://openapi.gmgn.ai';
@@ -21,7 +16,6 @@ export type GmgnResult<T> =
       ok: false;
       error: string;
       code?: number;
-      needsPrivateKey?: boolean;
       gmgnConfigured?: boolean;
     };
 
@@ -35,11 +29,6 @@ function buildUrl(subPath: string, query: Record<string, string | number | strin
     }
   }
   return `${GMGN_HOST}${subPath}?${params.toString()}`;
-}
-
-function normalizePrivateKeyPem(raw: string | undefined): string | null {
-  if (!raw?.trim()) return null;
-  return raw.includes('\\n') ? raw.replace(/\\n/g, '\n') : raw;
 }
 
 function missingKeyResult<T>(): GmgnResult<T> {
@@ -57,16 +46,11 @@ function parseFailure<T>(
 ): GmgnResult<T> {
   const code = json?.code;
   const apiError = json?.error ?? json?.message ?? `HTTP ${status}`;
-  const needsPrivateKey =
-    code === 40101611 ||
-    String(apiError).toLowerCase().includes('private') ||
-    String(apiError).toLowerCase().includes('signature');
 
   return {
     ok: false,
     error: String(apiError),
     code: typeof code === 'number' ? code : undefined,
-    needsPrivateKey,
     gmgnConfigured: true,
   };
 }
@@ -74,14 +58,12 @@ function parseFailure<T>(
 async function gmgnRequest<T>(
   subPath: string,
   queryExtra: Record<string, string | number | string[]>,
-  signed: boolean,
 ): Promise<GmgnResult<T>> {
   const apiKey = process.env.GMGN_API_KEY;
   if (!apiKey) return missingKeyResult<T>();
 
   const { timestamp, client_id } = buildAuthQuery();
   const query: Record<string, string | number | string[]> = { ...queryExtra, timestamp, client_id };
-  const body = '';
 
   const headers: Record<string, string> = {
     'X-APIKEY': apiKey,
@@ -96,30 +78,6 @@ async function gmgnRequest<T>(
       code: 429,
       gmgnConfigured: true,
     };
-  }
-
-  if (signed) {
-    const privateKeyPem = normalizePrivateKeyPem(process.env.GMGN_PRIVATE_KEY);
-    if (!privateKeyPem) {
-      return {
-        ok: false,
-        error: 'Holdings require GMGN_PRIVATE_KEY on server.',
-        needsPrivateKey: true,
-        gmgnConfigured: true,
-      };
-    }
-    try {
-      const message = buildSignatureMessage(subPath, query, body, timestamp);
-      const signature = signMessage(message, privateKeyPem, detectAlgorithm(privateKeyPem));
-      headers['X-Signature'] = signature;
-    } catch (err) {
-      return {
-        ok: false,
-        error: (err as Error).message,
-        needsPrivateKey: true,
-        gmgnConfigured: true,
-      };
-    }
   }
 
   const url = buildUrl(subPath, query);
@@ -162,15 +120,7 @@ export async function gmgnGet<T>(
   subPath: string,
   queryExtra: Record<string, string | number | string[]>,
 ): Promise<GmgnResult<T>> {
-  return gmgnRequest<T>(subPath, queryExtra, false);
-}
-
-/** Signed GET (holdings). Requires GMGN_PRIVATE_KEY. */
-export async function gmgnSignedGet<T>(
-  subPath: string,
-  queryExtra: Record<string, string | number | string[]>,
-): Promise<GmgnResult<T>> {
-  return gmgnRequest<T>(subPath, queryExtra, true);
+  return gmgnRequest<T>(subPath, queryExtra);
 }
 
 /** Legacy helper for token enrichment — returns null on failure. */

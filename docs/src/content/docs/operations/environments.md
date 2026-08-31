@@ -47,7 +47,7 @@ rather than crashing.
 
 | Variable | Gates |
 | --- | --- |
-| `GMGN_API_KEY` (+ optional `GMGN_PRIVATE_KEY` PEM) | GMGN enrichment + missed-runner live MC. |
+| `GMGN_API_KEY` | GMGN enrichment + missed-runner live MC. |
 | `BIRDEYE_API_KEY` | Portfolio tab (only). |
 | `HELIUS_API_KEY` | Solana balance checks (missed-runner). |
 | `ALCHEMY_API_KEY` | EVM `balanceOf` (falls back to public RPCs). |
