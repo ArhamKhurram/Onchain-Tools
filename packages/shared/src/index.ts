@@ -45,12 +45,9 @@ export type {
   BotHoldersResponse,
   BotThesisEntry,
   BotThesesResponse,
-  BotLeaderboardEntry,
   BotLeaderboardResponse,
   BotSnapshotResponse,
-  BotTrackedTrader,
   BotTrackedResponse,
-  BotWalletHolding,
   BotWalletProfile,
   BotSwapDirection,
   BotTraderSwap,
@@ -87,12 +84,10 @@ export {
   splitCallerAggregates,
 } from './callerQuality.js';
 export type {
-  CallerPlatform,
   CallerBand,
   RatedCall,
   CallerScore,
   RoomCallerScores,
-  PeakLookup,
   CallerCall,
   CallerAggregateRow,
 } from './callerQuality.js';
