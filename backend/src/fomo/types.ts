@@ -92,18 +92,6 @@ export const EXPLORER_BASE: Record<number, string> = {
   [1399811149]: 'https://solscan.io/token/',
 };
 
-export interface FomoTokenMetadata {
-  ticker?: string | null;
-  name?: string | null;
-  iconLink?: string | null;
-  marketCap?: number | null;
-  price?: number | null;
-  description?: string | null;
-  twitter?: string | null;
-  telegram?: string | null;
-  website?: string | null;
-}
-
 /**
  * Everything needed to authenticate against FOMO via Privy and to survive
  * Cloudflare's cold-start bot checks. Only `refreshToken` is strictly required;
@@ -138,15 +126,12 @@ export interface FomoClientLike {
   init(): Promise<void>;
   close(): Promise<void>;
   call<T = any>(path: string, opts?: { method?: string; body?: string | null }): Promise<FomoCallResult<T>>;
-  getTradingActivity(limit?: number): Promise<FomoCallResult>;
   getLeaderboard(limit?: number, window?: '24h'): Promise<FomoCallResult>;
   getUserByHandle(userHandle: string): Promise<FomoCallResult>;
   searchUsers(searchTerm: string): Promise<FomoCallResult>;
-  getTopHolders(tokenAddress: string, networkId: number): Promise<FomoCallResult>;
   getTokenTheses(tokenAddress: string, networkId: number, threshold?: number): Promise<FomoCallResult>;
   getUserBalances(userId: string): Promise<FomoCallResult>;
   getUserActivity(userId: string, limit?: number): Promise<FomoCallResult>;
-  getTokenAllowList(): Promise<FomoCallResult>;
   setRefreshToken?(token: string): void;
   onRefreshTokenRotated?: (newRefreshToken: string) => Promise<void> | void;
 }

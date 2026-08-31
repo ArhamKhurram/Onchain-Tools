@@ -140,11 +140,6 @@ export class FomoProxyClient {
     return result;
   }
 
-  getTopHolders(tokenAddress: string, networkId: number) {
-    const holdersQuery = encodeURIComponent(JSON.stringify([{ address: tokenAddress, networkId }]));
-    return this.call(`/hodlers/top?tokens=${holdersQuery}`);
-  }
-
   getTokenTheses(tokenAddress: string, networkId: number, threshold = 1000) {
     return this.call(`/feed/token/thesis?tokenAddress=${tokenAddress}&networkId=${networkId}&threshold=${threshold}`);
   }
@@ -165,16 +160,8 @@ export class FomoProxyClient {
     return this.call(window ? `/v2/leaderboard/${window}?limit=${limit}` : `/v2/leaderboard?limit=${limit}`);
   }
 
-  getTradingActivity(limit = 50) {
-    return this.call(`/feed/tradingActivity?limit=${limit}`);
-  }
-
   getUserActivity(userId: string, limit = 20) {
     return this.call(`/v2/users/${encodeURIComponent(userId)}/activity?limit=${limit}`);
-  }
-
-  getTokenAllowList() {
-    return this.call('/tokenAllowList/detailed');
   }
 }
 
