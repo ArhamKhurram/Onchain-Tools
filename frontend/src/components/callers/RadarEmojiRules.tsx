@@ -12,8 +12,8 @@ import {
 /**
  * The threshold→emoji ladder editor, shown inside RadarSettings.
  *
- * Kept out of both RadarTable and RadarSettings because RadarTable is already
- * an oversized refactor target and this is self-contained: a draft list, a
+ * Kept out of both RadarTable and RadarSettings because RadarTable was already
+ * large and this is self-contained: a draft list, a
  * sanitiser on the way out, and one `onChange` per committed edit.
  *
  * Edits commit on blur (and immediately on add / remove / reset) rather than

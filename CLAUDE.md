@@ -267,16 +267,22 @@ has fully shipped.** `api/routes.ts` → `routes/*.ts`, `storage/supabase.ts` �
 → `message/*`. Don't re-plan those; the structure that landed is documented on
 the linked page.
 
-`frontend/src/components/Message.tsx` still measures ~910 lines. That is the plan's
-intended end state, not leftover debt — the three render branches share ~15 derived
-values and were deliberately kept together rather than threaded through as props.
+`frontend/src/components/Message.tsx` now measures ~545 lines, down from ~910 after
+`MessageAttachments`/`MessageEmbeds` were split into `message/*` (#318). The three
+render branches still share ~15 derived values and are deliberately kept together
+rather than threaded through as props, but the presentational blocks now live outside
+this file — it is no longer an oversized target.
 
-Three files have since grown past the threshold and are **not** covered by any
-plan. Prefer extracting from them over adding more (line counts measured 2026-08-26):
+One file remains past the threshold and is **not** covered by any plan. Prefer
+extracting from it over adding more (line count measured 2026-08-31):
 
-- `frontend/src/components/callers/RadarTable.tsx` — 1,012
-- `frontend/src/components/ChatPane.tsx` — 985
-- `frontend/src/components/ContractDashboard.tsx` — 909
+- `frontend/src/components/ChatPane.tsx` — 977 (was 985 before the `HiddenUsersPanel`
+  extraction in #297)
+
+Two files that used to sit here have since been refactored back under the threshold and
+no longer need attention: `callers/RadarTable.tsx` — 555 (rows/columns extracted into
+`RadarTableRow`/`SortHeader`), and `ContractDashboard.tsx` — 422 (feed rows extracted
+into `ContractFeedRows`, #301/#308).
 
 (`packages/shared/src/database.types.ts` is ~1k but generated — never hand-edit.)
 
