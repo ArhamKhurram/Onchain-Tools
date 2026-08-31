@@ -5,6 +5,7 @@ import { usePumpConnection } from '../../hooks/usePumpConnection';
 import { usePumpLeaderboard } from '../../hooks/usePumpLeaderboard';
 import PumpConnectPanel from './PumpConnectPanel';
 import PumpLeaderboard from './PumpLeaderboard';
+import FullPageSpinner from '../common/FullPageSpinner';
 
 interface PumpLeaderboardTabProps {
   /** Owned by PumpfunPage and shared across sub-tabs (same pattern FomoPage uses). */
@@ -35,11 +36,7 @@ export default function PumpLeaderboardTab({ tracking }: PumpLeaderboardTabProps
   );
 
   if (loading) {
-    return (
-      <div className="flex items-center justify-center h-full bg-oct-bg">
-        <div className="w-6 h-6 border-2 border-oct-accent border-t-transparent rounded-full animate-spin" />
-      </div>
-    );
+    return <FullPageSpinner />;
   }
 
   // The status route itself faulted (vs. a clean "not connected"): offer a retry
