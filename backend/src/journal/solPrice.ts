@@ -27,11 +27,6 @@ export function solPriceForDay(day: string): number | null {
   return priceByDay.get(day) ?? null;
 }
 
-/** Test seam. */
-export function _seedSolPrice(day: string, price: number): void {
-  priceByDay.set(day, price);
-}
-
 /** Current SOL price via DexScreener (10-min cache), also stamps today. */
 export async function getCurrentSolPrice(): Promise<number | null> {
   const now = Date.now();
