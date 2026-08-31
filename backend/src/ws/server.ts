@@ -186,23 +186,30 @@ export class WsServer {
   }
 
   /**
-   * Serialize-once fan-out to every open socket, filtered to `userId`'s
-   * sockets in hosted mode. `isHostedMode()` reads `process.env` (an
-   * interceptor call, not a plain property read), so it is evaluated once
+   * Serialize-once, serialize-lazily fan-out to every open socket, filtered to
+   * `userId`'s sockets in hosted mode. `isHostedMode()` reads `process.env`
+   * (an interceptor call, not a plain property read), so it is evaluated once
    * per broadcast here rather than once per client in each loop.
+   *
+   * JSON.stringify runs at the first eligible recipient, not up front: in
+   * hosted mode the steady state is pollers and idle telegram gateways
+   * broadcasting for users whose console tabs are closed, and those
+   * zero-recipient calls should cost a map walk, not a 2 KB serialization.
    */
-  private fanout(payload: string, userId?: string, essential = false): void {
+  private fanout(msg: Record<string, any>, userId?: string, essential = false): void {
     const filterByUser = isHostedMode() && !!userId;
+    let payload: string | undefined;
     for (const [ws, state] of this.clients) {
       if (ws.readyState !== WebSocket.OPEN) continue;
       if (filterByUser && state.userId !== userId) continue;
-      this.guardedSend(ws, state, payload, essential);
+      this.guardedSend(ws, state, payload ??= JSON.stringify(msg), essential);
     }
   }
 
   /** Fan-out additionally gated on the client's room subscriptions. */
-  private fanoutToRooms(payload: string, roomIds: string[], userId?: string): void {
+  private fanoutToRooms(msg: Record<string, any>, roomIds: string[], userId?: string): void {
     const filterByUser = isHostedMode() && !!userId;
+    let payload: string | undefined;
     for (const [ws, state] of this.clients) {
       if (ws.readyState !== WebSocket.OPEN) continue;
       if (filterByUser && state.userId !== userId) continue;
@@ -210,7 +217,7 @@ export class WsServer {
         !state.subscribedRooms.has('__all__') &&
         !roomIds.some((id) => state.subscribedRooms.has(id))
       ) continue;
-      this.guardedSend(ws, state, payload, false);
+      this.guardedSend(ws, state, payload ??= JSON.stringify(msg), false);
     }
   }
 
@@ -244,15 +251,15 @@ export class WsServer {
   }
 
   broadcastMessage(message: FrontendMessage, roomIds: string[], userId?: string): void {
-    this.fanoutToRooms(JSON.stringify({ type: 'message', data: message, roomIds }), roomIds, userId);
+    this.fanoutToRooms({ type: 'message', data: message, roomIds }, roomIds, userId);
   }
 
   broadcastMessageUpdate(update: { messageId: string; channelId: string; embeds?: FrontendMessage['embeds']; content?: string; attachments?: FrontendMessage['attachments']; editedTimestamp?: string | null }, roomIds: string[], userId?: string): void {
-    this.fanoutToRooms(JSON.stringify({ type: 'message_update', data: update, roomIds }), roomIds, userId);
+    this.fanoutToRooms({ type: 'message_update', data: update, roomIds }, roomIds, userId);
   }
 
   broadcastMessageDelete(data: { messageId: string; channelId: string }, roomIds: string[], userId?: string): void {
-    this.fanoutToRooms(JSON.stringify({ type: 'message_delete', data, roomIds }), roomIds, userId);
+    this.fanoutToRooms({ type: 'message_delete', data, roomIds }, roomIds, userId);
   }
 
   /**
@@ -266,7 +273,7 @@ export class WsServer {
   }
 
   broadcastAlert(alert: { type: string; message: FrontendMessage; reason: string }, userId?: string): void {
-    this.fanout(JSON.stringify({ type: 'alert', data: alert }), userId, true);
+    this.fanout({ type: 'alert', data: alert }, userId, true);
 
     for (const listener of this.alertListeners) {
       try {
@@ -280,15 +287,15 @@ export class WsServer {
   }
 
   broadcastReactionUpdate(data: { channelId: string; messageId: string; emoji: { id: string | null; name: string; animated?: boolean }; delta: number }, userId?: string): void {
-    this.fanout(JSON.stringify({ type: 'reaction_update', data }), userId);
+    this.fanout({ type: 'reaction_update', data }, userId);
   }
 
   broadcastContract(data: any, userId?: string): void {
-    this.fanout(JSON.stringify({ type: 'contract', data }), userId);
+    this.fanout({ type: 'contract', data }, userId);
   }
 
   broadcastChainUpdate(address: string, evmChain: string, userId?: string): void {
-    this.fanout(JSON.stringify({ type: 'chain_update', data: { address, evmChain } }), userId);
+    this.fanout({ type: 'chain_update', data: { address, evmChain } }, userId);
   }
 
   /**
@@ -297,7 +304,7 @@ export class WsServer {
    * Payload shape: RevivalAlertData (@oct/shared).
    */
   broadcastRevivalAlert(data: any, userId?: string): void {
-    this.fanout(JSON.stringify({ type: 'revival_alert', data }), userId, true);
+    this.fanout({ type: 'revival_alert', data }, userId, true);
   }
 
   /**
@@ -306,15 +313,15 @@ export class WsServer {
    * Payload shape: BreakoutAlertData (@oct/shared).
    */
   broadcastBreakoutAlert(data: any, userId?: string): void {
-    this.fanout(JSON.stringify({ type: 'breakout_alert', data }), userId, true);
+    this.fanout({ type: 'breakout_alert', data }, userId, true);
   }
 
   broadcastContractEnrichment(data: any, userId?: string): void {
-    this.fanout(JSON.stringify({ type: 'contract_enrichment', data }), userId);
+    this.fanout({ type: 'contract_enrichment', data }, userId);
   }
 
   broadcastRaw(msg: Record<string, any>, userId?: string): void {
-    this.fanout(JSON.stringify(msg), userId);
+    this.fanout(msg, userId);
   }
 
   /**
@@ -324,7 +331,7 @@ export class WsServer {
    * FOMO fan-out poller to route a trade to exactly the OCT user(s) tracking it.
    */
   sendToUser(userId: string, msg: Record<string, any>): void {
-    this.fanout(JSON.stringify(msg), userId);
+    this.fanout(msg, userId);
   }
 
   hasActiveClients(userId: string): boolean {
