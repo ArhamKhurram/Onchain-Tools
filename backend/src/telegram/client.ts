@@ -852,15 +852,6 @@ export class TelegramClientWrapper extends EventEmitter {
     return messages.reverse();
   }
 
-  async downloadMedia(message: Api.Message): Promise<Buffer | null> {
-    try {
-      const buffer = await this.client.downloadMedia(message);
-      return buffer as Buffer | null;
-    } catch {
-      return null;
-    }
-  }
-
   async downloadMediaByIds(chatId: string, messageId: number): Promise<{ buffer: Buffer; mimeType: string } | null> {
     try {
       const entity = await this.client.getEntity(chatId);
@@ -937,14 +928,6 @@ export class TelegramClientWrapper extends EventEmitter {
 
   isConnected(): boolean {
     return this.connected;
-  }
-
-  getUnderlyingClient(): GramJSClient {
-    return this.client;
-  }
-
-  getSessionString(): string {
-    return this.session.save() as unknown as string;
   }
 
   disconnect(): void {
