@@ -12,6 +12,7 @@ import {
   EDIT_MODE_STORAGE_KEY,
   GRID_MIRROR_STORAGE_KEY,
   pickPaneFill,
+  padPaneLocks,
 } from '../appStore.helpers';
 
 export interface LayoutSlice {
@@ -109,8 +110,7 @@ export const createLayoutSlice: StateCreator<AppState, [], [], LayoutSlice> = (s
     togglePaneLock: (index) => {
       set((state) => {
         if (index < 0 || index >= state.paneRoomIds.length) return state;
-        const locks = [...state.paneLocks];
-        while (locks.length < state.paneRoomIds.length) locks.push(false);
+        const locks = padPaneLocks(state.paneLocks, state.paneRoomIds.length);
         locks[index] = !locks[index];
         return { paneLocks: locks };
       });
@@ -123,8 +123,7 @@ export const createLayoutSlice: StateCreator<AppState, [], [], LayoutSlice> = (s
         if (state.paneRoomIds.length >= MAX_PANES) return { activeView: 'chat' };
         const fill = pickPaneFill(state, state.paneRoomIds);
         const panes = [...state.paneRoomIds, fill];
-        const locks = [...state.paneLocks];
-        while (locks.length < panes.length) locks.push(false);
+        const locks = padPaneLocks(state.paneLocks, panes.length);
         savePaneRoomIds(panes);
         const unreadCounts = { ...state.unreadCounts };
         if (state.activeView === 'chat') unreadCounts[fill] = 0;
@@ -179,8 +178,7 @@ export const createLayoutSlice: StateCreator<AppState, [], [], LayoutSlice> = (s
           return { poppedOutRoomIds };
         }
         const panes = [...s.paneRoomIds, roomId];
-        const locks = [...s.paneLocks];
-        while (locks.length < panes.length) locks.push(false);
+        const locks = padPaneLocks(s.paneLocks, panes.length);
         return { paneRoomIds: panes, paneLocks: locks, activeRoomId: panes[0] ?? null, poppedOutRoomIds };
       });
     },
@@ -191,8 +189,7 @@ export const createLayoutSlice: StateCreator<AppState, [], [], LayoutSlice> = (s
         if (state.paneLocks[a] || state.paneLocks[b]) return state;
         const panes = [...state.paneRoomIds];
         [panes[a], panes[b]] = [panes[b], panes[a]];
-        const locks = [...state.paneLocks];
-        while (locks.length < panes.length) locks.push(false);
+        const locks = padPaneLocks(state.paneLocks, panes.length);
         [locks[a], locks[b]] = [locks[b], locks[a]];
         savePaneRoomIds(panes);
         return { paneRoomIds: panes, paneLocks: locks, activeRoomId: panes[0] ?? null };
@@ -218,9 +215,9 @@ export const createLayoutSlice: StateCreator<AppState, [], [], LayoutSlice> = (s
     moveGridBottomChat: () => {
       set((state) => {
         const panes = [...state.paneRoomIds].reverse();
-        const locks = [...state.paneLocks];
-        while (locks.length < state.paneRoomIds.length) locks.push(false);
-        const newLocks = locks.slice(0, state.paneRoomIds.length).reverse();
+        const newLocks = padPaneLocks(state.paneLocks, state.paneRoomIds.length)
+          .slice(0, state.paneRoomIds.length)
+          .reverse();
         const mirror = !state.gridMirror;
         savePaneRoomIds(panes);
         try { localStorage.setItem(GRID_MIRROR_STORAGE_KEY, mirror ? '1' : '0'); } catch {}

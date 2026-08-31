@@ -109,6 +109,16 @@ export function savePaneRoomIds(ids: string[]): void {
   try { localStorage.setItem(PANE_STORAGE_KEY, JSON.stringify(ids)); } catch {}
 }
 
+// Return a fresh copy of `locks` padded with `false` up to `length` (never
+// truncates). `paneLocks` is allowed to trail `paneRoomIds` — a pane added
+// before it was ever locked has no entry — so every layout mutation that reads
+// a lock by index first tops the array up to the pane count.
+export function padPaneLocks(locks: boolean[], length: number): boolean[] {
+  const out = [...locks];
+  while (out.length < length) out.push(false);
+  return out;
+}
+
 export const EDIT_MODE_STORAGE_KEY = 'oct.layoutEditMode';
 export const GRID_MIRROR_STORAGE_KEY = 'oct.gridMirror';
 
