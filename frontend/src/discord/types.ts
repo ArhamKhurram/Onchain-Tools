@@ -25,5 +25,4 @@ export interface GatewayAuthFailure {
   tokenIndex: number;
   message: string;
   invalid: boolean;
-  blocked?: boolean;
 }
