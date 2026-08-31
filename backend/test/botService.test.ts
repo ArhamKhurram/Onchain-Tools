@@ -29,7 +29,7 @@ const hodlersFixture = {
   ],
 };
 
-// Realistic /proxy/filterTokens envelope (mirrors FomoClient.getTokenMetadata parsing).
+// Realistic /proxy/filterTokens envelope (matches bot/service.ts mapTokenInfo parsing).
 const filterFixture = {
   responseObject: [
     {
