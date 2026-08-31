@@ -227,15 +227,16 @@ export function useWebSocket() {
               if (cfg?.messageSounds) playFomoTradeSound(cfg.soundSettings?.fomoTrade);
             }
           } else if (incoming.type === 'pump_callout') {
-            // A followed pump.fun caller posted a callout. `notify` gates the
-            // toast/sound the same way it does for FOMO; the ping always lands
-            // in notification history via addAlert.
-            const { notify: _pumpNotify, ...calloutData } = incoming.data as PumpCalloutEvent;
-            const d = calloutData;
+            // A followed pump.fun caller posted a callout. `notify` is a
+            // delivery-time flag (as on FOMO trades) — stripped from the stored
+            // shape below; unlike FOMO it does NOT gate the toast/sound here,
+            // which fire for every non-popout callout. The ping always lands in
+            // notification history via addAlert.
+            const { notify: _pumpNotify, ...d } = incoming.data as PumpCalloutEvent;
             // The live callout feed (Pump.fun → Callouts) is fed here, before the
             // alert: the feed is the durable surface for the session, the alert
             // is the transient ping. Both come off the one frame.
-            addPumpCallout(calloutData);
+            addPumpCallout(d);
             if (!IS_POPOUT) {
               const who = d.username ? `@${d.username}` : 'A tracked caller';
               const coin = d.symbol ? `$${d.symbol}` : d.coinMint ? `${d.coinMint.slice(0, 4)}…pump` : 'a coin';
