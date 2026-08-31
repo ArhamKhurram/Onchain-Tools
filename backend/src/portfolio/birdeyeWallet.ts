@@ -24,13 +24,13 @@ export function gmgnChainsToBirdeye(chains: GmgnChain[]): BirdeyeChain[] {
   return chains.map((c) => GMGN_TO_BIRDEYE[c]);
 }
 
+function birdeyeChainToGmgn(chain: BirdeyeChain): GmgnChain {
+  return (Object.entries(GMGN_TO_BIRDEYE).find(([, b]) => b === chain)?.[0] ?? chain) as GmgnChain;
+}
+
 function num(value: unknown): number {
   const n = Number(value);
   return Number.isFinite(n) ? n : 0;
-}
-
-function periodToDuration(period: '7d' | '30d'): '7d' | '30d' {
-  return period;
 }
 
 function formatBirdeyeTime(d: Date): string {
@@ -111,28 +111,6 @@ type SeekByTimeItem = {
   };
 };
 
-type TxListItem = {
-  tx_hash?: string;
-  txHash?: string;
-  block_unix_time?: number;
-  blockTime?: number;
-  timestamp?: number;
-  side?: string;
-  type?: string;
-  token_symbol?: string;
-  tokenSymbol?: string;
-  symbol?: string;
-  volume_usd?: number;
-  volumeUsd?: number;
-  value?: number;
-  token_amount?: number;
-  tokenAmount?: number;
-  market_cap?: number;
-  mc?: number;
-  token_address?: string;
-  tokenAddress?: string;
-};
-
 function summaryToStats(summary: PnlSummaryData['summary'] | undefined): WalletStats {
   const invested = num(summary?.cashflow_usd?.total_invested);
   const realized = num(summary?.pnl?.realized_profit_usd);
@@ -198,7 +176,7 @@ async function fetchWalletStatsBirdeye(
 ): Promise<BirdeyeResult<WalletStats>> {
   const result = await birdeyeGet<PnlSummaryData>(chain, '/wallet/v2/pnl/summary', {
     wallet: address,
-    duration: periodToDuration(period),
+    duration: period,
     position_scope: 'duration_only',
   });
   if (!result.ok) return result;
@@ -354,7 +332,7 @@ function tokenToHolding(token: PnlDetailsToken, chain: BirdeyeChain): WalletHold
   const unrealized = num(token.pnl?.unrealized_usd ?? token.pnl?.unrealized_profit);
   if (holding <= 0 && usd <= 0 && unrealized <= 0) return null;
 
-  const gmgnChain = (Object.entries(GMGN_TO_BIRDEYE).find(([, b]) => b === chain)?.[0] ?? chain) as GmgnChain;
+  const gmgnChain = birdeyeChainToGmgn(chain);
 
   return {
     chain: gmgnChain,
@@ -388,7 +366,7 @@ export async function fetchWalletHoldingsBirdeye(
   });
   if (!result.ok) return result;
 
-  const gmgnChain = (Object.entries(GMGN_TO_BIRDEYE).find(([, b]) => b === chain)?.[0] ?? chain) as GmgnChain;
+  const gmgnChain = birdeyeChainToGmgn(chain);
   const holdings: WalletHolding[] = [];
   for (const token of result.data.tokens ?? []) {
     const row = tokenToHolding(token, chain);
@@ -424,11 +402,11 @@ export async function fetchWalletHoldingsMergedBirdeye(
 }
 
 function mapSeekByTimeItem(item: SeekByTimeItem, chain: BirdeyeChain): WalletActivityItem {
-  const gmgnChain = (Object.entries(GMGN_TO_BIRDEYE).find(([, b]) => b === chain)?.[0] ?? chain) as GmgnChain;
+  const gmgnChain = birdeyeChainToGmgn(chain);
   const quoteFrom = item.quote?.type_swap === 'from';
   const quoteTo = item.quote?.type_swap === 'to';
   const type: 'buy' | 'sell' = quoteFrom ? 'buy' : quoteTo ? 'sell' : 'buy';
-  const token = type === 'buy' ? item.base : item.base;
+  const token = item.base;
 
   return {
     chain: gmgnChain,
@@ -443,27 +421,6 @@ function mapSeekByTimeItem(item: SeekByTimeItem, chain: BirdeyeChain): WalletAct
     cost_usd: item.volume_usd,
     price_usd: token?.price,
     timestamp: num(item.block_unix_time) || undefined,
-  };
-}
-
-function mapTxItem(item: TxListItem, chain: BirdeyeChain): WalletActivityItem {
-  const side = String(item.side ?? item.type ?? '').toLowerCase();
-  const gmgnChain = (Object.entries(GMGN_TO_BIRDEYE).find(([, b]) => b === chain)?.[0] ?? chain) as GmgnChain;
-  const ts = num(item.block_unix_time ?? item.blockTime ?? item.timestamp);
-
-  return {
-    chain: gmgnChain,
-    transaction_hash: item.tx_hash ?? item.txHash,
-    type: side.includes('buy') ? 'buy' : side.includes('sell') ? 'sell' : side,
-    side,
-    token: {
-      address: item.token_address ?? item.tokenAddress,
-      symbol: item.token_symbol ?? item.tokenSymbol ?? item.symbol,
-    },
-    token_amount: item.token_amount ?? item.tokenAmount,
-    cost_usd: item.volume_usd ?? item.volumeUsd ?? item.value,
-    market_cap: item.market_cap ?? item.mc,
-    timestamp: ts > 0 ? ts : undefined,
   };
 }
 

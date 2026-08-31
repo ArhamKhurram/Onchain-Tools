@@ -22,7 +22,7 @@ type ProviderFail = {
   birdeyeConfigured?: boolean;
 };
 
-function birdeyeRequired<T>(): ProviderFail {
+function birdeyeRequired(): ProviderFail {
   return {
     ok: false,
     error: 'Portfolio requires BIRDEYE_API_KEY on server.',
