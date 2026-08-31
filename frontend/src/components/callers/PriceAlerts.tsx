@@ -54,7 +54,7 @@ function parseTarget(raw: string): number | null {
  * watchlist, not a position: these are tokens the operator wants to BUY at a
  * level, and Journal only knows about coins they already hold. It is a Callers
  * subnav tab rather than a new top-level page, and rather than a control inside
- * RadarTable.tsx (~960 lines and a known refactor target).
+ * RadarTable.tsx (~555 lines).
  *
  * This is its own independent signal. It shares no detection with revival or
  * breakout — there is no detection at all. The operator names the number.
