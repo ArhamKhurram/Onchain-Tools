@@ -10,6 +10,11 @@ export interface AddressColors {
   sol: string;
 }
 
+/** Pick the pill colour for a detected address by chain, with the default palette as fallback. */
+function pillColor(addr: string, addressColors?: AddressColors): string {
+  return addr.startsWith('0x') ? (addressColors?.evm ?? '#fee75c') : (addressColors?.sol ?? '#14f195');
+}
+
 const URL_REGEX = /(https?:\/\/[^\s<>()[\]]+(?:\([^\s<>()]*\))*[^\s<>()[\],.'\"!?;:]?)/g;
 const DISCORD_MENTION_REGEX = /<@!?(\d+)>|<#(\d+)>|<@&(\d+)>/g;
 const EMOJI_REGEX = /<a?:(\w+):(\d+)>/g;
@@ -249,8 +254,7 @@ function applyInlineFormatting(
 
   // Contract addresses -- AFTER all URL processing
   for (const addr of contractAddresses) {
-    const isEvm = addr.startsWith('0x');
-    const color = isEvm ? (addressColors?.evm ?? '#fee75c') : (addressColors?.sol ?? '#14f195');
+    const color = pillColor(addr, addressColors);
     const newParts: (string | ReactNode)[] = [];
     for (const part of parts) {
       if (typeof part !== 'string') { newParts.push(part); continue; }
@@ -286,8 +290,7 @@ function renderInlineMarkdown(content: string, contractAddresses: string[], ment
     const codeText = m[1];
     const matchedAddr = contractAddresses.find(a => codeText.trim() === a);
     if (matchedAddr) {
-      const isEvm = matchedAddr.startsWith('0x');
-      const color = isEvm ? (addressColors?.evm ?? '#fee75c') : (addressColors?.sol ?? '#14f195');
+      const color = pillColor(matchedAddr, addressColors);
       return (
         <ContractPill
           key={`code-contract-${i}`}
