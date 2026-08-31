@@ -159,8 +159,3 @@ export async function fetchBroadTier(network: RevivalNetwork): Promise<BroadToke
   if (tokens.length > 0) cache.set(network, { tokens, at: Date.now() });
   return tokens;
 }
-
-/** Test seam. */
-export function _clearBroadTierCacheForTest(): void {
-  cache.clear();
-}

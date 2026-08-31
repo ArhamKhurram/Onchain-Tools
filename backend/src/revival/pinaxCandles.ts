@@ -238,10 +238,3 @@ export async function resolvePinaxPool(
   poolCache.set(key, { pool, at: Date.now() });
   return pool;
 }
-
-/** Test seam. */
-export function _clearPinaxCachesForTest(): void {
-  poolCache.clear();
-  poolRefusals.clear();
-  hourCache.clear();
-}
