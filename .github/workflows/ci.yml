@@ -28,12 +28,6 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Set up Node
-        uses: actions/setup-node@v4
-        with:
-          node-version: '20'
-          cache: npm
-
       # Cache the installed node_modules trees keyed on the exact lockfile.
       # On a hit we skip `npm ci` entirely (20-40s of extract/link work) —
       # an identical lockfile produces an identical tree, so this is safe.
@@ -55,6 +49,16 @@ jobs:
           # NOTE: 'node20' pins the tree to the Node major above — bump it in
           # lockstep with node-version so native-module builds never go stale.
           key: nm-scoped-${{ runner.os }}-node20-${{ hashFiles('package-lock.json') }}
+
+      # Runs after the node_modules restore so the npm *download* cache is
+      # only pulled when we will actually run `npm ci`. On the warm path the
+      # install is skipped entirely, so restoring ~6-11s of npm cache tarball
+      # is pure dead weight — an empty `cache:` input disables it.
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: ${{ steps.nm-cache.outputs.cache-hit != 'true' && 'npm' || '' }}
 
       # Scoped to the five workspaces this job verifies — a bare `npm ci`
       # also installs the two Astro/Starlight docs sites, which docs.yml
