@@ -9,48 +9,6 @@ export interface FomoUser {
   name?: string;
 }
 
-export interface FomoHolder {
-  user: FomoUser;
-  value: number;
-  pnl: number;
-  unrealizedPnl: number;
-  realizedPnl: number;
-  humanAmount?: number;
-  address?: string;
-}
-
-export interface FomoHodlersTokenEntry {
-  tokenAddress: string;
-  networkId: number;
-  topHolders: FomoHolder[];
-  totalHolders: number;
-}
-
-export interface FomoHodlersResponse {
-  success: boolean;
-  responseObject: FomoHodlersTokenEntry[];
-}
-
-export interface FomoTokenDetails {
-  name?: string | null;
-  ticker?: string | null;
-  tokenAddress: string;
-  networkId: number;
-  iconLink?: string | null;
-  [key: string]: any;
-}
-
-export interface FomoAllowListItem {
-  name: string | null;
-  ticker: string;
-  tokenAddress: string;
-  networkId: number;
-  createdAt: string;
-  isLowFees: boolean;
-  categories: string[];
-  notes: string;
-}
-
 export interface FomoThesisEntry {
   user?: FomoUser;
   comment?: string;
