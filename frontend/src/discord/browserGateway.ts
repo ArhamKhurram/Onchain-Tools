@@ -18,8 +18,6 @@ function isTextChannel(type: number): boolean {
   return TEXT_CHANNEL_TYPES.has(type);
 }
 
-export type { GatewayAuthFailure };
-
 export class BrowserDiscordGateway extends EventEmitter {
   private ws: WebSocket | null = null;
   private token: string;

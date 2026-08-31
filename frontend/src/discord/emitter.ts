@@ -26,13 +26,4 @@ export class EventEmitter {
     }
     return true;
   }
-
-  removeAllListeners(event?: string): this {
-    if (event) {
-      this.listeners.delete(event);
-    } else {
-      this.listeners.clear();
-    }
-    return this;
-  }
 }
