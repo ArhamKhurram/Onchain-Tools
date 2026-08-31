@@ -3,6 +3,8 @@
  * Solana via Helius RPC; EVM via Alchemy or public RPC eth_call balanceOf.
  */
 
+import { formatCompact } from '@oct/shared';
+
 export type WalletChain = 'bsc' | 'ethereum' | 'solana' | 'base' | 'robinhood';
 
 export type BalanceCheckChain = 'solana' | 'ethereum' | 'bsc' | 'base';
@@ -22,13 +24,6 @@ export interface BalanceCheckResult {
 }
 
 const BALANCE_OF_SELECTOR = '0x70a08231';
-
-function formatCompact(n: number): string {
-  if (n >= 1e9) return `${(n / 1e9).toFixed(1)}B`;
-  if (n >= 1e6) return `${(n / 1e6).toFixed(1)}M`;
-  if (n >= 1e3) return `${(n / 1e3).toFixed(1)}K`;
-  return n.toFixed(0);
-}
 
 /** Map contract feed chain to wallet/balance-check chain. Returns null when unsupported. */
 export function contractChainToWalletChain(
