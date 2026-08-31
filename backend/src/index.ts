@@ -2,8 +2,8 @@ import { config as dotenvConfig } from 'dotenv';
 import path from 'path';
 import { fileURLToPath } from 'url';
 
-const __envDir = path.dirname(fileURLToPath(import.meta.url));
-const envPath = path.resolve(__envDir, '../.env');
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
+const envPath = path.resolve(__dirname, '../.env');
 // Never let a bundled/empty .env override Railway/Vercel injected secrets.
 dotenvConfig({ path: envPath, override: false });
 import express from 'express';
@@ -68,7 +68,6 @@ import { installProcessGuards, guardAsyncHandler } from './utils/processGuards.j
 // bundles and forks `backend/dist/index.js` directly.
 installProcessGuards();
 
-const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const PORT = parseInt(process.env.PORT ?? '3001', 10);
 const LOCAL_USER_ID = 'local';
 
