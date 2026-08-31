@@ -29,6 +29,7 @@
     "playwright": "^1.61.1",
     "playwright-extra": "^4.3.6",
     "puppeteer-extra-plugin-stealth": "^2.11.2",
+    "socket.io-client": "^4.8.1",
     "teleproto": "^1.227.1",
     "undici": "^6.21.0",
     "ws": "^8.18.0"

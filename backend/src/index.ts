@@ -45,6 +45,7 @@ import { broadcastFrontendAlerts } from './utils/frontendAlerts.js';
 import { startFomoPoller } from './fomo/poller.js';
 import { startFomoJoinWatcher } from './fomo/joinWatcher.js';
 import { startPumpCalloutPoller } from './pumpfun/calloutPoller.js';
+import { startJ7Consumer } from './j7/index.js';
 import { startWalletMovementPoller } from './wallets/movementPoller.js';
 import { startFomoRetentionSweeper } from './fomo/retention.js';
 import { startMissedRunnerPoller } from './alerts/missedRunnerPoller.js';
@@ -864,6 +865,11 @@ httpServer.listen(PORT, HOST, async () => {
   // Global pump.fun KOL-callout fan-out poller. Self-gates on Supabase (idle in
   // local mode), keyless upstream, so it never crashes the server.
   startPumpCalloutPoller(wsServer);
+  // In-process j7tracker socket consumer — recovers the dead fomo.family + pump
+  // callout upstreams and re-emits them as the existing pump_callout/fomo_trade
+  // frames. Self-gates on J7_JWTS_JSON (idle without JWTs), so it never crashes
+  // the server; runs in BOTH modes (env-gated, not Supabase-gated).
+  startJ7Consumer(wsServer);
   // On-chain buy/sell alerter for Directory (user_tracked_wallets) SOLANA wallets.
   // Self-gates on Supabase (idle in local mode), keyless upstream (profile-api),
   // so it never crashes the server.
