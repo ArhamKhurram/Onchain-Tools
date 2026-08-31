@@ -3,7 +3,6 @@
  */
 
 import type { TokenEnrichment } from './rickEmbedParser.js';
-import { parseCompactUsd } from './rickEmbedParser.js';
 import { enrichFromGmgn, resolveGmgnChain } from './gmgnEnrichment.js';
 import { dexScreenerBreaker } from './circuitBreaker.js';
 
@@ -125,6 +124,3 @@ export async function fetchLiveMarketCap(
     priceUsd: enriched.priceUsd,
   };
 }
-
-// silence unused if tree-shaken oddly
-void parseCompactUsd;
