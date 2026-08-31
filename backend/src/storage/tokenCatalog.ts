@@ -1,4 +1,5 @@
 import { createClient } from '@supabase/supabase-js';
+import { formatCompact } from '@oct/shared';
 import type { Database, Json } from '@oct/shared';
 import { isHostedMode } from './index.js';
 import type { TokenEnrichment } from '../utils/rickEmbedParser.js';
@@ -55,13 +56,6 @@ function serviceClient() {
   // GoTrue + PostgREST wrappers and all — per call.
   cachedClient = createClient<Database>(url, key, { auth: { persistSession: false } });
   return cachedClient;
-}
-
-function formatCompact(n: number): string {
-  if (n >= 1e9) return `${(n / 1e9).toFixed(1)}B`;
-  if (n >= 1e6) return `${(n / 1e6).toFixed(1)}M`;
-  if (n >= 1e3) return `${(n / 1e3).toFixed(1)}K`;
-  return n.toFixed(0);
 }
 
 export function normalizeCatalogChain(chainSlug: string): { chain: 'evm' | 'sol'; evmChain?: string } {

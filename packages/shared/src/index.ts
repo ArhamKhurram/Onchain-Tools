@@ -41,6 +41,9 @@ export {
 export { processDiscordMessage } from './message.js';
 export type { MessageProcessorContext, MessageGateway } from './message.js';
 
+// Shared number formatting.
+export { formatCompact } from './format.js';
+
 // Bot API contract (see docs/architecture/discord-bot.md).
 export type {
   BotNetworkId,
