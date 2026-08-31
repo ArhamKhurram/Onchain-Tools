@@ -693,7 +693,21 @@ app.use('/sniper/v1', createSniperRouter());
 // responses on this app (they would need res.flush()).
 app.use(compression());
 
-// CORS: restrict origins in hosted mode, allow all in local mode
+// CORS: restrict origins in hosted mode, allow all in local mode.
+//
+// maxAge matters more than it looks: every console request carries an
+// Authorization header, which is not CORS-safelisted, so the browser
+// preflights it — and without Access-Control-Max-Age the preflight cache
+// defaults to FIVE SECONDS. Every poll cadence in the console (sniper 20s,
+// radar/journal/price-alerts 60s, revival 120s) exceeds that, so each poll
+// was two round-trips to Railway: OPTIONS, then the real request. Advertising
+// a long cache collapses that to one preflight per URL per browser cap
+// (Chrome clamps to 2h, Firefox to 24h) — roughly halving polled request
+// volume and removing a full cross-origin RTT from each poll's latency.
+// Preflight results are keyed per URL and revalidated on any header/method
+// change, so a long maxAge is safe: the policy it caches is origin-scoped,
+// and origin changes always bypass the cache.
+const CORS_PREFLIGHT_MAX_AGE_SECONDS = 86_400;
 if (isHostedMode()) {
   const allowedOrigins = process.env.ALLOWED_ORIGINS
     ? process.env.ALLOWED_ORIGINS.split(',').map((o) => o.trim())
@@ -709,9 +723,13 @@ if (isHostedMode()) {
         }
       : true,
     credentials: true,
+    maxAge: CORS_PREFLIGHT_MAX_AGE_SECONDS,
   }));
 } else {
-  app.use(cors());
+  // Local dev (vite origin → backend origin) preflights JSON POSTs the same
+  // way; the desktop app is same-origin and never preflights. Harmless there,
+  // cheap here.
+  app.use(cors({ maxAge: CORS_PREFLIGHT_MAX_AGE_SECONDS }));
 }
 
 // Security headers in hosted mode
