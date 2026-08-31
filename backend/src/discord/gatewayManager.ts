@@ -178,39 +178,31 @@ export class GatewayManager extends EventEmitter {
     return merged;
   }
 
-  async sendChannelMessage(channelId: string, content: string, attachments?: { filename: string; data: Buffer; contentType: string }[]): Promise<any> {
+  // Picks the gateway that owns a channel (guild or DM), falling back to the
+  // first gateway so a message still routes when ownership isn't known yet.
+  // Null only when no gateways exist.
+  private gatewayForChannel(channelId: string): DiscordGateway | null {
     for (const gw of this.gateways) {
       if (gw.getGuildForChannel(channelId) || gw.getDMChannels().some((dm) => dm.id === channelId)) {
-        return gw.sendChannelMessage(channelId, content, attachments);
+        return gw;
       }
     }
-    if (this.gateways.length > 0) {
-      return this.gateways[0].sendChannelMessage(channelId, content, attachments);
-    }
-    throw new Error('No gateway available to send message');
+    return this.gateways[0] ?? null;
+  }
+
+  async sendChannelMessage(channelId: string, content: string, attachments?: { filename: string; data: Buffer; contentType: string }[]): Promise<any> {
+    const gw = this.gatewayForChannel(channelId);
+    if (!gw) throw new Error('No gateway available to send message');
+    return gw.sendChannelMessage(channelId, content, attachments);
   }
 
   async fetchChannelMessages(channelId: string, limit = 30): Promise<DiscordMessage[]> {
-    for (const gw of this.gateways) {
-      if (gw.getGuildForChannel(channelId) || gw.getDMChannels().some((dm) => dm.id === channelId)) {
-        return gw.fetchChannelMessages(channelId, limit);
-      }
-    }
-    if (this.gateways.length > 0) {
-      return this.gateways[0].fetchChannelMessages(channelId, limit);
-    }
-    return [];
+    const gw = this.gatewayForChannel(channelId);
+    return gw ? gw.fetchChannelMessages(channelId, limit) : [];
   }
 
   async fetchReactionUsers(channelId: string, messageId: string, emoji: string, limit = 100): Promise<DiscordUser[]> {
-    for (const gw of this.gateways) {
-      if (gw.getGuildForChannel(channelId) || gw.getDMChannels().some((dm) => dm.id === channelId)) {
-        return gw.fetchReactionUsers(channelId, messageId, emoji, limit);
-      }
-    }
-    if (this.gateways.length > 0) {
-      return this.gateways[0].fetchReactionUsers(channelId, messageId, emoji, limit);
-    }
-    return [];
+    const gw = this.gatewayForChannel(channelId);
+    return gw ? gw.fetchReactionUsers(channelId, messageId, emoji, limit) : [];
   }
 }

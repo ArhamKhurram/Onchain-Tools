@@ -1,11 +1,8 @@
-import { randomUUID } from 'crypto';
 import WebSocket from 'ws';
 import { EventEmitter } from 'events';
 import type {
   GatewayPayload,
   DiscordMessage,
-  DiscordGuild,
-  DiscordChannel,
   DiscordUser,
   GuildInfo,
   DMChannel,
