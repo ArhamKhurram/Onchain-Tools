@@ -7,7 +7,6 @@ import { ProxyAgent } from 'undici';
 // the REST calls (global fetch honours `dispatcher`). Both must route through the
 // same proxy so a VPN-blocked user gets channels (WS) *and* history (REST).
 export interface ProxyBundle {
-  url: string;
   wsAgent: HttpAgent;
   dispatcher: ProxyAgent;
 }
@@ -34,7 +33,6 @@ export function createProxyBundle(rawUrl: string | undefined | null): ProxyBundl
 
   try {
     return {
-      url,
       wsAgent: new HttpsProxyAgent(url),
       dispatcher: new ProxyAgent(url),
     };
