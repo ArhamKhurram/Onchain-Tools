@@ -16,12 +16,11 @@ function fingerprint(tokens: string[]): string {
 
 export class UserGatewayPool {
   private gateways = new Map<string, PoolEntry>();
-  private idleTimer: ReturnType<typeof setInterval> | null = null;
   private idleTimeoutMs: number;
 
   constructor(idleTimeoutMs = DEFAULT_IDLE_TIMEOUT_MS) {
     this.idleTimeoutMs = idleTimeoutMs;
-    this.idleTimer = setInterval(() => this.disconnectIdle(), 60_000);
+    setInterval(() => this.disconnectIdle(), 60_000);
   }
 
   get(userId: string): GatewayManager | null {
@@ -92,17 +91,6 @@ export class UserGatewayPool {
         entry.manager.disconnect();
         this.gateways.delete(userId);
       }
-    }
-  }
-
-  disconnectAll(): void {
-    for (const [_userId, entry] of this.gateways) {
-      entry.manager.disconnect();
-    }
-    this.gateways.clear();
-    if (this.idleTimer) {
-      clearInterval(this.idleTimer);
-      this.idleTimer = null;
     }
   }
 
