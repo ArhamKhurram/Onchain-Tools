@@ -156,7 +156,6 @@ export class TelegramClientWrapper extends EventEmitter {
     } catch (err: any) {
       console.warn(`[Telegram] Health check failed (${err.message}); reconnecting.`);
       this.connected = false;
-      this.emit('disconnected');
       this.scheduleReconnect();
     }
   }
