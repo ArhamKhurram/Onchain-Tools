@@ -374,13 +374,6 @@ function fomoCredentialsWithRefresh(refreshToken: string): FomoCredentials {
   };
 }
 
-/** Read shared-account FOMO credentials from process.env (env-only bootstrap). */
-export function fomoCredentialsFromEnv(): FomoCredentials | null {
-  const refreshToken = process.env.FOMO_REFRESH_TOKEN;
-  if (!refreshToken) return null;
-  return fomoCredentialsWithRefresh(refreshToken);
-}
-
 /** Resolve refresh token: DB first (survives rotation), then env fallback. */
 export async function resolveFomoRefreshToken(): Promise<string | null> {
   const persisted = await loadPersistedFomoRefreshToken();
@@ -470,9 +463,4 @@ export async function ensureSharedFomoClientReady(): Promise<FomoClientLike | nu
   sharedClientInitFailedAt = 0;
   sharedClientReady = true;
   return client;
-}
-
-/** Returns the shared client if already initialized (sync). */
-export function getSharedFomoClient(): FomoClientLike | null {
-  return sharedClient;
 }

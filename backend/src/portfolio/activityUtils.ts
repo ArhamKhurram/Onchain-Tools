@@ -17,7 +17,3 @@ export function classifyActivitySide(item: WalletActivityItem): ActivitySide | n
 
   return null;
 }
-
-export function activityDisplayType(item: WalletActivityItem): ActivitySide | 'other' {
-  return classifyActivitySide(item) ?? 'other';
-}

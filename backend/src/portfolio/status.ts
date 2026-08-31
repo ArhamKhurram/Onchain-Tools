@@ -1,10 +1,4 @@
 import { detectAlgorithm } from '../utils/gmgnSigner.js';
-import { gmgnGet, gmgnSignedGet, type GmgnResult } from '../utils/gmgnClient.js';
-import {
-  fetchWalletHoldings,
-  resolvePortfolioChains,
-  type GmgnChain,
-} from './gmgnWallet.js';
 
 function normalizePrivateKeyPem(raw: string | undefined): string | null {
   if (!raw?.trim()) return null;
@@ -42,69 +36,4 @@ export function getGmgnEnvStatus(): GmgnEnvStatus {
     gmgnPrivateKeyAlgorithm: algorithm,
     gmgnPrivateKeyParseError: parseError,
   };
-}
-
-export function probeResult<T>(result: GmgnResult<T>) {
-  if (result.ok) return { ok: true as const };
-  return {
-    ok: false as const,
-    error: result.error,
-    code: result.code,
-    needsPrivateKey: result.needsPrivateKey,
-    gmgnConfigured: result.gmgnConfigured,
-  };
-}
-
-export async function probeGmgn(opts: {
-  probeChain?: string;
-  probeAddress?: string;
-}): Promise<{
-  env: GmgnEnvStatus;
-  probes: {
-    userInfo?: ReturnType<typeof probeResult>;
-    holdings?: ReturnType<typeof probeResult> & { chains?: GmgnChain[] };
-  };
-}> {
-  const env = getGmgnEnvStatus();
-  const probes: {
-    userInfo?: ReturnType<typeof probeResult>;
-    holdings?: ReturnType<typeof probeResult> & { chains?: GmgnChain[] };
-  } = {};
-
-  if (!env.gmgnApiKeyConfigured) {
-    return { env, probes };
-  }
-
-  probes.userInfo = probeResult(await gmgnGet<unknown>('/v1/user/info', {}));
-
-  const chainParam = opts.probeChain?.trim();
-  const address = opts.probeAddress?.trim();
-  if (chainParam && address) {
-    const chains = resolvePortfolioChains(chainParam);
-    if (!chains) {
-      probes.holdings = {
-        ok: false,
-        error: `Unsupported probe chain: ${chainParam}`,
-        code: undefined,
-        needsPrivateKey: undefined,
-        gmgnConfigured: undefined,
-      };
-    } else if (chains.length === 1) {
-      probes.holdings = {
-        ...probeResult(await fetchWalletHoldings(chains[0], address, { limit: 1 })),
-        chains,
-      };
-    } else {
-      probes.holdings = {
-        ...probeResult(await gmgnSignedGet<{ holdings?: unknown[] }>('/v1/user/wallet_holdings', {
-          chain: chains[0],
-          wallet_address: address.toLowerCase(),
-          limit: 1,
-        })),
-        chains,
-      };
-    }
-  }
-
-  return { env, probes };
 }

@@ -4,6 +4,13 @@ import { isHostedMode } from './index.js';
 import type { TokenEnrichment } from '../utils/rickEmbedParser.js';
 import type { EnrichmentSource } from '../utils/enrichmentMerge.js';
 
+/**
+ * The read-back shape of a catalog row. Deliberately NARROWER than the table:
+ * `raw` (the full provider payload jsonb) and `confidence` are write-only
+ * audit columns — no read path consumes them (rowToSnapshot is the only
+ * consumer), so getCatalogEntry never selects them. If you need `raw` back,
+ * widen READ_COLUMNS below first.
+ */
 export interface TokenCatalogRow {
   address: string;
   chain: 'evm' | 'sol';
@@ -16,8 +23,6 @@ export interface TokenCatalogRow {
   priceUsd?: number;
   enrichedAt: string;
   source?: EnrichmentSource;
-  confidence?: string;
-  raw?: unknown;
 }
 
 export interface TokenSnapshot {
@@ -38,11 +43,18 @@ export interface TokenSnapshot {
 
 const STALE_MS = 5 * 60 * 1000;
 
+let cachedClient: ReturnType<typeof createClient<Database>> | null = null;
+
 function serviceClient() {
+  if (cachedClient) return cachedClient;
   const url = process.env.SUPABASE_URL;
   const key = process.env.SUPABASE_SERVICE_KEY;
   if (!url || !key) throw new Error('Supabase service credentials required');
-  return createClient<Database>(url, key, { auth: { persistSession: false } });
+  // Memoized: getCatalogEntry runs on every snapshot lookup (fomo trades, radar
+  // metadata, bot commands) and used to construct a fresh Supabase client —
+  // GoTrue + PostgREST wrappers and all — per call.
+  cachedClient = createClient<Database>(url, key, { auth: { persistSession: false } });
+  return cachedClient;
 }
 
 function formatCompact(n: number): string {
@@ -58,6 +70,14 @@ export function normalizeCatalogChain(chainSlug: string): { chain: 'evm' | 'sol'
   return { chain: 'evm', evmChain: lower === 'unknown' ? undefined : lower };
 }
 
+/**
+ * Exactly the columns mapRow/rowToSnapshot consume. `select('*')` here dragged
+ * the `raw` jsonb (the full provider payload persisted for audit) plus
+ * `confidence`/`id`/timestamps across the wire on every catalog read — ~73% of
+ * the row's bytes, read by nothing.
+ */
+const READ_COLUMNS = 'address, chain, evm_chain, symbol, name, pair, fdv, liq, price_usd, enriched_at, source';
+
 function mapRow(row: Record<string, unknown>): TokenCatalogRow {
   return {
     address: String(row.address),
@@ -71,8 +91,6 @@ function mapRow(row: Record<string, unknown>): TokenCatalogRow {
     priceUsd: row.price_usd != null ? Number(row.price_usd) : undefined,
     enrichedAt: String(row.enriched_at),
     source: (row.source as EnrichmentSource | null) ?? undefined,
-    confidence: (row.confidence as string | null) ?? undefined,
-    raw: row.raw ?? undefined,
   };
 }
 
@@ -101,7 +119,7 @@ export async function getCatalogEntry(address: string, chainSlug: string): Promi
 
   let query = client
     .from('token_catalog')
-    .select('*')
+    .select(READ_COLUMNS)
     .ilike('address', address)
     .eq('chain', chain);
 
@@ -115,7 +133,7 @@ export async function getCatalogEntry(address: string, chainSlug: string): Promi
   if (!data && chain === 'evm' && !evmChain) {
     const fallback = await client
       .from('token_catalog')
-      .select('*')
+      .select(READ_COLUMNS)
       .ilike('address', address)
       .eq('chain', 'evm')
       .order('enriched_at', { ascending: false })
