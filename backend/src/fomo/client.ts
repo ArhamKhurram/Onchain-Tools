@@ -13,7 +13,7 @@
 import { chromium } from 'playwright-extra';
 import type { Browser, Page } from 'playwright';
 import stealth from 'puppeteer-extra-plugin-stealth';
-import type { FomoCredentials, FomoCallResult, FomoTokenMetadata, FomoClientLike } from './types.js';
+import type { FomoCredentials, FomoCallResult, FomoClientLike } from './types.js';
 import { getFomoServiceClient, loadPersistedFomoRefreshToken } from './store.js';
 import { FomoProxyClient, isFomoProxyMode } from './proxy-client.js';
 import { recordFomoUpstreamError, recordFomoUpstreamSuccess } from './health.js';
@@ -287,45 +287,6 @@ export class FomoClient implements FomoClientLike {
 
   // --- High-level helpers (data only; no Discord formatting) ---
 
-  async getTokenMetadata(tokenAddress: string, networkId: number): Promise<FomoTokenMetadata> {
-    const filterResult = await this.call('/proxy/filterTokens', {
-      method: 'POST',
-      body: JSON.stringify([`${tokenAddress}:${networkId}`]),
-    });
-
-    const filterJson: any = filterResult?.json ?? {};
-    const entries = Array.isArray(filterJson?.responseObject) ? filterJson.responseObject : [];
-    const entry = entries.find(
-      (e: any) => e?.token?.address === tokenAddress && Number(e?.token?.networkId) === Number(networkId),
-    );
-
-    if (entry?.token) {
-      const info = entry.token.info || {};
-      const social = entry.token.socialLinks || {};
-      const icon = info.imageLargeUrl || info.imageSmallUrl || info.imageThumbUrl || info.imageBannerUrl;
-      const parseNum = (v: any) => (typeof v === 'string' ? parseFloat(v) : typeof v === 'number' ? v : null);
-
-      return {
-        ticker: entry.token.symbol || info.symbol,
-        name: entry.token.name || info.name,
-        iconLink: icon,
-        marketCap: parseNum(entry.marketCap) ?? parseNum(info.marketCap),
-        price: parseNum(entry.priceUSD),
-        description: info.description,
-        twitter: social.twitter,
-        telegram: social.telegram,
-        website: social.website,
-      };
-    }
-
-    return { ticker: null, name: null, iconLink: null, marketCap: null, price: null, description: null, twitter: null, telegram: null, website: null };
-  }
-
-  getTopHolders(tokenAddress: string, networkId: number) {
-    const holdersQuery = encodeURIComponent(JSON.stringify([{ address: tokenAddress, networkId }]));
-    return this.call(`/hodlers/top?tokens=${holdersQuery}`);
-  }
-
   getTokenTheses(tokenAddress: string, networkId: number, threshold = 1000) {
     return this.call(`/feed/token/thesis?tokenAddress=${tokenAddress}&networkId=${networkId}&threshold=${threshold}`);
   }
@@ -346,16 +307,8 @@ export class FomoClient implements FomoClientLike {
     return this.call(window ? `/v2/leaderboard/${window}?limit=${limit}` : `/v2/leaderboard?limit=${limit}`);
   }
 
-  getTradingActivity(limit = 50) {
-    return this.call(`/feed/tradingActivity?limit=${limit}`);
-  }
-
   getUserActivity(userId: string, limit = 20) {
     return this.call(`/v2/users/${encodeURIComponent(userId)}/activity?limit=${limit}`);
-  }
-
-  getTokenAllowList() {
-    return this.call('/tokenAllowList/detailed');
   }
 }
 
