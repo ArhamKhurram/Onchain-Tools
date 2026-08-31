@@ -8,7 +8,7 @@
 // owner address linked to Solscan. A missing PnL shows an em dash, never a zero.
 
 import { ExternalLink, RefreshCw, Coins } from 'lucide-react';
-import type { PumpHoldersResponse } from '../../types/pumpfun';
+import { truncateAddress, type PumpHoldersResponse } from '../../types/pumpfun';
 
 const SOLSCAN_ACCOUNT = 'https://solscan.io/account/';
 
@@ -36,11 +36,6 @@ function compactAmount(value: number | null): string {
   return abs.toFixed(0);
 }
 
-function shortAddress(address: string): string {
-  if (address.length <= 12) return address;
-  return `${address.slice(0, 6)}…${address.slice(-4)}`;
-}
-
 interface PumpHoldersBoardProps {
   data: PumpHoldersResponse | null;
   loading: boolean;
@@ -62,7 +57,7 @@ export default function PumpHoldersBoard({
       <div className="flex flex-col items-center justify-center gap-3 py-16">
         <div className="w-6 h-6 border-2 border-oct-accent border-t-transparent rounded-full animate-spin" />
         {pendingMint && (
-          <span className="font-mono text-[11px] text-oct-muted">{shortAddress(pendingMint)}</span>
+          <span className="font-mono text-[11px] text-oct-muted">{truncateAddress(pendingMint)}</span>
         )}
       </div>
     );
@@ -129,7 +124,7 @@ export default function PumpHoldersBoard({
                     className="inline-flex items-center gap-1 text-[15px] font-bold text-oct-text truncate hover:text-oct-accent transition-colors"
                     title={holder.wallet}
                   >
-                    {holder.name ?? shortAddress(holder.wallet)}
+                    {holder.name ?? truncateAddress(holder.wallet)}
                     <ExternalLink size={10} className="shrink-0 text-oct-muted" />
                   </a>
                   <div className="font-mono text-xs text-oct-muted tabular-nums">
