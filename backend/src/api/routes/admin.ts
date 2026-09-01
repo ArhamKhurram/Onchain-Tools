@@ -93,7 +93,7 @@ async function countDistinctUsers(
 export function createAdminRoutes(wsServer: WsServer): Router {
   const router = Router();
 
-  router.get('/admin/stats', requireAdmin, async (req, res) => {
+  router.get('/admin/stats', requireAdmin, async (_req, res) => {
     const live = wsServer.getLiveStats();
     const stats: AdminStats = {
       mode: isHostedMode() ? 'hosted' : 'local',

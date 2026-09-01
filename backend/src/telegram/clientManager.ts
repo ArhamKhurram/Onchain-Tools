@@ -14,8 +14,8 @@ export class TelegramClientManager extends EventEmitter {
   private readyPromise: Promise<void>;
 
   constructor(
-    private apiId: number,
-    private apiHash: string,
+    apiId: number,
+    apiHash: string,
     sessions: string[],
   ) {
     super();

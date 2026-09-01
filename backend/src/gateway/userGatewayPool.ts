@@ -1,5 +1,4 @@
 import { GatewayManager } from '../discord/gatewayManager.js';
-import type { WsServer } from '../ws/server.js';
 
 const DEFAULT_IDLE_TIMEOUT_MS = 30 * 60 * 1000; // 30 minutes
 

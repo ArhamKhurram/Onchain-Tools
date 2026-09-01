@@ -237,7 +237,7 @@ export default function ChatPane({ roomId, paneIndex, paneCount, editMode, varia
     }
   };
 
-  const toggleHighlightUser = useCallback(async (userId: string, displayName: string) => {
+  const toggleHighlightUser = useCallback(async (userId: string, _displayName: string) => {
     if (!activeRoom) return;
     const current = activeRoom.highlightedUsers ?? [];
     const isAlready = current.includes(userId);

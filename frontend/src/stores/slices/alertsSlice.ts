@@ -76,7 +76,7 @@ export const createAlertsSlice: StateCreator<AppState, [], [], AlertsSlice> = (s
   },
 
   markNotificationsRead: () => {
-    set((state) => {
+    set(() => {
       const now = Date.now();
       persistNotificationsLastReadAt(now);
       return { notificationsLastReadAt: now, unreadNotificationCount: 0 };

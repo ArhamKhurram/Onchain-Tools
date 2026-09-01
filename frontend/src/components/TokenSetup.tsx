@@ -1,7 +1,6 @@
 import { useRef, useState } from 'react';
 import { useAppStore } from '../stores/appStore';
 import { Loader2, AlertCircle, Upload, PlayCircle } from 'lucide-react';
-import { isClientGatewayMode } from '../discord/clientGateway';
 import OctLogo from './OctLogo';
 import TokenTrustPanel from './auth/TokenTrustPanel';
 

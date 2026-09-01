@@ -16,7 +16,7 @@ export interface MessagesSlice {
   sendMessage: (channelId: string, content: string, files?: File[], source?: 'discord' | 'telegram') => Promise<{ success: boolean; error?: string }>;
 }
 
-export const createMessagesSlice: StateCreator<AppState, [], [], MessagesSlice> = (set, get) => {
+export const createMessagesSlice: StateCreator<AppState, [], [], MessagesSlice> = (set) => {
   return {
     messages: {},
 

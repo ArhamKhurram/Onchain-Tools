@@ -139,7 +139,7 @@ export default function WalletTracker({ userId }: WalletTrackerProps) {
             />
           </div>
           <div className="flex gap-1 p-0.5 rounded-oct bg-oct-bg border border-oct-border">
-            {WALLET_CHAINS.map(({ value, label }) => (
+            {WALLET_CHAINS.map(({ value }) => (
               <button
                 key={value}
                 type="button"
