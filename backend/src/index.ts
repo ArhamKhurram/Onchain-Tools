@@ -36,7 +36,7 @@ import { buildContractUrl, detectEvmChainFromContent, extractEvmChainFromGmgnLin
 import { tryParseTokenEnrichment, buildRickReplyContext } from './utils/rickEmbedParser.js';
 import { enrichToken, persistEnrichment } from './utils/tokenSnapshot.js';
 import { resolveFallbackTarget, recordFallbackFdv } from './utils/dexFallback.js';
-import { cacheDiscordMessage } from './utils/messageReplyCache.js';
+import { cacheDiscordMessage } from '@oct/shared';
 import type { TokenEnrichment } from './utils/rickEmbedParser.js';
 import { processDiscordMessage } from './utils/messageProcessor.js';
 import type { MessageProcessorContext } from './utils/messageProcessor.js';

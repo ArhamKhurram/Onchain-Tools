@@ -5,7 +5,7 @@
  */
 
 import { detectContractAddresses, normalizeContractAddress } from './contract.js';
-import { lookupCachedMessage } from './messageReplyCache.js';
+import { lookupCachedMessage } from '@oct/shared';
 
 export interface TokenEnrichment {
   address: string;
