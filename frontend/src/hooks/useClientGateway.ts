@@ -16,7 +16,7 @@ import { playHighlightSound, playContractAlertSound, playKeywordAlertSound } fro
 import { showDesktopNotification } from '../utils/desktopNotification';
 import { buildContractUrl } from '../utils/contractUrl';
 import { queueContractDetection, tryRickEnrich } from '../discord/contractPendingQueue';
-import { cacheDiscordMessage } from '../discord/messageReplyCache';
+import { cacheDiscordMessage } from '@oct/shared';
 import { track } from '../lib/analytics';
 
 function isUserHighlighted(

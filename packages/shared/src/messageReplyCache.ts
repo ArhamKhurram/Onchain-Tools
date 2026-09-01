@@ -1,3 +1,10 @@
+// Bounded in-memory cache of recently-seen Discord messages, keyed by message
+// id, used to resolve reply/reference previews without a REST round-trip.
+//
+// Stateful module: each runtime that imports it (the backend Node process, a
+// browser console tab) gets its own module-scoped `cache` — exactly as when
+// this lived as separate per-workspace copies. Nothing is shared across
+// runtimes; this module only de-duplicates the identical code.
 export interface CachedMessage {
   id: string;
   content: string;

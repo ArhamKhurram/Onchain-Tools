@@ -34,6 +34,9 @@ export {
 export { processDiscordMessage } from './message.js';
 export type { MessageProcessorContext } from './message.js';
 
+// Recently-seen Discord message cache (reply/reference preview resolution).
+export { cacheDiscordMessage, lookupCachedMessage } from './messageReplyCache.js';
+
 // Shared number formatting.
 export { formatCompact } from './format.js';
 
