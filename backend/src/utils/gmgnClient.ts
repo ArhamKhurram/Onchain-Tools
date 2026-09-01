@@ -40,7 +40,6 @@ function missingKeyResult<T>(): GmgnResult<T> {
 }
 
 function parseFailure<T>(
-  subPath: string,
   status: number,
   json: GmgnApiResponse<T> | null,
 ): GmgnResult<T> {
@@ -93,14 +92,14 @@ async function gmgnRequest<T>(
       try {
         json = (await res.json()) as GmgnApiResponse<T>;
       } catch {
-        return parseFailure(subPath, res.status, null);
+        return parseFailure(res.status, null);
       }
 
       if (!res.ok || json.code !== 0) {
         const errText = String(json.error ?? json.message ?? `HTTP ${res.status}`);
         console.error(`[GMGN] ${subPath} HTTP ${res.status} code=${json.code} error=${errText}`);
         markGmgnRateLimited(errText);
-        return parseFailure(subPath, res.status, json);
+        return parseFailure(res.status, json);
       }
 
       return { ok: true, data: json.data };

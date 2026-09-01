@@ -26,7 +26,7 @@ export default function WorkspaceFomoLeaderboard() {
       embedded
       trackedIds={trackedIds}
       trackedHandles={trackedHandles}
-      onTrack={async (query, fomoUserId) => {
+      onTrack={async (query, _fomoUserId) => {
         const result = await track(query);
         if (result.ok) return { ok: true as const };
         return { ok: false as const, status: result.status, error: result.error };
