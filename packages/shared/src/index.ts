@@ -37,8 +37,10 @@ export type { MessageProcessorContext } from './message.js';
 // Recently-seen Discord message cache (reply/reference preview resolution).
 export { cacheDiscordMessage, lookupCachedMessage } from './messageReplyCache.js';
 
-// Shared number formatting.
-export { formatCompact } from './format.js';
+// Shared number formatting. usd/compactUsd/shortAddress are the transport-agnostic
+// card formatters shared by the Discord bot (bot/layout.ts) and the Telegram bot
+// (tgbot/render.ts).
+export { formatCompact, usd, compactUsd, shortAddress } from './format.js';
 
 // Bot API contract (see docs/architecture/discord-bot.md).
 export type {
