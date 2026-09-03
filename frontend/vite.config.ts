@@ -25,6 +25,24 @@ export default defineConfig({
           // feed/chat deploy. A dedicated chunk keeps its hash stable across app
           // deploys; it still only loads with ChatPane (no new boot-path request).
           if (id.includes('@tanstack')) return 'vendor-virtual';
+          // motion (+ its framer-motion / motion-dom / motion-utils internals).
+          // Same reasoning as vendor-virtual, and the same non-cost: nothing on
+          // the boot path imports lib/motion.ts, so this chunk is only fetched
+          // alongside the lazy route that animates — it adds no request to the
+          // initial load. Splitting it out also keeps the animation runtime's
+          // hash stable while the surfaces that use it are still being designed,
+          // and makes its weight visible in the build output instead of hiding
+          // it inside a page chunk. If it ever stops being lazy-only, that shows
+          // up here as a boot-path request rather than as a silently fatter
+          // index.
+          if (
+            id.includes('/motion/') ||
+            id.includes('/framer-motion/') ||
+            id.includes('/motion-dom/') ||
+            id.includes('/motion-utils/')
+          ) {
+            return 'vendor-motion';
+          }
           // lucide-react: no manual vendor chunk — let each icon module land in
           // the chunk(s) that use it, so boot only loads the chrome's icons.
           // No vendor-charts chunk anymore: recharts was replaced by the
