@@ -19,6 +19,7 @@ import { ExternalLink, Megaphone, Radio, UserPlus } from 'lucide-react';
 import { useAppStore } from '../../stores/appStore';
 import { usePumpCallers } from '../../hooks/usePumpCallers';
 import { formatMcap, truncateAddress, type PumpCalloutFeedEntry } from '../../types/pumpfun';
+import PeakMultiple from './PeakMultiple';
 
 function formatTime(ts: number): string {
   return new Date(ts).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
@@ -275,6 +276,9 @@ function PumpCalloutRow({ callout }: { callout: PumpCalloutFeedEntry }) {
         <div className="mt-1 flex items-center gap-3 text-xs text-oct-muted font-mono">
           <span title="Market cap at the moment of the call">MC @ call {mc}</span>
           {since && <span className="text-oct-green font-bold">{since} since</span>}
+          {/* Peak since the call — always shown (an em dash when the poller path
+              has none) so a row's stats keep the same shape frame to frame. */}
+          <PeakMultiple value={callout.maxMultiplier} labelled className="text-xs" />
           <span className="truncate" title={callout.coinMint}>
             {truncateAddress(callout.coinMint)}
           </span>
