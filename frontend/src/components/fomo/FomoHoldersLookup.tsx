@@ -25,19 +25,19 @@ export default function FomoHoldersLookup() {
     <div className="flex flex-col min-h-0 h-full">
       <form
         onSubmit={handleSubmit}
-        className="oct-headerbar shrink-0 flex items-center gap-2 px-3 py-2.5"
+        className="oct-headerbar shrink-0 flex items-center gap-cozy px-comfy py-cozy"
       >
         <input
           value={input}
           onChange={(e) => setInput(e.target.value)}
           placeholder="Token address…"
           spellCheck={false}
-          className="oct-input flex-1 min-w-0 px-2.5 py-2 font-mono text-xs"
+          className="oct-input flex-1 min-w-0 px-cozy py-snug type-data"
         />
         <button
           type="submit"
           disabled={loading || input.trim().length === 0}
-          className="oct-btn-primary shrink-0 p-2 disabled:opacity-40"
+          className="oct-btn-primary shrink-0 p-snug disabled:opacity-40"
           title="Look up holders"
         >
           <Search size={14} />
@@ -46,14 +46,14 @@ export default function FomoHoldersLookup() {
 
       <div className="flex-1 min-h-0">
         {submitted === null ? (
-          <div className="flex flex-col items-center justify-center gap-3 h-full px-6 text-center">
-            <div className="w-14 h-14 rounded-oct-lg border border-oct-border bg-gradient-to-b from-oct-elevated to-oct-surface shadow-oct-soft flex items-center justify-center">
-              <Search size={22} className="text-oct-muted" />
+          <div className="flex flex-col items-center justify-center gap-comfy h-full px-section text-center">
+            <div className="w-12 h-12 rounded-oct-lg border border-oct-border bg-oct-surface-raised flex items-center justify-center">
+              <Search size={20} className="text-oct-muted" />
             </div>
-            <p className="text-sm text-oct-muted max-w-xs leading-relaxed">
+            <p className="type-body text-oct-muted max-w-xs leading-relaxed">
               Paste a token address to see which FOMO traders hold it.
             </p>
-            <p className="text-xs text-oct-muted font-mono">
+            <p className="type-caption font-mono text-oct-muted">
               Solana or any EVM chain — the chain is detected for you.
             </p>
           </div>
