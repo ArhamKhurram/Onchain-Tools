@@ -112,29 +112,29 @@ const RadarTableRow = memo(function RadarTableRow({
 
   return (
     <tr className="border-b border-oct-border/50 oct-row-hover">
-      <td className="px-3 py-2">
-        <div className="flex items-center gap-2 min-w-0 max-w-[260px]">
+      <td className="px-comfy py-snug">
+        <div className="flex items-center gap-cozy min-w-0 max-w-[260px]">
           <span
-            className="w-2.5 h-2.5 rounded-full shrink-0 ring-1 ring-black/20"
+            className="w-2 h-2 rounded-full shrink-0 ring-1 ring-black/20"
             style={{ backgroundColor: plat.dot }}
             title={plat.label}
             aria-label={plat.label}
           />
           <div className="flex-1 min-w-0">
-            <div className="flex items-center gap-2 min-w-0">
+            <div className="flex items-center gap-snug min-w-0">
               <span
-                className="font-mono text-sm font-semibold text-oct-text truncate"
+                className="type-data text-sm font-semibold text-oct-text truncate"
                 title={r.symbol ?? r.address}
               >
                 {ticker}
               </span>
               {tag === 'crowded' && (
-                <span className="shrink-0 text-[10px] font-mono font-semibold uppercase px-1.5 py-0.5 rounded-full bg-oct-accent/15 text-oct-accent">
+                <span className="shrink-0 font-mono text-2xs font-semibold uppercase leading-none px-snug py-hair rounded-full bg-oct-accent/15 text-oct-accent">
                   crowded
                 </span>
               )}
               {tag === 'early' && (
-                <span className="shrink-0 text-[10px] font-mono font-semibold uppercase px-1.5 py-0.5 rounded-full bg-oct-green/15 text-oct-green">
+                <span className="shrink-0 font-mono text-2xs font-semibold uppercase leading-none px-snug py-hair rounded-full bg-oct-good/15 text-oct-good">
                   early
                 </span>
               )}
@@ -146,7 +146,7 @@ const RadarTableRow = memo(function RadarTableRow({
               )}
             </div>
             {subtitle && (
-              <div className="text-xs text-oct-muted truncate">{subtitle}</div>
+              <div className="type-caption text-oct-muted truncate">{subtitle}</div>
             )}
           </div>
           <button
@@ -155,7 +155,7 @@ const RadarTableRow = memo(function RadarTableRow({
             className="shrink-0 p-1 rounded hover:bg-oct-surface text-oct-muted hover:text-oct-text transition-colors"
             title="Copy address"
           >
-            {isCopied ? <Check size={13} className="text-oct-green" /> : <Copy size={13} />}
+            {isCopied ? <Check size={13} className="text-oct-good" /> : <Copy size={13} />}
           </button>
         </div>
       </td>
@@ -163,59 +163,59 @@ const RadarTableRow = memo(function RadarTableRow({
         switch (col) {
           case 'mentions':
             return (
-              <td key={col} className="px-3 py-2 text-right font-mono text-sm text-oct-text tabular-nums">
+              <td key={col} className="px-comfy py-snug text-right type-data text-sm text-oct-text">
                 {r.mentions}
               </td>
             );
           case 'callers':
             return (
-              <td key={col} className="px-3 py-2 text-right font-mono text-sm text-oct-text tabular-nums">
+              <td key={col} className="px-comfy py-snug text-right type-data text-sm text-oct-text">
                 {r.callers.size}
               </td>
             );
           case 'fomo':
             return (
-              <td key={col} className="px-3 py-2 text-right">
+              <td key={col} className="px-comfy py-snug text-right">
                 {fomoHold > 0 ? (
                   <span
-                    className="inline-flex items-center gap-1 font-mono text-xs font-bold text-oct-accent"
+                    className="inline-flex items-center gap-tight type-data font-bold text-oct-accent"
                     title={overlap?.trackedHandles?.map((h) => `@${h}`).join(', ') ?? ''}
                   >
                     <Users size={12} />
                     {fomoHold}
                   </span>
                 ) : (
-                  <span className="text-oct-muted">·</span>
+                  <span className="type-data text-oct-muted">·</span>
                 )}
               </td>
             );
           case 'groups':
             return (
-              <td key={col} className="px-3 py-2 text-right font-mono text-sm text-oct-text tabular-nums">
+              <td key={col} className="px-comfy py-snug text-right type-data text-sm text-oct-text">
                 {r.groups.size}
               </td>
             );
           case 'windowMentions':
             return (
-              <td key={col} className="px-3 py-2 text-right font-mono text-sm text-oct-text tabular-nums">
+              <td key={col} className="px-comfy py-snug text-right type-data text-sm text-oct-text">
                 {countWithin(r.timestamps, MENTION_WINDOW_MS[mentionWindow]) || '·'}
               </td>
             );
           case 'recent':
             return (
-              <td key={col} className="px-3 py-2 text-right font-mono text-xs text-oct-muted tabular-nums whitespace-nowrap">
+              <td key={col} className="px-comfy py-snug text-right type-data text-oct-muted whitespace-nowrap">
                 {timeAgoShort(r.lastMentionAt)}
               </td>
             );
           case 'firstCaller':
             return (
-              <td key={col} className="px-3 py-2 text-sm truncate max-w-[160px]">
+              <td key={col} className="px-comfy py-snug type-body text-xs truncate max-w-[160px]">
                 {/* Same band colour + badge as the feed (Message.tsx). A name
                     is worth very different amounts depending on who it is, and
                     the radar was the one place that withheld that. */}
                 {r.firstCallerBand && bandIsNotable(r.firstCallerBand) && (
                   <span
-                    className={`text-[10px] font-bold uppercase px-1.5 py-0.5 rounded-full mr-1 align-middle ${BAND_BADGE_CLASS[r.firstCallerBand]}`}
+                    className={`text-2xs font-bold uppercase leading-none px-snug py-hair rounded-full mr-tight align-middle ${BAND_BADGE_CLASS[r.firstCallerBand]}`}
                     title={BAND_TITLE[r.firstCallerBand]}
                   >
                     {BAND_LABELS[r.firstCallerBand]}
@@ -231,7 +231,7 @@ const RadarTableRow = memo(function RadarTableRow({
             );
           case 'mcAtCall':
             return (
-              <td key={col} className="px-3 py-2 text-right font-mono text-sm text-oct-muted tabular-nums">
+              <td key={col} className="px-comfy py-snug text-right type-data text-sm text-oct-muted">
                 {r.mcAtCallDisplay ?? '—'}
               </td>
             );
@@ -240,7 +240,7 @@ const RadarTableRow = memo(function RadarTableRow({
             return (
               <td
                 key={col}
-                className="px-3 py-2 font-mono text-xs whitespace-nowrap max-w-[200px] truncate"
+                className="px-comfy py-snug type-data whitespace-nowrap max-w-[200px] truncate"
                 title={GLOBAL_FIRST_TITLE}
               >
                 {gf ? (
@@ -252,7 +252,7 @@ const RadarTableRow = memo(function RadarTableRow({
                       <span className="text-oct-muted"> @ {formatCompact(gf.mcapUsd)}</span>
                     )}
                     {gf.atMs != null && (
-                      <span className="text-oct-muted tabular-nums"> · {timeAgoShort(gf.atMs)}</span>
+                      <span className="text-oct-muted"> · {timeAgoShort(gf.atMs)}</span>
                     )}
                   </>
                 ) : (
@@ -263,10 +263,10 @@ const RadarTableRow = memo(function RadarTableRow({
           }
           case 'mcNow':
             return (
-              <td key={col} className="px-3 py-2 text-right font-mono text-sm text-oct-live tabular-nums whitespace-nowrap">
+              <td key={col} className="px-comfy py-snug text-right type-data text-sm text-oct-live whitespace-nowrap">
                 {mcNowDisplay ?? '—'}
                 {live && (
-                  <span className="ml-1 text-[10px] text-oct-muted">{timeAgoShort(live.at)}</span>
+                  <span className="ml-tight text-2xs text-oct-muted">{timeAgoShort(live.at)}</span>
                 )}
               </td>
             );
@@ -277,13 +277,13 @@ const RadarTableRow = memo(function RadarTableRow({
             // wide glyph can't push the digits out of column.
             const emoji = radarEmojiForMultiple(mult, emojiRules);
             return (
-              <td key={col} className="px-3 py-2 text-right font-mono text-sm" title={MULT_TITLE}>
-                <span className="inline-flex items-center justify-end gap-1 whitespace-nowrap">
+              <td key={col} className="px-comfy py-snug text-right type-data text-sm" title={MULT_TITLE}>
+                <span className="inline-flex items-center justify-end gap-tight whitespace-nowrap">
                   <span className="w-4 text-center leading-none" aria-hidden={!emoji}>
                     {emoji ?? ''}
                   </span>
                   {mult != null ? (
-                    <span className={`tabular-nums ${mult >= 1 ? 'text-oct-green' : 'text-oct-accent'}`}>
+                    <span className={mult >= 1 ? 'text-oct-good' : 'text-oct-critical'}>
                       {mult.toFixed(1)}x
                     </span>
                   ) : (
@@ -295,17 +295,17 @@ const RadarTableRow = memo(function RadarTableRow({
           }
           case 'quality':
             return (
-              <td key={col} className="px-3 py-2 text-right whitespace-nowrap">
+              <td key={col} className="px-comfy py-snug text-right whitespace-nowrap">
                 {r.bestBand && r.bestBand !== 'unrated' ? (
                   <span
-                    className={`inline-flex items-center gap-1 text-[11px] font-bold uppercase ${BAND_TEXT_CLASS[r.bestBand]}`}
+                    className={`inline-flex items-center gap-tight text-2xs font-bold uppercase ${BAND_TEXT_CLASS[r.bestBand]}`}
                     title={BAND_TITLE[r.bestBand]}
                   >
                     <span className={`w-1.5 h-1.5 rounded-full ${BAND_DOT_CLASS[r.bestBand]}`} />
                     {BAND_LABELS[r.bestBand]}
                   </span>
                 ) : (
-                  <span className="text-oct-muted text-[11px]">—</span>
+                  <span className="type-data text-oct-muted">—</span>
                 )}
               </td>
             );
@@ -313,7 +313,7 @@ const RadarTableRow = memo(function RadarTableRow({
             return null;
         }
       })}
-      <td className="px-3 py-2">
+      <td className="px-comfy py-snug">
         <button
           type="button"
           onClick={() => onRefresh(r.address, r.evmChain)}

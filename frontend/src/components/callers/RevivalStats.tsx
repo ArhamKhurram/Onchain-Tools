@@ -6,7 +6,7 @@ import { computeRevivalReceipts } from './revivalReceipts';
 type Tone = 'default' | 'green' | 'muted';
 
 function toneClass(tone: Tone): string {
-  if (tone === 'green') return 'text-oct-green';
+  if (tone === 'green') return 'text-oct-good';
   if (tone === 'muted') return 'text-oct-muted';
   return '';
 }
@@ -24,9 +24,9 @@ function Tile({
 }) {
   return (
     <div className="oct-stat-tile min-w-[132px] flex-1">
-      <p className="oct-stat-label mb-1.5">{label}</p>
+      <p className="oct-stat-label mb-snug">{label}</p>
       <p className={`oct-stat-value truncate ${toneClass(tone)}`.trim()}>{value}</p>
-      {sub && <p className="font-mono text-[11px] text-oct-muted mt-1.5 truncate">{sub}</p>}
+      {sub && <p className="type-data text-2xs text-oct-muted mt-snug truncate">{sub}</p>}
     </div>
   );
 }
@@ -60,13 +60,13 @@ export default function RevivalStats({
     bestCatch == null ? null : bestCatch.symbol ? `$${bestCatch.symbol}` : `${bestCatch.mint.slice(0, 6)}…`;
 
   return (
-    <div className="shrink-0 px-4 pt-3">
+    <div className="shrink-0 px-roomy pt-comfy">
       {truncated && (
-        <p className="oct-stat-label mb-2">
+        <p className="oct-stat-label mb-cozy">
           receipts cover the last {stats.totalAlerts} alerts — older history is not fetched
         </p>
       )}
-      <div className="flex flex-wrap gap-3">
+      <div className="flex flex-wrap gap-cozy">
         <Tile
           label="Alerts (7d)"
           value={String(stats.alerts7d)}

@@ -51,7 +51,7 @@ function segmentClass(active: boolean): string {
 }
 
 function chipClass(active: boolean): string {
-  return `flex items-center gap-1 px-2.5 py-1 rounded-oct-sm text-[11px] font-mono font-bold uppercase border transition-all shrink-0 ${
+  return `flex items-center gap-1 px-2.5 py-1 rounded-oct-sm text-2xs font-mono font-bold uppercase border transition-all shrink-0 ${
     active
       ? 'border-oct-accent/50 bg-oct-accent text-white shadow-oct-glow-accent'
       : 'border-oct-border text-oct-muted hover:text-oct-text hover:border-oct-border-bright'
@@ -214,7 +214,7 @@ export default function ContractFeedToolbar({
       </div>
 
       {(ranked || goodOnly) && (
-        <div className="flex items-start gap-1.5 px-3 sm:px-4 pb-2.5 -mt-1 text-[11px] leading-snug text-oct-muted">
+        <div className="flex items-start gap-1.5 px-3 sm:px-4 pb-2.5 -mt-1 type-caption font-normal leading-snug text-oct-muted">
           <Info size={12} className="shrink-0 mt-[1px]" />
           <p className="min-w-0">
             {ranked && (

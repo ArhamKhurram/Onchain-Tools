@@ -1,4 +1,17 @@
-import { useCallback, useEffect, useState, useMemo, Fragment } from 'react';
+// The Contract Feed (Callers › Contracts, and the Workspace's feed panes).
+// This file is state + composition only — the pieces live in contract-feed/:
+//
+//   ContractFeedToolbar.tsx   filters, search, sort, view mode
+//   useContractFeedRows.ts    the filter → group → sort pipeline
+//   ContractFeedList.tsx      the grouped rows / cards
+//   ContractFeedEmpty.tsx     the two empty states
+//   ContractFeedRows.tsx      ContractRow / ContractCard (memoized)
+//
+// PERF CONTRACT: every callback handed to a row is identity-stable
+// (useCallback) so the memoized rows can skip re-rendering on unrelated store
+// churn — an enrichment frame for one address must not re-paint the other few
+// hundred rows. Rows are a live stream and are never animated.
+import { useCallback, useEffect, useState } from 'react';
 import { Trash2, PanelLeftOpen } from 'lucide-react';
 import { useAppStore } from '../stores/appStore';
 import { useCallerQuality } from '../hooks/useCallerQuality';
@@ -6,19 +19,12 @@ import { buildContractUrl } from '../utils/contractUrl';
 import { openContractSource } from '../utils/contractSource';
 import ConfirmModal from './ConfirmModal';
 import ContractFeedToolbar, { type ContractViewMode, type ContractChainFilter } from './contract-feed/ContractFeedToolbar';
-import { ContractRow, ContractCard } from './contract-feed/ContractFeedRows';
+import ContractFeedList from './contract-feed/ContractFeedList';
+import ContractFeedEmpty from './contract-feed/ContractFeedEmpty';
+import { useContractFeedRows } from './contract-feed/useContractFeedRows';
 import TokenHoldersDrawer, { type HoldersTarget } from './fomo/TokenHoldersDrawer';
 import type { ContractEntry } from '../types';
-import { groupContractFeedByAddress } from '../utils/contractFeedGrouping';
-import {
-  filterGoodCallerRows,
-  filterTopCallerRows,
-  groupHistoryOldestFirst,
-  groupSummaryItem,
-  sortContractGroups,
-  type ContractSortMode,
-} from '../utils/contractFeedView';
-import { buildFirstCallerIndex } from '../utils/firstCaller';
+import type { ContractSortMode } from '../utils/contractFeedView';
 
 // Chains FOMO indexes. A detection on any other EVM chain still opens the
 // drawer — we just omit the hint and let the backend probe.
@@ -90,81 +96,26 @@ export default function ContractDashboard({ embedded = false, topOnly = false }:
     fetchContracts();
   }, [fetchContracts]);
 
-  const filtered = useMemo(() => {
-    let result = contracts;
-    if (chainFilter !== 'all') {
-      result = result.filter((c) => c.chain === chainFilter);
-    }
-    if (search.trim()) {
-      const q = search.toLowerCase();
-      result = result.filter(
-        (c) =>
-          c.address.toLowerCase().includes(q) ||
-          c.authorName.toLowerCase().includes(q) ||
-          c.channelName.toLowerCase().includes(q) ||
-          (c.guildName?.toLowerCase().includes(q) ?? false) ||
-          (c.tokenName?.toLowerCase().includes(q) ?? false) ||
-          (c.tokenSymbol?.toLowerCase().includes(q) ?? false),
-      );
-    }
-    return result;
-  }, [contracts, chainFilter, search]);
-
-  const { visible, mutedCount } = useMemo(() => {
-    const withQuality = filtered.map((entry) => ({ entry, quality: qualityForContract(entry) }));
-    const muted = withQuality.filter((r) => r.quality.tier === 'muted');
-
-    // A muted caller can still be first on a runner, so the default is to collapse
-    // them behind a counter rather than drop them — you can always look. Muted rows
-    // ride along only when the setting keeps them AND this pane's reveal is on;
-    // every other combination hides them.
-    const rows = showMuted && revealMuted
-      ? withQuality
-      : withQuality.filter((r) => r.quality.tier !== 'muted');
-
-    // NOTE: rank ordering deliberately does NOT happen here any more. Sorting
-    // rows by rank before grouping shuffled same-address scans out of time
-    // order, so a collapsed group's head — the row whose symbol, FDV and
-    // timestamp the group is summarised by — stopped being its newest scan.
-    // Ranking is applied to the finished groups instead (see `groupedRows`).
-    return { visible: rows, mutedCount: muted.length };
-  }, [filtered, qualityForContract, showMuted, revealMuted]);
-
   const {
-    rows: qualifiedRows,
+    filteredEntries,
+    groupedRows,
+    firstCallerIndex,
+    mutedCount,
     unratedShown,
-    hidden: goodHidden,
+    goodHidden,
     topHidden,
-  } = useMemo(() => {
-    // Top Callers Feed applies its own, far stricter filter (elite + trusted
-    // only) that subsumes both the good-callers filter and the muted collapse —
-    // a muted or unrated caller can never be "the absolute best".
-    if (topOnly) {
-      const { rows, hidden } = filterTopCallerRows(visible);
-      return { rows, unratedShown: 0, hidden: 0, topHidden: hidden };
-    }
-    return { ...filterGoodCallerRows(visible, goodOnly), topHidden: 0 };
-  }, [visible, goodOnly, topOnly]);
+  } = useContractFeedRows({
+    contracts,
+    chainFilter,
+    search,
+    qualityForContract,
+    showMuted,
+    revealMuted,
+    goodOnly,
+    topOnly,
+    sortMode,
+  });
 
-  const filteredEntries = useMemo(() => qualifiedRows.map((r) => r.entry), [qualifiedRows]);
-
-  // Same-address rescans flood the feed (scheduleDexFallback re-broadcasts
-  // every ~15s), so collapse consecutive scans of one address into a single
-  // group. Grouping runs on the newest-first list, which is what the grouping
-  // function expects; the chosen sort is applied to the groups afterwards.
-  // See contractFeedGrouping.ts for the window rationale.
-  const groupedRows = useMemo(
-    () => sortContractGroups(groupContractFeedByAddress(qualifiedRows), sortMode),
-    [qualifiedRows, sortMode],
-  );
-
-  // Built once over the whole loaded log rather than per row: "who called this
-  // first" has to look past the 20-minute rescan group the row belongs to.
-  const firstCallerIndex = useMemo(() => buildFirstCallerIndex(contracts), [contracts]);
-
-  // Every row callback below is identity-stable (useCallback) so the memoized
-  // rows can skip re-rendering on unrelated store churn — an enrichment frame
-  // for one address must not re-paint the other few hundred rows.
   // Rows pass their own (mixed-case) address; group keys are lowercased.
   const toggleGroupExpanded = useCallback((address: string) => {
     const key = address.toLowerCase();
@@ -222,25 +173,27 @@ export default function ContractDashboard({ embedded = false, topOnly = false }:
       {/* Header */}
       <div className="oct-headerbar shrink-0">
         {!embedded && (
-        <div className="flex items-center gap-2 sm:gap-3 px-3 sm:px-4 py-3">
+        <div className="flex items-center gap-cozy sm:gap-comfy px-comfy sm:px-roomy py-cozy">
           {sidebarCollapsed && (
             <button
               onClick={toggleSidebar}
-              className="oct-icon-btn p-1.5 shrink-0"
+              className="oct-icon-btn p-snug shrink-0"
               title="Show sidebar"
             >
               <PanelLeftOpen size={18} />
             </button>
           )}
-          <h2 className="oct-section-title uppercase tracking-wide text-base sm:text-lg">
+          <h2 className="type-title sm:type-heading uppercase tracking-wide text-oct-text">
             {topOnly ? 'Top Callers' : 'Contract Feed'}
           </h2>
-          <span className="text-oct-muted text-[13px] font-mono font-semibold tabular-nums">{filteredEntries.length}</span>
+          <span className="type-data text-oct-muted">{filteredEntries.length}</span>
           <div className="flex-1" />
           {contracts.length > 0 && (
+            // Destructive, so `oct-critical` rather than the brand accent —
+            // in the dark theme the two used to be the same red.
             <button
               onClick={handleDeleteAll}
-              className="flex items-center gap-1 px-2.5 py-1 rounded-oct-sm text-[11px] font-mono font-bold uppercase text-oct-accent hover:bg-oct-accent hover:text-white hover:shadow-oct-glow-accent transition-all border border-oct-accent/60 shrink-0"
+              className="flex items-center gap-tight px-cozy py-tight rounded-oct-sm font-mono text-2xs font-bold uppercase text-oct-critical hover:bg-oct-critical hover:text-white transition-all duration-fast border border-oct-critical/60 shrink-0"
               title="Delete all contracts"
             >
               <Trash2 size={12} />
@@ -279,128 +232,35 @@ export default function ContractDashboard({ embedded = false, topOnly = false }:
         style={{ overflowAnchor: 'none' }}
       >
         {filteredEntries.length === 0 ? (
-          topOnly ? (
-            <div className="flex flex-col items-center justify-center h-full text-center px-6 max-w-md mx-auto">
-              <p className="oct-eyebrow mb-2">Top Callers</p>
-              <p className="text-sm text-oct-text/90 mb-1.5">
-                Only your elite &amp; trusted callers show here — that&rsquo;s the point.
-              </p>
-              <p className="text-xs text-oct-muted leading-relaxed">
-                {contracts.length === 0
-                  ? 'Nothing detected yet. This feed stays quiet on purpose — a call only lands here once it comes from a caller with an earned Elite band or one you’ve marked Trusted.'
-                  : topHidden > 0
-                    ? `${topHidden} recent call${topHidden === 1 ? '' : 's'} came from callers who aren’t elite or trusted, so they’re held out. Mark a caller Trusted, or wait for one to earn an Elite band, to see them here.`
-                    : 'No calls from your best callers right now.'}
-              </p>
-            </div>
-          ) : (
-            <div className="flex flex-col items-center justify-center h-full text-center px-6">
-              <p className="oct-eyebrow mb-2">Contracts</p>
-              <p className="text-sm text-oct-muted">
-                {contracts.length === 0
-                  ? 'No contracts detected yet'
-                  : goodOnly && goodHidden > 0
-                    ? `Every match is from a mixed, slop or muted caller — ${goodHidden} hidden by the good-callers filter`
-                    : mutedCount > 0
-                      ? 'Every match is from a muted caller'
-                      : 'No contracts match your filters'}
-              </p>
-            </div>
-          )
-        ) : viewMode === 'table' ? (
-          <div className="divide-y divide-oct-border/50">
-            {groupedRows.map((group) => {
-              // The group's newest scan — what a collapsed row summarises.
-              // Derived rather than taken as items[0] so the summary timestamp
-              // is the newest scan under any sort mode.
-              const head = groupSummaryItem(group);
-              const scanCount = group.items.length;
-              const isExpanded = scanCount > 1 && expandedGroups.has(group.address);
-              // Chronological (oldest-first) history of everything folded into
-              // this group, excluding the head row already shown above it.
-              const history = scanCount > 1 ? groupHistoryOldestFirst(group) : [];
-              return (
-                <Fragment key={`group-${group.address}-${head.entry.messageId}`}>
-                  <ContractRow
-                    entry={head.entry}
-                    quality={head.quality}
-                    evmColor={evmColor}
-                    solColor={solColor}
-                    showFull={showFull}
-                    isCopied={copiedAddr === head.entry.address}
-                    onCopy={handleCopy}
-                    onOpen={handleOpen}
-                    onOpenDiscord={handleOpenDiscord}
-                    onDelete={handleDelete}
-                    onShowHolders={handleShowHolders}
-                    forceIsNew={group.hasNew}
-                    scanCount={scanCount}
-                    isExpanded={isExpanded}
-                    onToggleExpand={scanCount > 1 ? toggleGroupExpanded : undefined}
-                    firstCall={firstCallerIndex.get(group.address)}
-                    markUnrated={goodOnly}
-                    hideBandBadge={hideBadges}
-                    showStats={topOnly}
-                    timeTick={timeTick}
-                  />
-                  {isExpanded && (
-                    <div className="pl-3 sm:pl-6 border-l-2 border-oct-border/60 ml-3 sm:ml-6">
-                      {history.map(({ entry, quality }) => (
-                        <ContractRow
-                          key={`${entry.messageId}-${entry.address}`}
-                          entry={entry}
-                          quality={quality}
-                          evmColor={evmColor}
-                          solColor={solColor}
-                          showFull={showFull}
-                          isCopied={copiedAddr === entry.address}
-                          onCopy={handleCopy}
-                          onOpen={handleOpen}
-                          onOpenDiscord={handleOpenDiscord}
-                          onDelete={handleDelete}
-                          onShowHolders={handleShowHolders}
-                          firstCall={firstCallerIndex.get(group.address)}
-                          markUnrated={goodOnly}
-                          hideBandBadge={hideBadges}
-                          isSubRow
-                          timeTick={timeTick}
-                        />
-                      ))}
-                    </div>
-                  )}
-                </Fragment>
-              );
-            })}
-          </div>
+          <ContractFeedEmpty
+            topOnly={topOnly}
+            totalCount={contracts.length}
+            goodOnly={goodOnly}
+            goodHidden={goodHidden}
+            mutedCount={mutedCount}
+            topHidden={topHidden}
+          />
         ) : (
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-2 sm:gap-3 p-3 sm:p-4">
-            {groupedRows.map((group) => {
-              const head = groupSummaryItem(group);
-              const scanCount = group.items.length;
-              return (
-              <ContractCard
-                key={`group-${group.address}-${head.entry.messageId}`}
-                entry={head.entry}
-                quality={head.quality}
-                evmColor={evmColor}
-                solColor={solColor}
-                isCopied={copiedAddr === head.entry.address}
-                onCopy={handleCopy}
-                onOpen={handleOpen}
-                onOpenDiscord={handleOpenDiscord}
-                onDelete={handleDelete}
-                onShowHolders={handleShowHolders}
-                forceIsNew={group.hasNew}
-                scanCount={scanCount}
-                firstCall={firstCallerIndex.get(group.address)}
-                markUnrated={goodOnly}
-                hideBandBadge={hideBadges}
-                showStats={topOnly}
-                timeTick={timeTick}
-              />
-              );
-            })}
-          </div>
+          <ContractFeedList
+            viewMode={viewMode}
+            groups={groupedRows}
+            firstCallerIndex={firstCallerIndex}
+            expandedGroups={expandedGroups}
+            evmColor={evmColor}
+            solColor={solColor}
+            showFull={showFull}
+            copiedAddr={copiedAddr}
+            markUnrated={goodOnly}
+            hideBadges={hideBadges}
+            showStats={topOnly}
+            timeTick={timeTick}
+            onCopy={handleCopy}
+            onOpen={handleOpen}
+            onOpenDiscord={handleOpenDiscord}
+            onDelete={handleDelete}
+            onShowHolders={handleShowHolders}
+            onToggleExpand={toggleGroupExpanded}
+          />
         )}
       </div>
 
