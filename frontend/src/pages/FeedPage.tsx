@@ -6,7 +6,7 @@ import ChatView from '../components/ChatView';
 import TokenSetup from '../components/TokenSetup';
 import GatewayAuthBanner from '../components/GatewayAuthBanner';
 import FeedChrome from '../components/feed/FeedChrome';
-import { DEFAULT_FEED_CHROME_PRESET, FeedChromeContext, chromeOwnsPaneHeader } from '../components/feed/feedChromeContract';
+import { FEED_PRESET_DENSITY, FeedChromeContext, chromeOwnsPaneHeader, normalizeFeedChromePreset } from '../components/feed/feedChromeContract';
 import ConsoleEmptyState from '../components/console/ConsoleEmptyState';
 import FullPageSpinner from '../components/common/FullPageSpinner';
 import PreviewBanner from '../components/preview/PreviewBanner';
@@ -22,6 +22,10 @@ export default function FeedPage() {
   const rooms = useAppStore((s) => s.rooms);
   const paneRoomIds = useAppStore((s) => s.paneRoomIds);
   const setActiveRoom = useAppStore((s) => s.setActiveRoom);
+  // The persisted pick (Settings > General or the in-feed switcher). Before
+  // this read landed the Feed always wore the default preset and the setting
+  // was write-only.
+  const preset = useAppStore((s) => normalizeFeedChromePreset(s.config?.feedChromePreset));
 
   const discordConnected = authStatus?.configured || previewMode;
 
@@ -34,10 +38,11 @@ export default function FeedPage() {
 
   const chromeContext = useMemo(
     () => ({
-      preset: DEFAULT_FEED_CHROME_PRESET,
-      ownsPaneHeader: chromeOwnsPaneHeader(DEFAULT_FEED_CHROME_PRESET, paneRoomIds.length),
+      preset,
+      ownsPaneHeader: chromeOwnsPaneHeader(preset, paneRoomIds.length),
+      density: FEED_PRESET_DENSITY[preset],
     }),
-    [paneRoomIds.length],
+    [preset, paneRoomIds.length],
   );
 
   if (!ready || (isAuthenticated && authLoading)) {

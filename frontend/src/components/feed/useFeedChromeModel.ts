@@ -30,6 +30,7 @@ export function useFeedChromeModel(preset: FeedChromePreset): FeedChromeModel {
   const setActiveRoom = useAppStore((s) => s.setActiveRoom);
   const openConfigModal = useAppStore((s) => s.openConfigModal);
   const toggleLayoutEditMode = useAppStore((s) => s.toggleLayoutEditMode);
+  const updateConfig = useAppStore((s) => s.updateConfig);
 
   const activeRoomId = paneRoomIds[activePaneIndex] ?? paneRoomIds[0] ?? null;
   const activeRoom = rooms.find((r) => r.id === activeRoomId);
@@ -81,5 +82,9 @@ export function useFeedChromeModel(preset: FeedChromePreset): FeedChromeModel {
     createRoom: () => openConfigModal(),
     configureActiveRoom: () => openConfigModal(activeRoom),
     toggleLayoutEditMode,
+    // Same write Settings > General makes on save, so the in-feed switcher and
+    // the settings form share one persistence path (local JSON or hosted
+    // JSONB — updateConfig already knows which).
+    setPreset: (next) => { void updateConfig({ feedChromePreset: next }); },
   };
 }

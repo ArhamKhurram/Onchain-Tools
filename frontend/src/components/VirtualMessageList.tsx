@@ -1,11 +1,13 @@
 import { forwardRef, useEffect, useImperativeHandle, useReducer, useRef } from 'react';
 import { useVirtualizer } from '@tanstack/react-virtual';
 import type { FrontendMessage } from '../types';
+import { DEFAULT_FEED_ROW_DENSITY, FEED_ROW_HEIGHT_ESTIMATE } from './feed/feedChromeContract';
 
 // Rows differ wildly (compact one-liners vs embeds/images), so this is only a
 // first guess; every mounted row is measured for real via `measureElement`
-// and heights are cached per message id.
-const ESTIMATED_ROW_HEIGHT = 48;
+// and heights are cached per message id. The pane passes a density-specific
+// estimate; this is the fallback for panes outside the Feed shell.
+const ESTIMATED_ROW_HEIGHT = FEED_ROW_HEIGHT_ESTIMATE[DEFAULT_FEED_ROW_DENSITY];
 // Rows kept mounted beyond each edge of the viewport, so quick flicks and the
 // jump-flash have real DOM to land on without re-inflating the mount count.
 const OVERSCAN = 8;
@@ -26,6 +28,12 @@ interface VirtualMessageListProps {
   /** Observed by ChatPane to re-stick to the bottom as content height changes. */
   contentRef: React.RefObject<HTMLDivElement | null>;
   renderRow: (msg: FrontendMessage, index: number) => React.ReactNode;
+  /**
+   * First-guess row height before measurement, in px. Follows the pane's row
+   * density so the scrollbar and jump targets don't lurch when a preset packs
+   * rows tighter or looser than the default estimate.
+   */
+  estimatedRowHeight?: number;
 }
 
 /**
@@ -37,11 +45,11 @@ interface VirtualMessageListProps {
  * list), and text selection cannot span beyond the mounted window.
  */
 const VirtualMessageList = forwardRef<VirtualMessageListHandle, VirtualMessageListProps>(
-  function VirtualMessageList({ items, scrollElementRef, contentRef, renderRow }, ref) {
+  function VirtualMessageList({ items, scrollElementRef, contentRef, renderRow, estimatedRowHeight = ESTIMATED_ROW_HEIGHT }, ref) {
     const virtualizer = useVirtualizer({
       count: items.length,
       getScrollElement: () => scrollElementRef.current,
-      estimateSize: () => ESTIMATED_ROW_HEIGHT,
+      estimateSize: () => estimatedRowHeight,
       overscan: OVERSCAN,
       // Cache measured heights by message id, not index, so appends and
       // head-evictions (the per-room cap) don't corrupt row heights.
@@ -61,6 +69,17 @@ const VirtualMessageList = forwardRef<VirtualMessageListHandle, VirtualMessageLi
     useEffect(() => {
       forceRender();
     }, []);
+
+    // A density change restyles every row at once. Mounted rows re-measure on
+    // their own (ResizeObserver), but the cache still holds stale heights for
+    // every unmounted row, so drop it and let the new estimate stand in until
+    // those rows come back into view. Skipped on mount: the cache is empty.
+    const prevEstimateRef = useRef(estimatedRowHeight);
+    useEffect(() => {
+      if (prevEstimateRef.current === estimatedRowHeight) return;
+      prevEstimateRef.current = estimatedRowHeight;
+      virtualizer.measure();
+    }, [estimatedRowHeight, virtualizer]);
 
     useImperativeHandle(
       ref,
