@@ -5,6 +5,8 @@
 
 import { ExternalLink, RefreshCw, Users } from 'lucide-react';
 import type { BotHoldersResponse } from '@oct/shared';
+import Chip from '../common/Chip';
+import { cn } from '../../lib/utils';
 
 const NETWORK_LABELS: Record<number, string> = {
   1: 'ETH',
@@ -51,18 +53,19 @@ export default function FomoHoldersBoard({
 }: FomoHoldersBoardProps) {
   if (loading && !data) {
     return (
-      <div className="flex flex-col items-center justify-center gap-3 py-16">
+      <div className="flex flex-col items-center justify-center gap-comfy py-gutter">
         <div className="w-6 h-6 border-2 border-oct-accent border-t-transparent rounded-full animate-spin" />
-        {pendingAddress && (
-          <span className="font-mono text-[11px] text-oct-muted">{shortAddress(pendingAddress)}</span>
-        )}
+        {pendingAddress && <span className="type-data text-oct-muted">{shortAddress(pendingAddress)}</span>}
       </div>
     );
   }
 
   if (error) {
     return (
-      <div className="m-4 px-4 py-3 rounded-oct border border-oct-flame/40 bg-oct-flame/10 text-sm text-oct-text">
+      <div
+        role="alert"
+        className="m-comfy px-comfy py-cozy rounded-oct border border-oct-critical/50 bg-oct-critical-dim type-body text-oct-critical"
+      >
         {error}
       </div>
     );
@@ -70,9 +73,9 @@ export default function FomoHoldersBoard({
 
   if (!data) {
     return (
-      <div className="flex flex-col items-center justify-center gap-2 py-16 px-6 text-center">
+      <div className="flex flex-col items-center justify-center gap-cozy py-gutter px-section text-center">
         <Users size={20} className="text-oct-muted" />
-        <p className="text-sm text-oct-muted">No token selected.</p>
+        <p className="type-body text-oct-muted">No token selected.</p>
       </div>
     );
   }
@@ -88,26 +91,28 @@ export default function FomoHoldersBoard({
 
   return (
     <div className="flex flex-col min-h-0 h-full">
-      <div className="oct-headerbar shrink-0 px-4 py-3">
-        <div className="flex items-start gap-3">
+      <div className="oct-headerbar shrink-0 px-roomy py-cozy">
+        <div className="flex items-start gap-comfy">
           {token.iconUrl && (
             <img
               src={token.iconUrl}
               alt={token.name ?? ticker}
-              className="w-10 h-10 rounded-oct border border-oct-border shrink-0 object-cover"
+              className="w-9 h-9 rounded-oct border border-oct-border shrink-0 object-cover"
               loading="lazy"
             />
           )}
           <div className="min-w-0 flex-1">
-            <div className="flex items-center gap-2 min-w-0">
-              <span className="text-[15px] font-extrabold text-oct-text truncate">${ticker}</span>
-              <span className="oct-chip uppercase shrink-0">{chainLabel}</span>
+            <div className="flex items-center gap-cozy min-w-0">
+              <span className="type-title text-oct-text truncate">${ticker}</span>
+              <Chip data={false} className="shrink-0">
+                {chainLabel}
+              </Chip>
             </div>
             <a
               href={`${explorerBase}${token.address}`}
               target="_blank"
               rel="noreferrer"
-              className="inline-flex items-center gap-1 font-mono text-xs text-oct-muted hover:text-oct-text transition-colors"
+              className="inline-flex items-center gap-tight type-data text-oct-muted hover:text-oct-text transition-colors duration-fast"
               title={token.address}
             >
               {shortAddress(token.address)}
@@ -119,7 +124,7 @@ export default function FomoHoldersBoard({
               type="button"
               onClick={onRefresh}
               disabled={loading}
-              className="oct-icon-btn shrink-0 p-2"
+              className="oct-icon-btn shrink-0 p-snug"
               title="Refresh holders"
             >
               <RefreshCw size={14} className={loading ? 'animate-spin' : ''} />
@@ -127,8 +132,13 @@ export default function FomoHoldersBoard({
           )}
         </div>
 
-        <div className="flex flex-wrap items-center gap-x-4 gap-y-1 mt-2 text-xs font-mono text-oct-muted">
-          {token.marketCap != null && <span>MCap {compactUsd(token.marketCap)}</span>}
+        <div className="flex flex-wrap items-center gap-x-comfy gap-y-tight mt-cozy type-data text-oct-muted">
+          {token.marketCap != null && (
+            <span>
+              <span className="type-caption font-mono uppercase tracking-wide">MCap </span>
+              {compactUsd(token.marketCap)}
+            </span>
+          )}
           {token.priceUsd != null && token.priceUsd > 0 && (
             <span>${token.priceUsd.toLocaleString(undefined, { maximumFractionDigits: 6 })}</span>
           )}
@@ -138,7 +148,7 @@ export default function FomoHoldersBoard({
               href={s.href}
               target="_blank"
               rel="noreferrer"
-              className="hover:text-oct-text transition-colors underline decoration-dotted"
+              className="type-caption hover:text-oct-text transition-colors duration-fast underline decoration-dotted"
             >
               {s.label}
             </a>
@@ -148,7 +158,7 @@ export default function FomoHoldersBoard({
 
       <div className="flex-1 min-h-0 overflow-auto">
         {holders.length === 0 ? (
-          <div className="py-16 px-6 text-center text-sm text-oct-muted">
+          <div className="py-gutter px-section text-center type-body text-oct-muted">
             No FOMO holders for this token.
           </div>
         ) : (
@@ -156,29 +166,28 @@ export default function FomoHoldersBoard({
             {holders.map((holder) => (
               <li
                 key={`${holder.rank}-${holder.address || holder.name}`}
-                className="flex items-center gap-3 px-4 py-3 oct-row-hover"
+                className="flex items-center gap-comfy px-roomy py-snug oct-row-hover"
               >
-                <span className="w-6 text-[13px] font-mono font-bold text-oct-muted tabular-nums shrink-0">
-                  {holder.rank}
-                </span>
+                <span className="w-6 type-data text-oct-muted text-right shrink-0">{holder.rank}</span>
                 <div className="min-w-0 flex-1">
                   {holder.address ? (
                     <a
                       href={`${explorerBase}${holder.address}`}
                       target="_blank"
                       rel="noreferrer"
-                      className="text-[15px] font-bold text-oct-text truncate hover:text-oct-accent transition-colors block"
+                      className="type-body font-bold text-oct-text truncate hover:text-oct-accent transition-colors duration-fast block"
                       title={holder.address}
                     >
                       {holder.name}
                     </a>
                   ) : (
-                    <span className="text-[15px] font-bold text-oct-text truncate block">{holder.name}</span>
+                    <span className="type-body font-bold text-oct-text truncate block">{holder.name}</span>
                   )}
                 </div>
-                <div className="shrink-0 text-right font-mono text-[13px] tabular-nums">
+                {/* Holdings value above signed PnL — both `type-data` so the column aligns on the digits. */}
+                <div className="shrink-0 text-right type-data">
                   <div className="text-oct-text">{compactUsd(holder.valueUsd)}</div>
-                  <div className={holder.pnlUsd >= 0 ? 'text-oct-green' : 'text-oct-flame'}>
+                  <div className={cn(holder.pnlUsd >= 0 ? 'text-oct-good' : 'text-oct-critical')}>
                     {signedUsd(holder.pnlUsd)}
                   </div>
                 </div>

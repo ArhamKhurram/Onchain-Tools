@@ -1,8 +1,14 @@
 import { useEffect, useRef, useState } from 'react';
-import { X } from 'lucide-react';
 import { PRESET_SOUNDS } from '../../utils/notificationSound';
 import type { TrackedWallet, TrackedWalletInsert, WalletChain } from '../../types/wallets';
 import { validateWalletAddress, WALLET_CHAINS } from '../../types/wallets';
+import { cn } from '../../lib/utils';
+import WalletModalShell, {
+  chainButtonClass,
+  FIELD_CLASS,
+  FIELD_ERROR_CLASS,
+  LABEL_CLASS,
+} from './WalletModalShell';
 
 export type WalletFormValues = TrackedWalletInsert;
 
@@ -56,17 +62,6 @@ export default function WalletFormModal({ open, mode, wallet, onClose, onSubmit 
     setTimeout(() => addressRef.current?.focus(), 50);
   }, [open, mode, wallet]);
 
-  useEffect(() => {
-    if (!open) return;
-    const handleKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape' && !submitting) onClose();
-    };
-    window.addEventListener('keydown', handleKey);
-    return () => window.removeEventListener('keydown', handleKey);
-  }, [open, submitting, onClose]);
-
-  if (!open) return null;
-
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     const addrError = validateWalletAddress(values.address, values.chain);
@@ -98,173 +93,152 @@ export default function WalletFormModal({ open, mode, wallet, onClose, onSubmit 
   };
 
   return (
-    <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/75 p-4" onClick={() => !submitting && onClose()}>
-      <div
-        className="w-full max-w-lg oct-card oct-card-flush shadow-oct-soft-lg overflow-hidden"
-        onClick={(e) => e.stopPropagation()}
-      >
-        <div className="oct-headerbar flex items-center justify-between px-5 py-4">
-          <h3 className="oct-section-title text-base uppercase">
-            {mode === 'add' ? 'Add wallet' : 'Edit wallet'}
-          </h3>
+    <WalletModalShell
+      open={open}
+      title={mode === 'add' ? 'Add wallet' : 'Edit wallet'}
+      busy={submitting}
+      onClose={onClose}
+    >
+      <form onSubmit={handleSubmit} className="px-roomy py-comfy space-y-comfy max-h-[70vh] overflow-y-auto">
+        <div>
+          <span className={LABEL_CLASS}>Chain</span>
+          <div className="flex gap-snug">
+            {CHAIN_OPTIONS.map(({ value, label }) => (
+              <button
+                key={value}
+                type="button"
+                onClick={() => set('chain', value)}
+                className={cn('flex-1', chainButtonClass(values.chain === value))}
+              >
+                {label}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        <div>
+          <label htmlFor="wallet-address" className={LABEL_CLASS}>
+            Address
+          </label>
+          <input
+            ref={addressRef}
+            id="wallet-address"
+            type="text"
+            value={values.address}
+            onChange={(e) => set('address', e.target.value)}
+            placeholder={values.chain === 'solana' ? 'Base58 address…' : '0x…'}
+            disabled={mode === 'edit'}
+            spellCheck={false}
+            className={cn(FIELD_CLASS, 'type-data text-sm disabled:opacity-60 disabled:cursor-not-allowed')}
+          />
+        </div>
+
+        <div className="grid grid-cols-[4rem_1fr] gap-comfy">
+          <div>
+            <label htmlFor="wallet-emoji" className={LABEL_CLASS}>
+              Emoji
+            </label>
+            <input
+              id="wallet-emoji"
+              type="text"
+              maxLength={4}
+              value={values.emoji}
+              onChange={(e) => set('emoji', e.target.value)}
+              placeholder="🐋"
+              className={cn(FIELD_CLASS, 'text-center')}
+            />
+          </div>
+          <div>
+            <label htmlFor="wallet-name" className={LABEL_CLASS}>
+              Label <span className="normal-case font-normal text-oct-muted/70">(optional)</span>
+            </label>
+            <input
+              id="wallet-name"
+              type="text"
+              value={values.name}
+              onChange={(e) => set('name', e.target.value)}
+              placeholder="Whale wallet"
+              className={FIELD_CLASS}
+            />
+          </div>
+        </div>
+
+        <div>
+          <label htmlFor="wallet-profile" className={LABEL_CLASS}>
+            Profile
+          </label>
+          <input
+            id="wallet-profile"
+            type="text"
+            value={values.profile}
+            onChange={(e) => set('profile', e.target.value)}
+            placeholder="unclassified"
+            className={FIELD_CLASS}
+          />
+        </div>
+
+        <div>
+          <span className={LABEL_CLASS}>Alerts</span>
+          <div className="flex flex-wrap gap-comfy">
+            {(
+              [
+                ['alerts_on_toast', 'Toast'],
+                ['alerts_on_feed', 'Feed'],
+                ['alerts_on_bubble', 'Bubble'],
+              ] as const
+            ).map(([key, label]) => (
+              <label key={key} className="flex items-center gap-snug type-body text-oct-text cursor-pointer select-none">
+                <input
+                  type="checkbox"
+                  checked={values[key]}
+                  onChange={(e) => set(key, e.target.checked)}
+                  className="rounded border-oct-border bg-oct-bg text-oct-accent focus:ring-oct-accent focus:ring-offset-0"
+                />
+                {label}
+              </label>
+            ))}
+          </div>
+        </div>
+
+        <div>
+          <label htmlFor="wallet-sound" className={LABEL_CLASS}>
+            Sound
+          </label>
+          <select
+            id="wallet-sound"
+            value={values.sound}
+            onChange={(e) => set('sound', e.target.value)}
+            className={FIELD_CLASS}
+          >
+            <option value="default">Default</option>
+            {PRESET_SOUNDS.map((s) => (
+              <option key={s.id} value={s.id}>
+                {s.label}
+              </option>
+            ))}
+          </select>
+        </div>
+
+        {fieldError && (
+          <p role="alert" className={FIELD_ERROR_CLASS}>
+            {fieldError}
+          </p>
+        )}
+
+        <div className="flex justify-end gap-cozy pt-tight">
           <button
             type="button"
             onClick={onClose}
             disabled={submitting}
-            className="oct-icon-btn p-1.5 disabled:opacity-50"
+            className="oct-icon-btn px-comfy py-snug type-label"
           >
-            <X size={18} />
+            Cancel
+          </button>
+          <button type="submit" disabled={submitting} className="oct-btn-primary px-comfy py-snug type-label">
+            {submitting ? 'Saving…' : mode === 'add' ? 'Add wallet' : 'Save changes'}
           </button>
         </div>
-
-        <form onSubmit={handleSubmit} className="px-5 py-4 space-y-4 max-h-[70vh] overflow-y-auto">
-          <div>
-            <label className="block oct-label text-oct-muted mb-1.5 uppercase tracking-wide">Chain</label>
-            <div className="flex gap-2">
-              {CHAIN_OPTIONS.map(({ value, label }) => (
-                <button
-                  key={value}
-                  type="button"
-                  onClick={() => set('chain', value)}
-                  className={`flex-1 px-3 py-2 rounded-oct-sm text-xs font-bold uppercase border transition-all ${
-                    values.chain === value
-                      ? 'border-oct-accent/50 bg-oct-accent text-white shadow-oct-glow-accent'
-                      : 'border-oct-border text-oct-muted hover:border-oct-border-bright hover:text-oct-text'
-                  }`}
-                >
-                  {label}
-                </button>
-              ))}
-            </div>
-          </div>
-
-          <div>
-            <label htmlFor="wallet-address" className="block oct-label text-oct-muted mb-1.5 uppercase tracking-wide">
-              Address
-            </label>
-            <input
-              ref={addressRef}
-              id="wallet-address"
-              type="text"
-              value={values.address}
-              onChange={(e) => set('address', e.target.value)}
-              placeholder={values.chain === 'solana' ? 'Base58 address…' : '0x…'}
-              disabled={mode === 'edit'}
-              className="oct-input w-full px-3 py-2 text-sm font-mono disabled:opacity-60 disabled:cursor-not-allowed"
-            />
-          </div>
-
-          <div className="grid grid-cols-[4rem_1fr] gap-3">
-            <div>
-              <label htmlFor="wallet-emoji" className="block oct-label text-oct-muted mb-1.5 uppercase tracking-wide">
-                Emoji
-              </label>
-              <input
-                id="wallet-emoji"
-                type="text"
-                maxLength={4}
-                value={values.emoji}
-                onChange={(e) => set('emoji', e.target.value)}
-                placeholder="🐋"
-                className="oct-input w-full px-3 py-2 text-sm text-center"
-              />
-            </div>
-            <div>
-              <label htmlFor="wallet-name" className="block oct-label text-oct-muted mb-1.5 uppercase tracking-wide">
-                Label <span className="normal-case text-oct-muted/70">(optional)</span>
-              </label>
-              <input
-                id="wallet-name"
-                type="text"
-                value={values.name}
-                onChange={(e) => set('name', e.target.value)}
-                placeholder="Whale wallet"
-                className="oct-input w-full px-3 py-2 text-sm"
-              />
-            </div>
-          </div>
-
-          <div>
-            <label htmlFor="wallet-profile" className="block oct-label text-oct-muted mb-1.5 uppercase tracking-wide">
-              Profile
-            </label>
-            <input
-              id="wallet-profile"
-              type="text"
-              value={values.profile}
-              onChange={(e) => set('profile', e.target.value)}
-              placeholder="unclassified"
-              className="oct-input w-full px-3 py-2 text-sm"
-            />
-          </div>
-
-          <div>
-            <span className="block oct-label text-oct-muted mb-2 uppercase tracking-wide">Alerts</span>
-            <div className="flex flex-wrap gap-3">
-              {(
-                [
-                  ['alerts_on_toast', 'Toast'],
-                  ['alerts_on_feed', 'Feed'],
-                  ['alerts_on_bubble', 'Bubble'],
-                ] as const
-              ).map(([key, label]) => (
-                <label key={key} className="flex items-center gap-2 text-sm text-oct-text cursor-pointer select-none">
-                  <input
-                    type="checkbox"
-                    checked={values[key]}
-                    onChange={(e) => set(key, e.target.checked)}
-                    className="rounded border-oct-border bg-oct-bg text-oct-accent focus:ring-oct-accent focus:ring-offset-0"
-                  />
-                  {label}
-                </label>
-              ))}
-            </div>
-          </div>
-
-          <div>
-            <label htmlFor="wallet-sound" className="block oct-label text-oct-muted mb-1.5 uppercase tracking-wide">
-              Sound
-            </label>
-            <select
-              id="wallet-sound"
-              value={values.sound}
-              onChange={(e) => set('sound', e.target.value)}
-              className="oct-input w-full px-3 py-2 text-sm"
-            >
-              <option value="default">Default</option>
-              {PRESET_SOUNDS.map((s) => (
-                <option key={s.id} value={s.id}>
-                  {s.label}
-                </option>
-              ))}
-            </select>
-          </div>
-
-          {fieldError && (
-            <p className="text-sm text-oct-flame bg-oct-flame/10 border border-oct-flame/50 rounded-oct px-3 py-2">
-              {fieldError}
-            </p>
-          )}
-
-          <div className="flex justify-end gap-2 pt-1">
-            <button
-              type="button"
-              onClick={onClose}
-              disabled={submitting}
-              className="oct-icon-btn px-4 py-2 text-sm"
-            >
-              Cancel
-            </button>
-            <button
-              type="submit"
-              disabled={submitting}
-              className="oct-btn-primary px-4 py-2 text-sm"
-            >
-              {submitting ? 'Saving…' : mode === 'add' ? 'Add wallet' : 'Save changes'}
-            </button>
-          </div>
-        </form>
-      </div>
-    </div>
+      </form>
+    </WalletModalShell>
   );
 }

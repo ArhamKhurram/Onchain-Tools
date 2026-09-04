@@ -16,6 +16,12 @@ function formatPnl(value: number | null | undefined): string {
   return `${sign}$${abs.toFixed(0)}`;
 }
 
+/** PnL carries meaning, so it gets the semantic colours; unknown stays muted. */
+function pnlTone(value: number | null | undefined): string {
+  if (value == null) return 'text-oct-muted';
+  return value >= 0 ? 'text-oct-good' : 'text-oct-critical';
+}
+
 interface FomoLeaderboardProps {
   trackedIds: Set<string>;
   trackedHandles: Set<string>;
@@ -43,7 +49,7 @@ export default function FomoLeaderboard({
   };
 
   return (
-    <div className={`flex flex-col min-h-0 overflow-hidden h-full ${embedded ? '' : 'oct-card oct-card-flush'}`}>
+    <div className={cn('flex flex-col min-h-0 overflow-hidden h-full', !embedded && 'oct-card oct-card-flush')}>
       <div
         className={cn(
           'oct-headerbar shrink-0 flex flex-wrap items-center gap-cozy px-comfy',
@@ -52,19 +58,18 @@ export default function FomoLeaderboard({
       >
         {!embedded && (
           <>
-            <Trophy size={16} className="text-oct-accent-2" />
-            <h2 className="oct-section-title uppercase tracking-wide">Top Traders</h2>
+            <Trophy size={14} className="text-oct-accent-2" />
+            <h2 className="type-title uppercase tracking-wide text-oct-text">Top Traders</h2>
           </>
         )}
-        <div className="flex gap-1">
+        <div className="flex gap-tight">
           {(['24h', 'all'] as const).map((w) => (
             <button
               key={w}
               type="button"
               onClick={() => setWindow(w)}
-              // Active window is a selected state, which is what the accent is for.
               className={cn(
-                'px-cozy py-hair rounded-oct-sm type-label font-mono border transition-all duration-fast',
+                'px-cozy py-tight rounded-oct-sm type-caption font-mono font-bold border transition-all duration-fast',
                 window === w
                   ? 'bg-oct-accent text-white border-oct-accent/50 shadow-oct-glow-accent'
                   : 'text-oct-muted border-transparent hover:border-oct-border-bright hover:text-oct-text',
@@ -88,12 +93,15 @@ export default function FomoLeaderboard({
 
       <div className="flex-1 min-h-0 overflow-auto">
         {error && (
-          <div className="m-roomy px-comfy py-cozy rounded-oct border border-oct-critical/50 bg-oct-critical-dim type-body text-oct-critical">
+          <div
+            role="alert"
+            className="m-comfy px-comfy py-cozy rounded-oct border border-oct-critical/50 bg-oct-critical-dim type-body text-oct-critical"
+          >
             {error}
           </div>
         )}
         {loading && entries.length === 0 ? (
-          <div className="flex items-center justify-center py-16">
+          <div className="flex items-center justify-center py-gutter">
             <div className="w-6 h-6 border-2 border-oct-accent border-t-transparent rounded-full animate-spin" />
           </div>
         ) : entries.length === 0 && !error ? (
@@ -106,33 +114,26 @@ export default function FomoLeaderboard({
               return (
                 <li
                   key={entry.fomoUserId}
-                  className="flex items-center gap-cozy px-comfy py-cozy oct-row-hover"
+                  className="flex items-center gap-comfy px-comfy py-snug oct-row-hover"
                 >
-                  {/* Rank and PnL are `type-data` so the digits line up down the
-                      column; PnL takes the semantic good/critical colour rather
-                      than the accent, which in the dark theme is also red. */}
-                  <span className="w-6 type-data text-oct-muted">{entry.rank ?? '·'}</span>
+                  <span className="w-6 type-data text-oct-muted text-right shrink-0">{entry.rank ?? '·'}</span>
                   <div className="min-w-0 flex-1">
                     <div className="type-body font-bold text-oct-text truncate">{entryLabel(entry)}</div>
-                    <div className="type-caption text-oct-muted truncate">
-                      {entry.fomoHandle && entry.displayName ? `@${entry.fomoHandle} · ` : ''}
-                      PnL{' '}
-                      <span
-                        className={cn(
-                          'type-data',
-                          entry.pnl != null && (entry.pnl >= 0 ? 'text-oct-good' : 'text-oct-critical'),
-                        )}
-                      >
-                        {formatPnl(entry.pnl ?? null)}
-                      </span>
-                    </div>
+                    {entry.fomoHandle && entry.displayName && (
+                      <div className="type-caption text-oct-muted truncate">@{entry.fomoHandle}</div>
+                    )}
+                  </div>
+                  {/* PnL is its own right-aligned column so the signs and magnitudes line up down the board. */}
+                  <div className="shrink-0 text-right">
+                    <div className={cn('type-data', pnlTone(entry.pnl))}>{formatPnl(entry.pnl ?? null)}</div>
+                    <div className="type-caption text-oct-muted">PnL</div>
                   </div>
                   <button
                     type="button"
                     onClick={() => handleTrack(entry)}
                     disabled={tracked || tracking}
                     className={cn(
-                      'shrink-0 flex items-center gap-tight px-cozy py-tight rounded-oct-sm type-label uppercase border transition-all duration-fast disabled:opacity-50',
+                      'shrink-0 flex items-center gap-tight px-cozy py-tight rounded-oct-sm type-caption font-bold uppercase border transition-all duration-fast disabled:opacity-50',
                       tracked
                         ? 'border-oct-border text-oct-muted'
                         : 'border-oct-accent/50 bg-oct-accent text-white shadow-oct-glow-accent hover:brightness-110',
