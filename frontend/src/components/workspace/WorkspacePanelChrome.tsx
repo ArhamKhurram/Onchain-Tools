@@ -3,6 +3,7 @@ import { widgetLabel } from '../../data/workspaceWidgets';
 import PanelContent, { panelSubtitle } from './PanelContent';
 import type { WorkspacePanelSlot } from '../../types/workspace';
 import { useAppStore } from '../../stores/appStore';
+import { cn } from '../../lib/utils';
 import { useMemo } from 'react';
 
 interface WorkspacePanelChromeProps {
@@ -40,30 +41,41 @@ export default function WorkspacePanelChrome({
 
   return (
     <div
-      className={`flex flex-col h-full min-h-0 bg-oct-bg rounded-oct border border-oct-border overflow-hidden ${
-        editMode ? 'ring-2 ring-oct-accent/40' : ''
-      }`}
+      className={cn(
+        'flex flex-col h-full min-h-0 bg-oct-bg rounded-oct border border-oct-border overflow-hidden',
+        editMode && 'ring-2 ring-oct-accent/40',
+      )}
     >
+      {/* One line, not two. A workspace stacks four or five of these per column,
+          so the header is paid for on every panel: title and subtitle sit on the
+          same baseline separated by a dot, which takes the chrome from ~38px to
+          ~26px. `type-title` is the panel-title role; the `text-xs` override is
+          the supported "take the role, retune one axis" pattern — 16px bold
+          uppercase stacked five high is a heading wall, 13px is a label rail. */}
       <div
         draggable={editMode}
         onDragStart={handleDragStart}
-        className={`oct-headerbar shrink-0 flex items-center gap-2 px-2.5 py-1.5 ${
-          editMode ? 'cursor-grab active:cursor-grabbing' : ''
-        }`}
+        className={cn(
+          'oct-headerbar shrink-0 flex items-center gap-cozy px-cozy py-tight',
+          editMode && 'cursor-grab active:cursor-grabbing',
+        )}
       >
-        <div className="min-w-0 flex-1 select-none">
-          <p className="oct-label uppercase tracking-wide text-oct-text truncate">
+        <div className="min-w-0 flex-1 flex items-baseline gap-snug select-none">
+          <span className="type-title text-xs uppercase tracking-wide text-oct-text truncate">
             {widgetLabel(panel.type)}
-          </p>
+          </span>
           {subtitle && (
-            <p className="text-[10px] font-mono text-oct-muted truncate">{subtitle}</p>
+            <span className="type-caption font-mono text-oct-muted truncate">
+              <span aria-hidden="true">· </span>
+              {subtitle}
+            </span>
           )}
         </div>
         {panel.type === 'room' && editMode && (
           <button
             type="button"
             onClick={onConfigure}
-            className="p-1 rounded-oct-sm text-oct-muted hover:text-oct-text shrink-0 transition-colors"
+            className="p-tight rounded-oct-sm text-oct-muted hover:text-oct-text shrink-0 transition-colors duration-fast"
             title="Choose room"
           >
             <Settings2 size={14} />
@@ -73,7 +85,10 @@ export default function WorkspacePanelChrome({
           <button
             type="button"
             onClick={onRemove}
-            className="p-1 rounded-oct-sm text-oct-muted hover:text-oct-accent shrink-0 transition-colors"
+            // Removing is destructive, so the hover colour is the semantic
+            // `critical` rather than the accent (which is also red in dark, and
+            // therefore says "brand" rather than "danger").
+            className="p-tight rounded-oct-sm text-oct-muted hover:text-oct-critical shrink-0 transition-colors duration-fast"
             title="Remove panel"
           >
             <X size={14} />

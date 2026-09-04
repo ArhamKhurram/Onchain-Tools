@@ -15,8 +15,8 @@ export default function WorkspaceFomoLeaderboard() {
 
   if (!userId) {
     return (
-      <div className="flex items-center justify-center h-full p-6 text-center">
-        <p className="text-sm text-oct-muted font-mono">Sign in to view leaderboard</p>
+      <div className="flex items-center justify-center h-full p-section text-center">
+        <p className="type-body font-mono text-oct-muted">Sign in to view leaderboard</p>
       </div>
     );
   }
