@@ -39,6 +39,9 @@ export const createPumpCalloutsSlice: StateCreator<AppState, [], [], PumpCallout
       const receivedAt = Date.now();
       const entry: PumpCalloutFeedEntry = {
         ...callout,
+        // Pin the key so a frame from a backend that predates the field still
+        // renders "—" through the same path as an honest null.
+        maxMultiplier: callout.maxMultiplier ?? null,
         occurredAt: typeof callout.createdAt === 'number' ? callout.createdAt : receivedAt,
         receivedAt,
         key: `pump-callout-${++pumpCalloutSeq}`,

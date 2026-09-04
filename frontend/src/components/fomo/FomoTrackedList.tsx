@@ -8,6 +8,9 @@ import { useState } from 'react';
 import { AlertTriangle, Bell, BellOff, CheckCircle2, Plus, RefreshCw, Trash2, UserPlus, Users } from 'lucide-react';
 import type { useFomoTracking } from '../../hooks/useFomoTracking';
 import type { FomoTrackedUser } from '../../types/fomo';
+import { useDroppedRoster } from '../../hooks/useDroppedRoster';
+import { isDropped } from '../../lib/droppedRoster';
+import NotLiveBadge from '../common/NotLiveBadge';
 
 type Tracking = ReturnType<typeof useFomoTracking>;
 type Feedback = { tone: 'success' | 'warning' | 'error'; text: string };
@@ -35,6 +38,9 @@ export default function FomoTrackedList({ tracking, configured }: FomoTrackedLis
   const [feedback, setFeedback] = useState<Feedback | null>(null);
   const [removingId, setRemovingId] = useState<string | null>(null);
   const [togglingPushoverId, setTogglingPushoverId] = useState<string | null>(null);
+  // Tracked traders j7 has no upstream slot for — keyed by handle, the
+  // identifier j7's fomo tracker takes. Badge only; tracking itself still works.
+  const { dropped } = useDroppedRoster();
 
   const handleTrack = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -174,7 +180,10 @@ export default function FomoTrackedList({ tracking, configured }: FomoTrackedLis
                 className="flex items-center gap-3 px-4 py-3 oct-row-hover group"
               >
                 <div className="min-w-0 flex-1">
-                  <div className="text-[15px] font-bold text-oct-text truncate">{trackedLabel(user)}</div>
+                  <div className="flex items-center gap-snug min-w-0">
+                    <span className="text-[15px] font-bold text-oct-text truncate">{trackedLabel(user)}</span>
+                    {isDropped(dropped, 'fomo', user.fomo_handle) && <NotLiveBadge tracker="fomo" />}
+                  </div>
                   <div className="text-[13px] text-oct-muted truncate">
                     {user.fomo_handle && user.display_name ? `@${user.fomo_handle} · ` : ''}
                     Tracked {formatDate(user.created_at)}

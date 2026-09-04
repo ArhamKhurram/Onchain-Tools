@@ -305,6 +305,12 @@ export interface PumpCalloutEvent {
   multiple: number | null;
   /** Epoch ms from pump when present. */
   createdAt: number | null;
+  /**
+   * Peak multiple since the call. Recovered by the j7 path (backend
+   * j7/mappers.ts); the pump-firehose poller sends null. Optional only so a
+   * frame from an older backend still parses — the slice normalises it to null.
+   */
+  maxMultiplier?: number | null;
   /** Per-caller Pushover opt-in, echoed by the poller to gate the toast. */
   notify?: boolean;
 }
