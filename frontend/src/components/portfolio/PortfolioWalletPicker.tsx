@@ -18,12 +18,14 @@ export default function PortfolioWalletPicker({
   const showAll = wallets.length > 1;
 
   return (
-    <label className="flex flex-col gap-1.5 min-w-[220px]">
-      <span className="oct-eyebrow">My Wallet</span>
+    <label className="flex flex-col gap-tight min-w-[220px]">
+      <span className="type-caption font-mono uppercase tracking-[0.14em] text-oct-muted">My Wallet</span>
+      {/* Options are `[CHAIN] label-or-address` — the address case wants
+          slashed zeros and tabular digits, hence `type-data` on the control. */}
       <select
         value={selectedId}
         onChange={(e) => onChange(e.target.value)}
-        className="oct-input font-mono text-xs px-3 py-2"
+        className="oct-input type-data px-comfy py-snug"
       >
         {showAll && (
           <option value={PORTFOLIO_ALL_WALLETS}>All Wallets ({wallets.length})</option>

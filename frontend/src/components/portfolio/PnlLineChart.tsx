@@ -1,5 +1,6 @@
 import { useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { formatUsd } from '../../types/portfolio';
+import { cn } from '../../lib/utils';
 import {
   monotoneXPath,
   nearestIndex,
@@ -11,9 +12,17 @@ import {
  * Hand-rolled SVG line chart for the Portfolio PnL modal.
  *
  * Replaces the recharts `<LineChart>` (the only chart in the app) with ~zero
- * vendor bytes while keeping the exact look: dashed #333 grid, #888 10px mono
- * ticks, #ff3b3b monotone curve with r=3 dots, and the black-bordered #111
- * tooltip that snaps to the nearest point with a vertical cursor line.
+ * vendor bytes while keeping the same shape: dashed grid, mono ticks, a
+ * monotone curve with r=3 dots, and a tooltip that snaps to the nearest point
+ * with a vertical cursor line.
+ *
+ * Colour and type come from the theme rather than the old hard-coded recharts
+ * hexes, so the chart follows the light/dark palette: grid and axes on the
+ * border token, ticks on `text-oct-muted`, the series on the brand accent (it
+ * is the chart's one line, not a status, so it is not good/critical), and tick
+ * text at the 12px `text-2xs` floor. Theme colours are applied as classes —
+ * `stroke-oct-*` / `fill-oct-*` — because SVG presentation attributes cannot
+ * resolve `var()`. Geometry is untouched.
  */
 
 export interface PnlChartPoint {
@@ -21,13 +30,14 @@ export interface PnlChartPoint {
   cumulativePnl: number;
 }
 
-// Colors lifted verbatim from the old recharts props (plus recharts' own
-// defaults for axis lines #666 and the tooltip cursor #ccc).
-const GRID_STROKE = '#333';
-const AXIS_STROKE = '#666';
-const TICK_FILL = '#888';
-const LINE_STROKE = '#ff3b3b';
-const CURSOR_STROKE = '#ccc';
+// Theme classes standing in for the old recharts hexes (#333 grid, #666 axis,
+// #888 ticks, #ff3b3b line, #ccc cursor).
+const GRID_CLASS = 'stroke-oct-border';
+const AXIS_CLASS = 'stroke-oct-muted/60';
+const TICK_CLASS = 'fill-oct-muted type-data text-2xs';
+const LINE_CLASS = 'stroke-oct-accent';
+const DOT_CLASS = 'fill-oct-accent';
+const CURSOR_CLASS = 'stroke-oct-muted';
 
 // Layout mirrors the old chart: margin {top:8,right:12,left:0,bottom:0},
 // YAxis width 72, recharts' default XAxis height 30.
@@ -76,7 +86,7 @@ export default function PnlLineChart({ data }: { data: PnlChartPoint[] }) {
     );
     const pts = data.map((d, i) => ({ x: xs[i], y: yFor(d.cumulativePnl) }));
 
-    // ~"MM-DD" at 10px mono ≈ 30px + breathing room.
+    // ~"MM-DD" at 12px mono ≈ 36px + breathing room.
     const step = xLabelStep(data.length, plotW, 44);
 
     return { plotX, plotY, plotW, plotH, scale, yFor, xs, pts, step };
@@ -135,7 +145,7 @@ export default function PnlLineChart({ data }: { data: PnlChartPoint[] }) {
               x2={geom.plotX + geom.plotW}
               y1={geom.yFor(t)}
               y2={geom.yFor(t)}
-              stroke={GRID_STROKE}
+              className={GRID_CLASS}
               strokeDasharray="3 3"
             />
           ))}
@@ -147,7 +157,7 @@ export default function PnlLineChart({ data }: { data: PnlChartPoint[] }) {
                 x2={x}
                 y1={geom.plotY}
                 y2={geom.plotY + geom.plotH}
-                stroke={GRID_STROKE}
+                className={GRID_CLASS}
                 strokeDasharray="3 3"
               />
             ) : null,
@@ -159,7 +169,7 @@ export default function PnlLineChart({ data }: { data: PnlChartPoint[] }) {
             x2={geom.plotX}
             y1={geom.plotY}
             y2={geom.plotY + geom.plotH}
-            stroke={AXIS_STROKE}
+            className={AXIS_CLASS}
           />
           {geom.scale.ticks.map((t) => (
             <g key={`yt${t}`}>
@@ -168,15 +178,14 @@ export default function PnlLineChart({ data }: { data: PnlChartPoint[] }) {
                 x2={geom.plotX}
                 y1={geom.yFor(t)}
                 y2={geom.yFor(t)}
-                stroke={AXIS_STROKE}
+                className={AXIS_CLASS}
               />
               <text
                 x={geom.plotX - TICK_LINE - 3}
                 y={geom.yFor(t)}
                 textAnchor="end"
                 dominantBaseline="central"
-                fontSize={10}
-                fill={TICK_FILL}
+                className={TICK_CLASS}
               >
                 {formatUsd(t, { signed: true })}
               </text>
@@ -189,7 +198,7 @@ export default function PnlLineChart({ data }: { data: PnlChartPoint[] }) {
             x2={geom.plotX + geom.plotW}
             y1={geom.plotY + geom.plotH}
             y2={geom.plotY + geom.plotH}
-            stroke={AXIS_STROKE}
+            className={AXIS_CLASS}
           />
           {geom.xs.map((x, i) =>
             i % geom.step === 0 ? (
@@ -199,14 +208,13 @@ export default function PnlLineChart({ data }: { data: PnlChartPoint[] }) {
                   x2={x}
                   y1={geom.plotY + geom.plotH}
                   y2={geom.plotY + geom.plotH + TICK_LINE}
-                  stroke={AXIS_STROKE}
+                  className={AXIS_CLASS}
                 />
                 <text
                   x={x}
                   y={geom.plotY + geom.plotH + TICK_LINE + 12}
                   textAnchor="middle"
-                  fontSize={10}
-                  fill={TICK_FILL}
+                  className={TICK_CLASS}
                 >
                   {data[i].date}
                 </text>
@@ -221,47 +229,41 @@ export default function PnlLineChart({ data }: { data: PnlChartPoint[] }) {
               x2={geom.xs[hover.index]}
               y1={geom.plotY}
               y2={geom.plotY + geom.plotH}
-              stroke={CURSOR_STROKE}
+              className={CURSOR_CLASS}
               strokeWidth={1}
               opacity={0.6}
             />
           )}
 
           {/* line + dots */}
-          <path d={monotoneXPath(geom.pts)} fill="none" stroke={LINE_STROKE} strokeWidth={2} />
+          <path d={monotoneXPath(geom.pts)} fill="none" className={LINE_CLASS} strokeWidth={2} />
           {geom.pts.map((p, i) => (
-            <circle key={`d${i}`} cx={p.x} cy={p.y} r={3} fill={LINE_STROKE} />
+            <circle key={`d${i}`} cx={p.x} cy={p.y} r={3} className={DOT_CLASS} />
           ))}
           {hover && (
             <circle
               cx={geom.pts[hover.index].x}
               cy={geom.pts[hover.index].y}
               r={4.5}
-              fill={LINE_STROKE}
-              stroke="#fff"
+              className={cn(DOT_CLASS, 'stroke-oct-text')}
               strokeWidth={1}
             />
           )}
         </svg>
       )}
 
-      {/* tooltip — same contentStyle the recharts Tooltip carried */}
+      {/* tooltip — placement stays inline (it is geometry); the chrome is themed */}
       {active && (
         <div
-          className="pointer-events-none absolute z-10 whitespace-nowrap"
+          className="pointer-events-none absolute z-10 whitespace-nowrap rounded-oct-sm border border-oct-border bg-oct-elevated shadow-oct-soft px-cozy py-snug type-data text-2xs"
           style={{
             left: tipLeft,
             top: tipTop,
             transform: tipFlip ? 'translateX(-100%)' : undefined,
-            background: '#111',
-            border: '2px solid #000',
-            fontFamily: 'monospace',
-            fontSize: 11,
-            padding: '8px 10px',
           }}
         >
-          <div style={{ color: '#ccc' }}>Date: {active.date}</div>
-          <div style={{ color: LINE_STROKE, marginTop: 2 }}>
+          <div className="text-oct-muted">Date: {active.date}</div>
+          <div className="text-oct-accent mt-hair">
             Cumulative : {formatUsd(active.cumulativePnl, { signed: true })}
           </div>
         </div>

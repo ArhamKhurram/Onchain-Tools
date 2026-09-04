@@ -1,5 +1,6 @@
 import type { PortfolioStats } from '../../types/portfolio';
 import { formatPercentRatio, formatUsd, toNumber } from '../../types/portfolio';
+import { cn } from '../../lib/utils';
 
 interface PortfolioSummaryProps {
   stats: PortfolioStats | null;
@@ -7,19 +8,24 @@ interface PortfolioSummaryProps {
   loading: boolean;
 }
 
+// `type-metric` rather than the legacy `.oct-stat-value`: the legacy helper sits
+// in the utilities layer and would beat any `text-*` override, and its 10.5px
+// label sibling is below the 12px floor. Colour is semantic — a positive figure
+// is `oct-good`, a negative one `oct-critical` — never the brand accent, which
+// in the dark theme is itself a red and would make a loss look like a button.
 function StatCard({ label, value, sub, positive }: { label: string; value: string; sub?: string; positive?: boolean }) {
   return (
     <div className="oct-stat-tile min-w-[140px] flex-1">
-      <p className="oct-stat-label mb-1.5">{label}</p>
+      <p className="type-caption font-mono uppercase tracking-[0.12em] text-oct-muted mb-tight">{label}</p>
       <p
-        className={[
-          'oct-stat-value',
-          positive === true ? 'text-oct-green' : positive === false ? 'text-oct-flame' : 'text-oct-text',
-        ].join(' ')}
+        className={cn(
+          'type-metric',
+          positive === true ? 'text-oct-good' : positive === false ? 'text-oct-critical' : 'text-oct-text',
+        )}
       >
         {value}
       </p>
-      {sub && <p className="font-mono text-[11px] text-oct-muted mt-1.5">{sub}</p>}
+      {sub && <p className="type-data text-oct-muted mt-tight">{sub}</p>}
     </div>
   );
 }
@@ -27,9 +33,9 @@ function StatCard({ label, value, sub, positive }: { label: string; value: strin
 export default function PortfolioSummary({ stats, totalHoldingsUsd, loading }: PortfolioSummaryProps) {
   if (loading && !stats) {
     return (
-      <div className="grid grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 gap-3">
+      <div className="grid grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 gap-cozy">
         {Array.from({ length: 6 }).map((_, i) => (
-          <div key={i} className="h-[84px] rounded-oct border border-oct-border bg-oct-surface/50 animate-pulse" />
+          <div key={i} className="h-[76px] rounded-oct border border-oct-border bg-oct-surface/50 animate-pulse" />
         ))}
       </div>
     );
@@ -43,7 +49,7 @@ export default function PortfolioSummary({ stats, totalHoldingsUsd, loading }: P
   const unrealized = toNumber(stats.unrealized_profit);
 
   return (
-    <div className="grid grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 gap-3">
+    <div className="grid grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 gap-cozy">
       <StatCard
         label="Realized PnL"
         value={formatUsd(stats.realized_profit, { signed: true })}
