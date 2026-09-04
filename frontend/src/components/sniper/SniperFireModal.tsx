@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { X } from 'lucide-react';
+import SniperModalShell, { SniperModalHeader } from './SniperModalShell';
 import {
   computeLegsPreview,
   describeAbortReason,
@@ -10,6 +10,7 @@ import {
   type SniperWallet,
 } from '../../types/sniper';
 import type { SniperResult } from '../../lib/sniperApi';
+import { cn } from '../../lib/utils';
 
 interface SniperFireModalProps {
   open: boolean;
@@ -21,6 +22,8 @@ interface SniperFireModalProps {
   onFire: (ruleId: string) => Promise<SniperResult<FireResponse>>;
 }
 
+const fmt = (n: number) => n.toLocaleString(undefined, { maximumFractionDigits: 6 });
+
 /**
  * The manual test buy — the ONE path in this system that reaches executeFire.
  *
@@ -28,6 +31,13 @@ interface SniperFireModalProps {
  * wallets pay, because the operator is about to authorise exactly that. The
  * typed FIRE confirmation is the last of four separate deliberate acts (create →
  * arm → go live → fire); nothing here can be brushed past.
+ *
+ * Colour discipline, because this is where it matters most:
+ *   - the FIRE button is the primary action and wears the accent (oct-btn-primary)
+ *   - the LIVE band is solid `warn` — a caution, distinct from the button
+ *   - a refused / failed fire is `critical`
+ *   - an indeterminate leg is `warn`, a filled one `good`
+ * so no state can be mistaken for the button, and the button for no state.
  */
 export default function SniperFireModal({
   open,
@@ -62,18 +72,17 @@ export default function SniperFireModal({
   const legs = useMemo(() => (rule ? computeLegsPreview(rule) : []), [rule]);
   const total = useMemo(() => (rule ? triggerTotalPreview(rule) : 0), [rule]);
 
-  if (!open || !rule) return null;
-
   // The process flag wins over the rule flag (backend registry.ts) — so the band
   // must be computed the same way, or it would promise DRY RUN on a rule that is
   // live, or vice versa.
-  const isDry = processDryRun || rule.dryRun;
+  const isDry = processDryRun || (rule?.dryRun ?? true);
   const walletLabel = (walletId: string) => {
     const w = wallets.find((x) => x.walletId === walletId);
     return w?.label || walletId.slice(0, 8);
   };
 
   const handleFire = async () => {
+    if (!rule) return;
     setFiring(true);
     setError(null);
     const res = await onFire(rule.id);
@@ -82,160 +91,187 @@ export default function SniperFireModal({
     else setError(res.detail ? `${describeAbortReason(res.reason)} (${res.detail})` : describeAbortReason(res.reason));
   };
 
+  // The shell keeps the last-rendered children through the exit fade, so the
+  // parent may null `rule` and `open` together without the card going blank.
   return (
-    <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/75 p-4" onClick={() => !firing && onClose()}>
-      <div
-        className="w-full max-w-xl oct-card oct-card-flush shadow-oct-soft-lg overflow-hidden"
-        onClick={(e) => e.stopPropagation()}
-      >
-        <div className="oct-headerbar flex items-center justify-between px-5 py-4">
-          <h3 className="oct-section-title text-base uppercase">Fire &ldquo;{rule.name}&rdquo;</h3>
-          <button
-            type="button"
-            onClick={onClose}
-            disabled={firing}
-            className="oct-icon-btn p-1.5 disabled:opacity-50"
+    <SniperModalShell open={open && !!rule} onBackdropClick={() => !firing && onClose()} className="max-w-xl">
+      {rule && (
+        <>
+          <SniperModalHeader title={<>Fire &ldquo;{rule.name}&rdquo;</>} onClose={onClose} disabled={firing} />
+
+          <div
+            className={cn(
+              'px-roomy py-cozy text-center type-label font-mono uppercase tracking-[0.2em] border-b border-oct-border',
+              isDry ? 'bg-oct-good-dim text-oct-good' : 'bg-oct-warn text-oct-bg',
+            )}
           >
-            <X size={18} />
-          </button>
-        </div>
+            {isDry ? 'Dry run — no money moves' : `Live — real funds at ${rule.venue}`}
+          </div>
 
-        <div
-          className={`px-5 py-2.5 text-center font-mono text-xs font-bold uppercase tracking-[0.2em] border-b border-oct-border ${
-            isDry ? 'bg-oct-green/15 text-oct-green' : 'bg-oct-accent text-white'
-          }`}
-        >
-          {isDry ? 'Dry run — no money moves' : `Live — real funds at ${rule.venue}`}
-        </div>
+          <div className="px-roomy py-comfy space-y-roomy max-h-[60vh] overflow-y-auto">
+            {!result ? (
+              <>
+                <dl className="grid grid-cols-[auto_1fr] gap-x-comfy gap-y-tight type-caption font-mono uppercase tracking-wider text-oct-muted">
+                  <dt>mint</dt>
+                  <dd className="type-data normal-case tracking-normal text-oct-text break-all">{rule.mint ?? '—'}</dd>
+                  <dt>slippage</dt>
+                  <dd className="type-data normal-case tracking-normal text-oct-text">{rule.slippageBps} bps</dd>
+                </dl>
 
-        <div className="px-5 py-4 space-y-4 max-h-[60vh] overflow-y-auto">
-          {!result ? (
-            <>
-              <div className="font-mono text-xs text-oct-muted space-y-1">
-                <div>
-                  mint: <span className="text-oct-text">{rule.mint ?? '—'}</span>
-                </div>
-                <div>
-                  slippage: <span className="text-oct-text">{rule.slippageBps} bps</span>
-                </div>
-              </div>
-
-              <table className="w-full text-left border-collapse">
-                <thead>
-                  <tr className="font-mono text-[10px] font-bold uppercase tracking-wider text-oct-muted border-b border-oct-border">
-                    <th className="py-1.5">Wallet</th>
-                    <th className="py-1.5">Leg</th>
-                    <th className="py-1.5 text-right">Amount</th>
-                    <th className="py-1.5 text-right">Est. fees</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {legs.map((leg) => (
-                    <tr key={`${leg.walletId}:${leg.legNo}`} className="border-b border-oct-border/50 font-mono text-xs">
-                      <td className="py-1.5 text-oct-text">{walletLabel(leg.walletId)}</td>
-                      <td className="py-1.5 text-oct-muted tabular-nums">#{leg.legNo}</td>
-                      <td className="py-1.5 text-right text-oct-text tabular-nums">{leg.amount}</td>
-                      <td className="py-1.5 text-right text-oct-muted tabular-nums">
-                        {estimateFeesPreview(rule, leg.amount).toLocaleString(undefined, { maximumFractionDigits: 6 })}
-                      </td>
+                <table className="w-full text-left border-collapse">
+                  <thead>
+                    <tr className="type-caption font-mono uppercase tracking-wider text-oct-muted border-b border-oct-border">
+                      <th className="py-snug font-semibold">Wallet</th>
+                      <th className="py-snug font-semibold">Leg</th>
+                      <th className="py-snug font-semibold text-right">Amount</th>
+                      <th className="py-snug font-semibold text-right">Est. fees</th>
                     </tr>
-                  ))}
-                  {legs.length === 0 && (
-                    <tr>
-                      <td colSpan={4} className="py-3 font-mono text-xs text-oct-muted">
-                        This rule targets no wallets, so it has no legs to fire.
-                      </td>
-                    </tr>
-                  )}
-                </tbody>
-              </table>
+                  </thead>
+                  <tbody>
+                    {legs.map((leg) => (
+                      <tr key={`${leg.walletId}:${leg.legNo}`} className="border-b border-oct-border/50">
+                        <td className="py-snug type-body text-oct-text">{walletLabel(leg.walletId)}</td>
+                        <td className="py-snug type-data text-oct-muted">#{leg.legNo}</td>
+                        <td className="py-snug type-data text-right text-oct-text">{leg.amount}</td>
+                        <td className="py-snug type-data text-right text-oct-muted">
+                          {fmt(estimateFeesPreview(rule, leg.amount))}
+                        </td>
+                      </tr>
+                    ))}
+                    {legs.length === 0 && (
+                      <tr>
+                        <td colSpan={4} className="py-comfy type-body text-oct-muted">
+                          This rule targets no wallets, so it has no legs to fire.
+                        </td>
+                      </tr>
+                    )}
+                  </tbody>
+                </table>
 
-              <p className="font-mono text-xs text-oct-text">
-                Trigger total (amount + fees):{' '}
-                <span className="font-bold">
-                  {total.toLocaleString(undefined, { maximumFractionDigits: 6 })} {rule.sizeUnit}
-                </span>{' '}
-                <span className="text-oct-muted">against a per-trigger cap of {rule.perTriggerCap}</span>
-              </p>
+                {/* The figure the operator is authorising, in the stat-tile role. */}
+                <div className="flex items-baseline justify-between gap-comfy border-t border-oct-border pt-comfy">
+                  <span className="type-caption font-mono uppercase tracking-wider text-oct-muted">
+                    Trigger total (amount + fees)
+                  </span>
+                  <span className="text-right">
+                    <span className={cn('type-metric', total > rule.perTriggerCap ? 'text-oct-critical' : 'text-oct-text')}>
+                      {fmt(total)}
+                    </span>{' '}
+                    <span className="type-data text-oct-text">{rule.sizeUnit}</span>
+                    <span className="block type-caption font-mono text-oct-muted">
+                      per-trigger cap <span className="type-data">{rule.perTriggerCap}</span>
+                    </span>
+                  </span>
+                </div>
 
-              <div>
-                <label htmlFor="sniper-fire-confirm" className="block oct-label text-oct-muted mb-1.5 uppercase tracking-wide">
-                  Type FIRE to enable the button
-                </label>
-                <input
-                  id="sniper-fire-confirm"
-                  type="text"
-                  value={typed}
-                  onChange={(e) => setTyped(e.target.value)}
-                  autoComplete="off"
-                  className="oct-input w-full px-3 py-2 text-sm font-mono uppercase tracking-[0.3em]"
-                />
-              </div>
+                <div>
+                  <label
+                    htmlFor="sniper-fire-confirm"
+                    className="block type-label text-oct-muted mb-snug uppercase tracking-wide"
+                  >
+                    Type FIRE to enable the button
+                  </label>
+                  <input
+                    id="sniper-fire-confirm"
+                    type="text"
+                    value={typed}
+                    onChange={(e) => setTyped(e.target.value)}
+                    autoComplete="off"
+                    className="oct-input w-full px-comfy py-cozy type-body font-mono uppercase tracking-[0.3em]"
+                  />
+                </div>
 
-              {error && (
-                <p className="text-sm text-oct-flame bg-oct-flame/10 border border-oct-flame/50 rounded-oct px-3 py-2 font-mono">
-                  {error}
+                {error && (
+                  <p
+                    role="alert"
+                    className="type-body font-mono text-oct-critical bg-oct-critical-dim border border-oct-critical/50 rounded-oct px-comfy py-cozy"
+                  >
+                    {error}
+                  </p>
+                )}
+              </>
+            ) : (
+              <div className="space-y-cozy">
+                <p className="type-body font-mono text-oct-muted">
+                  outcome:{' '}
+                  <span
+                    className={cn(
+                      'font-bold uppercase',
+                      result.outcome === 'fired'
+                        ? 'text-oct-good'
+                        : result.outcome === 'aborted'
+                          ? 'text-oct-critical'
+                          : 'text-oct-warn',
+                    )}
+                  >
+                    {result.outcome}
+                  </span>
+                  {result.reason && <> — {describeAbortReason(result.reason)}</>}
                 </p>
-              )}
-            </>
-          ) : (
-            <div className="space-y-3">
-              <p className="font-mono text-xs text-oct-muted">
-                outcome: <span className="text-oct-text font-bold uppercase">{result.outcome}</span>
-                {result.reason && <> — {describeAbortReason(result.reason)}</>}
-              </p>
 
-              {result.outcome === 'suppressed' && (
-                <p className="text-xs text-oct-text bg-oct-yellow/10 border border-oct-yellow/60 rounded-oct px-3 py-2 leading-relaxed">
-                  Suppressed — this exact trigger already fired. Press again; each press carries a fresh id.
-                </p>
-              )}
+                {result.outcome === 'suppressed' && (
+                  <p className="type-body text-oct-text bg-oct-warn-dim border border-oct-warn/60 rounded-oct px-comfy py-cozy leading-relaxed">
+                    Suppressed — this exact trigger already fired. Press again; each press carries a fresh id.
+                  </p>
+                )}
 
-              {result.legs.map((leg) => (
-                <div
-                  key={`${leg.walletId}:${leg.legNo}`}
-                  className="font-mono text-xs border border-oct-border rounded-oct px-3 py-2 space-y-0.5"
-                >
-                  <div className="text-oct-text">
-                    {walletLabel(leg.walletId)} · leg #{leg.legNo} · {leg.amount} {rule.sizeUnit}
-                  </div>
-                  <div className="text-oct-muted">
-                    {leg.state}
-                    {leg.reason && <> — {describeAbortReason(leg.reason)}</>}
-                  </div>
-                  {leg.signature && <div className="text-oct-muted break-all">sig: {leg.signature}</div>}
-                  {leg.state === 'unknown' && (
-                    <div className="text-oct-yellow">
-                      Indeterminate — the reservation is held and this leg will not retry. Resolve it on the Fires tab
-                      after checking the venue.
+                {result.legs.map((leg) => (
+                  <div
+                    key={`${leg.walletId}:${leg.legNo}`}
+                    className="font-mono text-xs border border-oct-border rounded-oct px-comfy py-cozy space-y-hair"
+                  >
+                    <div className="text-oct-text">
+                      {walletLabel(leg.walletId)} · leg <span className="type-data">#{leg.legNo}</span> ·{' '}
+                      <span className="type-data">{leg.amount}</span> {rule.sizeUnit}
                     </div>
-                  )}
-                </div>
-              ))}
+                    <div
+                      className={
+                        leg.state === 'filled'
+                          ? 'text-oct-good'
+                          : leg.state === 'unknown'
+                            ? 'text-oct-warn'
+                            : leg.state === 'aborted'
+                              ? 'text-oct-critical'
+                              : 'text-oct-muted'
+                      }
+                    >
+                      {leg.state}
+                      {leg.reason && <> — {describeAbortReason(leg.reason)}</>}
+                    </div>
+                    {leg.signature && <div className="type-data text-oct-muted break-all">sig: {leg.signature}</div>}
+                    {leg.state === 'unknown' && (
+                      <div className="text-oct-warn">
+                        Indeterminate — the reservation is held and this leg will not retry. Resolve it on the Fires tab
+                        after checking the venue.
+                      </div>
+                    )}
+                  </div>
+                ))}
 
-              {result.ruleDisabled && (
-                <p className="font-mono text-xs text-oct-muted">The rule disabled itself after moving money.</p>
-              )}
-            </div>
-          )}
-        </div>
+                {result.ruleDisabled && (
+                  <p className="type-body font-mono text-oct-muted">The rule disabled itself after moving money.</p>
+                )}
+              </div>
+            )}
+          </div>
 
-        <div className="flex items-center justify-end gap-2 px-5 py-4 border-t border-oct-border bg-oct-bg">
-          <button type="button" onClick={onClose} disabled={firing} className="oct-icon-btn px-4 py-2 text-sm">
-            {result ? 'Close' : 'Cancel'}
-          </button>
-          {!result && (
-            <button
-              type="button"
-              onClick={() => void handleFire()}
-              disabled={firing || typed.trim().toUpperCase() !== 'FIRE'}
-              className="oct-btn-primary px-4 py-2 text-sm disabled:opacity-40 disabled:cursor-not-allowed"
-            >
-              {firing ? 'Firing…' : isDry ? 'Fire (dry run)' : 'Fire live'}
+          <div className="flex items-center justify-end gap-cozy px-roomy py-comfy border-t border-oct-border bg-oct-bg">
+            <button type="button" onClick={onClose} disabled={firing} className="oct-icon-btn px-roomy py-cozy type-body">
+              {result ? 'Close' : 'Cancel'}
             </button>
-          )}
-        </div>
-      </div>
-    </div>
+            {!result && (
+              <button
+                type="button"
+                onClick={() => void handleFire()}
+                disabled={firing || typed.trim().toUpperCase() !== 'FIRE'}
+                className="oct-btn-primary px-roomy py-cozy type-body disabled:opacity-40 disabled:cursor-not-allowed"
+              >
+                {firing ? 'Firing…' : isDry ? 'Fire (dry run)' : 'Fire live'}
+              </button>
+            )}
+          </div>
+        </>
+      )}
+    </SniperModalShell>
   );
 }
