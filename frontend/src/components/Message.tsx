@@ -18,6 +18,7 @@ import { TelegramExtras } from './message/TelegramExtras';
 import { DeletedBadge, EditedIndicator } from './message/badges';
 import { MessageAttachments } from './message/MessageAttachments';
 import { MessageEmbeds } from './message/MessageEmbeds';
+import { DEFAULT_FEED_ROW_DENSITY, FEED_ROW_DENSITY_STYLE, type FeedRowDensity } from './feed/feedChromeContract';
 
 interface MessageProps {
   message: FrontendMessage;
@@ -47,10 +48,18 @@ interface MessageProps {
   /** Caller quality for this author, if scoring is available. */
   callerQuality?: CallerQuality;
   onSetCallerTier?: (key: string, displayName: string, tier: CallerTier) => void;
+  /**
+   * Row packing chosen by the Feed chrome preset. Resolved ONCE by the pane
+   * and passed down — never read from context here, because this row renders
+   * per WebSocket frame inside a virtualised list.
+   */
+  density?: FeedRowDensity;
 }
 
-function Message({ message, isCompact, messageDisplay = 'default', compactModeAvatars = true, guildColor, highlightMode = 'background', highlightColor, disableEmbeds, evmAddressColor, solAddressColor, contractLinkTemplates, contractClickAction, showFullContractAddress = false, openInDiscordApp, openInTelegramApp, badgeClickAction, onHideUser, onToggleHighlight, isUserHighlighted, onFocus, isFocused, onQuickReply, chattingEnabled, roleColors = true, callerQuality, onSetCallerTier }: MessageProps) {
+function Message({ message, isCompact, messageDisplay = 'default', compactModeAvatars = true, guildColor, highlightMode = 'background', highlightColor, disableEmbeds, evmAddressColor, solAddressColor, contractLinkTemplates, contractClickAction, showFullContractAddress = false, openInDiscordApp, openInTelegramApp, badgeClickAction, onHideUser, onToggleHighlight, isUserHighlighted, onFocus, isFocused, onQuickReply, chattingEnabled, roleColors = true, callerQuality, onSetCallerTier, density = DEFAULT_FEED_ROW_DENSITY }: MessageProps) {
   const [lightboxSrc, setLightboxSrc] = useState<string | null>(null);
+  // One static-table lookup per render; the fragments are prebuilt strings.
+  const d = FEED_ROW_DENSITY_STYLE[density];
   const addrColors: AddressColors = { evm: evmAddressColor ?? '#fee75c', sol: solAddressColor ?? '#14f195' };
   const templates: ContractLinkTemplates = contractLinkTemplates ?? DEFAULT_LINK_TEMPLATES;
   const clickAct: ContractClickAction = contractClickAction ?? 'copy_open';
@@ -195,8 +204,8 @@ function Message({ message, isCompact, messageDisplay = 'default', compactModeAv
 
   if (messageDisplay === 'compact') {
     return (
-      <div className={`group/compact relative hover:bg-oct-surface-raised py-[1px] pr-2 sm:pr-[48px] pl-[52px] sm:pl-[72px] ${highlightClass} ${message.isDeleted ? 'opacity-60' : ''} min-h-[1.375rem]`} style={bgStyle}>
-        <span className={`absolute left-0 w-[52px] sm:w-[72px] font-mono text-[0.6875rem] text-oct-muted text-right pr-2 sm:pr-4 pt-[1px] select-none leading-[1.375rem] ${isCompact ? 'opacity-0 group-hover/compact:opacity-100' : ''}`}>
+      <div className={`group/compact relative hover:bg-oct-surface-raised ${d.compactPad} pr-2 sm:pr-[48px] pl-[52px] sm:pl-[72px] ${highlightClass} ${message.isDeleted ? 'opacity-60' : ''} ${d.minH}`} style={bgStyle}>
+        <span className={`absolute left-0 w-[52px] sm:w-[72px] font-mono text-[0.6875rem] text-oct-muted text-right pr-2 sm:pr-4 pt-[1px] select-none ${d.lead} ${isCompact ? 'opacity-0 group-hover/compact:opacity-100' : ''}`}>
           {new Date(message.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
         </span>
         <div className="min-w-0">
@@ -213,7 +222,7 @@ function Message({ message, isCompact, messageDisplay = 'default', compactModeAv
             </div>
           )}
 
-          <div className="text-[0.9375rem] text-oct-text leading-[1.375rem] break-words">
+          <div className={`${d.compactText} text-oct-text ${d.lead} break-words`}>
             {!isCompact && compactModeAvatars && (
               <AuthImage
                 src={getAvatarUrl(message.author.id, message.author.avatar)}
@@ -222,7 +231,7 @@ function Message({ message, isCompact, messageDisplay = 'default', compactModeAv
               />
             )}
             <span
-              className="font-medium text-[0.9375rem] hover:underline cursor-pointer mr-1"
+              className={`font-medium ${d.compactText} hover:underline cursor-pointer mr-1`}
               style={{ color: authorNameColor }}
               onClick={handleNameClick}
               title={`${message.author.username} (${message.author.id})`}
@@ -342,8 +351,8 @@ function Message({ message, isCompact, messageDisplay = 'default', compactModeAv
 
   if (isCompact) {
     return (
-      <div className={`group/compact relative hover:bg-oct-surface-raised py-[2px] pr-2 sm:pr-[48px] pl-[52px] sm:pl-[72px] ${highlightClass} ${message.isDeleted ? 'opacity-60' : ''} min-h-[1.375rem]`} style={bgStyle}>
-        <span className="absolute left-0 w-[52px] sm:w-[72px] font-mono text-[0.6875rem] text-oct-muted text-right pr-2 sm:pr-4 pt-[2px] opacity-0 group-hover/compact:opacity-100 select-none leading-[1.375rem]">
+      <div className={`group/compact relative hover:bg-oct-surface-raised ${d.contPad} pr-2 sm:pr-[48px] pl-[52px] sm:pl-[72px] ${highlightClass} ${message.isDeleted ? 'opacity-60' : ''} ${d.minH}`} style={bgStyle}>
+        <span className={`absolute left-0 w-[52px] sm:w-[72px] font-mono text-[0.6875rem] text-oct-muted text-right pr-2 sm:pr-4 pt-[2px] opacity-0 group-hover/compact:opacity-100 select-none ${d.lead}`}>
           {new Date(message.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
         </span>
         <div className="min-w-0">
@@ -360,7 +369,7 @@ function Message({ message, isCompact, messageDisplay = 'default', compactModeAv
             </div>
           )}
 
-          <div className="text-base text-oct-text leading-[1.375rem] break-words">
+          <div className={`${d.text} text-oct-text ${d.lead} break-words`}>
             {message.isDeleted && (
               <>
                 <DeletedBadge />
@@ -387,7 +396,7 @@ function Message({ message, isCompact, messageDisplay = 'default', compactModeAv
   }
 
   return (
-    <div className={`relative hover:bg-oct-surface-raised pt-[1.0625rem] pb-[2px] pr-2 sm:pr-[48px] pl-[52px] sm:pl-[72px] ${highlightClass} ${message.isDeleted ? 'opacity-60' : ''} group`} style={bgStyle}>
+    <div className={`relative hover:bg-oct-surface-raised ${d.firstPad} pr-2 sm:pr-[48px] pl-[52px] sm:pl-[72px] ${highlightClass} ${message.isDeleted ? 'opacity-60' : ''} group`} style={bgStyle}>
       <div className={`absolute right-0 top-0.5 flex items-center gap-0.5 rounded-cockpit px-0.5 py-0.5 z-10 sm:hidden ${isFocused ? 'opacity-100' : ''}`}>
         <button
           onClick={() => onFocus?.(message.guildId, message.channelId, message.guildName, message.channelName)}
@@ -413,12 +422,12 @@ function Message({ message, isCompact, messageDisplay = 'default', compactModeAv
       <AuthImage
         src={getAvatarUrl(message.author.id, message.author.avatar)}
         alt=""
-        className="absolute left-2 sm:left-4 top-[1.1875rem] w-8 h-8 sm:w-10 sm:h-10 rounded-full"
+        className={`absolute left-2 sm:left-4 ${d.avatarTop} w-8 h-8 sm:w-10 sm:h-10 rounded-full`}
       />
       <div className="min-w-0">
-        <div className="flex items-baseline gap-1 flex-wrap leading-[1.375rem]">
+        <div className={`flex items-baseline gap-1 flex-wrap ${d.lead}`}>
           <span
-            className="font-medium text-base hover:underline cursor-pointer relative mr-1"
+            className={`font-medium ${d.text} hover:underline cursor-pointer relative mr-1`}
             style={{ color: authorNameColor }}
             onClick={handleNameClick}
             title={`${message.author.username} (${message.author.id})`}
@@ -438,10 +447,10 @@ function Message({ message, isCompact, messageDisplay = 'default', compactModeAv
               {BAND_LABELS[callerQuality.band]}
             </span>
           )}
-          <span className="font-mono text-xs text-oct-muted leading-[1.375rem] ml-1 sm:hidden">
+          <span className={`font-mono text-xs text-oct-muted ${d.lead} ml-1 sm:hidden`}>
             {formatTimestamp(message.timestamp, true)}
           </span>
-          <span className="font-mono text-xs text-oct-muted leading-[1.375rem] ml-1 hidden sm:inline">
+          <span className={`font-mono text-xs text-oct-muted ${d.lead} ml-1 hidden sm:inline`}>
             {formatTimestamp(message.timestamp)}
           </span>
           {channelBadge}
@@ -501,7 +510,7 @@ function Message({ message, isCompact, messageDisplay = 'default', compactModeAv
           </div>
         )}
 
-        <div className="text-base text-oct-text leading-[1.375rem] break-words whitespace-pre-wrap">
+        <div className={`${d.text} text-oct-text ${d.lead} break-words whitespace-pre-wrap`}>
           {renderContent(message.content, message.contractAddresses, message.mentions, addrColors, templates, clickAct, showFull)}
           <EditedIndicator message={message} addrColors={addrColors} templates={templates} clickAct={clickAct} showFull={showFull} />
         </div>
