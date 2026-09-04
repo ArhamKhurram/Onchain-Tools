@@ -13,16 +13,28 @@ import type { KeywordPattern } from '@oct/shared';
 // ---------------------------------------------------------------------------
 
 /**
- * Phase 1 is Solana-only. `bsc` stays in the union because the rule schema and
- * executor registry are chain-generic by design, but no Phase 1 executor accepts
- * it — `ExecutorRegistry.resolve` throws rather than silently routing an EVM rule
- * to a Solana venue.
+ * `bsc` has never had an executor: it stays in the union because the rule schema
+ * and executor registry are chain-generic by design, and
+ * `ExecutorRegistry.resolve` throws rather than silently routing a rule to a
+ * venue that cannot serve its chain.
+ *
+ * `rhc` is Robinhood Chain (chainId 4663, an Arbitrum Orbit L3) and DOES have an
+ * executor — `executors/evmUniswap.ts`. It is a distinct member rather than a
+ * reuse of `bsc` because the two share nothing an executor cares about: a
+ * different RPC, a different WETH, different routers, a different native unit.
+ * Collapsing them would make a `bsc` rule silently routable to Robinhood pools.
  */
-export type Chain = 'sol' | 'bsc';
+export type Chain = 'sol' | 'bsc' | 'rhc';
 
 /**
- * How a fire is routed. Phase 1 ships Slotshark (Solana, custodial) and the
- * dry-run seam only.
+ * How a fire is routed. Slotshark (Solana, custodial) and the dry-run seam were
+ * Phase 1; `evm_uniswap` is the Robinhood Chain path.
+ *
+ * `evm_uniswap` differs from every other venue in one structural way: it is
+ * NON-CUSTODIAL. Slotshark holds the wallet and OCT holds a bearer token, so a
+ * leak drains a deliberately-small venue balance; `evm_uniswap` signs with a key
+ * OCT reads at fire time, so a leak drains the wallet. See the key discipline at
+ * the top of executors/evmUniswap.ts.
  *
  * GMGN is deliberately NOT a Phase 1 venue. The operator's `GMGN_API_KEY` is
  * provisioned for enrichment/market data (see utils/gmgnClient.ts) and must never
@@ -30,7 +42,7 @@ export type Chain = 'sol' | 'bsc';
  * operator's own GMGN account. When GMGN trading is added it arrives as a
  * per-user connected credential (ADR-012), never a shared server-side key.
  */
-export type Venue = 'slotshark' | 'dryrun';
+export type Venue = 'slotshark' | 'dryrun' | 'evm_uniswap';
 
 // ---------------------------------------------------------------------------
 // Execution params — a chain-tagged union
@@ -86,7 +98,8 @@ export type InteractionType = 'tweet' | 'retweet' | 'quote' | 'reply' | 'pin';
 
 export type RuleState = 'draft' | 'disabled' | 'armed';
 export type EntryStyle = 'single' | 'ladder';
-export type SizeUnit = 'SOL' | 'BNB' | 'USDC';
+/** Native sizing units. `ETH` is Robinhood Chain's native currency. */
+export type SizeUnit = 'SOL' | 'BNB' | 'USDC' | 'ETH';
 
 export interface SnipeRule {
   id: string;
