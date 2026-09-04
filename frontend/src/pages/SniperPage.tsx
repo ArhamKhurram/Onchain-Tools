@@ -16,6 +16,7 @@ import SniperWalletsTable from '../components/sniper/SniperWalletsTable';
 import TriggerRealityNotice from '../components/sniper/TriggerRealityNotice';
 import VenueConnectPanel from '../components/sniper/VenueConnectPanel';
 import FullPageSpinner from '../components/common/FullPageSpinner';
+import { fadeIn, m, MotionFeatures, useTransition } from '../lib/motion';
 import { routes } from '../lib/routes';
 
 // The sniper console: a control plane and a record, not a trigger engine. The
@@ -52,6 +53,11 @@ export default function SniperPage() {
   const fires = useSniperFires();
   const venues = useSniperVenues(userId);
 
+  // Page-container entrance only. The tables beneath re-render on every
+  // refresh and the fires log updates live, so nothing inside them animates —
+  // see the rule at the top of lib/motion.ts. Motion rides in this lazy chunk.
+  const enter = useTransition('fade');
+
   const setView = (next: SniperView) => {
     setSearchParams(next === 'rules' ? {} : { view: next }, { replace: true });
   };
@@ -82,31 +88,39 @@ export default function SniperPage() {
   }
 
   return (
-    <div className="h-full min-h-0 flex flex-col bg-oct-bg">
-      <TriggerRealityNotice />
-      <SniperStatusBar
-        status={status.status}
-        error={status.error}
-        onSetKill={(on) => status.setKill(on)}
-        onRefresh={() => void status.refresh()}
-      />
-      <ConsoleSubnav tabs={SNIPER_TABS} active={view} onChange={setView} />
-      <div className="flex-1 min-h-0">
-        {view === 'rules' ? (
-          <SniperRulesTable
-            rules={rules}
-            wallets={wallets.wallets}
-            processDryRun={status.status?.processDryRun ?? false}
-            killed={status.status?.kill.on ?? false}
-          />
-        ) : view === 'fires' ? (
-          <SniperFiresTable fires={fires} />
-        ) : view === 'wallets' ? (
-          <SniperWalletsTable wallets={wallets} />
-        ) : (
-          <VenueConnectPanel venues={venues} status={status.status} />
-        )}
-      </div>
-    </div>
+    <MotionFeatures>
+      <m.div
+        variants={fadeIn}
+        initial="hidden"
+        animate="visible"
+        transition={enter}
+        className="h-full min-h-0 flex flex-col bg-oct-bg"
+      >
+        <TriggerRealityNotice />
+        <SniperStatusBar
+          status={status.status}
+          error={status.error}
+          onSetKill={(on) => status.setKill(on)}
+          onRefresh={() => void status.refresh()}
+        />
+        <ConsoleSubnav tabs={SNIPER_TABS} active={view} onChange={setView} />
+        <div className="flex-1 min-h-0">
+          {view === 'rules' ? (
+            <SniperRulesTable
+              rules={rules}
+              wallets={wallets.wallets}
+              processDryRun={status.status?.processDryRun ?? false}
+              killed={status.status?.kill.on ?? false}
+            />
+          ) : view === 'fires' ? (
+            <SniperFiresTable fires={fires} />
+          ) : view === 'wallets' ? (
+            <SniperWalletsTable wallets={wallets} />
+          ) : (
+            <VenueConnectPanel venues={venues} status={status.status} />
+          )}
+        </div>
+      </m.div>
+    </MotionFeatures>
   );
 }

@@ -6,8 +6,12 @@ import SniperWalletFormModal from './SniperWalletFormModal';
 import { truncateAddress } from '../../types/wallets';
 import type { SniperWallet } from '../../types/sniper';
 import type { useSniperWallets } from '../../hooks/useSniperWallets';
+import { cn } from '../../lib/utils';
 
-const TH = 'px-3 py-2 font-medium';
+const TH = 'px-comfy py-snug font-semibold';
+const TD = 'px-comfy py-snug';
+const ROW_BTN =
+  'px-cozy py-hair rounded-oct-sm type-caption font-mono font-bold uppercase border border-oct-border text-oct-muted transition-colors';
 
 interface SniperWalletsTableProps {
   wallets: ReturnType<typeof useSniperWallets>;
@@ -64,15 +68,15 @@ export default function SniperWalletsTable({ wallets }: SniperWalletsTableProps)
 
   return (
     <div className="h-full flex flex-col min-h-0 bg-oct-bg overflow-hidden">
-      <div className="oct-headerbar shrink-0 flex items-center gap-2 px-4 py-2.5">
+      <div className="oct-headerbar shrink-0 flex items-center gap-comfy px-roomy py-cozy">
         <span className="oct-eyebrow">view: wallets</span>
         <div className="flex-1" />
-        {notice && <span className="font-mono text-[11px] text-oct-flame">{notice}</span>}
-        <span className="font-mono text-[11px] text-oct-muted tabular-nums">{wallets.wallets.length} wallets</span>
+        {notice && <span className="type-caption font-mono text-oct-critical">{notice}</span>}
+        <span className="type-data text-oct-muted">{wallets.wallets.length} wallets</span>
         <button
           type="button"
           onClick={openAdd}
-          className="oct-icon-btn flex items-center gap-1.5 px-2.5 py-1.5 text-xs font-bold uppercase"
+          className="oct-icon-btn flex items-center gap-snug px-cozy py-snug type-label uppercase"
         >
           <Plus size={12} />
           add
@@ -82,7 +86,7 @@ export default function SniperWalletsTable({ wallets }: SniperWalletsTableProps)
       <div className="flex-1 min-h-0 overflow-auto overscroll-contain" style={{ overflowAnchor: 'none' }}>
         <table className="w-full text-left border-collapse min-w-[900px]">
           <thead className="oct-thead sticky top-0 z-10">
-            <tr className="font-mono text-[10px] font-bold uppercase tracking-wider text-oct-muted">
+            <tr className="type-caption font-mono uppercase tracking-wider text-oct-muted">
               <th className={TH}>Label</th>
               <th className={TH}>Venue</th>
               <th className={TH}>Chain</th>
@@ -97,38 +101,48 @@ export default function SniperWalletsTable({ wallets }: SniperWalletsTableProps)
           <tbody>
             {wallets.wallets.map((w) => {
               const b = budgetFor(w.walletId);
+              // Budget rows are the caps doing their job, so the two "used /
+              // limit" cells carry the cap semantics: at the limit is
+              // `critical` (the next fire is refused), past half is `warn`.
+              const spent = b?.spentToday ?? 0;
+              const daily = b?.dailyCap ?? w.dailyCap;
+              const open = b?.openPositions ?? 0;
+              const maxOpen = b?.maxOpen ?? w.maxOpen;
+              const capTone = (used: number, cap: number) =>
+                used >= cap ? 'text-oct-critical' : used * 2 >= cap ? 'text-oct-warn' : 'text-oct-text';
               return (
                 <tr key={w.walletId} className="border-b border-oct-border/50 oct-row-hover">
-                  <td className="px-3 py-2 text-sm text-oct-text">{w.label || <span className="text-oct-muted">—</span>}</td>
-                  <td className="px-3 py-2 font-mono text-xs text-oct-muted">{w.venue}</td>
-                  <td className="px-3 py-2 font-mono text-xs text-oct-muted">{w.chain}</td>
-                  <td className="px-3 py-2 font-mono text-xs text-oct-text" title={w.address}>
+                  <td className={`${TD} type-body text-oct-text`}>{w.label || <span className="text-oct-muted">—</span>}</td>
+                  <td className={`${TD} type-data text-oct-muted`}>{w.venue}</td>
+                  <td className={`${TD} type-data text-oct-muted`}>{w.chain}</td>
+                  <td className={`${TD} type-data text-oct-text`} title={w.address}>
                     {truncateAddress(w.address)}
                   </td>
-                  <td className="px-3 py-2 font-mono text-xs text-oct-muted">{w.unit}</td>
-                  <td className="px-3 py-2 font-mono text-xs text-oct-text text-right tabular-nums">{w.perFireCap}</td>
-                  <td className="px-3 py-2 font-mono text-xs text-oct-text text-right tabular-nums">
-                    {(b?.spentToday ?? 0).toLocaleString(undefined, { maximumFractionDigits: 6 })} / {b?.dailyCap ?? w.dailyCap}
+                  <td className={`${TD} type-data text-oct-muted`}>{w.unit}</td>
+                  <td className={`${TD} type-data text-oct-text text-right`}>{w.perFireCap}</td>
+                  <td className={cn(TD, 'type-data text-right', capTone(spent, daily))}>
+                    {spent.toLocaleString(undefined, { maximumFractionDigits: 6 })} / {daily}
                   </td>
-                  <td className="px-3 py-2 font-mono text-xs text-oct-text text-right tabular-nums">
-                    {b?.openPositions ?? 0} / {b?.maxOpen ?? w.maxOpen}
+                  <td className={cn(TD, 'type-data text-right', capTone(open, maxOpen))}>
+                    {open} / {maxOpen}
                   </td>
-                  <td className="px-3 py-2">
-                    <div className="flex items-center justify-end gap-1.5">
+                  <td className={TD}>
+                    <div className="flex items-center justify-end gap-snug">
                       <button
                         type="button"
                         onClick={() => {
                           setEditing(w);
                           setFormOpen(true);
                         }}
-                        className="px-2 py-0.5 rounded-oct-sm text-[10px] font-mono font-bold uppercase border border-oct-border text-oct-muted hover:text-oct-text hover:border-oct-border-bright transition-colors"
+                        className={`${ROW_BTN} hover:text-oct-text hover:border-oct-border-bright`}
                       >
                         edit
                       </button>
+                      {/* Destructive, so the hover previews `critical` — not the accent. */}
                       <button
                         type="button"
                         onClick={() => setDeleting(w)}
-                        className="px-2 py-0.5 rounded-oct-sm text-[10px] font-mono font-bold uppercase border border-oct-border text-oct-muted hover:text-oct-accent hover:border-oct-accent transition-colors"
+                        className={`${ROW_BTN} hover:text-oct-critical hover:border-oct-critical`}
                       >
                         delete
                       </button>
