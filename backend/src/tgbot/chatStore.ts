@@ -23,6 +23,7 @@ import { fileURLToPath } from 'url';
 import type { SupabaseClient } from '@supabase/supabase-js';
 import { getFomoServiceClient } from '../fomo/store.js';
 import { isHostedMode } from '../storage/index.js';
+import { DEFAULT_CHAT_SETTINGS, readSettings, type TgChatSettings } from './alertPolicy.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 // Same writable-dir convention as config/store.ts, so a packaged (read-only)
@@ -34,32 +35,12 @@ const CHATS_PATH = join(DATA_DIR, 'tg-bot-chats.json');
 /** How long the enabled-chat list is trusted before it is re-read. */
 const LIST_CACHE_MS = 60_000;
 
-/**
- * Per-chat alert preferences.
- *
- * Stored as JSONB so a new toggle is a code change, not a migration. Read
- * through `readSettings` below, which supplies the default for an absent key —
- * that is what stops a deploy from switching something on in a live chat.
- */
-export interface TgChatSettings {
-  /** Contract detections from the OCT feed. On for a chat that ran /start. */
-  contractAlerts: boolean;
-}
-
-export const DEFAULT_CHAT_SETTINGS: TgChatSettings = {
-  contractAlerts: true,
-};
-
-/** Narrow an unknown JSONB blob to settings, defaulting every absent key. */
-export function readSettings(raw: unknown): TgChatSettings {
-  const obj = (raw ?? {}) as Record<string, unknown>;
-  return {
-    contractAlerts:
-      typeof obj.contractAlerts === 'boolean'
-        ? obj.contractAlerts
-        : DEFAULT_CHAT_SETTINGS.contractAlerts,
-  };
-}
+// The settings SHAPE lives in alertPolicy.ts, next to the alert catalog it
+// describes and free of any I/O, so the fail-closed default is a pure value a
+// test can assert on. Re-exported here because this is where callers reach for
+// per-chat state.
+export { DEFAULT_CHAT_SETTINGS, readSettings };
+export type { TgChatSettings };
 
 export interface TgChatRecord {
   chatId: number;
@@ -210,7 +191,13 @@ class TgChatStore {
         addedByTgUserId: input.addedByTgUserId ?? existing?.addedByTgUserId ?? null,
         enabled: true,
         sourceUserId: existing?.sourceUserId ?? null,
-        settings: existing?.settings ?? { ...DEFAULT_CHAT_SETTINGS },
+        // A fresh chat starts subscribed to NOTHING (see alertPolicy.ts).
+        // Cloned one level down because `alerts` is a nested object and the
+        // default must not become shared mutable state across chats.
+        settings: existing?.settings ?? {
+          ...DEFAULT_CHAT_SETTINGS,
+          alerts: { ...DEFAULT_CHAT_SETTINGS.alerts },
+        },
         plan: existing?.plan ?? 'free',
         entitlements: existing?.entitlements ?? {},
         createdAt: existing?.createdAt ?? now,
@@ -320,6 +307,42 @@ class TgChatStore {
     const { error } = await db.from('tg_bot_chats').update({ enabled: false }).eq('chat_id', chatId);
     if (error) console.error('[TgBot] Could not disable chat:', error.message);
     this.invalidate();
+  }
+
+  /**
+   * Replace one chat's alert preferences.
+   *
+   * The whole blob is written rather than a JSONB merge: `settings` is small,
+   * the callers all read-modify-write it in one command handler, and a partial
+   * merge is how a key that was meant to be turned OFF survives. Returns false
+   * when the write did not land, so /alerts can say so instead of confirming a
+   * subscription change that did not happen.
+   *
+   * Invalidates the enabled-chat cache, because the fan-out reads settings off
+   * exactly those cached rows — without this a chat that just opted out would
+   * keep receiving alerts for up to LIST_CACHE_MS.
+   */
+  async updateSettings(chatId: number, settings: TgChatSettings): Promise<boolean> {
+    if (!this.hosted()) {
+      const map = this.loadLocal();
+      const record = map.get(chatId);
+      if (!record) return false;
+      map.set(chatId, { ...record, settings });
+      this.saveLocal();
+      this.invalidate();
+      return true;
+    }
+
+    const db = this.client();
+    if (!db) return false;
+
+    const { error } = await db.from('tg_bot_chats').update({ settings }).eq('chat_id', chatId);
+    if (error) {
+      console.error('[TgBot] Could not update chat settings:', error.message);
+      return false;
+    }
+    this.invalidate();
+    return true;
   }
 
   /** Test seam — drops cached state so a fresh env/backend takes effect. */

@@ -7,6 +7,7 @@ import {
 import { renderContractAlert, renderStatus, renderTokenSnapshot } from '../src/tgbot/render';
 import { alertMatchesSource, resolveAlertSource } from '../src/tgbot/source';
 import type { TgChatRecord } from '../src/tgbot/chatStore';
+import { DEFAULT_CHAT_SETTINGS } from '../src/tgbot/alertPolicy';
 
 const msg = (over: Record<string, unknown> = {}) =>
   ({
@@ -166,6 +167,8 @@ describe('renderTokenSnapshot', () => {
 });
 
 describe('renderStatus', () => {
+  // Subscribed to something, so the "no source bound" warning is reachable —
+  // a chat subscribed to nothing is told that instead, which is its own test.
   const record: TgChatRecord = {
     chatId: -100,
     chatType: 'supergroup',
@@ -173,27 +176,53 @@ describe('renderStatus', () => {
     addedByTgUserId: 1,
     enabled: true,
     sourceUserId: null,
-    settings: { contractAlerts: true },
+    settings: {
+      ...DEFAULT_CHAT_SETTINGS,
+      alerts: { ...DEFAULT_CHAT_SETTINGS.alerts, missedRunner: 'digest' },
+    },
     plan: 'free',
     entitlements: {},
     createdAt: '2026-09-03T00:00:00.000Z',
   };
+  const now = Date.parse('2026-09-04T12:00:00.000Z');
 
   it('tells an unregistered chat what to run', () => {
-    expect(renderStatus(null, { alertsRouted: false, allowlisted: false })).toContain('/start');
+    expect(renderStatus(null, { alertsRouted: false, allowlisted: false, now })).toContain('/start');
   });
 
-  it('says out loud when a registered chat has no alert source bound', () => {
+  it('says out loud when a subscribed chat has no alert source bound', () => {
     // The one silent failure mode: enabled, alerts "on", nothing will arrive.
-    const out = renderStatus(record, { alertsRouted: false, allowlisted: true });
+    const out = renderStatus(record, { alertsRouted: false, allowlisted: true, now });
     expect(out).toContain('No alert source is bound');
     expect(out).toContain('approved chat');
   });
 
   it('omits the warning once alerts are routed', () => {
-    expect(renderStatus(record, { alertsRouted: true, allowlisted: false })).not.toContain(
+    expect(renderStatus(record, { alertsRouted: true, allowlisted: false, now })).not.toContain(
       'No alert source is bound',
     );
+  });
+
+  it('tells a chat subscribed to nothing that it is, rather than looking healthy', () => {
+    const out = renderStatus(
+      { ...record, settings: DEFAULT_CHAT_SETTINGS },
+      { alertsRouted: true, allowlisted: false, now },
+    );
+    expect(out).toContain('subscribed to nothing');
+    expect(out).toContain('/alerts');
+  });
+
+  it('leads with the mute and the command that lifts it', () => {
+    const out = renderStatus(
+      {
+        ...record,
+        settings: { ...record.settings, mutedUntil: now + 3_600_000, mutedReason: '40 alerts in under a minute' },
+      },
+      { alertsRouted: true, allowlisted: false, now },
+    );
+    expect(out).toContain('Muted');
+    expect(out).toContain('40 alerts in under a minute');
+    expect(out).toContain('/alerts unmute');
   });
 });
 
@@ -205,7 +234,7 @@ describe('alert source resolution', () => {
     addedByTgUserId: null,
     enabled: true,
     sourceUserId,
-    settings: { contractAlerts: true },
+    settings: DEFAULT_CHAT_SETTINGS,
     plan: 'free',
     entitlements: {},
     createdAt: '2026-09-03T00:00:00.000Z',

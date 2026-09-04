@@ -106,17 +106,18 @@ describe('token hygiene', () => {
 });
 
 describe('chat settings', () => {
-  it('defaults every absent key rather than reading it as off', () => {
+  it('defaults every absent key to OFF rather than reading it as on', () => {
     expect(readSettings({})).toEqual(DEFAULT_CHAT_SETTINGS);
     expect(readSettings(null)).toEqual(DEFAULT_CHAT_SETTINGS);
     expect(readSettings(undefined)).toEqual(DEFAULT_CHAT_SETTINGS);
   });
 
   it('honours an explicit stored value', () => {
-    expect(readSettings({ contractAlerts: false })).toEqual({ contractAlerts: false });
+    expect(readSettings({ alerts: { missedRunner: 'digest' } }).alerts.missedRunner).toBe('digest');
   });
 
   it('ignores a value of the wrong type instead of coercing it', () => {
-    expect(readSettings({ contractAlerts: 'yes' })).toEqual(DEFAULT_CHAT_SETTINGS);
+    expect(readSettings({ alerts: { contract: 'yes' } })).toEqual(DEFAULT_CHAT_SETTINGS);
+    expect(readSettings({ alerts: 'all' })).toEqual(DEFAULT_CHAT_SETTINGS);
   });
 });
