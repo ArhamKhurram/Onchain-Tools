@@ -10,7 +10,7 @@ import { FEED_PRESET_DENSITY, FeedChromeContext, chromeOwnsPaneHeader, normalize
 import ConsoleEmptyState from '../components/console/ConsoleEmptyState';
 import FullPageSpinner from '../components/common/FullPageSpinner';
 import PreviewBanner from '../components/preview/PreviewBanner';
-import FirstRunGuide from '../components/preview/FirstRunGuide';
+import FeedEmptyState from '../components/empty/FeedEmptyState';
 import { routes } from '../lib/routes';
 
 export default function FeedPage() {
@@ -95,7 +95,7 @@ export default function FeedPage() {
       <div className="flex flex-col h-full w-full min-h-0 bg-oct-bg">
         <PreviewBanner />
         {showFirstRun ? (
-          <FirstRunGuide />
+          <FeedEmptyState />
         ) : (
           <>
             <FeedChrome preset={chromeContext.preset} />
