@@ -17,6 +17,7 @@ import {
   updatePanelConfig,
 } from '../data/workspaceWidgets';
 import { routes } from '../lib/routes';
+import { MotionFeatures, fadeIn, m, useTransition } from '../lib/motion';
 import type { WorkspaceLayout, WorkspacePanelSlot } from '../types/workspace';
 
 type RoomPickTarget =
@@ -44,6 +45,9 @@ export default function WorkspacePage() {
   // Optimistic copy of an out-of-edit-mode change while its config write is in
   // flight. Dropped the moment the saved layout comes back.
   const [pendingLayout, setPendingLayout] = useState<WorkspaceLayout | null>(null);
+  // Page-container entrance only. The panels inside hold virtualised feeds and
+  // resizable splitters; none of that animates — see lib/motion.ts.
+  const enter = useTransition('fade');
 
   useEffect(() => {
     if (!editMode) setDraft(savedLayout);
@@ -130,50 +134,58 @@ export default function WorkspacePage() {
   }
 
   return (
-    <div className="flex flex-col h-full min-h-0 bg-oct-bg">
-      <WorkspaceToolbar
-        layout={layout}
-        editMode={editMode}
-        saving={saving}
-        onStartEdit={() => {
-          // Start from what is on screen, which includes a room switch whose
-          // config write may still be in flight.
-          setDraft(layout);
-          setEditMode(true);
-        }}
-        onCancel={handleCancel}
-        onSave={handleSave}
-        onReset={handleReset}
-        onLayoutChange={setDraft}
-        onPickRoom={() => setRoomPick({ mode: 'add' })}
-        onAddColumn={() => setDraft((prev) => addColumn(prev))}
-      />
-      <WorkspaceColumnLayout
-        layout={layout}
-        editMode={editMode}
-        onChange={setDraft}
-        onRemovePanel={handleRemovePanel}
-        onConfigurePanel={handleConfigurePanel}
-        onPanelRoomChange={handlePanelRoomChange}
-      />
-      <RoomPickerModal
-        open={roomPick !== null}
-        selectedRoomId={
-          roomPick?.mode === 'configure'
-            ? findPanel(draft, roomPick.panelId)?.config?.roomId
-            : undefined
-        }
-        onSelect={handleRoomSelect}
-        onClose={() => setRoomPick(null)}
-      />
-      {editMode && (
-        <div className="oct-headerbar shrink-0 px-4 py-2 text-center">
-          <p className="oct-eyebrow">
-            Drag panel headers to reorder · drag splitters to resize · fits your screen
-          </p>
-        </div>
-      )}
-    </div>
+    <MotionFeatures>
+      <m.div
+        variants={fadeIn}
+        initial="hidden"
+        animate="visible"
+        transition={enter}
+        className="flex flex-col h-full min-h-0 bg-oct-bg"
+      >
+        <WorkspaceToolbar
+          layout={layout}
+          editMode={editMode}
+          saving={saving}
+          onStartEdit={() => {
+            // Start from what is on screen, which includes a room switch whose
+            // config write may still be in flight.
+            setDraft(layout);
+            setEditMode(true);
+          }}
+          onCancel={handleCancel}
+          onSave={handleSave}
+          onReset={handleReset}
+          onLayoutChange={setDraft}
+          onPickRoom={() => setRoomPick({ mode: 'add' })}
+          onAddColumn={() => setDraft((prev) => addColumn(prev))}
+        />
+        <WorkspaceColumnLayout
+          layout={layout}
+          editMode={editMode}
+          onChange={setDraft}
+          onRemovePanel={handleRemovePanel}
+          onConfigurePanel={handleConfigurePanel}
+          onPanelRoomChange={handlePanelRoomChange}
+        />
+        <RoomPickerModal
+          open={roomPick !== null}
+          selectedRoomId={
+            roomPick?.mode === 'configure'
+              ? findPanel(draft, roomPick.panelId)?.config?.roomId
+              : undefined
+          }
+          onSelect={handleRoomSelect}
+          onClose={() => setRoomPick(null)}
+        />
+        {editMode && (
+          <div className="oct-headerbar shrink-0 px-comfy py-tight text-center">
+            <p className="type-caption font-mono uppercase tracking-wider text-oct-muted">
+              Drag panel headers to reorder · drag splitters to resize · fits your screen
+            </p>
+          </div>
+        )}
+      </m.div>
+    </MotionFeatures>
   );
 }
 

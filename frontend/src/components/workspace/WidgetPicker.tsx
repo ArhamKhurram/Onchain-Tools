@@ -8,6 +8,8 @@ import {
   countPanels,
   defaultAddColumnId,
 } from '../../data/workspaceWidgets';
+import { AnimatePresence, MotionFeatures, fadeIn, m, useTransition } from '../../lib/motion';
+import { cn } from '../../lib/utils';
 import type { WorkspaceLayout, WorkspacePanelType } from '../../types/workspace';
 
 interface WidgetPickerProps {
@@ -22,6 +24,8 @@ export default function WidgetPicker({ layout, onChange, onPickRoom }: WidgetPic
   const rooms = useAppStore((s) => s.rooms);
   const panelCount = countPanels(layout);
   const atMax = panelCount >= WORKSPACE_MAX_PANELS;
+  // Menu chrome only: it fades on open/close, the items inside never animate.
+  const swap = useTransition('fade');
 
   useEffect(() => {
     if (!open) return;
@@ -54,27 +58,47 @@ export default function WidgetPicker({ layout, onChange, onPickRoom }: WidgetPic
         type="button"
         disabled={atMax}
         onClick={() => setOpen((v) => !v)}
-        className="oct-btn-primary inline-flex items-center gap-1.5 px-3 py-1.5 font-mono text-[11px] sm:text-xs font-bold uppercase tracking-wide disabled:opacity-40 disabled:cursor-not-allowed"
+        // `tabular-nums` on the button itself rather than a span around the
+        // count, so the accessible name stays one string ("Add panel (3/6)").
+        className="oct-btn-primary inline-flex items-center gap-tight px-cozy py-tight type-label uppercase tracking-wide tabular-nums disabled:opacity-40 disabled:cursor-not-allowed"
       >
         <Plus size={14} strokeWidth={2.5} />
         Add panel ({panelCount}/{WORKSPACE_MAX_PANELS})
-        <ChevronDown size={12} className={`transition-transform ${open ? 'rotate-180' : ''}`} />
+        <ChevronDown
+          size={12}
+          className={cn('transition-transform duration-fast', open && 'rotate-180')}
+        />
       </button>
-      {open && (
-        <div className="oct-card absolute left-0 top-full mt-1.5 z-50 min-w-[220px] py-1.5 overflow-hidden">
-          {WORKSPACE_WIDGETS.map((w) => (
-            <button
-              key={w.type}
-              type="button"
-              onClick={() => handleAdd(w.type)}
-              className="w-full text-left px-3 py-2 oct-row-hover"
+      {/* MotionFeatures sits here, on the surface, rather than higher up — the
+          toolbar renders on every workspace visit and the runtime should only
+          be paid for by the route that animates. */}
+      <MotionFeatures>
+        <AnimatePresence initial={false}>
+          {open && (
+            <m.div
+              key="widget-menu"
+              variants={fadeIn}
+              initial="hidden"
+              animate="visible"
+              exit="hidden"
+              transition={swap}
+              className="oct-card absolute left-0 top-full mt-snug z-50 min-w-[240px] py-tight overflow-hidden"
             >
-              <p className="oct-label uppercase text-oct-text">{w.label}</p>
-              <p className="text-[10px] font-mono text-oct-muted mt-0.5">{w.description}</p>
-            </button>
-          ))}
-        </div>
-      )}
+              {WORKSPACE_WIDGETS.map((w) => (
+                <button
+                  key={w.type}
+                  type="button"
+                  onClick={() => handleAdd(w.type)}
+                  className="w-full text-left px-comfy py-snug oct-row-hover"
+                >
+                  <p className="type-label uppercase text-oct-text">{w.label}</p>
+                  <p className="type-caption font-mono text-oct-muted">{w.description}</p>
+                </button>
+              ))}
+            </m.div>
+          )}
+        </AnimatePresence>
+      </MotionFeatures>
     </div>
   );
 }
