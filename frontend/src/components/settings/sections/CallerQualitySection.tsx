@@ -9,7 +9,18 @@ import {
   formatMultipleFloor,
   formatRate,
 } from '../../../utils/callerBandStyle';
-import { Toggle } from '../fields';
+import { cn } from '../../../lib/utils';
+import {
+  EmptyNote,
+  FieldRow,
+  Help,
+  INPUT_CLASS,
+  Kicker,
+  RemoveButton,
+  SectionHeader,
+  SettingsCard,
+  Toggle,
+} from '../fields';
 import type { SettingsForm } from '../useSettingsForm';
 import type { CallerTierEntry } from '../../../types';
 
@@ -109,81 +120,76 @@ export default function CallerQualitySection({ form }: { form: SettingsForm }) {
 
   return (
     <>
-      <div>
-        <h3 className="font-display text-2xl sm:text-3xl tracking-tight text-oct-text mb-1">Caller Quality</h3>
-        <p className="text-sm text-oct-muted">
-          Rank contract calls by who sent them. Mute the slop, float the callers worth
-          watching. Muted callers are collapsed rather than deleted — a caller you've
-          written off can still be first on a runner.
-        </p>
-      </div>
+      <SectionHeader
+        title="Caller Quality"
+        blurb="Rank contract calls by who sent them. Mute the slop, float the callers worth watching. Muted callers are collapsed rather than deleted — a caller you've written off can still be first on a runner."
+      />
 
-      <div className="space-y-3">
-        <Toggle
-          value={callerTierShowMuted}
-          onChange={persistShowMuted}
-          label="Keep muted callers reachable"
-        />
-        <p className="text-xs text-oct-muted -mt-2">
-          Collapse muted callers' contracts behind a counter you can expand, instead of
-          hiding them completely.
-        </p>
-        <Toggle
-          value={callerQualityRanking}
-          onChange={persistRanking}
-          label="Rank the contract feed by caller quality"
-        />
-        <p className="text-xs text-oct-muted -mt-2">
-          Trusted and high-scoring callers sort to the top. Off = newest first, as before.
-        </p>
-      </div>
+      <SettingsCard>
+        <div className="space-y-cozy">
+          <div>
+            <Toggle
+              value={callerTierShowMuted}
+              onChange={persistShowMuted}
+              label="Keep muted callers reachable"
+            />
+            <Help className="mt-tight pl-11">
+              Collapse muted callers' contracts behind a counter you can expand, instead of
+              hiding them completely.
+            </Help>
+          </div>
+          <div>
+            <Toggle
+              value={callerQualityRanking}
+              onChange={persistRanking}
+              label="Rank the contract feed by caller quality"
+            />
+            <Help className="mt-tight pl-11">
+              Trusted and high-scoring callers sort to the top. Off = newest first, as before.
+            </Help>
+          </div>
+        </div>
+      </SettingsCard>
 
       {/* Manual tiers */}
-      <div>
-        <label className="block font-mono text-xs uppercase tracking-[0.2em] text-oct-muted mb-2">
-          Manual tiers ({callerTiers.length})
-        </label>
-        <p className="text-xs text-oct-muted mb-3">
-          Set these by right-clicking a name in any chat feed. A room-specific tier beats a
-          global one, so a caller can be slop in one room and fine elsewhere.
-        </p>
-
+      <SettingsCard
+        title={`Manual tiers (${callerTiers.length})`}
+        blurb="Set these by right-clicking a name in any chat feed. A room-specific tier beats a global one, so a caller can be slop in one room and fine elsewhere."
+      >
         {callerTiers.length === 0 ? (
-          <p className="text-sm text-oct-muted text-center py-4 border border-dashed border-oct-border rounded-oct">
-            No manual tiers yet.
-          </p>
+          <EmptyNote dashed>No manual tiers yet.</EmptyNote>
         ) : (
-          <div className="space-y-1">
+          <div className="space-y-tight">
             {callerTiers.map((entry) => {
               const parsed = parseCallerKey(entry.key);
               const score = scoreByKey.get(entry.key);
               return (
-                <div
+                <FieldRow
                   key={`${entry.key}:${entry.roomId ?? 'global'}`}
-                  className="flex items-center justify-between gap-2 px-3 py-2 rounded-oct border border-oct-border bg-oct-surface-raised"
+                  className="flex items-center justify-between gap-cozy py-snug"
                 >
-                  <div className="flex items-center gap-2 min-w-0">
+                  <div className="flex items-center gap-cozy min-w-0">
                     {entry.tier === 'muted' ? (
                       <VolumeX size={13} className="text-oct-muted shrink-0" />
                     ) : (
-                      <Star size={13} className="text-oct-yellow shrink-0" />
+                      <Star size={13} className="text-oct-warn shrink-0" />
                     )}
                     <div className="min-w-0">
-                      <div className="text-sm text-oct-text truncate">
+                      <div className="type-body text-oct-text truncate">
                         {entry.displayName}
-                        <span className="ml-2 font-mono text-[10px] uppercase tracking-wide text-oct-muted">
+                        <span className="ml-cozy type-caption font-mono uppercase tracking-wide text-oct-muted">
                           {parsed?.platform ?? '?'} · {roomName(entry.roomId)}
                         </span>
                       </div>
                       {score && score.band !== 'unrated' && (
-                        <div className={`font-mono text-[10px] ${BAND_TEXT_CLASS[score.band]}`}>
+                        <div className={cn('type-data text-2xs', BAND_TEXT_CLASS[score.band])}>
                           scored {BAND_LABELS[score.band]} · med{' '}
                           {formatMultiple(score.medianMultiple)}
                         </div>
                       )}
                     </div>
                   </div>
-                  <button
+                  <RemoveButton
                     onClick={() =>
                       persistTiers(
                         callerTiers.filter(
@@ -191,65 +197,56 @@ export default function CallerQualitySection({ form }: { form: SettingsForm }) {
                         ),
                       )
                     }
-                    className="text-oct-muted hover:text-oct-flame shrink-0"
                     title="Remove this tier"
                   >
                     <Trash2 size={14} />
-                  </button>
-                </div>
+                  </RemoveButton>
+                </FieldRow>
               );
             })}
           </div>
         )}
-      </div>
+      </SettingsCard>
 
       {/* Scoring exclusions */}
-      <div>
-        <label className="block font-mono text-xs uppercase tracking-[0.2em] text-oct-muted mb-2">
-          Not scored ({DEFAULT_EXCLUDED_CALLERS.length + callerScoreExclusions.length})
-        </label>
-        <p className="text-xs text-oct-muted mb-3">
-          Enrichment bots repost every contract that crosses the feed, so scoring them
-          measures the room rather than a caller. Excluded authors keep posting, keep
-          showing up in the feed, and keep enriching — they just don't get a score. Add a
-          display name (e.g. <span className="font-mono">Rick</span>) or a caller key
-          (e.g. <span className="font-mono">discord:123456</span>).
-        </p>
-
-        <div className="space-y-1 mb-2">
+      <SettingsCard
+        title={`Not scored (${DEFAULT_EXCLUDED_CALLERS.length + callerScoreExclusions.length})`}
+        blurb={
+          <>
+            Enrichment bots repost every contract that crosses the feed, so scoring them
+            measures the room rather than a caller. Excluded authors keep posting, keep
+            showing up in the feed, and keep enriching — they just don't get a score. Add a
+            display name (e.g. <span className="type-data">Rick</span>) or a caller key
+            (e.g. <span className="type-data">discord:123456</span>).
+          </>
+        }
+      >
+        <div className="space-y-tight mb-cozy">
           {DEFAULT_EXCLUDED_CALLERS.map((name) => (
-            <div
-              key={`default:${name}`}
-              className="flex items-center gap-2 px-3 py-2 rounded-oct border border-dashed border-oct-border bg-oct-surface-raised"
-            >
+            <FieldRow key={`default:${name}`} className="flex items-center gap-cozy py-snug border-dashed">
               <Bot size={13} className="text-oct-muted shrink-0" />
-              <span className="text-sm text-oct-text truncate">{name}</span>
-              <span className="ml-auto font-mono text-[10px] uppercase tracking-wide text-oct-muted shrink-0">
+              <span className="type-body text-oct-text truncate">{name}</span>
+              <span className="ml-auto type-caption font-mono uppercase tracking-wide text-oct-muted shrink-0">
                 known bot
               </span>
-            </div>
+            </FieldRow>
           ))}
           {callerScoreExclusions.map((entry) => (
-            <div
-              key={entry}
-              className="flex items-center gap-2 px-3 py-2 rounded-oct border border-oct-border bg-oct-surface-raised"
-            >
+            <FieldRow key={entry} className="flex items-center gap-cozy py-snug">
               <Bot size={13} className="text-oct-muted shrink-0" />
-              <span className="text-sm text-oct-text truncate">{entry}</span>
-              <button
-                onClick={() =>
-                  persistExclusions(callerScoreExclusions.filter((e) => e !== entry))
-                }
-                className="ml-auto text-oct-muted hover:text-oct-flame shrink-0"
+              <span className="type-body text-oct-text truncate">{entry}</span>
+              <RemoveButton
+                onClick={() => persistExclusions(callerScoreExclusions.filter((e) => e !== entry))}
                 title="Score this caller again"
+                className="ml-auto"
               >
                 <Trash2 size={14} />
-              </button>
-            </div>
+              </RemoveButton>
+            </FieldRow>
           ))}
         </div>
 
-        <div className="flex gap-2">
+        <div className="flex gap-cozy">
           <input
             value={newExclusion}
             onChange={(e) => setNewExclusion(e.target.value)}
@@ -260,25 +257,23 @@ export default function CallerQualitySection({ form }: { form: SettingsForm }) {
               }
             }}
             placeholder="Name or caller key"
-            className="flex-1 min-w-0 px-3 py-2 rounded-oct border border-oct-border bg-oct-surface text-sm text-oct-text placeholder:text-oct-muted"
+            className={cn(INPUT_CLASS, 'flex-1 min-w-0')}
           />
           <button
+            type="button"
             onClick={addExclusion}
-            className="px-3 py-2 rounded-oct border border-oct-border bg-oct-surface-raised text-sm text-oct-text hover:border-oct-muted shrink-0"
+            className="oct-icon-btn px-comfy py-snug text-sm shrink-0"
           >
             Exclude
           </button>
         </div>
-      </div>
+      </SettingsCard>
 
       {/* Earned scores */}
-      <div>
-        <label className="block font-mono text-xs uppercase tracking-[0.2em] text-oct-muted mb-2">
-          Earned scores
-        </label>
-        <div className="flex items-start gap-2 text-xs text-oct-muted mb-3">
-          <Info size={13} className="shrink-0 mt-0.5" />
-          <p>
+      <SettingsCard title="Earned scores">
+        <div className="flex items-start gap-cozy mb-comfy">
+          <Info size={13} className="shrink-0 mt-hair text-oct-muted" />
+          <Help>
             Scored from each caller's own calls — their MC at the moment they posted, against
             the highest we've <em>observed</em> that token reach since. Peaks are sampled, so
             a spike between samples is missed: multiples are floors, not exact ATHs. A caller
@@ -293,12 +288,12 @@ export default function CallerQualitySection({ form }: { form: SettingsForm }) {
                 ? ` Window: last ${windowDays} days.`
                 : ''}
             {pricedTokens != null ? ` ${pricedTokens} tokens priced.` : ''}
-          </p>
+          </Help>
         </div>
 
         {coveredDays != null && (
-          <div className="flex items-start gap-2 text-xs text-oct-yellow mb-3">
-            <AlertTriangle size={13} className="shrink-0 mt-0.5" />
+          <div className="flex items-start gap-cozy type-caption text-oct-warn mb-comfy">
+            <AlertTriangle size={13} className="shrink-0 mt-hair" />
             <p>
               These scores only reach back{' '}
               <span className="font-bold">
@@ -314,46 +309,48 @@ export default function CallerQualitySection({ form }: { form: SettingsForm }) {
         )}
 
         {!loaded ? (
-          <p className="text-sm text-oct-muted text-center py-4">Loading scores…</p>
+          <p className="type-body text-oct-muted text-center py-comfy">Loading scores…</p>
         ) : ratedScores.length === 0 ? (
-          <p className="text-sm text-oct-muted text-center py-4 border border-dashed border-oct-border rounded-oct">
+          <EmptyNote dashed>
             Nobody has enough scored calls yet. Peaks are sampled every few minutes, so this
             fills in over the first day or so of running.
-          </p>
+          </EmptyNote>
         ) : (
-          <div className="space-y-1">
-            <div className="flex items-center justify-between gap-2 px-3">
+          <div className="space-y-tight">
+            {/* Column headers align with the `type-data` cells below; the fixed
+                widths are shared so the digits line up down the column. */}
+            <div className="flex items-center justify-between gap-cozy px-comfy">
               <span />
-              <div className="flex items-center gap-3 shrink-0 font-mono text-[9px] uppercase tracking-wide text-oct-muted">
-                <span className="w-10 text-right" title="Median of (observed peak MC since call ÷ MC at call), across their rated calls. Peaks are sampled, so these are floors.">
-                  Median
-                </span>
-                <span className="w-12 text-right" title="Their single best call — highest observed peak ÷ MC at call. An observed floor: a spike between samples is missed, so the true ATH can be higher.">
-                  Best
-                </span>
-                <span className="w-14 text-right" title="Share of their rated calls that went on to 2x from call MC">
-                  Hit 2x
-                </span>
-                <span className="w-12 text-right" title="Overall band, from the median and hit rate together">
-                  Band
-                </span>
+              <div className="flex items-center gap-comfy shrink-0">
+                <Kicker className="w-12 text-right" >
+                  <span title="Median of (observed peak MC since call ÷ MC at call), across their rated calls. Peaks are sampled, so these are floors.">Median</span>
+                </Kicker>
+                <Kicker className="w-12 text-right">
+                  <span title="Their single best call — highest observed peak ÷ MC at call. An observed floor: a spike between samples is missed, so the true ATH can be higher.">Best</span>
+                </Kicker>
+                <Kicker className="w-16 text-right">
+                  <span title="Share of their rated calls that went on to 2x from call MC">Hit 2x</span>
+                </Kicker>
+                <Kicker className="w-14 text-right">
+                  <span title="Overall band, from the median and hit rate together">Band</span>
+                </Kicker>
               </div>
             </div>
             {ratedScores.map((score) => (
-              <div
+              <FieldRow
                 key={score.key}
-                className="flex items-center justify-between gap-2 px-3 py-2 rounded-oct border border-oct-border bg-oct-surface-raised"
+                className="flex items-center justify-between gap-cozy py-snug"
                 title={BAND_TITLE[score.band]}
               >
                 <div className="min-w-0">
-                  <div className="text-sm text-oct-text truncate">{score.displayName}</div>
-                  <div className="font-mono text-[10px] text-oct-muted">
+                  <div className="type-body text-oct-text truncate">{score.displayName}</div>
+                  <div className="type-data text-2xs text-oct-muted">
                     {score.rated} rated of {score.calls} calls
                   </div>
                 </div>
-                <div className="flex items-center gap-3 shrink-0 font-mono text-[11px]">
+                <div className="flex items-center gap-comfy shrink-0 type-data">
                   <span
-                    className="w-10 text-right text-oct-muted"
+                    className="w-12 text-right text-oct-muted"
                     title="Median multiple: observed peak MC since call ÷ MC at call (a floor — peaks are sampled)"
                   >
                     {formatMultiple(score.medianMultiple)}
@@ -365,23 +362,23 @@ export default function CallerQualitySection({ form }: { form: SettingsForm }) {
                     {formatMultipleFloor(score.bestMultiple)}
                   </span>
                   <span
-                    className="w-14 text-right text-oct-muted"
+                    className="w-16 text-right text-oct-muted"
                     title="Share of rated calls that hit 2x from call MC"
                   >
                     2x {formatRate(score.hitRate2x)}
                   </span>
                   <span
-                    className={`w-12 text-right font-bold uppercase ${BAND_TEXT_CLASS[score.band]}`}
+                    className={cn('w-14 text-right font-bold uppercase', BAND_TEXT_CLASS[score.band])}
                     title={BAND_TITLE[score.band]}
                   >
                     {BAND_LABELS[score.band]}
                   </span>
                 </div>
-              </div>
+              </FieldRow>
             ))}
           </div>
         )}
-      </div>
+      </SettingsCard>
     </>
   );
 }
