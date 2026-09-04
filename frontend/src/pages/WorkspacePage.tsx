@@ -3,6 +3,7 @@ import { LayoutGrid } from 'lucide-react';
 import { useAuthSession } from '../hooks/useAuthSession';
 import { useAppStore } from '../stores/appStore';
 import ConsoleEmptyState from '../components/console/ConsoleEmptyState';
+import WorkspaceEmptyState from '../components/empty/WorkspaceEmptyState';
 import WorkspaceColumnLayout from '../components/workspace/WorkspaceColumnLayout';
 import WorkspaceToolbar from '../components/workspace/WorkspaceToolbar';
 import RoomPickerModal from '../components/workspace/RoomPickerModal';
@@ -10,6 +11,7 @@ import FullPageSpinner from '../components/common/FullPageSpinner';
 import {
   addColumn,
   appendPanelToColumn,
+  countPanels,
   createDefaultWorkspaceLayout,
   defaultAddColumnId,
   removePanel,
@@ -159,14 +161,25 @@ export default function WorkspacePage() {
           onPickRoom={() => setRoomPick({ mode: 'add' })}
           onAddColumn={() => setDraft((prev) => addColumn(prev))}
         />
-        <WorkspaceColumnLayout
-          layout={layout}
-          editMode={editMode}
-          onChange={setDraft}
-          onRemovePanel={handleRemovePanel}
-          onConfigurePanel={handleConfigurePanel}
-          onPanelRoomChange={handlePanelRoomChange}
-        />
+        {!editMode && countPanels(layout) === 0 ? (
+          <WorkspaceEmptyState
+            onAddRoomPanel={() => {
+              // Same entry as the toolbar's Customize, plus the picker in one click.
+              setDraft(layout);
+              setEditMode(true);
+              setRoomPick({ mode: 'add' });
+            }}
+          />
+        ) : (
+          <WorkspaceColumnLayout
+            layout={layout}
+            editMode={editMode}
+            onChange={setDraft}
+            onRemovePanel={handleRemovePanel}
+            onConfigurePanel={handleConfigurePanel}
+            onPanelRoomChange={handlePanelRoomChange}
+          />
+        )}
         <RoomPickerModal
           open={roomPick !== null}
           selectedRoomId={

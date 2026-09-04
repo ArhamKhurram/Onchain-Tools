@@ -1,6 +1,7 @@
 import { MessageSquare, Wallet, TrendingUp, PieChart, Radio, ArrowRight } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { useAuthSession } from '../hooks/useAuthSession';
+import ActivationChecklist from '../components/onboarding/ActivationChecklist';
 import { useAppStore } from '../stores/appStore';
 import { routes } from '../lib/routes';
 import { USER_DOCS_URL } from '../lib/links';
@@ -110,6 +111,8 @@ export default function DashboardPage() {
         {/* Stagger parent. Each card below opts in with `variants={fadeInUp}`. */}
         <MotionFeatures>
           <m.div variants={stagger} initial="hidden" animate="visible" className="max-w-6xl mx-auto">
+            {/* Renders nothing once the user has reached a first signal (or dismissed it). */}
+            <ActivationChecklist />
             <p className={cn(EYEBROW_CLASS, 'tracking-[0.2em] mb-comfy')}>Modules</p>
 
             <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-comfy">

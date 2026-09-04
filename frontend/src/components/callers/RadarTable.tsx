@@ -41,6 +41,7 @@ import {
 } from './radarSort';
 import { useRadarLiveMc } from './useRadarLiveMc';
 import RadarToolbar from './RadarToolbar';
+import CallersEmptyState from '../empty/CallersEmptyState';
 import RadarHeaderRow from './RadarHeaderRow';
 import RadarTableRow from './RadarTableRow';
 import { resolveRadarEmojiRules, type RadarMultipleEmojiRule } from '@oct/shared';
@@ -215,10 +216,16 @@ export default function RadarTable() {
             })}
             {rows.length === 0 && (
               <tr>
-                <td colSpan={2 + activeColumns.length} className="px-roomy py-gutter text-center">
-                  <p className="oct-eyebrow mb-cozy">Radar</p>
-                  <p className="type-body text-oct-muted">No tokens in this window. Contracts from Feed will aggregate here.</p>
-                </td>
+                {contracts.length === 0 ? (
+                  <td colSpan={2 + activeColumns.length} className="p-0">
+                    <CallersEmptyState surface="radar" layout="inline" />
+                  </td>
+                ) : (
+                  <td colSpan={2 + activeColumns.length} className="px-roomy py-gutter text-center">
+                    <p className="oct-eyebrow mb-cozy">Radar</p>
+                    <p className="type-body text-oct-muted">No tokens in this window. Contracts from Feed will aggregate here.</p>
+                  </td>
+                )}
               </tr>
             )}
           </tbody>

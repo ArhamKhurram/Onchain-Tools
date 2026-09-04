@@ -15,6 +15,7 @@ import {
 import ConfirmModal from '../ConfirmModal';
 import Chip from '../common/Chip';
 import WalletFormModal, { type WalletFormValues } from './WalletFormModal';
+import WalletsEmptyState from '../empty/WalletsEmptyState';
 import { useTrackedWallets } from '../../hooks/useTrackedWallets';
 import { cn } from '../../lib/utils';
 import type { TrackedWallet, WalletChain } from '../../types/wallets';
@@ -192,25 +193,17 @@ export default function WalletTracker({ userId }: WalletTrackerProps) {
           <div className="flex items-center justify-center py-gutter">
             <div className="w-6 h-6 border-2 border-oct-accent border-t-transparent rounded-full animate-spin" />
           </div>
+        ) : wallets.length === 0 ? (
+          <WalletsEmptyState onAdd={openAdd} />
         ) : filtered.length === 0 ? (
           <div className="flex flex-col items-center justify-center py-gutter text-center">
             <div className="w-12 h-12 rounded-oct-lg border border-oct-border bg-oct-surface-raised flex items-center justify-center mb-comfy">
               <Wallet size={20} className="text-oct-muted" />
             </div>
-            <p className="type-title uppercase tracking-wide text-oct-text mb-tight">
-              {wallets.length === 0 ? 'No wallets tracked yet' : 'No matches'}
-            </p>
+            <p className="type-title uppercase tracking-wide text-oct-text mb-tight">No matches</p>
             <p className="type-body text-oct-muted mb-roomy max-w-sm leading-relaxed">
-              {wallets.length === 0
-                ? 'Add whale or KOL addresses to monitor their on-chain activity.'
-                : 'Try a different search or chain filter.'}
+              Try a different search or chain filter.
             </p>
-            {wallets.length === 0 && (
-              <button type="button" onClick={openAdd} className="oct-btn-primary px-roomy py-cozy type-label">
-                <Plus size={14} />
-                Add your first tracked wallet
-              </button>
-            )}
           </div>
         ) : (
           <div className="oct-card oct-card-flush overflow-hidden">

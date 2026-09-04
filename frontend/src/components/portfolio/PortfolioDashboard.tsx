@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState, lazy, Suspense } from 'react';
 import { BarChart3, CalendarDays, PieChart, Plus, Pencil, RefreshCw, Trash2 } from 'lucide-react';
 import ConsoleEmptyState from '../console/ConsoleEmptyState';
+import PortfolioEmptyState from '../empty/PortfolioEmptyState';
 import ConfirmModal from '../ConfirmModal';
 import HoldingWalletFormModal, { type HoldingWalletFormValues } from '../wallets/HoldingWalletFormModal';
 import PortfolioActivityFeed from './PortfolioActivityFeed';
@@ -178,16 +179,7 @@ export default function PortfolioDashboard() {
   if (!walletsLoading && wallets.length === 0) {
     return (
       <>
-        <ConsoleEmptyState
-          icon={PieChart}
-          eyebrow="[ PORTFOLIO ]"
-          title="Add your first wallet"
-          description="Portfolio tracks the buy wallets you save here. Add a SOL, Base, BSC, ETH, or Robinhood (HOOD) address to see holdings, PnL and activity."
-          actionLabel="ADD WALLET"
-          onActionClick={openAddWallet}
-          secondaryLabel="← Back to console home"
-          secondaryTo={routes.home}
-        />
+        <PortfolioEmptyState onAdd={openAddWallet} />
         <HoldingWalletFormModal
           open={formOpen}
           mode="add"

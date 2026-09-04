@@ -21,6 +21,7 @@ import ConfirmModal from './ConfirmModal';
 import ContractFeedToolbar, { type ContractViewMode, type ContractChainFilter } from './contract-feed/ContractFeedToolbar';
 import ContractFeedList from './contract-feed/ContractFeedList';
 import ContractFeedEmpty from './contract-feed/ContractFeedEmpty';
+import CallersEmptyState from './empty/CallersEmptyState';
 import { useContractFeedRows } from './contract-feed/useContractFeedRows';
 import TokenHoldersDrawer, { type HoldersTarget } from './fomo/TokenHoldersDrawer';
 import type { ContractEntry } from '../types';
@@ -231,7 +232,9 @@ export default function ContractDashboard({ embedded = false, topOnly = false }:
         className="flex-1 min-h-0 overflow-y-auto overscroll-contain"
         style={{ overflowAnchor: 'none' }}
       >
-        {filteredEntries.length === 0 ? (
+        {contracts.length === 0 ? (
+          <CallersEmptyState surface="contracts" />
+        ) : filteredEntries.length === 0 ? (
           <ContractFeedEmpty
             topOnly={topOnly}
             totalCount={contracts.length}

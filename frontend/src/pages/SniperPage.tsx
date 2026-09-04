@@ -12,6 +12,7 @@ import ConsoleSubnav from '../components/console/ConsoleSubnav';
 import SniperFiresTable from '../components/sniper/SniperFiresTable';
 import SniperRulesTable from '../components/sniper/SniperRulesTable';
 import SniperStatusBar from '../components/sniper/SniperStatusBar';
+import SniperEmptyState from '../components/empty/SniperEmptyState';
 import SniperWalletsTable from '../components/sniper/SniperWalletsTable';
 import TriggerRealityNotice from '../components/sniper/TriggerRealityNotice';
 import VenueConnectPanel from '../components/sniper/VenueConnectPanel';
@@ -105,7 +106,9 @@ export default function SniperPage() {
         />
         <ConsoleSubnav tabs={SNIPER_TABS} active={view} onChange={setView} />
         <div className="flex-1 min-h-0">
-          {view === 'rules' ? (
+          {view === 'rules' && status.status && !status.status.venue.connected && status.status.counts.rules === 0 ? (
+            <SniperEmptyState onOpenVenues={() => setView('venues')} />
+          ) : view === 'rules' ? (
             <SniperRulesTable
               rules={rules}
               wallets={wallets.wallets}
