@@ -11,14 +11,14 @@ interface ConsoleSubnavProps<T extends string> {
 
 export default function ConsoleSubnav<T extends string>({ tabs, active, onChange }: ConsoleSubnavProps<T>) {
   return (
-    <div className="oct-subnav shrink-0 flex items-center gap-1 px-3 sm:px-5 py-2 overflow-x-auto">
+    <div className="oct-subnav shrink-0 flex items-center gap-tight px-comfy sm:px-roomy py-snug overflow-x-auto">
       {tabs.map((tab) => (
         <button
           key={tab.id}
           type="button"
           onClick={() => onChange(tab.id)}
           data-active={active === tab.id}
-          className="oct-subnav-tab shrink-0 font-mono text-xs sm:text-[13px] font-semibold uppercase tracking-[0.1em] px-3.5 py-1.5"
+          className="oct-subnav-tab shrink-0 type-label font-mono uppercase tracking-[0.1em] px-comfy py-snug"
         >
           {tab.label}
         </button>

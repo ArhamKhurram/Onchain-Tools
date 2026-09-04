@@ -4,6 +4,15 @@ import { useAuthSession } from '../hooks/useAuthSession';
 import { useAppStore } from '../stores/appStore';
 import { routes } from '../lib/routes';
 import { USER_DOCS_URL } from '../lib/links';
+import { cn } from '../lib/utils';
+import { fadeInUp, m, MotionFeatures, useStagger, useTransition } from '../lib/motion';
+import { EYEBROW_CLASS } from '../components/console/eyebrow';
+
+// ── Console home ──────────────────────────────────────────────────────────────
+// Density + type pass on the design-token foundation (see AuthPage for the
+// worked example). Everything here is static chrome — no stream, no
+// virtualised list — so the staggered entrance is allowed. Motion arrives
+// through this lazily-loaded chunk and stays off the boot path.
 
 const modules = [
   {
@@ -48,6 +57,21 @@ const modules = [
   },
 ];
 
+/**
+ * Connection health for the session card. Colour carries meaning here, so it
+ * comes from the semantic status set rather than the brand accent or the
+ * per-platform brand colours (`oct-telegram`, `oct-yellow`) it used before:
+ * connected = good, configured-but-not-connected = warn, unlinked = neutral.
+ */
+type Health = 'good' | 'warn' | 'off';
+
+const healthClass = (health: Health) =>
+  cn(
+    'type-data text-oct-muted',
+    health === 'good' && 'text-oct-good',
+    health === 'warn' && 'text-oct-warn',
+  );
+
 export default function DashboardPage() {
   const { isAuthenticated } = useAuthSession();
   const authStatus = useAppStore((s) => s.authStatus);
@@ -58,136 +82,142 @@ export default function DashboardPage() {
   const telegramConfigured = authStatus?.telegramConfigured ?? false;
   const telegramConnected = authStatus?.telegramConnected ?? false;
 
+  const discordHealth: Health = discordConfigured ? (connected ? 'good' : 'warn') : 'off';
+  const telegramHealth: Health = telegramConfigured ? (telegramConnected ? 'good' : 'warn') : 'off';
+
+  // Both resolve to an instant transition under `prefers-reduced-motion`.
+  const enter = useTransition('snappy');
+  const stagger = useStagger();
+
   return (
     <div className="h-full overflow-y-auto bg-oct-bg">
-      <section className="relative overflow-hidden bg-gradient-to-br from-oct-flame to-oct-accent text-black px-6 sm:px-10 py-10 sm:py-14 border-b border-oct-border shadow-oct-soft">
+      {/* Brand banner. Kept, but at half its old height: the home is a command
+          surface, so the modules should be above the fold, not the slogan. */}
+      <section className="relative overflow-hidden bg-gradient-to-br from-oct-flame to-oct-accent text-black px-roomy sm:px-gutter py-section sm:py-gutter border-b border-oct-border shadow-oct-soft">
         <div className="max-w-6xl mx-auto relative">
-          <p className="font-mono text-[11px] font-semibold uppercase tracking-[0.24em] mb-4 opacity-80">[ Console ]</p>
-          <h1 className="font-display text-[clamp(2.25rem,8vw,5rem)] leading-[0.92] tracking-tight">
+          <p className="type-caption font-mono uppercase tracking-[0.24em] mb-comfy opacity-80">[ Console ]</p>
+          <h1 className="font-display text-[clamp(1.75rem,5vw,3.25rem)] leading-[0.95] tracking-tight">
             PICK A MODULE.
             <span className="block">GET TO WORK.</span>
           </h1>
-          <p className="font-mono text-xs sm:text-sm mt-5 max-w-xl opacity-80 leading-relaxed">
+          <p className="font-mono type-label font-normal mt-comfy max-w-xl opacity-80 leading-relaxed">
             Session status and quick actions below. Feed needs a Discord token in Settings — it never leaves your browser.
           </p>
         </div>
       </section>
 
-      <section className="px-6 sm:px-10 py-10 sm:py-12">
-        <div className="max-w-6xl mx-auto">
-          <p className="oct-eyebrow tracking-[0.2em] mb-6">Modules</p>
+      <section className="px-roomy sm:px-gutter py-section">
+        {/* Stagger parent. Each card below opts in with `variants={fadeInUp}`. */}
+        <MotionFeatures>
+          <m.div variants={stagger} initial="hidden" animate="visible" className="max-w-6xl mx-auto">
+            <p className={cn(EYEBROW_CLASS, 'tracking-[0.2em] mb-comfy')}>Modules</p>
 
-          <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-4 sm:gap-5">
-            {modules.map((m) => {
-              const Icon = m.icon;
-              const isLive =
-                m.liveKey === 'discord' ? discordConfigured && connected :
-                m.liveKey === 'auth' ? isAuthenticated :
-                false;
+            <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-comfy">
+              {modules.map((mod) => {
+                const Icon = mod.icon;
+                const isLive =
+                  mod.liveKey === 'discord' ? discordConfigured && connected :
+                  mod.liveKey === 'auth' ? isAuthenticated :
+                  false;
 
-              return (
-                <Link
-                  key={m.title}
-                  to={m.to}
-                  className="group oct-card flex flex-col p-5 transition-all duration-150 hover:-translate-y-0.5 hover:shadow-oct-soft-lg hover:border-oct-border-bright"
-                >
-                  <div className="flex items-center justify-between mb-4">
-                    <span className="oct-eyebrow tabular-nums">{m.num}</span>
-                    <span className="flex items-center justify-center w-9 h-9 rounded-oct border border-oct-border bg-oct-surface-raised/60 text-oct-muted group-hover:text-oct-accent group-hover:border-oct-accent/50 transition-colors">
-                      <Icon size={18} />
+                return (
+                  <m.div key={mod.title} variants={fadeInUp} transition={enter} className="flex">
+                    <Link
+                      to={mod.to}
+                      className="group oct-card flex flex-1 flex-col p-roomy transition-all duration-fast hover:-translate-y-0.5 hover:shadow-oct-soft-lg hover:border-oct-border-bright"
+                    >
+                      <div className="flex items-center justify-between mb-comfy">
+                        <span className={cn(EYEBROW_CLASS, 'tabular-nums')}>{mod.num}</span>
+                        <span className="flex items-center justify-center w-8 h-8 rounded-oct border border-oct-border bg-oct-surface-raised/60 text-oct-muted group-hover:text-oct-accent group-hover:border-oct-accent/50 transition-colors duration-fast">
+                          <Icon size={16} />
+                        </span>
+                      </div>
+                      <h2 className="font-display text-2xl text-oct-text tracking-tight mb-cozy">{mod.title}</h2>
+                      <p className="type-body text-oct-muted leading-relaxed flex-1">{mod.desc}</p>
+                      <div className="flex items-center justify-between mt-roomy pt-comfy border-t border-oct-border">
+                        <span className="type-caption font-mono uppercase tracking-[0.14em] text-oct-accent group-hover:translate-x-1 transition-transform duration-fast inline-flex items-center gap-snug">
+                          Enter <ArrowRight size={14} />
+                        </span>
+                        {/* Live = a healthy connection, so it is `oct-good`, not the accent. */}
+                        {isLive && (
+                          <span className="type-caption font-mono uppercase tracking-[0.12em] text-oct-good flex items-center gap-snug">
+                            <span className="w-1.5 h-1.5 rounded-full bg-oct-good animate-pulse-live" />
+                            Live
+                          </span>
+                        )}
+                      </div>
+                    </Link>
+                  </m.div>
+                );
+              })}
+            </div>
+
+            <div className="mt-roomy grid grid-cols-1 sm:grid-cols-2 gap-comfy">
+              <m.div variants={fadeInUp} transition={enter} className="oct-card p-roomy">
+                <div className="flex items-center gap-cozy mb-comfy">
+                  <Radio size={16} className="text-oct-accent-2" />
+                  <h3 className="type-title text-oct-text uppercase tracking-wide">Session</h3>
+                </div>
+                <ul className="space-y-cozy">
+                  <li className="flex items-center justify-between gap-roomy">
+                    <span className={EYEBROW_CLASS}>Account</span>
+                    <span className="type-data text-oct-text">{isAuthenticated ? 'SIGNED_IN' : 'GUEST'}</span>
+                  </li>
+                  <li className="flex items-center justify-between gap-roomy">
+                    <span className={EYEBROW_CLASS}>Discord</span>
+                    <span className={healthClass(discordHealth)}>
+                      {discordConfigured ? (connected ? 'CONNECTED' : 'CONNECTING') : 'NOT_LINKED'}
                     </span>
-                  </div>
-                  <h2 className="font-display text-3xl sm:text-4xl text-oct-text tracking-tight mb-3">{m.title}</h2>
-                  <p className="text-[13px] text-oct-muted leading-relaxed flex-1">{m.desc}</p>
-                  <div className="flex items-center justify-between mt-6 pt-4 border-t border-oct-border">
-                    <span className="font-mono text-[11px] font-semibold uppercase tracking-[0.14em] text-oct-accent group-hover:translate-x-1 transition-transform inline-flex items-center gap-1.5">
-                      Enter <ArrowRight size={14} />
+                  </li>
+                  <li className="flex items-center justify-between gap-roomy">
+                    <span className={EYEBROW_CLASS}>Telegram</span>
+                    <span className={healthClass(telegramHealth)}>
+                      {telegramConfigured
+                        ? telegramConnected
+                          ? 'CONNECTED'
+                          : 'DISCONNECTED'
+                        : 'NOT_LINKED'}
                     </span>
-                    {isLive && (
-                      <span className="font-mono text-[10px] text-oct-accent uppercase tracking-[0.12em] flex items-center gap-1.5">
-                        <span className="w-1.5 h-1.5 rounded-full bg-oct-accent animate-pulse-live" />
-                        Live
-                      </span>
-                    )}
-                  </div>
-                </Link>
-              );
-            })}
-          </div>
+                  </li>
+                  <li className="flex items-center justify-between gap-roomy">
+                    <span className={EYEBROW_CLASS}>Rooms</span>
+                    <span className="type-data text-base font-bold text-oct-text">{rooms.length}</span>
+                  </li>
+                </ul>
+              </m.div>
 
-          <div className="mt-10 grid grid-cols-1 sm:grid-cols-2 gap-4 sm:gap-5">
-            <div className="oct-card p-5">
-              <div className="flex items-center gap-2 mb-4">
-                <Radio size={16} className="text-oct-accent-2" />
-                <h3 className="oct-section-title uppercase tracking-wide">Session</h3>
-              </div>
-              <ul className="space-y-2.5">
-                <li className="flex items-center justify-between gap-4">
-                  <span className="oct-eyebrow">Account</span>
-                  <span className="font-mono text-[13px] font-semibold text-oct-text">{isAuthenticated ? 'SIGNED_IN' : 'GUEST'}</span>
-                </li>
-                <li className="flex items-center justify-between gap-4">
-                  <span className="oct-eyebrow">Discord</span>
-                  <span className={`font-mono text-[13px] font-semibold ${discordConfigured ? 'text-oct-accent' : 'text-oct-muted'}`}>
-                    {discordConfigured ? (connected ? 'CONNECTED' : 'CONNECTING') : 'NOT_LINKED'}
-                  </span>
-                </li>
-                <li className="flex items-center justify-between gap-4">
-                  <span className="oct-eyebrow">Telegram</span>
-                  <span
-                    className={`font-mono text-[13px] font-semibold ${
-                      telegramConnected
-                        ? 'text-oct-telegram'
-                        : telegramConfigured
-                          ? 'text-oct-yellow'
-                          : 'text-oct-muted'
-                    }`}
+              <m.div variants={fadeInUp} transition={enter} className="oct-card p-roomy flex flex-col justify-between">
+                <div>
+                  <p className={cn(EYEBROW_CLASS, 'mb-cozy')}>Quick start</p>
+                  <p className="type-body text-oct-muted leading-relaxed">
+                    {discordConfigured
+                      ? 'Open Feed to stream channels, or configure rooms in Settings.'
+                      : 'Open Feed to watch the demo feed — no token needed. Connect Discord there when you want your own servers.'}
+                  </p>
+                </div>
+                {/* Un-connected users go to Feed, not Settings: the demo feed and
+                    the token form both live on Feed; Settings only has the form. */}
+                <div className="mt-roomy flex flex-wrap items-center gap-roomy">
+                  <Link
+                    to={routes.feed}
+                    className="oct-btn-primary self-start px-roomy py-cozy type-label font-mono uppercase tracking-[0.12em]"
                   >
-                    {telegramConfigured
-                      ? telegramConnected
-                        ? 'CONNECTED'
-                        : 'DISCONNECTED'
-                      : 'NOT_LINKED'}
-                  </span>
-                </li>
-                <li className="flex items-center justify-between gap-4">
-                  <span className="oct-eyebrow">Rooms</span>
-                  <span className="font-mono text-base font-bold text-oct-text tabular-nums">{rooms.length}</span>
-                </li>
-              </ul>
+                    Open Feed
+                    <ArrowRight size={14} />
+                  </Link>
+                  <a
+                    href={USER_DOCS_URL}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="type-caption font-mono uppercase tracking-[0.12em] text-oct-muted underline underline-offset-4 transition-colors duration-fast hover:text-oct-text"
+                  >
+                    User guide
+                  </a>
+                </div>
+              </m.div>
             </div>
-
-            <div className="oct-card p-5 flex flex-col justify-between">
-              <div>
-                <p className="oct-eyebrow mb-2">Quick start</p>
-                <p className="text-sm text-oct-muted leading-relaxed">
-                  {discordConfigured
-                    ? 'Open Feed to stream channels, or configure rooms in Settings.'
-                    : 'Open Feed to watch the demo feed — no token needed. Connect Discord there when you want your own servers.'}
-                </p>
-              </div>
-              {/* Un-connected users go to Feed, not Settings: the demo feed and
-                  the token form both live on Feed; Settings only has the form. */}
-              <div className="mt-5 flex flex-wrap items-center gap-4">
-                <Link
-                  to={routes.feed}
-                  className="oct-btn-primary self-start px-4 py-2 font-mono text-xs uppercase tracking-[0.12em]"
-                >
-                  Open Feed
-                  <ArrowRight size={14} />
-                </Link>
-                <a
-                  href={USER_DOCS_URL}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="font-mono text-[11px] uppercase tracking-[0.12em] text-oct-muted underline underline-offset-4 transition-colors hover:text-oct-text"
-                >
-                  User guide
-                </a>
-              </div>
-            </div>
-          </div>
-        </div>
+          </m.div>
+        </MotionFeatures>
       </section>
     </div>
   );
