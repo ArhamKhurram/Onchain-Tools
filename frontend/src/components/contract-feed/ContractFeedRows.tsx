@@ -186,7 +186,8 @@ function contractItemPropsEqual(prev: ContractItemProps, next: ContractItemProps
 }
 
 /** Small pill shared by the chain / NEW / band markers on a feed row. */
-const ROW_PILL = 'text-[10px] font-bold px-1.5 py-0.5 rounded-full shrink-0 uppercase font-mono';
+// `text-2xs` + `leading-none` so the 12px floor doesn't make the pill taller.
+const ROW_PILL = 'text-2xs leading-none font-bold px-1.5 py-0.5 rounded-full shrink-0 uppercase font-mono';
 
 /**
  * The caller's band, always rendered — the CA feed's whole point is telling a
@@ -239,9 +240,9 @@ function PeakReadout({ entry }: { entry: ContractEntry }) {
     ? 'Highest market cap observed since this call is below the MC at call — as far as sampling saw, it has only bled. Peaks are sampled every few minutes, so this is a floor, not an exact ATH.'
     : 'Peak market cap observed since this call, against the MC at call. Peaks are sampled every few minutes, so both figures are floors — the true high may be higher, never lower.';
   return (
-    <span className="font-mono text-[12px] shrink-0 tabular-nums" title={title}>
+    <span className="type-data text-2xs shrink-0" title={title}>
       <span className="text-oct-muted">→ </span>
-      <span className={view.belowCall ? 'text-oct-muted' : 'text-oct-green font-semibold'}>
+      <span className={view.belowCall ? 'text-oct-muted' : 'text-oct-good font-semibold'}>
         {view.peakDisplay}
       </span>
       {view.multipleDisplay && (
@@ -273,7 +274,7 @@ function CallerStatsReadout({ quality }: { quality?: CallerQuality }) {
     if (quality.tier === 'trusted') {
       return (
         <span
-          className="font-mono text-[10px] text-oct-live/90"
+          className="font-mono text-2xs text-oct-live/90"
           title="You marked this caller Trusted — shown here by your own choice, not an earned band yet."
         >
           Trusted · manual
@@ -285,7 +286,7 @@ function CallerStatsReadout({ quality }: { quality?: CallerQuality }) {
 
   return (
     <span
-      className="flex items-center flex-wrap gap-x-1.5 gap-y-0.5 font-mono text-[10px] text-oct-muted tabular-nums"
+      className="flex items-center flex-wrap gap-x-1.5 gap-y-0.5 type-data text-2xs text-oct-muted"
       title={BAND_REACH_NOTE}
     >
       {chips.map((chip, i) => (
@@ -458,13 +459,13 @@ export const ContractRow = memo(function ContractRow({
               <span className="text-sm text-oct-text/90 truncate">{subtitle}</span>
             )}
             {entry.fdvAtCallDisplay && (
-              <span className="font-mono text-[11px] text-oct-live">
+              <span className="type-data text-2xs text-oct-live">
                 FDV {entry.fdvAtCallDisplay}
               </span>
             )}
             <PeakReadout entry={entry} />
             {entry.liquidityDisplay && (
-              <span className="font-mono text-[11px] text-oct-muted">
+              <span className="type-data text-2xs text-oct-muted">
                 Liq {entry.liquidityDisplay}
               </span>
             )}
@@ -485,7 +486,7 @@ export const ContractRow = memo(function ContractRow({
 
       {showStats && (
         <div className="pl-[4.5rem] sm:pl-24 min-w-0 flex items-center gap-2 flex-wrap">
-          <span className="text-[11px] text-oct-text/80 font-mono truncate max-w-[10rem]" title={entry.authorName}>
+          <span className="text-2xs text-oct-text/80 font-mono truncate max-w-[10rem]" title={entry.authorName}>
             {entry.authorName}
           </span>
           <CallerStatsReadout quality={quality} />
@@ -580,11 +581,11 @@ export const ContractCard = memo(function ContractCard({
       {(entry.fdvAtCallDisplay || entry.liquidityDisplay) && (
         <div className="flex items-baseline gap-2 min-w-0 flex-wrap">
           {entry.fdvAtCallDisplay && (
-            <span className="font-mono text-[11px] text-oct-live">FDV {entry.fdvAtCallDisplay}</span>
+            <span className="type-data text-2xs text-oct-live">FDV {entry.fdvAtCallDisplay}</span>
           )}
           <PeakReadout entry={entry} />
           {entry.liquidityDisplay && (
-            <span className="font-mono text-[11px] text-oct-muted">Liq {entry.liquidityDisplay}</span>
+            <span className="type-data text-2xs text-oct-muted">Liq {entry.liquidityDisplay}</span>
           )}
         </div>
       )}
@@ -636,7 +637,7 @@ export const ContractCard = memo(function ContractCard({
 
       {showStats && (
         <div className="flex flex-col gap-0.5 min-w-0">
-          <span className="text-[11px] text-oct-text/80 font-mono truncate" title={entry.authorName}>
+          <span className="text-2xs text-oct-text/80 font-mono truncate" title={entry.authorName}>
             {entry.authorName}
           </span>
           <CallerStatsReadout quality={quality} />
