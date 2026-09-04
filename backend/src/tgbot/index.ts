@@ -29,7 +29,8 @@ import { getChatStore } from './chatStore.js';
 import { commandMap } from './commands/index.js';
 import { classifyUpdate, nextOffset } from './router.js';
 import { TelegramSender } from './sender.js';
-import { createContractAlertListener } from './alerts.js';
+import { TgAlertRouter } from './alerts.js';
+import { readDigestIntervalMs } from './digest.js';
 
 /** Seconds Telegram holds an empty getUpdates open before answering. */
 const POLL_SECONDS = 30;
@@ -51,6 +52,21 @@ let state: BotState | null = null;
  * deploy) would be swallowed and the poll loop would come up orphaned.
  */
 let lifetime: AbortController | null = null;
+
+/**
+ * The alert fan-out. Created once for the PROCESS, not once per start, for two
+ * reasons: WsServer.onAlert has no unregister, so a stop()/start() pair would
+ * otherwise leave two listeners delivering every alert twice; and the guard's
+ * rate windows are the thing standing between a chat and a flood, so a restart
+ * must not hand a chat a fresh budget.
+ */
+let alertRouter: TgAlertRouter | null = null;
+let digestTimer: NodeJS.Timeout | null = null;
+
+function getAlertRouter(): TgAlertRouter {
+  if (!alertRouter) alertRouter = new TgAlertRouter(getSender);
+  return alertRouter;
+}
 
 export function isTelegramBotEnabled(): boolean {
   return !!process.env.TELEGRAM_BOT_TOKEN?.trim();
@@ -89,7 +105,10 @@ export function startTelegramBot(wsServer?: WsServer): void {
 
   const abort = new AbortController();
   lifetime = abort;
-  if (wsServer) wsServer.onAlert(createContractAlertListener(getSender));
+  // Registered once per process — see getAlertRouter. `alertRouter` being null
+  // is exactly "this listener has never been attached".
+  if (wsServer && !alertRouter) wsServer.onAlert(getAlertRouter().listener());
+  startDigestTimer();
 
   void boot(token, abort).catch((err) => {
     console.error('[TgBot] Failed to start; continuing without it:', (err as Error)?.message ?? err);
@@ -253,6 +272,33 @@ async function handleUpdate(
   });
 }
 
+/**
+ * Start the digest flush.
+ *
+ * This is the timer that turns N buffered events into ONE message per chat, so
+ * it is the difference between a summary and the flood. `unref` keeps it from
+ * holding the process open at shutdown — the backend's exit must not wait out a
+ * ten-minute interval — and the flush itself no-ops when there is no sender or
+ * nothing buffered.
+ */
+function startDigestTimer(): void {
+  if (digestTimer) return;
+  const intervalMs = readDigestIntervalMs();
+  digestTimer = setInterval(() => {
+    void getAlertRouter()
+      .flush()
+      .catch((err) => console.error('[TgBot] Digest flush threw:', (err as Error)?.message ?? err));
+  }, intervalMs);
+  digestTimer.unref();
+  console.log(`[TgBot] Alert digests flush every ${Math.round(intervalMs / 60_000)} min.`);
+}
+
+function stopDigestTimer(): void {
+  if (!digestTimer) return;
+  clearInterval(digestTimer);
+  digestTimer = null;
+}
+
 /** Abort-aware sleep, so shutdown does not wait out a 60s backoff. */
 function sleep(ms: number, signal: AbortSignal): Promise<void> {
   return new Promise((resolve) => {
@@ -276,6 +322,9 @@ export async function stopTelegramBot(): Promise<void> {
   const abort = lifetime;
   state = null;
   lifetime = null;
+  // The router itself is kept: its guard windows are the flood protection, and
+  // a restart handing every chat a fresh hourly budget is the wrong direction.
+  stopDigestTimer();
 
   try {
     // Aborted first and unconditionally: a boot still in flight watches this

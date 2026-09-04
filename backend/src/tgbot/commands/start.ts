@@ -3,12 +3,20 @@ import { renderStart } from '../render.js';
 import type { TgCommand } from './types.js';
 
 /**
- * `/start` — register this chat.
+ * `/start` — register this chat, and subscribe it to NOTHING.
  *
  * Registration is what makes a chat a tenant: until someone runs this, an
  * update from the chat is answered and then forgotten. Telegram sends /start
  * automatically the first time a user opens a bot's DM, so in a private chat
  * this is usually the very first thing that happens.
+ *
+ * IT MUST NOT SUBSCRIBE THE CHAT TO ANYTHING. The first release turned contract
+ * detections on here, which meant "add the bot to a group" and "point OCT's
+ * loudest event class at that group" were the same gesture — and the first real
+ * group the bot joined got flooded. Registration and subscription are now two
+ * separate, deliberate acts; the second one is /alerts. The default lives in
+ * alertPolicy.ts (DEFAULT_CHAT_SETTINGS, everything 'off') and this handler
+ * passes no settings at all, so there is exactly one place it can go wrong.
  *
  * Re-running it re-enables a chat that a 403 disabled (see chatStore.register).
  */

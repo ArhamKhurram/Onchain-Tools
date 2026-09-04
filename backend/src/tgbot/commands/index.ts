@@ -1,3 +1,4 @@
+import { alerts } from './alerts.js';
 import { help } from './help.js';
 import { start } from './start.js';
 import { status } from './status.js';
@@ -12,7 +13,7 @@ import type { TgCommand } from './types.js';
 // only an optional autocomplete list you hand to @BotFather with /setcommands.
 // `commandListForBotFather()` renders exactly that, so the hint list and the
 // handlers cannot drift.
-export const commands: TgCommand[] = [start, help, status, token];
+export const commands: TgCommand[] = [start, alerts, help, status, token];
 
 export const commandMap = new Map<string, TgCommand>(commands.map((c) => [c.name, c]));
 

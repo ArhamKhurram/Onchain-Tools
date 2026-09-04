@@ -7,9 +7,12 @@ import type { TgCommand } from './types.js';
 /**
  * `/status` — is this chat active, and what is it subscribed to.
  *
- * Reports the one failure mode a registered chat can silently be in: registered
- * and enabled, but with no alert source bound, so nothing will ever arrive.
- * Saying "on" there would be a lie the operator only discovers by waiting.
+ * Reports the three states a registered chat can silently be quiet in, because
+ * every one of them otherwise looks like a broken bot:
+ *   • subscribed to nothing (the state every new chat starts in)
+ *   • no alert source bound, so nothing will ever arrive
+ *   • auto-muted by the circuit breaker — with the command that lifts it
+ * Saying "on" for any of them would be a lie the operator discovers by waiting.
  */
 export const status: TgCommand = {
   name: 'status',
@@ -23,6 +26,7 @@ export const status: TgCommand = {
       renderStatus(record, {
         alertsRouted: record !== null && resolveAlertSource(record, readDefaultAlertSource()) !== null,
         allowlisted: allowlist !== null && allowlist.has(ctx.chatId),
+        now: Date.now(),
       }),
     );
   },
