@@ -43,6 +43,18 @@ export default defineConfig({
           ) {
             return 'vendor-motion';
           }
+          // lightweight-charts (+ its fancy-canvas internal): the candlestick
+          // chart. Same shape as vendor-motion — a single consumer
+          // (components/charts/CandleChart.tsx) reached only through React.lazy
+          // behind a "Chart" button, so this chunk is never on the boot path;
+          // it is fetched on the first click and cached by hash thereafter.
+          // Pinning it here keeps ~60 kB gzip of canvas runtime out of whichever
+          // page chunk happens to host the button, so a Pumpfun-page deploy does
+          // not re-ship a library that did not change. If it ever appears in the
+          // initial-load waterfall, someone imported CandleChart statically.
+          if (id.includes('/lightweight-charts/') || id.includes('/fancy-canvas/')) {
+            return 'vendor-candles';
+          }
           // lucide-react: no manual vendor chunk — let each icon module land in
           // the chunk(s) that use it, so boot only loads the chrome's icons.
           // No vendor-charts chunk anymore: recharts was replaced by the
