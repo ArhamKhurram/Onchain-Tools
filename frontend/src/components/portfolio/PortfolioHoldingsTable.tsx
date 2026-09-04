@@ -1,5 +1,6 @@
 import { ExternalLink } from 'lucide-react';
 import { useAppStore } from '../../stores/appStore';
+import { cn } from '../../lib/utils';
 import type { GmgnChain, PortfolioHolding } from '../../types/portfolio';
 import { formatPortfolioError, formatUsd, GMGN_CHAIN_SHORT, PORTFOLIO_PANEL, PORTFOLIO_PANEL_HEADER, PORTFOLIO_PANEL_TITLE, toNumber, walletChainToGmgn } from '../../types/portfolio';
 import type { WalletChain } from '../../types/wallets';
@@ -12,6 +13,21 @@ interface PortfolioHoldingsTableProps {
   error: string | null;
   showChainTag: boolean;
   showWalletTag: boolean;
+}
+
+// Blotter cells. Every numeric column is `type-data` (mono, tabular, slashed
+// zero) and right-aligned so the digits line up down the column the way a
+// terminal blotter reads; `py-snug` keeps rows dense enough to scan a long book.
+const TH = 'px-cozy py-snug type-caption font-mono font-semibold uppercase tracking-[0.1em] text-oct-muted whitespace-nowrap';
+const TH_NUM = `${TH} text-right`;
+const TD = 'px-cozy py-snug';
+const TD_NUM = `${TD} type-data text-right whitespace-nowrap`;
+const TAG = 'type-caption font-mono px-snug py-hair rounded-oct-sm border';
+
+/** Profit reads `oct-good`, loss `oct-critical`, flat stays neutral. */
+function pnlTone(n: number): string {
+  if (!Number.isFinite(n) || n === 0) return 'text-oct-text';
+  return n > 0 ? 'text-oct-good' : 'text-oct-critical';
 }
 
 export default function PortfolioHoldingsTable({
@@ -34,29 +50,29 @@ export default function PortfolioHoldingsTable({
     <section className={`${PORTFOLIO_PANEL} flex flex-col min-h-0`}>
       <div className={PORTFOLIO_PANEL_HEADER}>
         <h2 className={PORTFOLIO_PANEL_TITLE}>Holdings</h2>
-        {loading && <span className="oct-eyebrow text-oct-accent">Loading…</span>}
+        {loading && <span className="type-caption font-mono uppercase tracking-wider text-oct-accent">Loading…</span>}
       </div>
 
       {error && (
-        <p className="px-4 py-3 font-mono text-xs text-oct-flame">{formatPortfolioError(error)}</p>
+        <p className="px-comfy py-cozy type-body text-oct-critical">{formatPortfolioError(error)}</p>
       )}
 
       {!error && holdings.length === 0 && !loading && (
-        <p className="px-4 py-10 font-mono text-sm text-oct-muted text-center">No open positions reported by Birdeye.</p>
+        <p className="px-comfy py-gutter type-body text-oct-muted text-center">No open positions reported by Birdeye.</p>
       )}
 
       {holdings.length > 0 && (
         <div className="overflow-auto">
-          <table className="w-full min-w-[720px] text-left font-mono text-xs">
-            <thead className="oct-thead sticky top-0 z-10 text-oct-muted uppercase tracking-[0.1em]">
+          <table className="w-full min-w-[720px] text-left">
+            <thead className="oct-thead sticky top-0 z-10">
               <tr>
-                <th className="px-3 py-2">Token</th>
-                <th className="px-3 py-2">Balance</th>
-                <th className="px-3 py-2">USD Value</th>
-                <th className="px-3 py-2">Total PnL</th>
-                <th className="px-3 py-2">PnL %</th>
-                <th className="px-3 py-2">Avg Cost</th>
-                <th className="px-3 py-2">Buys / Sells</th>
+                <th className={TH}>Token</th>
+                <th className={TH_NUM}>Balance</th>
+                <th className={TH_NUM}>USD Value</th>
+                <th className={TH_NUM}>Total PnL</th>
+                <th className={TH_NUM}>PnL %</th>
+                <th className={TH_NUM}>Avg Cost</th>
+                <th className={TH_NUM}>Buys / Sells</th>
               </tr>
             </thead>
             <tbody>
@@ -65,24 +81,25 @@ export default function PortfolioHoldingsTable({
                 const addr = row.token?.address;
                 const rowChain = (row.chain ?? fallbackChain) as GmgnChain;
                 const pnlPct = toNumber(row.profit_change) * 100;
+                const pnlUsd = toNumber(row.total_profit);
                 return (
                   <tr key={`${row.walletLabel ?? ''}-${rowChain}-${addr ?? idx}`} className="border-b border-oct-border/60 oct-row-hover">
-                    <td className="px-3 py-2.5">
-                      <div className="flex items-center gap-2 flex-wrap">
+                    <td className={TD}>
+                      <div className="flex items-center gap-snug flex-wrap">
                         {showWalletTag && row.walletLabel && (
-                          <span className="font-mono text-[10px] px-1.5 py-0.5 rounded-oct-sm border border-oct-accent/30 text-oct-accent">
+                          <span className={cn(TAG, 'border-oct-accent/30 text-oct-accent')}>
                             {row.walletLabel}
                           </span>
                         )}
                         {showChainTag && (
-                          <span className="font-mono text-[10px] px-1.5 py-0.5 rounded-oct-sm border border-oct-border text-oct-muted">
+                          <span className={cn(TAG, 'border-oct-border text-oct-muted')}>
                             {GMGN_CHAIN_SHORT[rowChain] ?? rowChain.toUpperCase()}
                           </span>
                         )}
                         <button
                           type="button"
                           onClick={() => openToken(addr, rowChain)}
-                          className="inline-flex items-center gap-1 text-oct-text font-semibold hover:text-oct-accent disabled:opacity-50"
+                          className="inline-flex items-center gap-tight type-data font-bold text-oct-text hover:text-oct-accent disabled:opacity-50"
                           disabled={!addr || !templates}
                         >
                           {symbol}
@@ -90,14 +107,14 @@ export default function PortfolioHoldingsTable({
                         </button>
                       </div>
                     </td>
-                    <td className="px-3 py-2.5 text-oct-muted tabular-nums">{toNumber(row.balance).toLocaleString(undefined, { maximumFractionDigits: 4 })}</td>
-                    <td className="px-3 py-2.5 text-oct-text tabular-nums">{formatUsd(row.usd_value)}</td>
-                    <td className="px-3 py-2.5 tabular-nums">{formatUsd(row.total_profit, { signed: true })}</td>
-                    <td className={`px-3 py-2 tabular-nums ${pnlPct >= 0 ? 'text-oct-green' : 'text-oct-flame'}`}>
+                    <td className={cn(TD_NUM, 'text-oct-muted')}>{toNumber(row.balance).toLocaleString(undefined, { maximumFractionDigits: 4 })}</td>
+                    <td className={cn(TD_NUM, 'text-oct-text')}>{formatUsd(row.usd_value)}</td>
+                    <td className={cn(TD_NUM, pnlTone(pnlUsd))}>{formatUsd(row.total_profit, { signed: true })}</td>
+                    <td className={cn(TD_NUM, pnlTone(pnlPct))}>
                       {Number.isFinite(pnlPct) ? `${pnlPct >= 0 ? '+' : ''}${pnlPct.toFixed(1)}%` : '—'}
                     </td>
-                    <td className="px-3 py-2 tabular-nums">{formatUsd(row.avg_cost)}</td>
-                    <td className="px-3 py-2 tabular-nums">{toNumber(row.buy_tx_count)} / {toNumber(row.sell_tx_count)}</td>
+                    <td className={cn(TD_NUM, 'text-oct-text')}>{formatUsd(row.avg_cost)}</td>
+                    <td className={cn(TD_NUM, 'text-oct-muted')}>{toNumber(row.buy_tx_count)} / {toNumber(row.sell_tx_count)}</td>
                   </tr>
                 );
               })}

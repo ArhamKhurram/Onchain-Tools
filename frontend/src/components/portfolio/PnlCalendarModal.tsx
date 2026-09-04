@@ -2,6 +2,8 @@ import { useEffect, useMemo, useState } from 'react';
 import { ChevronLeft, ChevronRight, X } from 'lucide-react';
 import type { DailyPnlResponse } from '../../types/portfolio';
 import { formatPortfolioError, formatUsd } from '../../types/portfolio';
+import { cn } from '../../lib/utils';
+import { AnimatePresence, fadeIn, fadeInUp, m, MotionFeatures, useTransition } from '../../lib/motion';
 
 interface PnlCalendarModalProps {
   open: boolean;
@@ -15,18 +17,21 @@ function monthKey(year: number, month: number): string {
   return `${year}-${String(month + 1).padStart(2, '0')}`;
 }
 
-export default function PnlCalendarModal({ open, onClose, data, loading, error }: PnlCalendarModalProps) {
-  const [viewDate, setViewDate] = useState(() => new Date());
+const WEEKDAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 
-  useEffect(() => {
-    if (!open) return;
-    const handleKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') onClose();
-    };
-    window.addEventListener('keydown', handleKey);
-    return () => window.removeEventListener('keydown', handleKey);
-  }, [open, onClose]);
+interface CalendarGridProps {
+  data: DailyPnlResponse | null;
+  viewDate: Date;
+  setViewDate: (next: Date) => void;
+}
 
+/**
+ * The month grid. Split out so the cell layout is only computed while the
+ * modal is open — the modal itself now stays mounted while closed so it can
+ * play its exit fade. `viewDate` lives in the parent so the month the operator
+ * paged to survives a close/reopen, as it did before the split.
+ */
+function CalendarGrid({ data, viewDate, setViewDate }: CalendarGridProps) {
   const dayMap = useMemo(() => {
     const map = new Map<string, number>();
     for (const day of data?.days ?? []) {
@@ -34,8 +39,6 @@ export default function PnlCalendarModal({ open, onClose, data, loading, error }
     }
     return map;
   }, [data?.days]);
-
-  if (!open) return null;
 
   const year = viewDate.getFullYear();
   const month = viewDate.getMonth();
@@ -52,85 +55,127 @@ export default function PnlCalendarModal({ open, onClose, data, loading, error }
   }
 
   return (
-    <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/80 p-4" onClick={onClose}>
-      <div
-        className="oct-card oct-card-flush shadow-oct-soft-lg w-full max-w-2xl overflow-hidden"
-        onClick={(e) => e.stopPropagation()}
-      >
-        <div className="oct-headerbar px-5 py-4 flex items-center justify-between gap-3">
-          <div>
-            <h3 className="font-display text-2xl text-oct-text tracking-tight">PnL Calendar</h3>
-            <p className="font-mono text-[11px] text-oct-muted mt-1">Daily net PnL from buy/sell USD (estimated)</p>
-          </div>
-          <button type="button" onClick={onClose} className="oct-icon-btn p-1.5">
-            <X size={18} />
-          </button>
-        </div>
-
-        <div className="p-5">
-          {loading && <p className="font-mono text-xs text-oct-muted text-center py-8">Loading calendar…</p>}
-          {!loading && error && (
-            <p className="font-mono text-xs text-oct-flame text-center py-8">{formatPortfolioError(error)}</p>
-          )}
-
-          {!loading && !error && (
-            <>
-              <div className="flex items-center justify-between mb-4">
-                <button
-                  type="button"
-                  onClick={() => setViewDate(new Date(year, month - 1, 1))}
-                  className="oct-icon-btn p-1.5"
-                >
-                  <ChevronLeft size={16} />
-                </button>
-                <p className="font-mono text-sm uppercase tracking-[0.12em] text-oct-text">{monthLabel}</p>
-                <button
-                  type="button"
-                  onClick={() => setViewDate(new Date(year, month + 1, 1))}
-                  className="oct-icon-btn p-1.5"
-                >
-                  <ChevronRight size={16} />
-                </button>
-              </div>
-
-              <div className="grid grid-cols-7 gap-1 mb-1">
-                {['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'].map((d) => (
-                  <div key={d} className="font-mono text-[10px] text-oct-muted text-center py-1">{d}</div>
-                ))}
-              </div>
-
-              <div className="grid grid-cols-7 gap-1">
-                {cells.map((cell, idx) => {
-                  if (!cell.date) {
-                    return <div key={`empty-${idx}`} className="aspect-square" />;
-                  }
-                  const dayNum = Number(cell.date.slice(-2));
-                  const pnl = cell.netPnl;
-                  const positive = pnl != null && pnl > 0;
-                  const negative = pnl != null && pnl < 0;
-                  return (
-                    <div
-                      key={cell.date}
-                      title={pnl != null ? `${cell.date}: ${formatUsd(pnl, { signed: true })}` : cell.date}
-                      className={[
-                        'aspect-square rounded-oct-sm border border-oct-border/60 flex flex-col items-center justify-center p-1',
-                        positive ? 'bg-oct-green/15' : negative ? 'bg-oct-flame/15' : 'bg-oct-bg/40',
-                      ].join(' ')}
-                    >
-                      <span className="font-mono text-[10px] text-oct-muted">{dayNum}</span>
-                      {pnl != null && (
-                        <span className={`font-mono text-[9px] tabular-nums ${positive ? 'text-oct-green' : negative ? 'text-oct-flame' : 'text-oct-muted'}`}>
-                          {formatUsd(pnl, { signed: true })}
-                        </span>
-                      )}
-                    </div>
-                  );
-                })}
-              </div>
-            </>
-          )}
-        </div>
+    <>
+      <div className="flex items-center justify-between mb-comfy">
+        <button
+          type="button"
+          onClick={() => setViewDate(new Date(year, month - 1, 1))}
+          className="oct-icon-btn p-snug"
+          aria-label="Previous month"
+        >
+          <ChevronLeft size={16} />
+        </button>
+        <p className="type-label font-mono uppercase tracking-[0.12em] text-oct-text">{monthLabel}</p>
+        <button
+          type="button"
+          onClick={() => setViewDate(new Date(year, month + 1, 1))}
+          className="oct-icon-btn p-snug"
+          aria-label="Next month"
+        >
+          <ChevronRight size={16} />
+        </button>
       </div>
-    </div>
+
+      <div className="grid grid-cols-7 gap-tight mb-tight">
+        {WEEKDAYS.map((d) => (
+          <div key={d} className="type-caption font-mono uppercase text-oct-muted text-center py-tight">{d}</div>
+        ))}
+      </div>
+
+      {/* Day cells: the tint and the figure both carry meaning, so both use the
+          semantic good/critical pair. A day with no trades stays neutral. */}
+      <div className="grid grid-cols-7 gap-tight">
+        {cells.map((cell, idx) => {
+          if (!cell.date) {
+            return <div key={`empty-${idx}`} className="aspect-square" />;
+          }
+          const dayNum = Number(cell.date.slice(-2));
+          const pnl = cell.netPnl;
+          const positive = pnl != null && pnl > 0;
+          const negative = pnl != null && pnl < 0;
+          return (
+            <div
+              key={cell.date}
+              title={pnl != null ? `${cell.date}: ${formatUsd(pnl, { signed: true })}` : cell.date}
+              className={cn(
+                'aspect-square rounded-oct-sm border border-oct-border/60 flex flex-col items-center justify-center gap-hair p-tight',
+                positive ? 'bg-oct-good-dim' : negative ? 'bg-oct-critical-dim' : 'bg-oct-bg/40',
+              )}
+            >
+              <span className="type-data text-2xs text-oct-muted">{dayNum}</span>
+              {pnl != null && (
+                <span
+                  className={cn(
+                    'type-data text-2xs',
+                    positive ? 'text-oct-good' : negative ? 'text-oct-critical' : 'text-oct-muted',
+                  )}
+                >
+                  {formatUsd(pnl, { signed: true })}
+                </span>
+              )}
+            </div>
+          );
+        })}
+      </div>
+    </>
+  );
+}
+
+export default function PnlCalendarModal({ open, onClose, data, loading, error }: PnlCalendarModalProps) {
+  const [viewDate, setViewDate] = useState(() => new Date());
+  const fade = useTransition('fade');
+  const rise = useTransition('snappy');
+
+  useEffect(() => {
+    if (!open) return;
+    const handleKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') onClose();
+    };
+    window.addEventListener('keydown', handleKey);
+    return () => window.removeEventListener('keydown', handleKey);
+  }, [open, onClose]);
+
+  return (
+    <MotionFeatures>
+      <AnimatePresence>
+        {open && (
+          <m.div
+            key="pnl-calendar-backdrop"
+            variants={fadeIn}
+            initial="hidden"
+            animate="visible"
+            exit="hidden"
+            transition={fade}
+            className="fixed inset-0 z-[100] flex items-center justify-center bg-black/80 p-roomy"
+            onClick={onClose}
+          >
+            <m.div
+              variants={fadeInUp}
+              transition={rise}
+              className="oct-card oct-card-flush shadow-oct-soft-lg w-full max-w-2xl overflow-hidden"
+              onClick={(e) => e.stopPropagation()}
+            >
+              <div className="oct-headerbar px-roomy py-comfy flex items-center justify-between gap-comfy">
+                <div>
+                  <h3 className="font-display type-heading text-oct-text tracking-tight">PnL Calendar</h3>
+                  <p className="type-caption font-mono text-oct-muted mt-tight">Daily net PnL from buy/sell USD (estimated)</p>
+                </div>
+                <button type="button" onClick={onClose} className="oct-icon-btn p-snug" aria-label="Close">
+                  <X size={18} />
+                </button>
+              </div>
+
+              <div className="p-roomy">
+                {loading && <p className="type-body text-oct-muted text-center py-gutter">Loading calendar…</p>}
+                {!loading && error && (
+                  <p className="type-body text-oct-critical text-center py-gutter">{formatPortfolioError(error)}</p>
+                )}
+                {!loading && !error && <CalendarGrid data={data} viewDate={viewDate} setViewDate={setViewDate} />}
+              </div>
+            </m.div>
+          </m.div>
+        )}
+      </AnimatePresence>
+    </MotionFeatures>
   );
 }
