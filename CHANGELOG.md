@@ -9,6 +9,10 @@ they're left as the record of what shipped.
 ### Added
 - **Market-cap crossing alerts, chain-wide** — OCT now watches every token it has seen, not just the ones you armed by hand, and pings you the first time one crosses **$750K market cap**. That band is where a coin stops being noise and starts being a position, and it used to be the moment you found out about a day later by scrolling back. It fires once per token on the way up, and it is scam-gated: a token has to clear the same honesty checks the rest of the console uses before it can ping you, so a freshly-minted honeypot printing a fake market cap doesn't get to interrupt you. Your own hand-set price alerts are unchanged and still fire independently.
 
+### Fixed
+- **MC@call stops coming up blank** — a chunk of contract rows showed no market cap at call, so the number you judge a caller by simply wasn't there. Two causes, both fixed. When a Telegram message arrived more than once (a reconnect replays it), the call became several rows and only one of them ever got priced — the market cap is now written to every row of the same call, so a repeat delivery can't leave a blank behind. And when the market-cap provider answered without a price, OCT treated that as "this token has no market cap" and stopped asking for half an hour; it now tells the difference between *no price exists* and *nobody answered* — a rate limit or a timeout no longer silences a token — and falls back to a second provider for freshly-launched coins the first one hasn't indexed yet.
+  - This fixes new calls going forward. Rows that were already blank stay blank: reconstructing a market cap after the fact means guessing what it was at a moment that has passed, and a made-up MC@call is worse than an honest gap.
+
 ## 2026-09-04
 
 ### Added
