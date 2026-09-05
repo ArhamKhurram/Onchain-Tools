@@ -7,6 +7,7 @@ they're left as the record of what shipped.
 ## 2026-09-05
 
 ### Added
+- **Hiding someone in the feed works the way you'd expect** — **right-clicking a name** now opens the user menu. It always existed on a left-click, but a right-click gave you the browser's own menu instead, so most people concluded the feature wasn't there. The menu also gained **Hide User Everywhere**: someone who spams across five channels is one click now instead of five. Per-channel hiding is unchanged and still the right tool when one bot posts both the scans you want and the chatter you don't — hide the noisy account, keep the useful one. Everyone you've hidden sits behind the **hidden** count in the feed header, each with an unhide button, and the everywhere-hidden ones are listed first.
 - **Market-cap crossing alerts, chain-wide** — OCT now watches every token it has seen, not just the ones you armed by hand, and pings you the first time one crosses **$750K market cap**. That band is where a coin stops being noise and starts being a position, and it used to be the moment you found out about a day later by scrolling back. It fires once per token on the way up, and it is scam-gated: a token has to clear the same honesty checks the rest of the console uses before it can ping you, so a freshly-minted honeypot printing a fake market cap doesn't get to interrupt you. Your own hand-set price alerts are unchanged and still fire independently.
 
 ### Fixed

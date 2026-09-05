@@ -1,4 +1,5 @@
 import type { StateCreator } from 'zustand';
+import { GLOBAL_HIDDEN_USERS_KEY } from '@oct/shared';
 import type { Room, AppConfig, CallerTier } from '../../types';
 import type { AppState } from '../appStore';
 import { apiFetch, API_BASE, MAX_PANES, savePaneRoomIds } from '../appStore.helpers';
@@ -14,6 +15,9 @@ export interface ConfigSlice {
   updateConfig: (data: Partial<Pick<AppConfig, 'globalHighlightedUsers' | 'contractDetection' | 'guildColors' | 'dmColors' | 'telegramColors' | 'enabledGuilds' | 'evmAddressColor' | 'solAddressColor' | 'openInDiscordApp' | 'openInTelegramApp' | 'hiddenUsers' | 'messageSounds' | 'soundSettings' | 'channelSounds' | 'pushover' | 'missedRunner' | 'contractLinkTemplates' | 'contractClickAction' | 'showFullContractAddress' | 'autoOpenHighlightedContracts' | 'signalConvergenceWindowMinutes' | 'globalKeywordPatterns' | 'keywordAlertsEnabled' | 'desktopNotifications' | 'toastAlertsEnabled' | 'toastPosition' | 'mentionsUserEnabled' | 'mentionsRoleEnabled' | 'mentionsHereEnabled' | 'mentionsEveryoneEnabled' | 'badgeClickAction' | 'chattingEnabled' | 'messageDisplay' | 'feedChromePreset' | 'compactModeAvatars' | 'roleColors' | 'mobileZoomScale' | 'splitLayout' | 'seenAnnouncements' | 'discordProxyUrl' | 'workspaceLayout' | 'discordBotDm' | 'callerTiers' | 'callerTierShowMuted' | 'callerQualityRanking' | 'callerScoreExclusions' | 'radarMultipleEmojiRules'>>) => Promise<void>;
   hideUser: (guildId: string | null, channelId: string, userId: string, displayName: string) => Promise<void>;
   unhideUser: (guildId: string | null, channelId: string, userId: string) => Promise<void>;
+  /** Hide across every channel, via the reserved `GLOBAL_HIDDEN_USERS_KEY` bucket. */
+  hideUserEverywhere: (userId: string, displayName: string) => Promise<void>;
+  unhideUserEverywhere: (userId: string) => Promise<void>;
   setCallerTier: (key: string, displayName: string, tier: CallerTier, roomId?: string) => Promise<void>;
   openConfigModal: (room?: Room, tab?: 'channels' | 'users' | 'filter' | 'keywords' | 'global') => void;
   closeConfigModal: () => void;
@@ -28,6 +32,31 @@ export const createConfigSlice: StateCreator<AppState, [], [], ConfigSlice> = (s
   // number keeps an older response from publishing over a newer one.
   let configPutSeq = 0;
   let configPutChain: Promise<unknown> = Promise.resolve();
+
+  // Channel-scoped and everywhere-scoped hides are the same write against a
+  // different `hiddenUsers` key, so both actions share these.
+  const addHidden = async (key: string, userId: string, displayName: string) => {
+    const config = get().config;
+    if (!config) return;
+    const current = config.hiddenUsers?.[key] ?? [];
+    if (current.some((e) => e.userId === userId)) return;
+    const hiddenUsers = { ...config.hiddenUsers, [key]: [...current, { userId, displayName }] };
+    await get().updateConfig({ hiddenUsers });
+  };
+
+  const removeHidden = async (key: string, userId: string) => {
+    const config = get().config;
+    if (!config) return;
+    const current = config.hiddenUsers?.[key] ?? [];
+    const filtered = current.filter((e) => e.userId !== userId);
+    const hiddenUsers = { ...config.hiddenUsers };
+    if (filtered.length === 0) {
+      delete hiddenUsers[key];
+    } else {
+      hiddenUsers[key] = filtered;
+    }
+    await get().updateConfig({ hiddenUsers });
+  };
 
   return {
     config: null,
@@ -161,30 +190,19 @@ export const createConfigSlice: StateCreator<AppState, [], [], ConfigSlice> = (s
       return result;
     },
 
-    hideUser: async (guildId, channelId, userId, displayName) => {
-      const config = get().config;
-      if (!config) return;
-      const key = `${guildId ?? 'null'}:${channelId}`;
-      const current = config.hiddenUsers?.[key] ?? [];
-      if (current.some((e) => e.userId === userId)) return;
-      const hiddenUsers = { ...config.hiddenUsers, [key]: [...current, { userId, displayName }] };
-      await get().updateConfig({ hiddenUsers });
-    },
+    hideUser: async (guildId, channelId, userId, displayName) =>
+      addHidden(`${guildId ?? 'null'}:${channelId}`, userId, displayName),
 
-    unhideUser: async (guildId, channelId, userId) => {
-      const config = get().config;
-      if (!config) return;
-      const key = `${guildId ?? 'null'}:${channelId}`;
-      const current = config.hiddenUsers?.[key] ?? [];
-      const filtered = current.filter((e) => e.userId !== userId);
-      const hiddenUsers = { ...config.hiddenUsers };
-      if (filtered.length === 0) {
-        delete hiddenUsers[key];
-      } else {
-        hiddenUsers[key] = filtered;
-      }
-      await get().updateConfig({ hiddenUsers });
-    },
+    unhideUser: async (guildId, channelId, userId) =>
+      removeHidden(`${guildId ?? 'null'}:${channelId}`, userId),
+
+    // Deliberately independent of the per-channel buckets: unhiding everywhere
+    // restores the channel-scoped hides the user set on purpose, rather than
+    // silently having wiped them.
+    hideUserEverywhere: async (userId, displayName) =>
+      addHidden(GLOBAL_HIDDEN_USERS_KEY, userId, displayName),
+
+    unhideUserEverywhere: async (userId) => removeHidden(GLOBAL_HIDDEN_USERS_KEY, userId),
 
     // Setting a caller back to `normal` removes the entry rather than storing it:
     // an explicit "normal" and no entry mean the same thing, and keeping rows for

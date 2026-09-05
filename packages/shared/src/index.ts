@@ -101,7 +101,7 @@ export type {
 export type { Database, Json, Tables, TablesInsert, TablesUpdate } from './database.types.js';
 
 // Runtime consts (values) from the shared type module.
-export { PUSHOVER_SOUNDS, GatewayOpcodes } from './types.js';
+export { PUSHOVER_SOUNDS, GatewayOpcodes, GLOBAL_HIDDEN_USERS_KEY } from './types.js';
 
 // Shared type definitions.
 export type {

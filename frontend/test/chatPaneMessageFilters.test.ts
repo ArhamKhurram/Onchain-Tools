@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { filterRoomMessages, collectChannelHiddenUsers } from '../src/components/chat-pane/messageFilters';
+import { GLOBAL_HIDDEN_USERS_KEY } from '@oct/shared';
 import type { FrontendMessage, Room } from '../src/types';
 
 // The pane's visible-message pipeline was inline in ChatPane before the split;
@@ -66,6 +67,17 @@ describe('filterRoomMessages', () => {
     expect(filterRoomMessages(list, room(), hidden, null).map((m) => m.channelId)).toEqual(['c2']);
   });
 
+  it('drops users hidden everywhere from every channel', () => {
+    const list = [
+      msg({ author: alice, channelId: 'c1' }),
+      msg({ author: alice, channelId: 'c2' }),
+      msg({ author: alice, guildId: null, channelId: 'tg1' }),
+      msg({ author: bob, channelId: 'c1' }),
+    ];
+    const hidden = { [GLOBAL_HIDDEN_USERS_KEY]: [{ userId: 'u1', displayName: 'Alice' }] };
+    expect(filterRoomMessages(list, room(), hidden, null).map((m) => m.author.id)).toEqual(['u2']);
+  });
+
   it('keys hidden users on "null" for guild-less (DM/Telegram) messages', () => {
     const list = [msg({ author: alice, guildId: null, channelId: 'tg1' })];
     const hidden = { 'null:tg1': [{ userId: 'u1', displayName: 'Alice' }] };
@@ -88,8 +100,20 @@ describe('collectChannelHiddenUsers', () => {
     };
     const entries = collectChannelHiddenUsers(room(), hidden);
     expect(entries).toEqual([
-      { userId: 'u1', displayName: 'Alice', guildId: 'g1', channelId: 'c1', channelName: 'general', guildName: 'Guild' },
-      { userId: 'u2', displayName: 'Bob', guildId: 'g1', channelId: 'c2', channelName: 'calls', guildName: 'Guild' },
+      { scope: 'channel', userId: 'u1', displayName: 'Alice', guildId: 'g1', channelId: 'c1', channelName: 'general', guildName: 'Guild' },
+      { scope: 'channel', userId: 'u2', displayName: 'Bob', guildId: 'g1', channelId: 'c2', channelName: 'calls', guildName: 'Guild' },
+    ]);
+  });
+
+  it('lists everywhere-hidden users first, tagged global', () => {
+    const hidden = {
+      [GLOBAL_HIDDEN_USERS_KEY]: [{ userId: 'u9', displayName: 'Spammer' }],
+      'g1:c1': [{ userId: 'u1', displayName: 'Alice' }],
+    };
+    const entries = collectChannelHiddenUsers(room(), hidden);
+    expect(entries.map((e) => [e.scope, e.userId])).toEqual([
+      ['global', 'u9'],
+      ['channel', 'u1'],
     ]);
   });
 
