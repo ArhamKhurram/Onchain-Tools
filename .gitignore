@@ -175,3 +175,7 @@ docs/.astro/
 # Private keys — never commit (GMGN signing keypair lives at repo root)
 *.pem
 *.key
+
+# Local research working copy (OCT-RESEARCH) — venvs, model checkpoints, datasets.
+# Lives inside the repo but is tracked on its own branch, never on main.
+research/
