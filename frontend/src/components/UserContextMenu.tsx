@@ -1,5 +1,5 @@
 import { useEffect, useRef } from 'react';
-import { EyeOff, Copy, MessageSquare, Star, StarOff, VolumeX, Volume2, TrendingUp } from 'lucide-react';
+import { EyeOff, UserX, Copy, MessageSquare, Star, StarOff, VolumeX, Volume2, TrendingUp } from 'lucide-react';
 import type { CallerTier } from '../types';
 import { BAND_LABELS } from '@oct/shared';
 import type { CallerQuality } from '../hooks/useCallerQuality';
@@ -19,6 +19,7 @@ interface UserContextMenuProps {
   callerQuality?: CallerQuality;
   onSetCallerTier?: (tier: CallerTier) => void;
   onHide: () => void;
+  onHideEverywhere: () => void;
   onCopyId: () => void;
   onClose: () => void;
 }
@@ -35,6 +36,7 @@ export default function UserContextMenu({
   callerQuality,
   onSetCallerTier,
   onHide,
+  onHideEverywhere,
   onCopyId,
   onClose,
 }: UserContextMenuProps) {
@@ -147,6 +149,17 @@ export default function UserContextMenu({
         <div className="min-w-0">
           <div>Hide User From Channel</div>
           <div className="text-[10px] text-discord-text-muted truncate">{channelLabel}</div>
+        </div>
+      </button>
+
+      <button
+        onClick={() => { onHideEverywhere(); onClose(); }}
+        className="w-full flex items-center gap-2 px-2 py-[6px] text-sm text-discord-header-secondary hover:bg-discord-blurple hover:text-white rounded-sm transition-colors text-left"
+      >
+        <UserX size={16} className="shrink-0" />
+        <div className="min-w-0">
+          <div>Hide User Everywhere</div>
+          <div className="text-[10px] text-discord-text-muted truncate">every channel</div>
         </div>
       </button>
 

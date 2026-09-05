@@ -1,3 +1,4 @@
+import { GLOBAL_HIDDEN_USERS_KEY } from '@oct/shared';
 import type { AppConfig, FrontendMessage, Room } from '../../types';
 import type { HiddenUserEntry } from '../HiddenUsersPanel';
 
@@ -21,7 +22,12 @@ export function filterRoomMessages(
   const isFilterActive = activeRoom?.filterEnabled && (activeRoom?.filteredUsers?.length ?? 0) > 0;
   const filterSet = new Set(activeRoom?.filteredUsers?.map((u) => u.toLowerCase()) ?? []);
 
+  // Hoisted: the "hidden everywhere" bucket is the same for every message, so
+  // resolve it once rather than re-indexing the record per row.
+  const globallyHidden = new Set((hiddenUsers[GLOBAL_HIDDEN_USERS_KEY] ?? []).map((e) => e.userId));
+
   const isUserHidden = (msg: FrontendMessage) => {
+    if (globallyHidden.has(msg.author.id)) return true;
     const key = `${msg.guildId ?? 'null'}:${msg.channelId}`;
     return hiddenUsers[key]?.some((e) => e.userId === msg.author.id) ?? false;
   };
@@ -41,13 +47,26 @@ export function filterRoomMessages(
     : afterHidden;
 }
 
-/** Hidden-user entries across every channel of the room, for the header
- *  badge and the unhide panel. */
+/** Hidden-user entries for the header badge and the unhide panel: the
+ *  everywhere-hidden users first (they apply to every channel of every room),
+ *  then the ones hidden in one of this room's channels. */
 export function collectChannelHiddenUsers(activeRoom: Room | undefined, hiddenUsers: HiddenUsers): HiddenUserEntry[] {
   if (!activeRoom) return [];
-  return activeRoom.channels.flatMap((ch) => {
+
+  const global: HiddenUserEntry[] = (hiddenUsers[GLOBAL_HIDDEN_USERS_KEY] ?? []).map((entry) => ({
+    scope: 'global' as const,
+    userId: entry.userId,
+    displayName: entry.displayName,
+    guildId: null,
+    channelId: GLOBAL_HIDDEN_USERS_KEY,
+    channelName: GLOBAL_HIDDEN_USERS_KEY,
+    guildName: null,
+  }));
+
+  const perChannel = activeRoom.channels.flatMap((ch) => {
     const key = `${ch.guildId ?? 'null'}:${ch.channelId}`;
     return (hiddenUsers[key] ?? []).map((entry) => ({
+      scope: 'channel' as const,
       userId: entry.userId,
       displayName: entry.displayName,
       guildId: ch.guildId,
@@ -56,4 +75,6 @@ export function collectChannelHiddenUsers(activeRoom: Room | undefined, hiddenUs
       guildName: ch.guildName ?? null,
     }));
   });
+
+  return [...global, ...perChannel];
 }

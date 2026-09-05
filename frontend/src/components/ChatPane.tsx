@@ -52,6 +52,8 @@ export default function ChatPane({ roomId, paneIndex, paneCount, editMode, varia
   const dmChannels = useAppStore((s) => s.dmChannels);
   const hideUser = useAppStore((s) => s.hideUser);
   const unhideUser = useAppStore((s) => s.unhideUser);
+  const hideUserEverywhere = useAppStore((s) => s.hideUserEverywhere);
+  const unhideUserEverywhere = useAppStore((s) => s.unhideUserEverywhere);
   const setCallerTier = useAppStore((s) => s.setCallerTier);
   const { qualityFor } = useCallerQuality();
   const setPaneRoom = useAppStore((s) => s.setPaneRoom);
@@ -278,7 +280,11 @@ export default function ChatPane({ roomId, paneIndex, paneCount, editMode, varia
         <HiddenUsersPanel
           entries={channelHiddenUsers}
           onClose={() => setHiddenPanelOpen(false)}
-          onUnhide={unhideUser}
+          onUnhide={(entry) =>
+            entry.scope === 'global'
+              ? void unhideUserEverywhere(entry.userId)
+              : void unhideUser(entry.guildId, entry.channelId, entry.userId)
+          }
         />
       )}
 
@@ -361,6 +367,7 @@ export default function ChatPane({ roomId, paneIndex, paneCount, editMode, varia
                     openInTelegramApp={config?.openInTelegramApp ?? false}
                     badgeClickAction={config?.badgeClickAction ?? 'discord'}
                     onHideUser={hideUser}
+                    onHideUserEverywhere={hideUserEverywhere}
                     onToggleHighlight={activeRoom ? toggleHighlightUser : undefined}
                     isUserHighlighted={
                       activeRoom?.highlightedUsers?.some((e) =>
