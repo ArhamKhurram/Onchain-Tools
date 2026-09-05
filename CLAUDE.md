@@ -267,22 +267,33 @@ has fully shipped.** `api/routes.ts` → `routes/*.ts`, `storage/supabase.ts` �
 → `message/*`. Don't re-plan those; the structure that landed is documented on
 the linked page.
 
-`frontend/src/components/Message.tsx` now measures ~545 lines, down from ~910 after
+`frontend/src/components/Message.tsx` measures ~554 lines, down from ~910 after
 `MessageAttachments`/`MessageEmbeds` were split into `message/*` (#318). The three
 render branches still share ~15 derived values and are deliberately kept together
 rather than threaded through as props, but the presentational blocks now live outside
 this file — it is no longer an oversized target.
 
-One file remains past the threshold and is **not** covered by any plan. Prefer
-extracting from it over adding more (line count measured 2026-08-31):
+**The frontend is no longer where the size problem is.** The revamp (#343,
+#347–#357) and the earlier extractions took every frontend target back under the
+threshold — `ChatPane.tsx` is now **414** (was 977 before the split in #357),
+`callers/RadarTable.tsx` **236**, `ContractDashboard.tsx` **285**. None of them
+need attention; don't plan work against the old numbers.
 
-- `frontend/src/components/ChatPane.tsx` — 977 (was 985 before the `HiddenUsersPanel`
-  extraction in #297)
+The largest files are now all backend (measured 2026-09-05):
 
-Two files that used to sit here have since been refactored back under the threshold and
-no longer need attention: `callers/RadarTable.tsx` — 555 (rows/columns extracted into
-`RadarTableRow`/`SortHeader`), and `ContractDashboard.tsx` — 422 (feed rows extracted
-into `ContractFeedRows`, #301/#308).
+- `backend/src/revival/poller.ts` — 1196. The genuine target: one module carrying
+  candle fetching, the request budget, revival *and* breakout detection, and
+  outcome tracking. Prefer extracting from it over adding more.
+- `backend/src/index.ts` — 967 and `backend/src/telegram/client.ts` — 945.
+  Both are startup/protocol spines that grew with the feature set.
+- `backend/src/api/sniper/router.ts` — 870. Read the sniper section above before
+  touching it; its shape is deliberate.
+
+`backend/src/sniper/venue/slotsharkTwitterConfig.ts` — 1113 — is **not** a target
+despite the line count. It is a pure types/normalization/validation module whose
+bulk is comments documenting four sharp edges in the vendor's contract (per-mode
+serializers, singular-vs-plural keyword fields). The comments are load-bearing;
+splitting the file would scatter them.
 
 (`packages/shared/src/database.types.ts` is ~1k but generated — never hand-edit.)
 
@@ -307,12 +318,28 @@ dev       ───────●─────●─────●───�
 ```
 
 - **Production feature** → PR into `main` → then merge `main` down into `dev`.
-- **Work that must not deploy yet** (today that is `lp-automation/`) → branch off
+- **Work that must not deploy yet** (today that is the `video` branch) → branch off
   `dev`, PR back into `dev`. It never reaches `main`.
 - **Never merge `dev` into `main`.** It would drag whatever `dev` is holding into
   production. This is why the old `feature → dev → main` promotion flow no longer
   applies.
 - Do not push straight to `main`; PR + green CI first.
+
+**Squash merges hide landed work — verify by content, never by diffstat.** PRs are
+squash-merged, so a merged branch keeps a different SHA from what is on `main`.
+`git branch --merged` reports it as unmerged, and a three-dot diff against `main`
+shows a large phantom diff measured from a stale merge-base. On 2026-09-05 six
+stale branches were revived on that evidence and **five were fully superseded**;
+the "conflicts" were `main`'s own better implementations. One would have reverted
+#198, #199 and #202 (the Supabase egress fix) if merged.
+
+Before reviving any branch older than a week: check
+`git log origin/main --grep='<commit subject>'` for the squashed twin, then
+compare actual file contents (blob hashes, or read the functions) against
+`origin/main`. Apparent branch size is evidence of nothing.
+
+`delete_branch_on_merge` is now **on**, so merged branches delete themselves and
+this backlog should not rebuild.
 
 **The sniper is production code and lives on `main`.** It was reverted from
 `main` in #55, restored dormant in #79, and wired up immediately after; ignore
