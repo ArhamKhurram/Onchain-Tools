@@ -227,6 +227,16 @@ export class ContractsRepo extends BaseRepo {
   }
 
   /**
+   * Mark an entry as a re-delivery of an already-logged call. The DB row is
+   * suppressed but ingest still broadcasts what `logContract` hands back, so
+   * this is how the console learns to drop the frame instead of rendering a
+   * second feed row. Transport-only — never written to a column.
+   */
+  private asDuplicate(entry: ContractEntry): ContractEntry {
+    return { ...entry, duplicate: true };
+  }
+
+  /**
    * Merge an already-stored row of the same call over the incoming entry.
    * Stored enrichment wins where it exists; the entry's own identity fields
    * (author, channel, room ids, timestamp) are identical by definition and are
@@ -276,7 +286,7 @@ export class ContractsRepo extends BaseRepo {
     // whereas an indexed lookup on the key that actually defines a call is
     // exact at any delay. See the migration for the durable half.
     const existing = await this.findExistingCall(userId, entry);
-    if (existing) return existing;
+    if (existing) return this.asDuplicate(existing);
 
     const isFirstSeen = !(await this.hasAddress(userId, entry.address));
     let toInsert = entry;
@@ -371,8 +381,11 @@ export class ContractsRepo extends BaseRepo {
     // index from 20260905140000_contracts_unique_call.sql has been applied.
     // That is the index doing its job, not an ingest failure: resolve the row
     // the winner wrote and return it, exactly as the guard would have.
+    // The losing side of that race is a duplicate for the same reason the
+    // guard's hit is, so it is flagged the same way.
     if (result.error && isUniqueViolation(result.error)) {
-      return (await this.findExistingCall(userId, entry)) ?? { ...toInsert, firstSeen: isFirstSeen };
+      const winner = await this.findExistingCall(userId, entry);
+      return this.asDuplicate(winner ?? { ...toInsert, firstSeen: isFirstSeen });
     }
     throwIfError(result, 'Failed to log contract');
     return { ...toInsert, firstSeen: isFirstSeen };

@@ -937,6 +937,24 @@ export interface ContractEntry {
   timestamp: string;
   source?: 'discord' | 'telegram';
   firstSeen?: boolean;
+  /**
+   * True when this entry is a RE-DELIVERY of a call that was already logged —
+   * the same (userId, messageId, address) reaching ingest a second time
+   * because the Telegram update stream replayed the message after a reconnect
+   * or an update-gap recovery.
+   *
+   * `logContract` suppresses the duplicate ROW (#368) and returns the stored
+   * one, but ingest still broadcasts what it gets back, so the console needs
+   * to be told the difference. Transport-level, not persisted: no `contracts`
+   * column backs it, and it is never set on anything read out of storage.
+   *
+   * A flagged entry is not a new observation of anything — it carries the
+   * original call's timestamp and enrichment — so the feed drops it outright
+   * rather than folding it into the address's rescan group. Counting a
+   * re-delivery as a "scan" would re-introduce, in the ×N badge, exactly the
+   * inflation #368 removed from the database.
+   */
+  duplicate?: boolean;
   // Enrichment (Rick embed / DexScreener)
   tokenName?: string;
   tokenSymbol?: string;

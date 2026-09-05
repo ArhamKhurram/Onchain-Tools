@@ -122,7 +122,11 @@ class ContractLog {
     // later, and an unconditional append turned one call into up to 16 rows —
     // inflating the call counts the caller/radar bands are computed over.
     const existing = this.findLoggedCall(entry.messageId, entry.address);
-    if (existing) return existing;
+    // Returned as a COPY flagged `duplicate`, never the stored object itself:
+    // the flag is a transport hint for the console (drop the re-delivery
+    // instead of rendering a second feed row) and must not leak into the
+    // persisted log or into what a later read hands back.
+    if (existing) return { ...existing, duplicate: true };
 
     entry.firstSeen = !this.hasAddress(entry.address);
     this.entries.unshift(entry);
