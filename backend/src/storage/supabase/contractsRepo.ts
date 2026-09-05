@@ -1,5 +1,5 @@
 import type { ContractEntry, ContractEnrichmentPatch, EnrichContractOptions } from '../../utils/contractLog.js';
-import { mergeEnrichmentPatch } from '../../utils/enrichmentMerge.js';
+import { mergeEnrichmentPatch, needsMetadataFallback } from '../../utils/enrichmentMerge.js';
 import { isEvmAddress } from '../../utils/contract.js';
 import { BaseRepo, throwIfError } from './client.js';
 
@@ -126,8 +126,14 @@ export class ContractsRepo extends BaseRepo {
    * and `fdv_at_call` stayed null. A `(message_id, address)` filter does not
    * care how much has been logged since.
    *
-   * `.limit(1)` on a timestamp-descending order because one message can log the
-   * same address twice — the same ambiguity `enrichContract` absorbs.
+   * One message can log the same address more than once, so this can match
+   * several rows. It returns the one that still has a gap the fallback could
+   * fill, preferring it over the merely-newest row: `enrichContract` now fans
+   * its write across the whole group, so handing back any still-blank member is
+   * what gets every member filled. Picking blindly by timestamp meant that once
+   * one sibling was enriched, a later duplicate of the same call resolved to
+   * that filled row, `needsMetadataFallback` said there was nothing to do, and
+   * the new blank row was never priced.
    */
   async getContractByMessage(userId: string, messageId: string, address: string): Promise<ContractEntry | null> {
     const query = this.supabase
@@ -139,14 +145,15 @@ export class ContractsRepo extends BaseRepo {
     const { data, error } = await (addressMatchesInsensitively(address)
       ? query.ilike('address', address)
       : query.eq('address', address))
-      .order('timestamp', { ascending: false })
-      .limit(1);
+      .order('timestamp', { ascending: false });
 
     // Surface a query failure rather than swallow it as row-not-found — the
     // window scan this replaced threw, which showed up as a "Dex fallback
     // failed" log. A silent skip would hide a broken fallback as a missing FDV.
     throwIfError({ error }, 'Failed to look up contract by message');
-    return data?.[0] ? this.mapContractRow(data[0]) : null;
+    if (!data || data.length === 0) return null;
+    const mapped = data.map((r) => this.mapContractRow(r));
+    return mapped.find((r) => needsMetadataFallback(r)) ?? mapped[0];
   }
 
   async logContract(userId: string, entry: ContractEntry): Promise<ContractEntry> {
@@ -286,6 +293,11 @@ export class ContractsRepo extends BaseRepo {
     const messageId = options?.messageId;
 
     let row: Record<string, unknown> | undefined;
+    // Every row that (user_id, message_id, address) matches — see the fan-out
+    // note below. Only the message-scoped lookup can populate this; the
+    // channel/address guesses further down are inherently ambiguous and stay
+    // single-row.
+    let siblings: Record<string, unknown>[] = [];
 
     if (messageId) {
       const { data } = await this.supabase
@@ -294,8 +306,9 @@ export class ContractsRepo extends BaseRepo {
         .eq('user_id', userId)
         .eq('message_id', messageId)
         .ilike('address', address)
-        .limit(1);
-      row = data?.[0];
+        .order('timestamp', { ascending: false });
+      siblings = data ?? [];
+      row = siblings[0];
     }
 
     if (!row) {
@@ -327,6 +340,41 @@ export class ContractsRepo extends BaseRepo {
 
     if (!row) return null;
 
+    // Fan the write out across every row this one call produced.
+    //
+    // A single ingested message can land as several `contracts` rows sharing
+    // (user_id, message_id, address): `logContract` is an unconditional INSERT,
+    // and the Telegram update stream re-delivers the same message after a
+    // reconnect or an update-gap recovery — measured in production at minutes
+    // to hours apart, far outside the ingest-side dedupe window. Those rows all
+    // describe the same call, so they must all carry the same MC@call.
+    //
+    // Resolving ONE representative row and writing it back by primary key is
+    // deliberate and stays (see the PGRST116 note on the update below). What
+    // was missing is the rest of the group: the fallback fetched a perfectly
+    // good FDV, wrote it to a single row, and left its siblings blank forever,
+    // because nothing revisits a row once its 8s/15s timer has fired. Measured
+    // against production, 1,874 of 1,878 blank-MC@call rows in a 24h window sat
+    // in such a group, and 2,258 of 2,295 of those groups already had a sibling
+    // holding the very FDV the blank rows were missing.
+    const representative = await this.applyEnrichmentToRow(userId, row, patch);
+    for (const sibling of siblings) {
+      if (sibling.id === row.id) continue;
+      await this.applyEnrichmentToRow(userId, sibling, patch);
+    }
+    return representative;
+  }
+
+  /**
+   * Merge `patch` into one already-resolved row and write it back by primary
+   * key. Split out of `enrichContract` so the same merge runs for each row of a
+   * duplicate group rather than only the representative.
+   */
+  private async applyEnrichmentToRow(
+    userId: string,
+    row: Record<string, unknown>,
+    patch: ContractEnrichmentPatch,
+  ): Promise<ContractEntry | null> {
     const existing = this.mapContractRow(row);
     const merged = mergeEnrichmentPatch(
       {
