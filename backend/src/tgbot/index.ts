@@ -31,6 +31,8 @@ import { classifyUpdate, nextOffset } from './router.js';
 import { TelegramSender } from './sender.js';
 import { TgAlertRouter } from './alerts.js';
 import { readDigestIntervalMs } from './digest.js';
+import type { TgAlertType } from './alertPolicy.js';
+import type { McapCrossView } from './render.js';
 
 /** Seconds Telegram holds an empty getUpdates open before answering. */
 const POLL_SECONDS = 30;
@@ -70,6 +72,26 @@ function getAlertRouter(): TgAlertRouter {
 
 export function isTelegramBotEnabled(): boolean {
   return !!process.env.TELEGRAM_BOT_TOKEN?.trim();
+}
+
+/**
+ * The market-cap crossing poller's door into the bot.
+ *
+ * Deliberately NOT `getAlertRouter()`: these two must answer honestly when the
+ * bot has never started, and creating a router as a side effect of asking
+ * "is anyone listening?" would be a subsystem bringing another one to life.
+ * A null router means no bot, which means nobody is subscribed and nothing can
+ * be delivered — the safe answer in both directions.
+ */
+export async function tgSubscriberCount(type: TgAlertType): Promise<number> {
+  return alertRouter ? alertRouter.subscriberCount(type) : 0;
+}
+
+/** Deliver one market-cap crossing. No-ops when the bot is not running. */
+export function tgDeliverMcapCross(view: McapCrossView): void {
+  void alertRouter?.handleSignal(view).catch((err) => {
+    console.error('[TgBot] Crossing delivery failed:', (err as Error)?.message ?? err);
+  });
 }
 
 /** The live sender, or null when the bot is not running. Used by alerts.ts. */

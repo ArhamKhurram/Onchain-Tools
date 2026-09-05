@@ -171,3 +171,7 @@ supabase/.branches/
 
 # Astro build cache (docs site)
 docs/.astro/
+
+# Private keys — never commit (GMGN signing keypair lives at repo root)
+*.pem
+*.key

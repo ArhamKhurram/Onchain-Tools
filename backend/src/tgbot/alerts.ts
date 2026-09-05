@@ -38,7 +38,15 @@ import {
 } from './alertPolicy.js';
 import { DigestBuffer, type DigestEntry } from './digest.js';
 import { ChatOutboundGuard, readGuardLimits } from './guard.js';
-import { digestLineFor, renderAlertCard, renderDigest, type ContractAlertView } from './render.js';
+import {
+  digestLineFor,
+  mcapCrossDigestLine,
+  renderAlertCard,
+  renderDigest,
+  renderMcapCrossCard,
+  type ContractAlertView,
+  type McapCrossView,
+} from './render.js';
 import { alertMatchesSource, readDefaultAlertSource, resolveAlertSource } from './source.js';
 import type { TelegramSender } from './sender.js';
 import type { TgChatRecord } from './chatStore.js';
@@ -74,6 +82,20 @@ export function buildContractAlertView(alert: AlertLike): ContractAlertView {
 export function digestKey(type: TgAlertType, view: ContractAlertView): string {
   const address = view.addresses[0];
   return `${type}:${address ?? view.reason.slice(0, 120)}`;
+}
+
+/**
+ * One event, already rendered for both delivery modes.
+ *
+ * The card is a thunk because per-event delivery is the rare path: a chat on
+ * the default digest setting never pays to build the full card, and on a busy
+ * feed that is nearly every chat.
+ */
+interface RenderedEvent {
+  /** Digest coalescing key — see digestKey. */
+  key: string;
+  card: () => string;
+  line: string;
 }
 
 /**
@@ -125,10 +147,14 @@ export class TgAlertRouter {
       // Rendered once per class, not once per chat: the card is identical
       // everywhere and the addresses it formats are the same strings.
       const view = buildContractAlertView(alert);
-      const key = digestKey(type, view);
+      const rendered: RenderedEvent = {
+        key: digestKey(type, view),
+        card: () => renderAlertCard(ALERT_CATALOG[type].label, view),
+        line: digestLineFor(type, view),
+      };
 
       for (const chat of recipients) {
-        await this.route(chat, type, view, key, now);
+        await this.route(chat, type, rendered, now);
       }
     } catch (err) {
       // Only the roster read and the mute write can land here — sender.send
@@ -137,12 +163,73 @@ export class TgAlertRouter {
     }
   }
 
-  /** One alert, one chat. Split out so `handle` reads as the policy it is. */
+  /**
+   * Deliver one POLLER-RAISED signal to every chat that asked for it.
+   *
+   * WHY THIS EXISTS ALONGSIDE `handle`. `handle` starts from an AlertLike — a
+   * message somebody posted, which WsServer.onAlert observed — and its first
+   * job is to work out which subscribable class that message belongs to. A
+   * market-cap crossing has no message and no classification question: the
+   * poller already knows exactly what it raised. So it enters here with the
+   * class named, and from that point on takes the IDENTICAL path — the same
+   * subscription check, the same circuit breaker, the same hourly ceiling, the
+   * same digest-by-default. Nothing about the flood protections is bypassed;
+   * only the classification step, which would have nothing to classify.
+   *
+   * The alternative — synthesising a fake FrontendMessage so a poller event
+   * could travel as an AlertLike — would put a chat message that never existed
+   * into every downstream consumer of that seam. Widening the seam honestly is
+   * the cheaper lie to not tell.
+   */
+  async handleSignal(view: McapCrossView, now: number = Date.now()): Promise<void> {
+    const sender = this.getSender();
+    if (!sender) return;
+
+    const type: TgAlertType = 'mcapCross';
+    try {
+      const chats = await getChatStore().listEnabled();
+      const recipients = chats.filter((chat) => chat.settings.alerts[type] !== 'off');
+      if (recipients.length === 0) return;
+
+      // One address is one crossing; two chains cannot collide because the key
+      // carries the network the poller resolved.
+      const rendered: RenderedEvent = {
+        key: `${type}:${view.network}:${view.address}`,
+        card: () => renderMcapCrossCard(view),
+        line: mcapCrossDigestLine(view),
+      };
+
+      for (const chat of recipients) {
+        await this.route(chat, type, rendered, now);
+      }
+    } catch (err) {
+      console.error('[TgBot] Crossing delivery failed:', (err as Error)?.message ?? err);
+    }
+  }
+
+  /**
+   * How many chats are subscribed to one class right now.
+   *
+   * Read by the market-cap crossing poller BEFORE it sweeps anything: a
+   * chain-wide sweep that nobody has opted into should cost zero requests, the
+   * same way the price-alert poller costs nothing with no armed alerts. A
+   * roster read that fails answers 0 — erring towards not spending budget.
+   */
+  async subscriberCount(type: TgAlertType): Promise<number> {
+    if (!this.getSender()) return 0;
+    try {
+      const chats = await getChatStore().listEnabled();
+      return chats.filter((chat) => chat.settings.alerts[type] !== 'off').length;
+    } catch {
+      return 0;
+    }
+  }
+
+  /** One event, one chat. Split out so `handle` reads as the policy it is. */
   private async route(
     chat: TgChatRecord,
     type: TgAlertType,
-    view: ContractAlertView,
-    key: string,
+    rendered: RenderedEvent,
     now: number,
   ): Promise<void> {
     const sender = this.getSender();
@@ -173,14 +260,13 @@ export class TgAlertRouter {
         );
         return;
       }
-      const card = renderAlertCard(ALERT_CATALOG[type].label, view);
-      void sender.send(chat.chatId, card).catch(() => {
+      void sender.send(chat.chatId, rendered.card()).catch(() => {
         /* sender never rejects; belt-and-braces */
       });
       return;
     }
 
-    const entry: DigestEntry = { type, key, line: digestLineFor(type, view) };
+    const entry: DigestEntry = { type, key: rendered.key, line: rendered.line };
     if (!this.buffer.add(chat.chatId, entry, now)) {
       // Counted in the digest itself as "+N more"; this is the log half.
       console.warn(`[TgBot] Digest for chat ${chat.chatId} is full; dropped a ${type} entry.`);

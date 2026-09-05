@@ -17,6 +17,14 @@
 //      per event. Eight detections is one ping. Per-event delivery exists, but
 //      only for a class whose volume is bounded upstream (see instantAllowed).
 //
+// ONE CLASS DOES NOT COME THROUGH THAT SEAM AT ALL. 'mcapCross' is raised by a
+// poller watching the chain, not by a message anybody posted, so it has no
+// FrontendMessage and cannot be classified out of an AlertLike. It reaches this
+// policy through TgAlertRouter.handleSignal instead — the SUBSCRIPTION, the
+// guard, the circuit breaker and the digest are identical; only the way the
+// event arrives differs. classifyAlert therefore never returns it, and that is
+// correct rather than an omission.
+//
 // WHAT IS ACTUALLY AVAILABLE HERE. This is bounded by the seam, not by taste:
 // WsServer.onAlert observes broadcastAlert, and exactly four alert types reach
 // it (utils/frontendAlerts.ts, index.ts's keyword branch, missedRunnerPoller).
@@ -45,7 +53,7 @@ export interface AlertLike {
  * Keyed by intent rather than by the wire `type` string, because one class
  * ('contract') deliberately spans two wire types — see isContractDetection.
  */
-export type TgAlertType = 'missedRunner' | 'keyword' | 'highlighted' | 'contract';
+export type TgAlertType = 'missedRunner' | 'mcapCross' | 'keyword' | 'highlighted' | 'contract';
 
 /**
  * How a subscribed class is delivered.
@@ -59,6 +67,7 @@ export type TgAlertDelivery = 'off' | 'digest' | 'instant';
 
 export const ALERT_TYPES: readonly TgAlertType[] = [
   'missedRunner',
+  'mcapCross',
   'keyword',
   'highlighted',
   'contract',
@@ -114,6 +123,23 @@ export const ALERT_CATALOG: Readonly<Record<TgAlertType, TgAlertTypeSpec>> = {
     label: 'Missed runners',
     volume: 'low',
     volumeNote: 'Rare — a token alerts at most once per 24h, a few per day at most.',
+    instantAllowed: true,
+    requiresConfirmation: false,
+  },
+  mcapCross: {
+    type: 'mcapCross',
+    keyword: 'mcap',
+    aliases: ['mcaps', 'marketcap', 'market_cap', 'mcapcross', '750k', 'crossings'],
+    label: 'Market-cap crossings',
+    volume: 'low',
+    volumeNote:
+      'A coin crossing $750K market cap on Solana, BNB or Robinhood, scam-filtered — roughly 1-2 an hour.',
+    // The upstream bounds this, which is the only thing that earns per-event
+    // delivery here. The $750K threshold is chosen so the whole market yields
+    // ~30-80 crossings a day across three chains, and a token that alerts is on
+    // a 24h cooldown row (mcapCross/poller.ts) — so, like missedRunner, the
+    // class is rare BY CONSTRUCTION rather than by our own ceiling doing the
+    // work. The DEFAULT is still digest; instant has to be asked for.
     instantAllowed: true,
     requiresConfirmation: false,
   },
@@ -192,6 +218,8 @@ export function classifyAlert(alert: AlertLike): TgAlertType | null {
       return 'keyword';
     case 'missed_runner':
       return 'missedRunner';
+    // 'mcapCross' is deliberately absent: it never travels as an AlertLike.
+    // See the note at the top of this file.
     default:
       // Anything that does not reach onAlert, and anything added later that
       // nobody has decided a volume for yet. Silence is the safe answer.
@@ -218,7 +246,13 @@ export interface TgChatSettings {
 
 /** Every class off, not muted. The state a brand-new chat is in. */
 export const DEFAULT_CHAT_SETTINGS: TgChatSettings = {
-  alerts: { missedRunner: 'off', keyword: 'off', highlighted: 'off', contract: 'off' },
+  alerts: {
+    missedRunner: 'off',
+    mcapCross: 'off',
+    keyword: 'off',
+    highlighted: 'off',
+    contract: 'off',
+  },
   mutedUntil: 0,
   mutedReason: null,
 };

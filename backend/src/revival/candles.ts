@@ -396,6 +396,13 @@ async function doFetch(network: RevivalNetwork, path: string): Promise<FetchOutc
  * The safety-valve backoff is re-checked INSIDE the queue slot as well as
  * before enqueuing: a request queued before the valve tripped must not fire
  * afterwards.
+ *
+ * EXPORTED, ALSO, AS THE ONE GECKOTERMINAL DOOR. `marketData/geckoPools.ts`
+ * calls it for market-wide pool discovery on behalf of revival's broad tier and
+ * the market-cap crossing signal. This module — not its callers — owns the rate
+ * budget, and GeckoTerminal counts per client IP, so a second subsystem pacing
+ * itself "safely" alongside this one would produce the SUM of two safe rates.
+ * Anything in this process that talks to GeckoTerminal goes through here.
  */
 async function gtFetch(network: RevivalNetwork, path: string): Promise<any | null> {
   for (let attempt = 0; attempt <= RETRIES_PER_REQUEST; attempt++) {
@@ -410,6 +417,9 @@ async function gtFetch(network: RevivalNetwork, path: string): Promise<any | nul
   }
   return null;
 }
+
+/** The shared name for gtFetch outside this module. See its doc comment. */
+export { gtFetch as geckoTerminalGet };
 
 function parseNum(v: unknown): number | null {
   const n = typeof v === 'string' ? Number.parseFloat(v) : typeof v === 'number' ? v : NaN;
