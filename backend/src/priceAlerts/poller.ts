@@ -38,9 +38,12 @@
  * THE 30-PAIR CAP. `/latest/dex/tokens/{a,b,c,…}` documents a 30-ADDRESS limit
  * but caps the RESPONSE at 30 PAIRS, silently dropping tokens (measured
  * 2026-08-14: 10 mints in, 30 pairs out, only 7 mints covered). Small batches
- * plus a halving retry on any capped response with missing mints (crossing.ts)
- * make the drop detectable instead of silent. A singleton that still comes back
- * empty is genuinely unlisted, and the poller abstains on it.
+ * plus a halving retry on any capped response with missing mints make the drop
+ * detectable instead of silent. A singleton that still comes back empty is
+ * genuinely unlisted, and the poller abstains on it. That read — batching,
+ * pacing and the halving retry — now lives in `marketData/dexBatch.ts`, because
+ * the market-cap crossing signal needs the identical workaround and a second
+ * copy of it would drift SILENTLY (by under-reporting tokens, not by erroring).
  */
 
 import type { SupabaseClient } from '@supabase/supabase-js';
@@ -50,22 +53,17 @@ import type { PriceAlertObservationPatch } from '../storage/interface.js';
 import { getStorageProvider, isHostedMode } from '../storage/index.js';
 import { getFomoServiceClient } from '../fomo/store.js';
 import { sendPushover } from '../utils/pushover.js';
+import { evaluateCrossing, valueForMetric } from './crossing.js';
 import {
   DEFAULT_BATCH_SIZE,
-  chunkMints,
-  evaluateCrossing,
-  snapshotsFromPairs,
-  splitForRetry,
-  valueForMetric,
-  wasTruncated,
-  type DexPair,
-  type MintSnapshot,
-} from './crossing.js';
+  DEFAULT_REQUEST_SPACING_MS,
+  readDexSnapshots,
+} from '../marketData/dexBatch.js';
 
 const LOCAL_USER_ID = 'local';
 export const DEFAULT_PRICE_ALERT_POLL_MS = 25_000;
-/** Polite spacing between keyless DexScreener requests. */
-export const REQUEST_SPACING_MS = 250;
+/** Polite spacing between keyless DexScreener requests (shared default). */
+export const REQUEST_SPACING_MS = DEFAULT_REQUEST_SPACING_MS;
 /** Ceiling on armed alerts pulled per cycle (hosted cross-user sweep). */
 const ARMED_ALERT_LIMIT = 1_000;
 
@@ -193,54 +191,6 @@ class PriceAlertPoller {
     }));
   }
 
-  /** One batch request. Null means the request itself failed (abstain). */
-  private async fetchBatch(mints: string[]): Promise<DexPair[] | null> {
-    try {
-      const res = await fetch(`https://api.dexscreener.com/latest/dex/tokens/${mints.join(',')}`, {
-        signal: AbortSignal.timeout(10_000),
-      });
-      if (!res.ok) {
-        if (res.status === 429) console.warn('[PriceAlerts] DexScreener rate-limited (429).');
-        return null;
-      }
-      const body = (await res.json()) as { pairs?: DexPair[] };
-      return body.pairs ?? [];
-    } catch (err) {
-      console.warn('[PriceAlerts] DexScreener fetch failed:', (err as Error).message);
-      return null;
-    }
-  }
-
-  /**
-   * Read every mint, honouring the 30-pair response cap: batch, then re-query
-   * the halves of any batch that came back AT the cap with mints unaccounted
-   * for. Mints missing from a singleton response are genuinely unlisted and are
-   * simply absent from the returned map (the caller abstains on them).
-   */
-  private async readSnapshots(mints: string[]): Promise<Map<string, MintSnapshot>> {
-    const out = new Map<string, MintSnapshot>();
-    const queue = chunkMints(mints, resolveBatchSize());
-    let first = true;
-
-    while (queue.length > 0) {
-      const batch = queue.shift() as string[];
-      if (!first) await sleep(REQUEST_SPACING_MS);
-      first = false;
-
-      const pairs = await this.fetchBatch(batch);
-      if (pairs === null) continue; // request failure = data gap, abstain
-      const { snapshots, missing } = snapshotsFromPairs(pairs, batch);
-      for (const [mint, snap] of snapshots) out.set(mint, snap);
-
-      // Only a CAPPED response can have hidden a listed token; anything else
-      // means those mints really have no pair.
-      if (missing.length > 0 && wasTruncated(pairs.length)) {
-        for (const half of splitForRetry(missing)) queue.push(half);
-      }
-    }
-    return out;
-  }
-
   private async poll(): Promise<void> {
     if (this.polling) return;
     this.polling = true;
@@ -249,7 +199,11 @@ class PriceAlertPoller {
       if (alerts.length === 0) return; // self-gating: no armed alerts, no requests
 
       const mints = [...new Set(alerts.map((a) => a.mint))];
-      const snapshots = await this.readSnapshots(mints);
+      const snapshots = await readDexSnapshots(mints, {
+        batchSize: resolveBatchSize(),
+        spacingMs: REQUEST_SPACING_MS,
+        label: '[PriceAlerts]',
+      });
       const nowIso = new Date().toISOString();
       const storage = getStorageProvider();
 
@@ -343,10 +297,6 @@ class PriceAlertPoller {
       console.error('[PriceAlerts] Pushover notify failed:', (err as Error)?.message);
     }
   }
-}
-
-function sleep(ms: number): Promise<void> {
-  return new Promise((r) => setTimeout(r, ms));
 }
 
 let _poller: PriceAlertPoller | null = null;

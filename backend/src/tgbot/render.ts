@@ -13,7 +13,14 @@
 // unescaped `<` is a 400 from Telegram, which means a silently undelivered
 // alert rather than a visible bug.
 
-import { buildContractUrl, compactUsd, shortAddress, type ContractLinkTemplates } from '@oct/shared';
+import {
+  buildContractUrl,
+  buildRevivalContractUrl,
+  compactUsd,
+  revivalNetworkLabel,
+  shortAddress,
+  type ContractLinkTemplates,
+} from '@oct/shared';
 import type { BotSnapshotResponse } from '@oct/shared';
 // The signature is brand, not Discord — one constant so the two bots cannot
 // drift apart. (j7/fanout.ts already borrows from bot/layout.ts the same way.)
@@ -364,6 +371,63 @@ export function renderAlertCard(title: string, view: ContractAlertView): string 
 /** A contract detection, as a Telegram card. The historic entry point. */
 export function renderContractAlert(view: ContractAlertView): string {
   return renderAlertCard('Contract scan', view);
+}
+
+/** The subset of a market-cap crossing this card renders. */
+export interface McapCrossView {
+  address: string;
+  /** GeckoTerminal network id — 'solana' | 'bsc' | 'robinhood'. */
+  network: string;
+  symbol: string | null;
+  mcapUsd: number;
+  targetUsd: number;
+  liquidityUsd: number | null;
+  liquidityRatio: number | null;
+}
+
+/**
+ * A market-cap crossing, as a Telegram card.
+ *
+ * It does NOT reuse renderAlertCard. That card's frame is "somebody said
+ * something somewhere" — From, Where, a quoted message body — and every one of
+ * those fields would be empty here, because no human posted anything: a poller
+ * watched the chain. Filling them with dashes would make a real signal look
+ * like a malformed one.
+ *
+ * LIQUIDITY IS ON THE CARD, not just in the gates. The gate answers "is this
+ * exitable at all"; the number answers "how big can I be", which is the next
+ * question anyone asks and is the difference between an alert that gets acted
+ * on and one that gets screenshotted. The chain goes on the card for the same
+ * reason a wrong-chain address is a wasted click.
+ */
+export function renderMcapCrossCard(view: McapCrossView): string {
+  const ticker = clampName((view.symbol ?? '').toUpperCase().replace(/^\$/, ''), '');
+  const heading = ticker !== '' ? `📈 $${ticker} crossed ${compactUsd(view.targetUsd)}` : `📈 Crossed ${compactUsd(view.targetUsd)}`;
+  const depth =
+    view.liquidityUsd != null
+      ? `${compactUsd(view.liquidityUsd)}${view.liquidityRatio != null ? ` (${(view.liquidityRatio * 100).toFixed(1)}% of mcap)` : ''}`
+      : 'unknown';
+
+  return joinLines([
+    bold(heading),
+    `${bold('MCap:')} ${escapeHtml(compactUsd(view.mcapUsd))}`,
+    `${bold('Liquidity:')} ${escapeHtml(depth)}`,
+    `${bold('Chain:')} ${escapeHtml(revivalNetworkLabel(view.network))}`,
+    '',
+    code(view.address),
+    link('Chart ↗', buildRevivalContractUrl(view.address, view.network, LINK_TEMPLATES)),
+    footer('Scam-filtered'),
+  ]);
+}
+
+/** One line of a digest for a market-cap crossing. Terse; keeps the address. */
+export function mcapCrossDigestLine(view: McapCrossView): string {
+  const ticker = clampName((view.symbol ?? '').toUpperCase().replace(/^\$/, ''), '');
+  const head = ticker !== '' ? escapeHtml(`$${ticker}`) : code(view.address);
+  return (
+    `${escapeHtml(ALERT_CATALOG.mcapCross.label)} — ${head} ` +
+    escapeHtml(`· ${compactUsd(view.mcapUsd)} · ${revivalNetworkLabel(view.network)}`)
+  );
 }
 
 /**

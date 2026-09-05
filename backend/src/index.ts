@@ -25,7 +25,7 @@ import { createBotRouter } from './api/routes/bot.js';
 import { createSniperRouter } from './api/sniper/router.js';
 import { requireBotAuth } from './auth/botAuth.js';
 import { startBot } from './bot/index.js';
-import { startTelegramBot } from './tgbot/index.js';
+import { startTelegramBot, tgDeliverMcapCross, tgSubscriberCount } from './tgbot/index.js';
 import { startDailyDigestScheduler } from './bot/dailyDigest.js';
 import { getStorageProvider, isHostedMode } from './storage/index.js';
 import { authMiddleware } from './auth/middleware.js';
@@ -54,6 +54,7 @@ import { startRevivalPoller } from './revival/poller.js';
 import { startJournalPoller } from './journal/poller.js';
 import { startJournalVolumeDeathPoller } from './journal/volumeDeathPoller.js';
 import { startPriceAlertPoller } from './priceAlerts/poller.js';
+import { startMcapCrossPoller } from './mcapCross/poller.js';
 import { startTokenPeakSampler } from './alerts/tokenPeakSampler.js';
 import { onPeakRaised } from './alerts/tokenPeakStore.js';
 import {
@@ -863,6 +864,25 @@ httpServer.listen(PORT, HOST, async () => {
   // armed alert (zero armed = zero requests). Its own independent signal:
   // no detection, no scoring, never fused with revival/breakout/missed-runner.
   startPriceAlertPoller(wsServer);
+  // Chain-wide market-cap crossings ($750K on Solana/BNB/Robinhood, scam-gated).
+  // Its own independent signal — never fused with revival, breakout,
+  // missed-runner, convergence or FOMO. Self-gates HARD: with no Telegram chat
+  // subscribed it makes zero upstream requests, so the chain-wide sweep costs
+  // nothing until somebody deliberately opts in. Delivery is injected rather
+  // than imported so mcapCross/ never reaches into tgbot/.
+  startMcapCrossPoller(wsServer, {
+    hasSubscribers: async () => (await tgSubscriberCount('mcapCross')) > 0,
+    deliver: (data) =>
+      tgDeliverMcapCross({
+        address: data.address,
+        network: data.network,
+        symbol: data.symbol,
+        mcapUsd: data.mcapUsd,
+        targetUsd: data.targetUsd,
+        liquidityUsd: data.liquidityUsd,
+        liquidityRatio: data.liquidityRatio,
+      }),
+  });
   // Global pump.fun KOL-callout fan-out poller. Self-gates on Supabase (idle in
   // local mode), keyless upstream, so it never crashes the server.
   startPumpCalloutPoller(wsServer);
