@@ -124,7 +124,7 @@ export function createContractsRoutes(ctx: RouterContext): Router {
           // Report the outcome either way: a fetch that comes back without an
           // MC is what stops the next mention of an unpriceable address
           // re-asking.
-          recordFallbackFdv(address, enrichment?.fdvAtCall);
+          recordFallbackFdv(address, enrichment);
           if (!enrichment) return;
           const updated = await storage.enrichContract(userId, enrichment.address, enrichmentToPatch(enrichment), { channelId, messageId });
           if (updated) {

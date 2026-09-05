@@ -735,6 +735,13 @@ export interface RadarMultipleEmojiRule {
   emoji: string;
 }
 
+/**
+ * Reserved `hiddenUsers` bucket for a user hidden across *every* channel rather
+ * than one `guildId:channelId`. Real keys are always `<guildId|'null'>:<channelId>`
+ * — both halves are snowflake/numeric ids — so a bare `*` can never collide.
+ */
+export const GLOBAL_HIDDEN_USERS_KEY = '*';
+
 export interface AppConfig {
   discordTokens: string[];
   rooms: Room[];
@@ -748,6 +755,11 @@ export interface AppConfig {
   solAddressColor: string;
   openInDiscordApp: boolean;
   openInTelegramApp: boolean;
+  /**
+   * Users whose messages are filtered out of the feed, keyed by
+   * `<guildId|'null'>:<channelId>` — plus the reserved `GLOBAL_HIDDEN_USERS_KEY`
+   * bucket for "hide everywhere".
+   */
   hiddenUsers: Record<string, { userId: string; displayName: string }[]>;
   /**
    * Caller quality tiers (see `callerQuality.ts`). Manual overrides on top of

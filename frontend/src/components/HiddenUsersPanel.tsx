@@ -1,7 +1,10 @@
 import { EyeOff, X, Trash2 } from 'lucide-react';
 
-/** One hidden-user row, resolved to its owning guild/channel for display + unhide. */
+/** One hidden-user row, resolved to its owning guild/channel for display + unhide.
+ *  A `global` row is hidden across every channel, so its guild/channel fields
+ *  are placeholders and only exist to key the list. */
 export interface HiddenUserEntry {
+  scope: 'channel' | 'global';
   userId: string;
   displayName: string;
   guildId: string | null;
@@ -13,7 +16,7 @@ export interface HiddenUserEntry {
 interface HiddenUsersPanelProps {
   entries: HiddenUserEntry[];
   onClose: () => void;
-  onUnhide: (guildId: string | null, channelId: string, userId: string) => void;
+  onUnhide: (entry: HiddenUserEntry) => void;
 }
 
 /**
@@ -38,7 +41,7 @@ export default function HiddenUsersPanel({ entries, onClose, onUnhide }: HiddenU
       <div className="space-y-1 max-h-[200px] overflow-y-auto">
         {entries.map((entry) => (
           <div
-            key={`${entry.guildId}:${entry.channelId}:${entry.userId}`}
+            key={`${entry.scope}:${entry.guildId}:${entry.channelId}:${entry.userId}`}
             className="flex items-center justify-between gap-2 px-2 sm:px-2.5 py-1.5 rounded-cockpit border-2 border-oct-border bg-oct-surface-raised"
           >
             <div className="flex items-center gap-2 min-w-0 flex-wrap">
@@ -46,11 +49,13 @@ export default function HiddenUsersPanel({ entries, onClose, onUnhide }: HiddenU
               <span className="text-sm text-oct-text font-medium truncate">{entry.displayName}</span>
               <span className="text-[10px] text-oct-muted font-mono hidden sm:inline">{entry.userId}</span>
               <span className="font-mono text-[10px] text-oct-muted truncate hidden sm:inline">
-                {entry.guildName ? `${entry.guildName} / ` : ''}#{entry.channelName}
+                {entry.scope === 'global'
+                  ? 'all channels'
+                  : `${entry.guildName ? `${entry.guildName} / ` : ''}#${entry.channelName}`}
               </span>
             </div>
             <button
-              onClick={() => onUnhide(entry.guildId, entry.channelId, entry.userId)}
+              onClick={() => onUnhide(entry)}
               className="shrink-0 text-oct-muted hover:text-oct-flame transition-colors duration-100"
               title="Unhide user"
             >

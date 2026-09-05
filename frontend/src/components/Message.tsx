@@ -38,6 +38,7 @@ interface MessageProps {
   openInTelegramApp?: boolean;
   badgeClickAction?: BadgeClickAction;
   onHideUser?: (guildId: string | null, channelId: string, userId: string, displayName: string) => void;
+  onHideUserEverywhere?: (userId: string, displayName: string) => void;
   onToggleHighlight?: (userId: string, displayName: string) => void;
   isUserHighlighted?: boolean;
   onFocus?: (guildId: string | null, channelId: string, guildName: string | null, channelName: string) => void;
@@ -56,7 +57,7 @@ interface MessageProps {
   density?: FeedRowDensity;
 }
 
-function Message({ message, isCompact, messageDisplay = 'default', compactModeAvatars = true, guildColor, highlightMode = 'background', highlightColor, disableEmbeds, evmAddressColor, solAddressColor, contractLinkTemplates, contractClickAction, showFullContractAddress = false, openInDiscordApp, openInTelegramApp, badgeClickAction, onHideUser, onToggleHighlight, isUserHighlighted, onFocus, isFocused, onQuickReply, chattingEnabled, roleColors = true, callerQuality, onSetCallerTier, density = DEFAULT_FEED_ROW_DENSITY }: MessageProps) {
+function Message({ message, isCompact, messageDisplay = 'default', compactModeAvatars = true, guildColor, highlightMode = 'background', highlightColor, disableEmbeds, evmAddressColor, solAddressColor, contractLinkTemplates, contractClickAction, showFullContractAddress = false, openInDiscordApp, openInTelegramApp, badgeClickAction, onHideUser, onHideUserEverywhere, onToggleHighlight, isUserHighlighted, onFocus, isFocused, onQuickReply, chattingEnabled, roleColors = true, callerQuality, onSetCallerTier, density = DEFAULT_FEED_ROW_DENSITY }: MessageProps) {
   const [lightboxSrc, setLightboxSrc] = useState<string | null>(null);
   // One static-table lookup per render; the fragments are prebuilt strings.
   const d = FEED_ROW_DENSITY_STYLE[density];
@@ -73,6 +74,10 @@ function Message({ message, isCompact, messageDisplay = 'default', compactModeAv
     setTimeout(() => setCopied(false), 1500);
   };
 
+  // Bound to BOTH onClick and onContextMenu: left-click is the long-standing
+  // affordance, but "right-click a name" is what people reach for first, and
+  // without this they got the browser's own menu instead. preventDefault is
+  // what suppresses that native menu.
   const handleNameClick = (e: React.MouseEvent) => {
     e.preventDefault();
     const rect = (e.target as HTMLElement).getBoundingClientRect();
@@ -234,6 +239,7 @@ function Message({ message, isCompact, messageDisplay = 'default', compactModeAv
               className={`font-medium ${d.compactText} hover:underline cursor-pointer mr-1`}
               style={{ color: authorNameColor }}
               onClick={handleNameClick}
+              onContextMenu={handleNameClick}
               title={`${message.author.username} (${message.author.id})`}
             >
               {message.author.displayName}
@@ -341,6 +347,7 @@ function Message({ message, isCompact, messageDisplay = 'default', compactModeAv
               ? (tier) => onSetCallerTier(callerQuality.key, message.author.displayName, tier)
               : undefined}
             onHide={() => onHideUser?.(message.guildId, message.channelId, message.author.id, message.author.displayName)}
+            onHideEverywhere={() => onHideUserEverywhere?.(message.author.id, message.author.displayName)}
             onCopyId={copyUserId}
             onClose={() => setContextMenu(null)}
           />
@@ -430,6 +437,7 @@ function Message({ message, isCompact, messageDisplay = 'default', compactModeAv
             className={`font-medium ${d.text} hover:underline cursor-pointer relative mr-1`}
             style={{ color: authorNameColor }}
             onClick={handleNameClick}
+            onContextMenu={handleNameClick}
             title={`${message.author.username} (${message.author.id})`}
           >
             {message.author.displayName}
@@ -543,6 +551,7 @@ function Message({ message, isCompact, messageDisplay = 'default', compactModeAv
             onToggleHighlight(highlightKey, message.author.displayName);
           } : undefined}
           onHide={() => onHideUser?.(message.guildId, message.channelId, message.author.id, message.author.displayName)}
+          onHideEverywhere={() => onHideUserEverywhere?.(message.author.id, message.author.displayName)}
           onCopyId={copyUserId}
           onClose={() => setContextMenu(null)}
         />

@@ -1,5 +1,5 @@
 import type { ContractEntry, ContractEnrichmentPatch, EnrichContractOptions } from '../../utils/contractLog.js';
-import { mergeEnrichmentPatch } from '../../utils/enrichmentMerge.js';
+import { mergeEnrichmentPatch, needsMetadataFallback } from '../../utils/enrichmentMerge.js';
 import { isEvmAddress } from '../../utils/contract.js';
 import { BaseRepo, throwIfError } from './client.js';
 
@@ -40,6 +40,32 @@ const FIRST_CALL_COLUMNS = ['first_caller_name', 'first_call_mcap_usd', 'first_c
 const PRIOR_COLUMNS =
   'token_name, token_symbol, token_pair, description, liquidity_usd, liquidity_display, volume_usd, volume_display, price_usd, token_age, enrichment_source, enriched_at, evm_chain';
 const PRIOR_COLUMNS_WITH_FIRST_CALL = `${PRIOR_COLUMNS}, ${FIRST_CALL_COLUMNS.join(', ')}`;
+
+/**
+ * Column budget for the duplicate-call guard at the top of `logContract`.
+ *
+ * Same shape as PRIOR_COLUMNS (the guard returns the stored row merged over the
+ * incoming entry, exactly as the repeat-mention carry-forward does) plus two
+ * additions:
+ *
+ *  - `first_seen`, so a suppressed re-delivery reports the same first-seen flag
+ *    the original row carries rather than re-deriving it;
+ *  - `fdv_at_call` / `fdv_at_call_display`, which the carry-forward deliberately
+ *    excludes because it is per-CALL — but a duplicate IS the same call, so the
+ *    price the first row was enriched with is the right one to hand back.
+ *
+ * The guard runs on the ingest hot path, so it never selects '*'.
+ */
+const EXISTING_CALL_COLUMNS = `first_seen, fdv_at_call, fdv_at_call_display, ${PRIOR_COLUMNS}`;
+const EXISTING_CALL_COLUMNS_WITH_FIRST_CALL = `${EXISTING_CALL_COLUMNS}, ${FIRST_CALL_COLUMNS.join(', ')}`;
+
+/** Postgres `unique_violation`. */
+const UNIQUE_VIOLATION_CODE = '23505';
+
+function isUniqueViolation(error: { code?: string; message?: string } | null | undefined): boolean {
+  if (!error) return false;
+  return error.code === UNIQUE_VIOLATION_CODE || /duplicate key value violates unique constraint/i.test(error.message ?? '');
+}
 
 function stripFirstCallColumns(row: Record<string, unknown>): Record<string, unknown> {
   const rest = { ...row };
@@ -126,8 +152,14 @@ export class ContractsRepo extends BaseRepo {
    * and `fdv_at_call` stayed null. A `(message_id, address)` filter does not
    * care how much has been logged since.
    *
-   * `.limit(1)` on a timestamp-descending order because one message can log the
-   * same address twice — the same ambiguity `enrichContract` absorbs.
+   * One message can log the same address more than once, so this can match
+   * several rows. It returns the one that still has a gap the fallback could
+   * fill, preferring it over the merely-newest row: `enrichContract` now fans
+   * its write across the whole group, so handing back any still-blank member is
+   * what gets every member filled. Picking blindly by timestamp meant that once
+   * one sibling was enriched, a later duplicate of the same call resolved to
+   * that filled row, `needsMetadataFallback` said there was nothing to do, and
+   * the new blank row was never priced.
    */
   async getContractByMessage(userId: string, messageId: string, address: string): Promise<ContractEntry | null> {
     const query = this.supabase
@@ -139,17 +171,113 @@ export class ContractsRepo extends BaseRepo {
     const { data, error } = await (addressMatchesInsensitively(address)
       ? query.ilike('address', address)
       : query.eq('address', address))
-      .order('timestamp', { ascending: false })
-      .limit(1);
+      .order('timestamp', { ascending: false });
 
     // Surface a query failure rather than swallow it as row-not-found — the
     // window scan this replaced threw, which showed up as a "Dex fallback
     // failed" log. A silent skip would hide a broken fallback as a missing FDV.
     throwIfError({ error }, 'Failed to look up contract by message');
-    return data?.[0] ? this.mapContractRow(data[0]) : null;
+    if (!data || data.length === 0) return null;
+    const mapped = data.map((r) => this.mapContractRow(r));
+    return mapped.find((r) => needsMetadataFallback(r)) ?? mapped[0];
+  }
+
+  /**
+   * The row this exact call already produced, or null.
+   *
+   * `(user_id, message_id, address)` identifies one call: one ingested message
+   * mentioning one address. It is NOT unique in the table today — see the guard
+   * note in `logContract` — so this takes the newest match and hands it back
+   * merged over the incoming entry, which is what a duplicate re-delivery
+   * should look like to the ingest path (same call, plus whatever enrichment
+   * the original row has since collected).
+   *
+   * Fails OPEN: a lookup error logs and returns null, so a Supabase hiccup
+   * degrades to today's behaviour (a duplicate row) rather than dropping a
+   * genuine call. The unique index in
+   * 20260905140000_contracts_unique_call.sql is what closes the remaining
+   * race, once it can be applied.
+   */
+  private async findExistingCall(userId: string, entry: ContractEntry): Promise<ContractEntry | null> {
+    const build = (columns: string) => {
+      const q = this.supabase
+        .from('contracts')
+        .select(columns)
+        .eq('user_id', userId)
+        .eq('message_id', entry.messageId);
+      return (addressMatchesInsensitively(entry.address) ? q.ilike('address', entry.address) : q.eq('address', entry.address))
+        .order('timestamp', { ascending: false })
+        .limit(1);
+    };
+
+    // Same pre-migration tolerance as everything else that names the
+    // global-first columns.
+    let { data, error } = await build(EXISTING_CALL_COLUMNS_WITH_FIRST_CALL);
+    if (error && this.tolerateMissingFirstCallColumns(error)) {
+      ({ data, error } = await build(EXISTING_CALL_COLUMNS));
+    }
+    if (error) {
+      console.warn('[Supabase] duplicate-call guard lookup failed:', error.message);
+      return null;
+    }
+
+    const row = (data as any[] | null)?.[0];
+    if (!row) return null;
+    return this.mergeStoredCall(entry, row);
+  }
+
+  /**
+   * Merge an already-stored row of the same call over the incoming entry.
+   * Stored enrichment wins where it exists; the entry's own identity fields
+   * (author, channel, room ids, timestamp) are identical by definition and are
+   * kept as-is.
+   */
+  private mergeStoredCall(entry: ContractEntry, row: any): ContractEntry {
+    const prior = this.mapPriorRow(row);
+    return {
+      ...entry,
+      firstSeen: row.first_seen ?? false,
+      tokenName: prior.tokenName ?? entry.tokenName,
+      tokenSymbol: prior.tokenSymbol ?? entry.tokenSymbol,
+      tokenPair: prior.tokenPair ?? entry.tokenPair,
+      description: prior.description ?? entry.description,
+      liquidityUsd: prior.liquidityUsd ?? entry.liquidityUsd,
+      liquidityDisplay: prior.liquidityDisplay ?? entry.liquidityDisplay,
+      volumeUsd: prior.volumeUsd ?? entry.volumeUsd,
+      volumeDisplay: prior.volumeDisplay ?? entry.volumeDisplay,
+      priceUsd: prior.priceUsd ?? entry.priceUsd,
+      tokenAge: prior.tokenAge ?? entry.tokenAge,
+      enrichmentSource: prior.enrichmentSource ?? entry.enrichmentSource,
+      enrichedAt: prior.enrichedAt ?? entry.enrichedAt,
+      evmChain: entry.evmChain ?? prior.evmChain,
+      firstCallerName: prior.firstCallerName ?? entry.firstCallerName,
+      firstCallMcapUsd: prior.firstCallMcapUsd ?? entry.firstCallMcapUsd,
+      firstCallAt: prior.firstCallAt ?? entry.firstCallAt,
+      // Per-call, and a duplicate is the same call: the stored price wins.
+      fdvAtCall: row.fdv_at_call != null ? Number(row.fdv_at_call) : entry.fdvAtCall,
+      fdvAtCallDisplay: row.fdv_at_call_display ?? entry.fdvAtCallDisplay,
+    };
   }
 
   async logContract(userId: string, entry: ContractEntry): Promise<ContractEntry> {
+    // One call = one row.
+    //
+    // This used to be an unconditional INSERT, and the Telegram update stream
+    // re-delivers a message after a reconnect or an update-gap recovery, so one
+    // call landed as 2-16 rows sharing (user_id, message_id, address). Measured
+    // over a 24h production window: 43% of all contract rows sat in such a
+    // group, and 97% of TELEGRAM rows did. That inflates call counts and
+    // therefore the caller/radar bands computed over them.
+    //
+    // `TelegramClientManager` already dedupes on chatId:id, but with a 10s
+    // window, and the measured gap between duplicate INSERTs is a median of
+    // ~116s (p90 ~31min, max ~2.9h) — that window catches 18.7% of them. Widening
+    // it is not the fix: a 2h window still misses ~2% and the tail is unbounded,
+    // whereas an indexed lookup on the key that actually defines a call is
+    // exact at any delay. See the migration for the durable half.
+    const existing = await this.findExistingCall(userId, entry);
+    if (existing) return existing;
+
     const isFirstSeen = !(await this.hasAddress(userId, entry.address));
     let toInsert = entry;
 
@@ -238,6 +366,14 @@ export class ContractsRepo extends BaseRepo {
     if (result.error && this.tolerateMissingFirstCallColumns(result.error)) {
       result = await this.supabase.from('contracts').insert(stripFirstCallColumns(insertRow));
     }
+    // The guard above lost a race with a concurrent insert of the same call
+    // (two re-deliveries in flight at once), on a database where the unique
+    // index from 20260905140000_contracts_unique_call.sql has been applied.
+    // That is the index doing its job, not an ingest failure: resolve the row
+    // the winner wrote and return it, exactly as the guard would have.
+    if (result.error && isUniqueViolation(result.error)) {
+      return (await this.findExistingCall(userId, entry)) ?? { ...toInsert, firstSeen: isFirstSeen };
+    }
     throwIfError(result, 'Failed to log contract');
     return { ...toInsert, firstSeen: isFirstSeen };
   }
@@ -286,6 +422,11 @@ export class ContractsRepo extends BaseRepo {
     const messageId = options?.messageId;
 
     let row: Record<string, unknown> | undefined;
+    // Every row that (user_id, message_id, address) matches — see the fan-out
+    // note below. Only the message-scoped lookup can populate this; the
+    // channel/address guesses further down are inherently ambiguous and stay
+    // single-row.
+    let siblings: Record<string, unknown>[] = [];
 
     if (messageId) {
       const { data } = await this.supabase
@@ -294,8 +435,9 @@ export class ContractsRepo extends BaseRepo {
         .eq('user_id', userId)
         .eq('message_id', messageId)
         .ilike('address', address)
-        .limit(1);
-      row = data?.[0];
+        .order('timestamp', { ascending: false });
+      siblings = data ?? [];
+      row = siblings[0];
     }
 
     if (!row) {
@@ -327,6 +469,41 @@ export class ContractsRepo extends BaseRepo {
 
     if (!row) return null;
 
+    // Fan the write out across every row this one call produced.
+    //
+    // A single ingested message can land as several `contracts` rows sharing
+    // (user_id, message_id, address): `logContract` is an unconditional INSERT,
+    // and the Telegram update stream re-delivers the same message after a
+    // reconnect or an update-gap recovery — measured in production at minutes
+    // to hours apart, far outside the ingest-side dedupe window. Those rows all
+    // describe the same call, so they must all carry the same MC@call.
+    //
+    // Resolving ONE representative row and writing it back by primary key is
+    // deliberate and stays (see the PGRST116 note on the update below). What
+    // was missing is the rest of the group: the fallback fetched a perfectly
+    // good FDV, wrote it to a single row, and left its siblings blank forever,
+    // because nothing revisits a row once its 8s/15s timer has fired. Measured
+    // against production, 1,874 of 1,878 blank-MC@call rows in a 24h window sat
+    // in such a group, and 2,258 of 2,295 of those groups already had a sibling
+    // holding the very FDV the blank rows were missing.
+    const representative = await this.applyEnrichmentToRow(userId, row, patch);
+    for (const sibling of siblings) {
+      if (sibling.id === row.id) continue;
+      await this.applyEnrichmentToRow(userId, sibling, patch);
+    }
+    return representative;
+  }
+
+  /**
+   * Merge `patch` into one already-resolved row and write it back by primary
+   * key. Split out of `enrichContract` so the same merge runs for each row of a
+   * duplicate group rather than only the representative.
+   */
+  private async applyEnrichmentToRow(
+    userId: string,
+    row: Record<string, unknown>,
+    patch: ContractEnrichmentPatch,
+  ): Promise<ContractEntry | null> {
     const existing = this.mapContractRow(row);
     const merged = mergeEnrichmentPatch(
       {

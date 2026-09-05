@@ -44,13 +44,30 @@ function prune(now: number): void {
 /**
  * Record what a fallback fetch actually yielded for an address.
  *
- * Pass the FDV the providers returned, or `undefined` when they returned none
- * (including when the whole enrichment came back null). Every fallback fetch
- * must report its outcome here, or the guard below has nothing to go on.
+ * Pass the enrichment the providers returned, or `null`/`undefined` when the
+ * fetch produced nothing at all. Every fallback fetch must report its outcome
+ * here, or the guard below has nothing to go on.
+ *
+ * The distinction between those two cases is the whole point of taking the
+ * enrichment rather than a bare number. `enrichToken` returns null when nobody
+ * answered — GMGN inside its 90s `RATE_LIMIT_BANNED` cooldown, the DexScreener
+ * circuit breaker open, a timeout, a 5xx — which says nothing whatsoever about
+ * whether the token has a price. Arming a 30-minute negative guard on that
+ * turns a few seconds of provider trouble into half an hour of deliberately
+ * blank MC@call for the address, across every later mention, and the busier the
+ * feed the more often it fires. Only a provider that answered and had no FDV to
+ * give is evidence the address is unpriceable.
  */
-export function recordFallbackFdv(address: string, fdvAtCall?: number, now = Date.now()): void {
+export function recordFallbackFdv(
+  address: string,
+  result: { fdvAtCall?: number } | null | undefined,
+  now = Date.now(),
+): void {
+  // Nobody answered: no evidence either way, so leave the guard untouched and
+  // let the next mention try again.
+  if (result == null) return;
   const key = normalizeContractAddress(address);
-  if (fdvAtCall != null) {
+  if (result.fdvAtCall != null) {
     fdvUnavailableUntil.delete(key);
     return;
   }
