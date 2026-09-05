@@ -209,6 +209,28 @@ describe('evaluateMcapGates', () => {
     expect(evaluateMcapGates(input({ network: 'bsc', security: sec })).decision).toBe('pass');
   });
 
+  it('flags a null honeypot flag as a caveat so the card cannot imply it passed', () => {
+    // The pass above is deliberate; presenting it as a clean 'Scam-filtered'
+    // result is not. The caveat is what lets delivery stay permissive and
+    // honest at the same time.
+    const sec = normalizeSecurity({ ...BSC_HEALTHY, is_honeypot: null }, 'bsc');
+    expect(evaluateMcapGates(input({ network: 'bsc', security: sec })).caveats).toEqual([
+      'honeypotUnknown',
+    ]);
+  });
+
+  it('adds no honeypot caveat when the flag was actually evaluated', () => {
+    const sec = normalizeSecurity({ ...BSC_HEALTHY, is_honeypot: false }, 'bsc');
+    expect(evaluateMcapGates(input({ network: 'bsc', security: sec })).caveats).toEqual([]);
+  });
+
+  it('adds no honeypot caveat on Solana, where the flag is meaningless', () => {
+    // normalizeSecurity nulls `honeypot` on Solana by design, so a naive
+    // null-check would caveat every Solana alert forever.
+    const sec = normalizeSecurity(SOL_HEALTHY, 'solana');
+    expect(evaluateMcapGates(input({ network: 'solana', security: sec })).caveats).toEqual([]);
+  });
+
   it('rejects an LP that GMGN says is neither burned nor locked', () => {
     const sec = normalizeSecurity(
       { ...SOL_HEALTHY, burn_status: 'none', burn_ratio: '0', lock_summary: { is_locked: false } },
