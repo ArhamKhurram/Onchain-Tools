@@ -92,7 +92,38 @@ class ContractLog {
     return this.entries.some((e) => normalizeContractAddress(e.address) === key);
   }
 
+  /**
+   * The entry this exact call already produced, or null.
+   *
+   * `(messageId, address)` identifies one call — one ingested message
+   * mentioning one address. Telegram message ids are `tg_<chatId>_<id>`, so the
+   * pair is unambiguous across chats without a user dimension (local mode is
+   * single-user by construction).
+   *
+   * Bounded by MAX_ENTRIES like every other read here: a re-delivery arriving
+   * after the original has rolled off the retained log is logged again. On a
+   * 2000-row local log that is hours of feed, far past the measured duplicate
+   * tail (max ~2.9h, p99 ~2.1h in production), and the alternative — a
+   * side index that outlives the log it guards — is not worth the drift.
+   */
+  private findLoggedCall(messageId: string, address: string): ContractEntry | null {
+    const key = normalizeContractAddress(address);
+    return (
+      this.entries.find(
+        (e) => e.messageId === messageId && normalizeContractAddress(e.address) === key,
+      ) ?? null
+    );
+  }
+
   logContract(entry: ContractEntry): ContractEntry {
+    // One call = one entry. The hosted path carries the full explanation (see
+    // ContractsRepo.logContract): the Telegram update stream re-delivers a
+    // message after a reconnect or an update-gap recovery, minutes to hours
+    // later, and an unconditional append turned one call into up to 16 rows —
+    // inflating the call counts the caller/radar bands are computed over.
+    const existing = this.findLoggedCall(entry.messageId, entry.address);
+    if (existing) return existing;
+
     entry.firstSeen = !this.hasAddress(entry.address);
     this.entries.unshift(entry);
     if (this.entries.length > MAX_ENTRIES) {

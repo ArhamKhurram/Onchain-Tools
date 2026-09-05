@@ -42,9 +42,12 @@ function makeClient(opts: { columnsMissing: boolean }) {
     private op: 'select' | 'insert' | 'update' = 'select';
     private payload?: Record<string, unknown>;
     private head = false;
+    private columns = '';
+    private filters: string[] = [];
 
-    select(_cols?: string, options?: { head?: boolean }) {
+    select(cols?: string, options?: { head?: boolean }) {
       if (options?.head) this.head = true;
+      this.columns = cols ?? '';
       return this;
     }
     insert(row: Record<string, unknown>) {
@@ -57,7 +60,7 @@ function makeClient(opts: { columnsMissing: boolean }) {
       this.payload = row;
       return this;
     }
-    eq() { return this; }
+    eq(col?: string) { if (col) this.filters.push(col); return this; }
     ilike() { return this; }
     is() { return this; }
     gte() { return this; }
@@ -81,6 +84,12 @@ function makeClient(opts: { columnsMissing: boolean }) {
         return { data: { ...EXISTING_ROW, ...this.payload }, error: null };
       }
       if (this.head) return { data: null, error: null, count: 0 };
+      // The duplicate-call guard in logContract: a column-scoped select keyed
+      // on message_id. These entries are new calls, so it finds nothing.
+      // (enrichContract also filters on message_id, but selects '*'.)
+      if (this.columns !== '*' && this.filters.includes('message_id')) {
+        return { data: [], error: null };
+      }
       return { data: [EXISTING_ROW], error: null };
     }
 
