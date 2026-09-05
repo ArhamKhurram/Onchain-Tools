@@ -4,6 +4,32 @@ All notable changes to Onchain Tools are documented here. Entries before the
 rename still say "Trenchcord" — that was the product's name at the time, and
 they're left as the record of what shipped.
 
+## 2026-09-05
+
+### Added
+- **Market-cap crossing alerts, chain-wide** — OCT now watches every token it has seen, not just the ones you armed by hand, and pings you the first time one crosses **$750K market cap**. That band is where a coin stops being noise and starts being a position, and it used to be the moment you found out about a day later by scrolling back. It fires once per token on the way up, and it is scam-gated: a token has to clear the same honesty checks the rest of the console uses before it can ping you, so a freshly-minted honeypot printing a fake market cap doesn't get to interrupt you. Your own hand-set price alerts are unchanged and still fire independently.
+
+### Fixed
+- **MC@call stops coming up blank** — a chunk of contract rows showed no market cap at call, so the number you judge a caller by simply wasn't there. Two causes, both fixed. When a Telegram message arrived more than once (a reconnect replays it), the call became several rows and only one of them ever got priced — the market cap is now written to every row of the same call, so a repeat delivery can't leave a blank behind. And when the market-cap provider answered without a price, OCT treated that as "this token has no market cap" and stopped asking for half an hour; it now tells the difference between *no price exists* and *nobody answered* — a rate limit or a timeout no longer silences a token — and falls back to a second provider for freshly-launched coins the first one hasn't indexed yet.
+  - This fixes new calls going forward. Rows that were already blank stay blank: reconstructing a market cap after the fact means guessing what it was at a moment that has passed, and a made-up MC@call is worse than an honest gap.
+
+## 2026-09-04
+
+### Added
+- **The console got a proper design pass** — every screen has been rebuilt on one shared set of type, spacing and colour rules. Text is bigger and reads at a glance instead of squinting distance, rows are tighter so more of the thing you came for fits on screen, and status colour now means the same thing everywhere: the same green is the same green on the feed, the portfolio and the radar. Motion is limited to chrome — panels and menus — so nothing animates underneath live data while you're reading it. This landed across the home screen, portfolio, callers, sniper, wallets, the FOMO surfaces, settings and the workspace.
+- **Three feed layouts, switchable in the feed** — the contract feed now ships as **three presets** with their own density, and a switcher sits in the feed itself rather than buried in settings. Pick the terminal-style status line if you want maximum rows per screen, or a roomier layout if you read by scanning. Your choice sticks.
+- **A first-run checklist** — a fresh install used to open on a screen full of empty panels with no indication of what to do first, which looked identical to something being broken. Every empty surface now says what it will show once it has data and points at the one setting that fills it, and a first-run checklist walks the actual path: connect a source, pick your rooms, arm your alerts.
+- **Candlestick charts on pump.fun tokens** — the token panel now draws a real candlestick chart instead of sending you elsewhere to see price action. It loads only when you open a token, so it costs nothing on the rest of the feed.
+- **Peak multiple on callouts** — callout rows now carry the same "called at X, ran to Y" multiple the contract feed shows, so a caller's track record reads the same way wherever you meet it.
+
+## 2026-09-03
+
+### Added
+- **A Telegram bot — OCT alerts in your group, without handing over credentials** — you can now get OCT's alerts in a Telegram group without connecting a Telegram account to OCT at all. Add the bot, opt the group in, and revival, breakout and price alerts land there. Nothing is on by default: every alert class is opt-in per group, digests are opt-in separately, and the bot fails closed — if it can't confirm a group opted in, it stays quiet rather than guessing. There's a hard ceiling on how much it will ever post in a window and a breaker that trips if something upstream starts flooding, so a runaway signal can't turn your group into a firehose.
+
+### Changed
+- **CI runs meaningfully faster** — the typecheck and build phases now run all workspaces concurrently instead of one after another. No behaviour change; releases just land sooner.
+
 ## 2026-08-29
 
 ### Added
