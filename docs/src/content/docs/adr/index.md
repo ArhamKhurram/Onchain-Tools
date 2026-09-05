@@ -29,3 +29,4 @@ editing history.
 | [010](../010-event-driven-announce/) | Changelog announcements are event-driven, not scheduled |
 | [011](../011-sniper-custody/) | The sniper never holds a wallet key |
 | [012](../012-venue-tenancy/) | Users bring their own venue accounts (multi-tenant) |
+| [013](../013-candles-library/) | Candlestick charts use `lightweight-charts`, lazy-loaded |

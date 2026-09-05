@@ -75,11 +75,6 @@ export function claimRescanRefresh(address: string, now = Date.now()): boolean {
   return true;
 }
 
-/** Test seam. */
-export function resetRescanRefreshState(): void {
-  lastRefreshAt.clear();
-}
-
 function inferChain(target: PeakRefreshTarget): 'evm' | 'sol' {
   return target.chain ?? (target.address.startsWith('0x') ? 'evm' : 'sol');
 }

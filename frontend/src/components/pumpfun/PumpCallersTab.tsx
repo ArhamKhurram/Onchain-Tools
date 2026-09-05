@@ -19,6 +19,10 @@ import { usePumpConnection } from '../../hooks/usePumpConnection';
 import { usePumpLeaderboard } from '../../hooks/usePumpLeaderboard';
 import { useAuthSession } from '../../hooks/useAuthSession';
 import { useTrackedWallets } from '../../hooks/useTrackedWallets';
+import { useDroppedRoster } from '../../hooks/useDroppedRoster';
+import { isDropped } from '../../lib/droppedRoster';
+import NotLiveBadge from '../common/NotLiveBadge';
+import DroppedRosterNotice from './DroppedRosterNotice';
 import type { TrackedWalletInsert } from '../../types/wallets';
 
 const SOLSCAN_ACCOUNT = 'https://solscan.io/account/';
@@ -87,6 +91,9 @@ export default function PumpCallersTab({ onGoToFeed }: { onGoToFeed?: () => void
   } = usePumpCallers();
   const { summary } = usePumpConnection();
   const connected = summary.state === 'connected';
+  // Followed callers j7 has no upstream slot for (the 50-per-account cap).
+  // Following succeeds regardless; this is what tells the user the pick is dark.
+  const { dropped } = useDroppedRoster();
   const board = usePumpLeaderboard(connected);
 
   // On-chain tracked-wallet Directory (user_tracked_wallets). Hosted-only, like
@@ -115,18 +122,16 @@ export default function PumpCallersTab({ onGoToFeed }: { onGoToFeed?: () => void
 
   // Add a single caller's wallet to the Directory. Idempotent: a unique-violation
   // (already present) is swallowed so the row simply flips to "Tracked".
-  const trackOnChain = async (address: string, username: string | null): Promise<string | null> => {
-    if (trackedSolAddresses.has(address)) return null;
+  const trackOnChain = async (address: string, username: string | null): Promise<void> => {
+    if (trackedSolAddresses.has(address)) return;
     setTrackError(null);
     setTrackBusy(true);
     try {
       await createWallet(callerWalletInsert(address, username));
-      return null;
     } catch (err) {
-      if (isDuplicateWallet(err)) return null;
+      if (isDuplicateWallet(err)) return;
       const msg = (err as Error)?.message ?? 'Failed to add wallet to Directory.';
       setTrackError(msg);
-      return msg;
     } finally {
       setTrackBusy(false);
     }
@@ -401,6 +406,12 @@ export default function PumpCallersTab({ onGoToFeed }: { onGoToFeed?: () => void
           caller&apos;s wallet to your Directory so you can watch it on-chain.
         </p>
         {trackError && <p className="mb-2 text-sm text-oct-flame">{trackError}</p>}
+        <DroppedRosterNotice
+          dropped={dropped}
+          tracker="pump"
+          items={callers.map((c) => ({ key: c.callerAddress, label: c.username ? `@${c.username}` : null }))}
+          className="mb-comfy"
+        />
         {loading ? (
           <div className="flex items-center justify-center py-10">
             <div className="w-6 h-6 border-2 border-oct-accent border-t-transparent rounded-full animate-spin" />
@@ -431,8 +442,11 @@ export default function PumpCallersTab({ onGoToFeed }: { onGoToFeed?: () => void
                   <span className="h-9 w-9 rounded-full bg-oct-surface-raised shrink-0" />
                 )}
                 <div className="min-w-0 flex-1">
-                  <div className="font-bold text-oct-text truncate">
-                    {c.username ? `@${c.username}` : shortAddress(c.callerAddress)}
+                  <div className="flex items-center gap-snug min-w-0">
+                    <span className="font-bold text-oct-text truncate">
+                      {c.username ? `@${c.username}` : shortAddress(c.callerAddress)}
+                    </span>
+                    {isDropped(dropped, 'pump', c.callerAddress) && <NotLiveBadge tracker="pump" />}
                   </div>
                   <a
                     href={`${SOLSCAN_ACCOUNT}${c.callerAddress}`}

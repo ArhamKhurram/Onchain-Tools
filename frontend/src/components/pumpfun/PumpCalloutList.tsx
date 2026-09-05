@@ -3,6 +3,7 @@ import { SortHeader } from '../common/SortHeader';
 import { useSort } from '../../hooks/useSort';
 import { sortRows, type SortColumn } from '../../lib/sort';
 import { formatMcap, formatMultiplier, truncateAddress, type PumpCallout } from '../../types/pumpfun';
+import PeakMultiple from './PeakMultiple';
 
 const TH = 'px-3 py-2 font-medium';
 
@@ -138,7 +139,9 @@ export default function PumpCalloutList({
               <td className={`px-3 py-2.5 font-mono text-[13px] font-semibold text-right tabular-nums ${multiplierClass(c.multiplier)}`}>
                 {formatMultiplier(c.multiplier)}
               </td>
-              <td className="px-3 py-2.5 font-mono text-[13px] text-oct-muted text-right tabular-nums">{formatMultiplier(c.maxMultiplier)}</td>
+              <td className="px-3 py-2.5 text-[13px] text-right">
+                <PeakMultiple value={c.maxMultiplier} at={c.maxMultiplierAt} />
+              </td>
               <td className="px-3 py-2.5 font-mono text-xs text-oct-muted text-right whitespace-nowrap">
                 {c.createdAt ? new Date(c.createdAt).toLocaleDateString() : '—'}
               </td>

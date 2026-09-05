@@ -18,8 +18,6 @@ function isTextChannel(type: number): boolean {
   return TEXT_CHANNEL_TYPES.has(type);
 }
 
-export type { GatewayAuthFailure };
-
 export class BrowserDiscordGateway extends EventEmitter {
   private ws: WebSocket | null = null;
   private token: string;
@@ -34,9 +32,6 @@ export class BrowserDiscordGateway extends EventEmitter {
   private channelNameMap: Map<string, string> = new Map();
   private roleNameMap: Map<string, string> = new Map();
   private roleDataMap: Map<string, { name: string; color: number; position: number }> = new Map();
-  private selfUserId: string | null = null;
-  private selfGuildRoles: Map<string, { roleIds: Set<string>; fetchedAt: number }> = new Map();
-  private static readonly SELF_ROLES_TTL_MS = 10 * 60 * 1000;
   private reconnectAttempts = 0;
   private maxReconnectAttempts = 30;
   private stopped = false;
@@ -144,7 +139,6 @@ export class BrowserDiscordGateway extends EventEmitter {
         this.sessionId = data.session_id;
         this.resumeGatewayUrl = data.resume_gateway_url;
         this.reconnectAttempts = 0;
-        this.selfUserId = data.user?.id ?? null;
         console.log(`[Gateway] Ready as ${data.user.username}#${data.user.discriminator}`);
 
         for (const guild of data.guilds ?? []) {
@@ -508,35 +502,6 @@ export class BrowserDiscordGateway extends EventEmitter {
     }
     if (!best) return null;
     return `#${best.color.toString(16).padStart(6, '0')}`;
-  }
-
-  getSelfUserId(): string | null {
-    return this.selfUserId;
-  }
-
-  async getSelfRoleIds(guildId: string): Promise<Set<string>> {
-    const cached = this.selfGuildRoles.get(guildId);
-    if (cached && Date.now() - cached.fetchedAt < BrowserDiscordGateway.SELF_ROLES_TTL_MS) {
-      return cached.roleIds;
-    }
-    try {
-      const res = await fetch(`${REST_BASE}/users/@me/guilds/${guildId}/member`, {
-        headers: { Authorization: this.token },
-      });
-      if (!res.ok) {
-        const empty = cached?.roleIds ?? new Set<string>();
-        this.selfGuildRoles.set(guildId, { roleIds: empty, fetchedAt: Date.now() });
-        return empty;
-      }
-      const member = await res.json();
-      const roleIds = new Set<string>(Array.isArray(member.roles) ? member.roles : []);
-      this.selfGuildRoles.set(guildId, { roleIds, fetchedAt: Date.now() });
-      return roleIds;
-    } catch {
-      const empty = cached?.roleIds ?? new Set<string>();
-      this.selfGuildRoles.set(guildId, { roleIds: empty, fetchedAt: Date.now() });
-      return empty;
-    }
   }
 
   async sendChannelMessage(

@@ -1,3 +1,5 @@
+import plugin from 'tailwindcss/plugin';
+
 /** @type {import('tailwindcss').Config} */
 export default {
   content: ['./index.html', './src/**/*.{js,ts,jsx,tsx}'],
@@ -28,6 +30,20 @@ export default {
           'accent-dim': 'rgb(var(--oct-accent-dim))',
           live: 'rgb(var(--oct-live) / <alpha-value>)',
           'live-dim': 'rgb(var(--oct-live-dim))',
+          // Semantic status tokens. Kept SEPARATE from the accent on purpose:
+          // in the dark theme the accent is itself a red, so `text-oct-accent`
+          // on a failure state and on a brand link are indistinguishable.
+          // Reach for these when the colour carries MEANING (profit, caution,
+          // failure) and for the accent only when it carries BRAND.
+          // `green`/`yellow` below are the legacy hue-named aliases — same
+          // values, resolved through the same vars, kept for existing call
+          // sites. New work should use good/warn/critical.
+          good: 'rgb(var(--oct-good) / <alpha-value>)',
+          warn: 'rgb(var(--oct-warn) / <alpha-value>)',
+          critical: 'rgb(var(--oct-critical) / <alpha-value>)',
+          'good-dim': 'rgb(var(--oct-good-dim))',
+          'warn-dim': 'rgb(var(--oct-warn-dim))',
+          'critical-dim': 'rgb(var(--oct-critical-dim))',
           green: 'rgb(var(--oct-green) / <alpha-value>)',
           yellow: 'rgb(var(--oct-yellow) / <alpha-value>)',
           telegram: 'rgb(var(--oct-telegram) / <alpha-value>)',
@@ -100,6 +116,36 @@ export default {
         mono: ['"JetBrains Mono"', 'ui-monospace', 'monospace'],
         discord: ['"Space Grotesk"', 'system-ui', 'sans-serif'],
       },
+      // Density scale — NAMED spacing roles layered on top of Tailwind's numeric
+      // ramp, backed by the `--oct-space-*` vars in index.css.
+      //
+      // This deliberately EXTENDS rather than replaces `spacing`. Redefining the
+      // numeric scale would move every existing `p-4`/`gap-2` in the app at once
+      // — the same lever the fontSize block above pulls on purpose for type, and
+      // exactly the wrong one for layout, where the blast radius is every screen
+      // rather than one legible ramp. So `p-4` still means 16px; `p-roomy` also
+      // means 16px, and is the token you reach for in new work.
+      //
+      // Reading them as roles rather than numbers is the point: a dense table row
+      // is `py-snug` because it is dense, not because someone picked 1.5.
+      spacing: {
+        hair: 'var(--oct-space-hair)', // 2px
+        tight: 'var(--oct-space-tight)', // 4px
+        snug: 'var(--oct-space-snug)', // 6px
+        cozy: 'var(--oct-space-cozy)', // 8px
+        comfy: 'var(--oct-space-comfy)', // 12px
+        roomy: 'var(--oct-space-roomy)', // 16px
+        section: 'var(--oct-space-section)', // 24px
+        gutter: 'var(--oct-space-gutter)', // 32px
+      },
+      // Motion durations, shared with lib/motion.ts so CSS transitions and
+      // Motion tweens stay on one clock (`duration-fast`, `duration-base`, …).
+      transitionDuration: {
+        instant: 'var(--oct-duration-instant)',
+        fast: 'var(--oct-duration-fast)',
+        base: 'var(--oct-duration-base)',
+        slow: 'var(--oct-duration-slow)',
+      },
       borderRadius: {
         cockpit: '0px',
         // Premium terminal radii — refined, not fully rounded.
@@ -138,5 +184,85 @@ export default {
       },
     },
   },
-  plugins: [],
+  plugins: [
+    // ── Semantic type roles ──────────────────────────────────────────────────
+    // The `fontSize` block above fixes the SIZES; this fixes the VOCABULARY.
+    // `text-sm` says how big something is, not what it is, so every new surface
+    // re-derives "what size is a card title?" from scratch. These name the role
+    // instead: `type-title`, `type-body`, `type-data`.
+    //
+    // Three properties make them worth having over raw `text-*`:
+    //
+    //  1. They read their sizes back out of `theme.fontSize`, so the roles can
+    //     never drift from the ramp. Retune `sm` once and every `type-body` in
+    //     the app follows — which is exactly the failure mode the hand-written
+    //     px values in index.css warn about ("If you change the scale, change
+    //     these").
+    //  2. They carry weight and family too, not just size, so a label is one
+    //     class rather than `text-xs font-semibold tracking-wide`.
+    //  3. They are registered as COMPONENTS, not utilities. That puts them in an
+    //     earlier cascade layer, so a one-off `text-lg` on the same element still
+    //     wins. The `.oct-*` type helpers in index.css sit in the utilities layer
+    //     and therefore BEAT `text-*` — the documented cause of eight modal
+    //     headers rendering a 14px title above 15px body copy.
+    //
+    // Relationship to the `.oct-*` type helpers: those stay exactly as they are.
+    // They are load-bearing across screens and flipping their cascade position
+    // would be a silent restyle of surfaces this pass is not touching. `type-*`
+    // is the vocabulary for new and migrated work; the two converge when the
+    // last `.oct-label` call site is gone.
+    //
+    // Family is left to inherit on everything except the data roles, so a
+    // headline can opt into Fraunces with `.font-display` without fighting it.
+    plugin(({ addComponents, theme }) => {
+      const fontSize = theme('fontSize');
+      // theme() hands font stacks back as an array in some Tailwind versions and
+      // as an already-joined string in others; normalise rather than assume.
+      const monoStack = theme('fontFamily.mono');
+      const mono = Array.isArray(monoStack) ? monoStack.join(', ') : monoStack;
+
+      /** Flatten a [size, { lineHeight, letterSpacing }] scale entry into CSS. */
+      const step = (key, extra) => {
+        const [size, mods = {}] = fontSize[key];
+        return { fontSize: size, ...mods, ...extra };
+      };
+
+      addComponents({
+        /* Page + hero titles. Pair with `.font-display` for the serif treatment. */
+        '.type-display': step('3xl', { fontWeight: '700' }),
+        /* Top-level section headings within a page. */
+        '.type-heading': step('xl', { fontWeight: '700' }),
+        /* Card, panel and modal titles. */
+        '.type-title': step('base', { fontWeight: '700' }),
+        /* Default body copy — the console's baseline. */
+        '.type-body': step('sm', { fontWeight: '400' }),
+        /* Form and inline labels. */
+        '.type-label': step('xs', { fontWeight: '600' }),
+        /* Secondary/annotation copy. 12px is the floor; nothing goes below it. */
+        '.type-caption': step('2xs', { fontWeight: '500' }),
+
+        // The numeric roles. `tabular-nums` is the whole point: proportional
+        // digits make a column of market caps ragged because a 1 is narrower
+        // than a 0, so values stop being scannable down the column. `slashed-
+        // zero` disambiguates 0/O in addresses and tickers. Both belong to the
+        // token, not to the call site — a mint address or a PnL figure wants
+        // them every time it is rendered.
+        //
+        // For migrating an existing cell that already has its own `text-*`,
+        // Tailwind's core `tabular-nums` utility is the one-class fix.
+        /* Mono data: prices, market caps, multiples, addresses, timestamps. */
+        '.type-data': step('xs', {
+          fontFamily: mono,
+          fontWeight: '500',
+          fontVariantNumeric: 'tabular-nums slashed-zero',
+        }),
+        /* Headline numbers in stat tiles and summary rows. */
+        '.type-metric': step('2xl', {
+          fontWeight: '700',
+          fontVariantNumeric: 'tabular-nums',
+          lineHeight: '1.1',
+        }),
+      });
+    }),
+  ],
 };

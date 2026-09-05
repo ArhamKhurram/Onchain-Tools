@@ -356,7 +356,7 @@ export function foldCallerCalls(
 
     const callerKey = contractCallerKey(entry);
     const addr = entry.address.toLowerCase();
-    const pairKey = `${callerKey} ${addr}`;
+    const pairKey = `${callerKey}\u0000${addr}`;
     const at = new Date(entry.timestamp).getTime();
     const prior = byPair.get(pairKey);
 

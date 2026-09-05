@@ -9,48 +9,6 @@ export interface FomoUser {
   name?: string;
 }
 
-export interface FomoHolder {
-  user: FomoUser;
-  value: number;
-  pnl: number;
-  unrealizedPnl: number;
-  realizedPnl: number;
-  humanAmount?: number;
-  address?: string;
-}
-
-export interface FomoHodlersTokenEntry {
-  tokenAddress: string;
-  networkId: number;
-  topHolders: FomoHolder[];
-  totalHolders: number;
-}
-
-export interface FomoHodlersResponse {
-  success: boolean;
-  responseObject: FomoHodlersTokenEntry[];
-}
-
-export interface FomoTokenDetails {
-  name?: string | null;
-  ticker?: string | null;
-  tokenAddress: string;
-  networkId: number;
-  iconLink?: string | null;
-  [key: string]: any;
-}
-
-export interface FomoAllowListItem {
-  name: string | null;
-  ticker: string;
-  tokenAddress: string;
-  networkId: number;
-  createdAt: string;
-  isLowFees: boolean;
-  categories: string[];
-  notes: string;
-}
-
 export interface FomoThesisEntry {
   user?: FomoUser;
   comment?: string;
@@ -92,18 +50,6 @@ export const EXPLORER_BASE: Record<number, string> = {
   [1399811149]: 'https://solscan.io/token/',
 };
 
-export interface FomoTokenMetadata {
-  ticker?: string | null;
-  name?: string | null;
-  iconLink?: string | null;
-  marketCap?: number | null;
-  price?: number | null;
-  description?: string | null;
-  twitter?: string | null;
-  telegram?: string | null;
-  website?: string | null;
-}
-
 /**
  * Everything needed to authenticate against FOMO via Privy and to survive
  * Cloudflare's cold-start bot checks. Only `refreshToken` is strictly required;
@@ -138,15 +84,12 @@ export interface FomoClientLike {
   init(): Promise<void>;
   close(): Promise<void>;
   call<T = any>(path: string, opts?: { method?: string; body?: string | null }): Promise<FomoCallResult<T>>;
-  getTradingActivity(limit?: number): Promise<FomoCallResult>;
   getLeaderboard(limit?: number, window?: '24h'): Promise<FomoCallResult>;
   getUserByHandle(userHandle: string): Promise<FomoCallResult>;
   searchUsers(searchTerm: string): Promise<FomoCallResult>;
-  getTopHolders(tokenAddress: string, networkId: number): Promise<FomoCallResult>;
   getTokenTheses(tokenAddress: string, networkId: number, threshold?: number): Promise<FomoCallResult>;
   getUserBalances(userId: string): Promise<FomoCallResult>;
   getUserActivity(userId: string, limit?: number): Promise<FomoCallResult>;
-  getTokenAllowList(): Promise<FomoCallResult>;
   setRefreshToken?(token: string): void;
   onRefreshTokenRotated?: (newRefreshToken: string) => Promise<void> | void;
 }

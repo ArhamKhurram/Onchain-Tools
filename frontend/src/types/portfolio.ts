@@ -116,7 +116,6 @@ export type DailyPnlResponse = {
 export type PortfolioApiError = {
   ok?: false;
   error: string;
-  needsPrivateKey?: boolean;
   gmgnConfigured?: boolean;
   birdeyeConfigured?: boolean;
   provider?: string;

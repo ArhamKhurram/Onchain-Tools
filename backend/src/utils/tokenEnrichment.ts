@@ -2,17 +2,10 @@
  * DexScreener fallback when no Rick embed arrives for a contract.
  */
 
+import { formatCompact } from '@oct/shared';
 import type { TokenEnrichment } from './rickEmbedParser.js';
-import { parseCompactUsd } from './rickEmbedParser.js';
 import { enrichFromGmgn, resolveGmgnChain } from './gmgnEnrichment.js';
 import { dexScreenerBreaker } from './circuitBreaker.js';
-
-function formatCompact(n: number): string {
-  if (n >= 1e9) return `${(n / 1e9).toFixed(1)}B`;
-  if (n >= 1e6) return `${(n / 1e6).toFixed(1)}M`;
-  if (n >= 1e3) return `${(n / 1e3).toFixed(1)}K`;
-  return n.toFixed(0);
-}
 
 const CHAIN_MAP: Record<string, string> = {
   ethereum: 'eth',
@@ -125,6 +118,3 @@ export async function fetchLiveMarketCap(
     priceUsd: enriched.priceUsd,
   };
 }
-
-// silence unused if tree-shaken oddly
-void parseCompactUsd;

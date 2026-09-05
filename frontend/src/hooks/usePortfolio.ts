@@ -35,7 +35,6 @@ async function portfolioFetch<T>(path: string): Promise<{ ok: true; data: T } | 
     return {
       ok: false,
       error: body.error ?? `Request failed (${res.status})`,
-      needsPrivateKey: body.needsPrivateKey,
       gmgnConfigured: body.gmgnConfigured,
       birdeyeConfigured: body.birdeyeConfigured,
     };
@@ -208,7 +207,6 @@ export function usePortfolio(
     statsError,
     holdingsError,
     activityError,
-    birdeyeMissing,
     portfolioApiMissing: birdeyeMissing,
     totalHoldingsUsd,
     isAllWallets,

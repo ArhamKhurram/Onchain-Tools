@@ -12,8 +12,8 @@ import {
 /**
  * The threshold→emoji ladder editor, shown inside RadarSettings.
  *
- * Kept out of both RadarTable and RadarSettings because RadarTable is already
- * an oversized refactor target and this is self-contained: a draft list, a
+ * Kept out of both RadarTable and RadarSettings because RadarTable was already
+ * large and this is self-contained: a draft list, a
  * sanitiser on the way out, and one `onChange` per committed edit.
  *
  * Edits commit on blur (and immediately on add / remove / reset) rather than
@@ -99,8 +99,8 @@ export default function RadarEmojiRules({
 
   return (
     <div>
-      <p className="oct-eyebrow mb-1.5">Multiple markers</p>
-      <p className="text-[11px] leading-snug text-oct-muted mb-2">
+      <p className="oct-eyebrow mb-snug">Multiple markers</p>
+      <p className="type-caption font-normal leading-snug text-oct-muted mb-cozy">
         A marker beside the × once a token reaches that multiple.{' '}
         <span className="text-oct-text">Only the highest rule that matches shows</span> — at 6x
         with the defaults you get 🔥, not 🧊🔥. Paste any emoji. The × is live market cap
@@ -109,13 +109,13 @@ export default function RadarEmojiRules({
       </p>
 
       {sorted.length === 0 ? (
-        <p className="text-[11px] text-oct-muted italic mb-2">
+        <p className="type-caption font-normal text-oct-muted italic mb-cozy">
           No markers — the × column shows the number only.
         </p>
       ) : (
-        <ul className="space-y-1 mb-2">
+        <ul className="space-y-tight mb-cozy">
           {sorted.map((r) => (
-            <li key={r.id} className="flex items-center gap-1.5">
+            <li key={r.id} className="flex items-center gap-snug">
               <input
                 type="number"
                 min={1.1}
@@ -124,9 +124,9 @@ export default function RadarEmojiRules({
                 onChange={(e) => patch(r.id, 'threshold', e.target.value)}
                 onBlur={() => commit(draft)}
                 aria-label="Multiple threshold"
-                className="w-16 px-1.5 py-1 rounded-oct-sm border border-oct-border bg-oct-surface font-mono text-[12px] text-oct-text tabular-nums"
+                className="w-16 px-snug py-tight rounded-oct-sm border border-oct-border bg-oct-surface type-data text-oct-text"
               />
-              <span className="font-mono text-[11px] text-oct-muted">x and up</span>
+              <span className="font-mono text-2xs text-oct-muted">x and up</span>
               <input
                 type="text"
                 value={r.emoji}
@@ -135,12 +135,12 @@ export default function RadarEmojiRules({
                 onBlur={() => commit(draft)}
                 placeholder="🔥"
                 aria-label="Marker emoji"
-                className="w-10 ml-auto px-1.5 py-1 rounded-oct-sm border border-oct-border bg-oct-surface text-[13px] text-center text-oct-text"
+                className="w-10 ml-auto px-snug py-tight rounded-oct-sm border border-oct-border bg-oct-surface text-xs text-center text-oct-text"
               />
               <button
                 type="button"
                 onClick={() => remove(r.id)}
-                className="p-1 text-oct-muted hover:text-oct-flame shrink-0"
+                className="p-tight text-oct-muted hover:text-oct-critical shrink-0"
                 aria-label={`Remove the ${r.threshold}x marker`}
                 title="Remove this marker"
               >
@@ -151,12 +151,12 @@ export default function RadarEmojiRules({
         </ul>
       )}
 
-      <div className="flex items-center gap-2">
+      <div className="flex items-center gap-cozy">
         <button
           type="button"
           onClick={add}
           disabled={draft.length >= MAX_RADAR_EMOJI_RULES}
-          className="flex items-center gap-1 px-2 py-1 rounded-oct-sm border border-oct-border-bright text-[10px] font-mono uppercase text-oct-muted hover:text-oct-text hover:border-oct-text disabled:opacity-40 disabled:hover:text-oct-muted"
+          className="flex items-center gap-tight px-cozy py-tight rounded-oct-sm border border-oct-border-bright text-2xs font-mono uppercase text-oct-muted hover:text-oct-text hover:border-oct-text disabled:opacity-40 disabled:hover:text-oct-muted"
         >
           <Plus size={11} />
           add marker
@@ -164,7 +164,7 @@ export default function RadarEmojiRules({
         <button
           type="button"
           onClick={reset}
-          className="flex items-center gap-1 ml-auto text-[10px] font-mono uppercase text-oct-muted hover:text-oct-accent"
+          className="flex items-center gap-tight ml-auto text-2xs font-mono uppercase text-oct-muted hover:text-oct-accent"
           title="Back to 3x 🧊 / 5x 🔥"
         >
           <RotateCcw size={11} />

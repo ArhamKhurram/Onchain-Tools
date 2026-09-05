@@ -7,6 +7,14 @@
 // went with them. What's left is what /ping, /token, alerts and announcements
 // actually render — plus makeSection/makeThumbnail, which came back for the
 // pump.fun callout cards (a caller's avatar next to their headline).
+//
+// The three number/address formatters this file used to define (usd,
+// compactUsd, shortAddress) moved to @oct/shared when the Telegram bot landed
+// as a second transport over the same data: a market cap reads the same in an
+// embed and in a Telegram message, whereas everything else here is Discord
+// Components V2 and stays. They are re-exported below so no call site changed.
+
+export { usd, compactUsd, shortAddress } from '@oct/shared';
 
 export const BRAND = {
   red: 0xed4245,
@@ -70,28 +78,6 @@ export function quoteLines(text: string) {
     .split('\n')
     .map((line) => `> ${line}`)
     .join('\n');
-}
-
-// --- Formatting helpers ----------------------------------------------------
-
-/** `$1,234` — whole-dollar, comma-grouped. Backs compactUsd below the 1K mark. */
-export function usd(value: number): string {
-  return `$${value.toLocaleString(undefined, { maximumFractionDigits: 0 })}`;
-}
-
-/** `$1.2M` / `$980.5K` — compact market caps. */
-export function compactUsd(value: number): string {
-  const abs = Math.abs(value);
-  if (abs >= 1_000_000_000) return `$${(value / 1_000_000_000).toFixed(2)}B`;
-  if (abs >= 1_000_000) return `$${(value / 1_000_000).toFixed(2)}M`;
-  if (abs >= 1_000) return `$${(value / 1_000).toFixed(1)}K`;
-  return usd(value);
-}
-
-/** `7xK…pump` — short address for tight embed lines. */
-export function shortAddress(address: string): string {
-  if (address.length <= 10) return address;
-  return `${address.slice(0, 4)}..${address.slice(-4)}`;
 }
 
 /** A single-container error/notice card. */

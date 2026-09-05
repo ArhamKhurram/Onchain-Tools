@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { X } from 'lucide-react';
+import SniperModalShell, { SniperModalHeader } from './SniperModalShell';
 import { isSolAddress, type SniperWallet } from '../../types/sniper';
 import type { SniperWalletDraft } from '../../hooks/useSniperWallets';
 import { useVenueWallets } from '../../hooks/useVenueWallets';
@@ -16,8 +16,8 @@ const DEFAULTS: SniperWalletDraft = {
 };
 
 const FIELD =
-  'oct-input w-full px-3 py-2 text-sm font-mono disabled:opacity-60 disabled:cursor-not-allowed';
-const LABEL = 'block oct-label text-oct-muted mb-1.5 uppercase tracking-wide';
+  'oct-input w-full px-comfy py-cozy type-body font-mono disabled:opacity-60 disabled:cursor-not-allowed';
+const LABEL = 'block type-label text-oct-muted mb-snug uppercase tracking-wide';
 
 interface SniperWalletFormModalProps {
   open: boolean;
@@ -86,8 +86,6 @@ export default function SniperWalletFormModal({ open, mode, wallet, onClose, onS
     return () => window.removeEventListener('keydown', handleKey);
   }, [open, submitting, onClose]);
 
-  if (!open) return null;
-
   const set = <K extends keyof SniperWalletDraft>(key: K, val: SniperWalletDraft[K]) => {
     setValues((prev) => ({ ...prev, [key]: val }));
     setFieldError(null);
@@ -120,241 +118,228 @@ export default function SniperWalletFormModal({ open, mode, wallet, onClose, onS
   };
 
   return (
-    <div
-      className="fixed inset-0 z-[100] flex items-center justify-center bg-black/75 p-4"
-      onClick={() => !submitting && onClose()}
-    >
-      <div
-        className="w-full max-w-lg oct-card oct-card-flush shadow-oct-soft-lg overflow-hidden"
-        onClick={(e) => e.stopPropagation()}
-      >
-        <div className="oct-headerbar flex items-center justify-between px-5 py-4">
-          <h3 className="oct-section-title text-base uppercase">
-            {mode === 'add' ? 'Add sniper wallet' : 'Edit sniper wallet'}
-          </h3>
-          <button
-            type="button"
-            onClick={onClose}
-            disabled={submitting}
-            className="oct-icon-btn p-1.5 disabled:opacity-50"
-          >
-            <X size={18} />
-          </button>
+    <SniperModalShell open={open} onBackdropClick={() => !submitting && onClose()} className="max-w-lg">
+      <SniperModalHeader
+        title={mode === 'add' ? 'Add sniper wallet' : 'Edit sniper wallet'}
+        onClose={onClose}
+        disabled={submitting}
+      />
+
+      <form onSubmit={handleSubmit} className="px-roomy py-comfy space-y-roomy max-h-[70vh] overflow-y-auto">
+        <p className="type-body text-oct-muted leading-relaxed">
+          The venue holds this wallet and its keys — OCT holds nothing for it. The address below is the venue-side
+          pubkey a buy is placed from.
+        </p>
+
+        <div>
+          <label htmlFor="sniper-wallet-label" className={LABEL}>
+            Label
+          </label>
+          <input
+            ref={labelRef}
+            id="sniper-wallet-label"
+            type="text"
+            value={values.label}
+            onChange={(e) => set('label', e.target.value)}
+            placeholder="Slotshark main"
+            className={FIELD}
+          />
         </div>
 
-        <form onSubmit={handleSubmit} className="px-5 py-4 space-y-4 max-h-[70vh] overflow-y-auto">
-          <p className="text-xs text-oct-muted leading-relaxed">
-            The venue holds this wallet and its keys — OCT holds nothing for it. The address below is the venue-side
-            pubkey a buy is placed from.
-          </p>
+        <div>
+          <div className="flex items-baseline justify-between mb-snug">
+            <label htmlFor="sniper-wallet-address" className={`${LABEL} mb-0`}>
+              Venue wallet address
+            </label>
+            {mode === 'add' && (
+              <button
+                type="button"
+                onClick={() => {
+                  setPicking((p) => !p);
+                  if (venueWallets.wallets.length === 0) void venueWallets.load(values.venue);
+                }}
+                className="type-label font-mono uppercase tracking-wide text-oct-accent hover:underline disabled:opacity-50"
+                disabled={submitting}
+              >
+                {picking ? 'Cancel' : 'Import from Slotshark'}
+              </button>
+            )}
+          </div>
 
+          {picking && (
+            <div className="mb-cozy border border-oct-border rounded-oct bg-oct-bg divide-y divide-oct-border overflow-hidden">
+              {venueWallets.loading && <p className="px-comfy py-cozy type-body text-oct-muted">Loading…</p>}
+              {venueWallets.error && <p className="px-comfy py-cozy type-body text-oct-critical">{venueWallets.error}</p>}
+              {!venueWallets.loading && !venueWallets.error && venueWallets.wallets.length === 0 && (
+                <p className="px-comfy py-cozy type-body text-oct-muted">No wallets on the venue.</p>
+              )}
+              {venueWallets.wallets.map((w) => (
+                <button
+                  key={w.pubkey}
+                  type="button"
+                  disabled={w.imported}
+                  onClick={() => {
+                    setValues((v) => ({ ...v, address: w.pubkey, label: v.label || w.label }));
+                    setPicking(false);
+                  }}
+                  className="w-full text-left px-comfy py-cozy hover:bg-oct-surface-raised disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  <span className="type-body font-mono text-oct-text">{w.label || 'Unlabelled'}</span>
+                  <span className="block type-data font-normal text-oct-muted truncate">{w.pubkey}</span>
+                  <span className="block type-data font-normal text-oct-muted">
+                    {w.balanceSol === null ? 'balance unavailable' : `${w.balanceSol} SOL`}
+                    {' · '}
+                    {w.nonceCount < 0 ? 'task accounts unknown' : `${w.nonceCount} task accounts`}
+                    {!w.enabled && ' · DISABLED AT VENUE'}
+                    {w.imported && ' · already added'}
+                  </span>
+                </button>
+              ))}
+            </div>
+          )}
+
+          <input
+            id="sniper-wallet-address"
+            type="text"
+            value={values.address}
+            onChange={(e) => set('address', e.target.value)}
+            placeholder="Base58 address…"
+            className={FIELD}
+          />
+        </div>
+
+        <div className="grid grid-cols-2 gap-comfy">
           <div>
-            <label htmlFor="sniper-wallet-label" className={LABEL}>
-              Label
+            <label htmlFor="sniper-wallet-chain" className={LABEL}>
+              Chain {mode === 'edit' && <span className="normal-case text-oct-muted/70">(immutable)</span>}
+            </label>
+            {/* Chain and venue are immutable after creation: both key the
+                wallet's budget rows, so changing either would orphan today's
+                spend and silently reset it to zero. */}
+            <select
+              id="sniper-wallet-chain"
+              value={values.chain}
+              disabled={mode === 'edit'}
+              onChange={(e) => set('chain', e.target.value as SniperWalletDraft['chain'])}
+              className={FIELD}
+            >
+              <option value="sol">sol</option>
+            </select>
+          </div>
+          <div>
+            <label htmlFor="sniper-wallet-unit" className={LABEL}>
+              Unit
+            </label>
+            <select
+              id="sniper-wallet-unit"
+              value={values.unit}
+              onChange={(e) => set('unit', e.target.value as SniperWalletDraft['unit'])}
+              className={FIELD}
+            >
+              <option value="SOL">SOL</option>
+              <option value="USDC">USDC</option>
+            </select>
+          </div>
+        </div>
+
+        <div className="grid grid-cols-3 gap-comfy">
+          <div>
+            <label htmlFor="sniper-wallet-perfire" className={LABEL}>
+              Per-fire cap
             </label>
             <input
-              ref={labelRef}
-              id="sniper-wallet-label"
-              type="text"
-              value={values.label}
-              onChange={(e) => set('label', e.target.value)}
-              placeholder="Slotshark main"
+              id="sniper-wallet-perfire"
+              type="number"
+              step="any"
+              min="0"
+              value={values.perFireCap}
+              onChange={(e) => set('perFireCap', Number(e.target.value))}
               className={FIELD}
             />
           </div>
-
           <div>
-            <div className="flex items-baseline justify-between mb-1.5">
-              <label htmlFor="sniper-wallet-address" className={`${LABEL} mb-0`}>
-                Venue wallet address
-              </label>
-              {mode === 'add' && (
-                <button
-                  type="button"
-                  onClick={() => {
-                    setPicking((p) => !p);
-                    if (venueWallets.wallets.length === 0) void venueWallets.load(values.venue);
-                  }}
-                  className="text-xs font-mono uppercase tracking-wide text-oct-accent hover:underline disabled:opacity-50"
-                  disabled={submitting}
-                >
-                  {picking ? 'Cancel' : 'Import from Slotshark'}
-                </button>
-              )}
-            </div>
-
-            {picking && (
-              <div className="mb-2 border border-oct-border rounded-oct bg-oct-bg divide-y divide-oct-border overflow-hidden">
-                {venueWallets.loading && <p className="px-3 py-2 text-xs text-oct-muted">Loading…</p>}
-                {venueWallets.error && <p className="px-3 py-2 text-xs text-oct-flame">{venueWallets.error}</p>}
-                {!venueWallets.loading && !venueWallets.error && venueWallets.wallets.length === 0 && (
-                  <p className="px-3 py-2 text-xs text-oct-muted">No wallets on the venue.</p>
-                )}
-                {venueWallets.wallets.map((w) => (
-                  <button
-                    key={w.pubkey}
-                    type="button"
-                    disabled={w.imported}
-                    onClick={() => {
-                      setValues((v) => ({ ...v, address: w.pubkey, label: v.label || w.label }));
-                      setPicking(false);
-                    }}
-                    className="w-full text-left px-3 py-2 hover:bg-oct-surface-raised disabled:opacity-50 disabled:cursor-not-allowed"
-                  >
-                    <span className="font-mono text-sm text-oct-text">{w.label || 'Unlabelled'}</span>
-                    <span className="block font-mono text-[11px] text-oct-muted truncate">{w.pubkey}</span>
-                    <span className="block font-mono text-[11px] text-oct-muted">
-                      {w.balanceSol === null ? 'balance unavailable' : `${w.balanceSol} SOL`}
-                      {' · '}
-                      {w.nonceCount < 0 ? 'task accounts unknown' : `${w.nonceCount} task accounts`}
-                      {!w.enabled && ' · DISABLED AT VENUE'}
-                      {w.imported && ' · already added'}
-                    </span>
-                  </button>
-                ))}
-              </div>
-            )}
-
+            <label htmlFor="sniper-wallet-daily" className={LABEL}>
+              Daily cap
+            </label>
             <input
-              id="sniper-wallet-address"
-              type="text"
-              value={values.address}
-              onChange={(e) => set('address', e.target.value)}
-              placeholder="Base58 address…"
+              id="sniper-wallet-daily"
+              type="number"
+              step="any"
+              min="0"
+              value={values.dailyCap}
+              onChange={(e) => set('dailyCap', Number(e.target.value))}
               className={FIELD}
             />
           </div>
-
-          <div className="grid grid-cols-2 gap-3">
-            <div>
-              <label htmlFor="sniper-wallet-chain" className={LABEL}>
-                Chain {mode === 'edit' && <span className="normal-case text-oct-muted/70">(immutable)</span>}
-              </label>
-              {/* Chain and venue are immutable after creation: both key the
-                  wallet's budget rows, so changing either would orphan today's
-                  spend and silently reset it to zero. */}
-              <select
-                id="sniper-wallet-chain"
-                value={values.chain}
-                disabled={mode === 'edit'}
-                onChange={(e) => set('chain', e.target.value as SniperWalletDraft['chain'])}
-                className={FIELD}
-              >
-                <option value="sol">sol</option>
-              </select>
-            </div>
-            <div>
-              <label htmlFor="sniper-wallet-unit" className={LABEL}>
-                Unit
-              </label>
-              <select
-                id="sniper-wallet-unit"
-                value={values.unit}
-                onChange={(e) => set('unit', e.target.value as SniperWalletDraft['unit'])}
-                className={FIELD}
-              >
-                <option value="SOL">SOL</option>
-                <option value="USDC">USDC</option>
-              </select>
-            </div>
+          <div>
+            <label htmlFor="sniper-wallet-maxopen" className={LABEL}>
+              Max open
+            </label>
+            <input
+              id="sniper-wallet-maxopen"
+              type="number"
+              step="1"
+              min="1"
+              value={values.maxOpen}
+              onChange={(e) => set('maxOpen', Number(e.target.value))}
+              className={FIELD}
+            />
           </div>
+        </div>
 
-          <div className="grid grid-cols-3 gap-3">
-            <div>
-              <label htmlFor="sniper-wallet-perfire" className={LABEL}>
-                Per-fire cap
-              </label>
-              <input
-                id="sniper-wallet-perfire"
-                type="number"
-                step="any"
-                min="0"
-                value={values.perFireCap}
-                onChange={(e) => set('perFireCap', Number(e.target.value))}
-                className={FIELD}
-              />
-            </div>
-            <div>
-              <label htmlFor="sniper-wallet-daily" className={LABEL}>
-                Daily cap
-              </label>
-              <input
-                id="sniper-wallet-daily"
-                type="number"
-                step="any"
-                min="0"
-                value={values.dailyCap}
-                onChange={(e) => set('dailyCap', Number(e.target.value))}
-                className={FIELD}
-              />
-            </div>
-            <div>
-              <label htmlFor="sniper-wallet-maxopen" className={LABEL}>
-                Max open
-              </label>
-              <input
-                id="sniper-wallet-maxopen"
-                type="number"
-                step="1"
-                min="1"
-                value={values.maxOpen}
-                onChange={(e) => set('maxOpen', Number(e.target.value))}
-                className={FIELD}
-              />
-            </div>
-          </div>
-
-          {capacity !== null && (overCapacity || thinHeadroom) && (
-            <p className="text-xs text-oct-yellow leading-relaxed">
-              This wallet has <span className="font-mono">{capacity}</span> task accounts at Slotshark — a pool of{' '}
-              {capacity} transactions in flight at once, and{' '}
-              <span className="font-semibold">sells draw from it too</span>.
-              {overCapacity ? (
-                <>
-                  {' '}
-                  A max open of <span className="font-mono">{values.maxOpen}</span> can consume the whole pool, leaving
-                  an exit nothing to run on — and letting OCT authorize a buy the venue cannot execute, which times
-                  out, records as <span className="font-mono">unknown</span> and holds its reservation until you
-                  resolve it.
-                </>
-              ) : (
-                <>
-                  {' '}
-                  With <span className="font-mono">{values.maxOpen}</span> open, a moment where they all want out at
-                  once needs {values.maxOpen} more than the entries already used.
-                </>
-              )}{' '}
-              Failing to enter costs an opportunity; failing to exit costs the position. Lower this, or deploy more
-              task accounts at Slotshark.
-            </p>
-          )}
-
-          {/* The two directions are NOT symmetric, and saying so is the point:
-              a raise is deferred so it cannot re-authorise a fire today's budget
-              already refused, while a reduction binds immediately because it can
-              only refuse fires that have not happened yet. */}
-          <p className="text-[11px] text-oct-muted leading-relaxed">
-            Caps are snapshotted into each UTC day&rsquo;s budget row when that day&rsquo;s first fire happens.{' '}
-            <span className="text-oct-text font-medium">Lowering a cap applies immediately</span>, including to today&rsquo;s
-            row. Raising one does not — it takes effect tomorrow, or on a wallet that has not fired yet today.
+        {capacity !== null && (overCapacity || thinHeadroom) && (
+          <p className="type-body text-oct-warn leading-relaxed">
+            This wallet has <span className="type-data">{capacity}</span> task accounts at Slotshark — a pool of{' '}
+            {capacity} transactions in flight at once, and{' '}
+            <span className="font-semibold">sells draw from it too</span>.
+            {overCapacity ? (
+              <>
+                {' '}
+                A max open of <span className="type-data">{values.maxOpen}</span> can consume the whole pool, leaving
+                an exit nothing to run on — and letting OCT authorize a buy the venue cannot execute, which times
+                out, records as <span className="type-data">unknown</span> and holds its reservation until you
+                resolve it.
+              </>
+            ) : (
+              <>
+                {' '}
+                With <span className="type-data">{values.maxOpen}</span> open, a moment where they all want out at
+                once needs {values.maxOpen} more than the entries already used.
+              </>
+            )}{' '}
+            Failing to enter costs an opportunity; failing to exit costs the position. Lower this, or deploy more
+            task accounts at Slotshark.
           </p>
+        )}
 
-          {fieldError && (
-            <p className="text-sm text-oct-flame bg-oct-flame/10 border border-oct-flame/50 rounded-oct px-3 py-2 font-mono">
-              {fieldError}
-            </p>
-          )}
+        {/* The two directions are NOT symmetric, and saying so is the point:
+            a raise is deferred so it cannot re-authorise a fire today's budget
+            already refused, while a reduction binds immediately because it can
+            only refuse fires that have not happened yet. */}
+        <p className="type-caption font-normal text-oct-muted leading-relaxed">
+          Caps are snapshotted into each UTC day&rsquo;s budget row when that day&rsquo;s first fire happens.{' '}
+          <span className="text-oct-text font-medium">Lowering a cap applies immediately</span>, including to today&rsquo;s
+          row. Raising one does not — it takes effect tomorrow, or on a wallet that has not fired yet today.
+        </p>
 
-          <div className="flex justify-end gap-2 pt-1">
-            <button type="button" onClick={onClose} disabled={submitting} className="oct-icon-btn px-4 py-2 text-sm">
-              Cancel
-            </button>
-            <button type="submit" disabled={submitting} className="oct-btn-primary px-4 py-2 text-sm">
-              {submitting ? 'Saving…' : mode === 'add' ? 'Add wallet' : 'Save changes'}
-            </button>
-          </div>
-        </form>
-      </div>
-    </div>
+        {fieldError && (
+          <p
+            role="alert"
+            className="type-body font-mono text-oct-critical bg-oct-critical-dim border border-oct-critical/50 rounded-oct px-comfy py-cozy"
+          >
+            {fieldError}
+          </p>
+        )}
+
+        <div className="flex justify-end gap-cozy pt-tight">
+          <button type="button" onClick={onClose} disabled={submitting} className="oct-icon-btn px-roomy py-cozy type-body">
+            Cancel
+          </button>
+          <button type="submit" disabled={submitting} className="oct-btn-primary px-roomy py-cozy type-body">
+            {submitting ? 'Saving…' : mode === 'add' ? 'Add wallet' : 'Save changes'}
+          </button>
+        </div>
+      </form>
+    </SniperModalShell>
   );
 }

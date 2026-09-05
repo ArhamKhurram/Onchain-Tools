@@ -16,7 +16,7 @@ import { playHighlightSound, playContractAlertSound, playKeywordAlertSound } fro
 import { showDesktopNotification } from '../utils/desktopNotification';
 import { buildContractUrl } from '../utils/contractUrl';
 import { queueContractDetection, tryRickEnrich } from '../discord/contractPendingQueue';
-import { cacheDiscordMessage } from '../discord/messageReplyCache';
+import { cacheDiscordMessage } from '@oct/shared';
 import { track } from '../lib/analytics';
 
 function isUserHighlighted(
@@ -275,8 +275,8 @@ export function useClientGateway() {
       useAppStore.getState().updateReaction(data.channelId, data.messageId, data.emoji, data.delta);
     };
 
-    const onAuthFailed = (failure: { message: string; blocked?: boolean }) => {
-      useAppStore.getState().setGatewayAuthError(failure.message, failure.blocked);
+    const onAuthFailed = (failure: { message: string }) => {
+      useAppStore.getState().setGatewayAuthError(failure.message);
       useAppStore.getState().setConnected(false);
       useAppStore.getState().fetchMaskedTokens();
     };

@@ -29,6 +29,18 @@ const MISSING_FIRST_CALL_COLUMN_RE =
 
 const FIRST_CALL_COLUMNS = ['first_caller_name', 'first_call_mcap_usd', 'first_call_at'] as const;
 
+/**
+ * Exactly the columns logContract's repeat-mention carry-forward reads (the
+ * `entry.x ?? prior.x` block). `select('*')` here dragged the author/channel/
+ * guild strings, room_ids, message_id and ids across the wire on every repeat
+ * log — the ingest hot path — and none of them are read (a representative row:
+ * 1132B -> 518B). fdv_at_call is deliberately absent: it is per-call, never
+ * carried forward.
+ */
+const PRIOR_COLUMNS =
+  'token_name, token_symbol, token_pair, description, liquidity_usd, liquidity_display, volume_usd, volume_display, price_usd, token_age, enrichment_source, enriched_at, evm_chain';
+const PRIOR_COLUMNS_WITH_FIRST_CALL = `${PRIOR_COLUMNS}, ${FIRST_CALL_COLUMNS.join(', ')}`;
+
 function stripFirstCallColumns(row: Record<string, unknown>): Record<string, unknown> {
   const rest = { ...row };
   for (const col of FIRST_CALL_COLUMNS) delete rest[col];
@@ -142,16 +154,25 @@ export class ContractsRepo extends BaseRepo {
     let toInsert = entry;
 
     if (!isFirstSeen) {
-      const { data: priorRows } = await this.supabase
-        .from('contracts')
-        .select('*')
-        .eq('user_id', userId)
-        .ilike('address', entry.address)
-        .or('token_symbol.not.is.null,token_name.not.is.null')
-        .order('timestamp', { ascending: false })
-        .limit(1);
+      const priorQuery = (columns: string) =>
+        this.supabase
+          .from('contracts')
+          .select(columns)
+          .eq('user_id', userId)
+          .ilike('address', entry.address)
+          .or('token_symbol.not.is.null,token_name.not.is.null')
+          .order('timestamp', { ascending: false })
+          .limit(1);
 
-      const prior = priorRows?.[0] ? this.mapContractRow(priorRows[0]) : null;
+      // Same pre-migration tolerance as the insert below: a SELECT naming the
+      // global-first columns fails on a database that hasn't applied
+      // 20260812160000_network_scans.sql, so retry without them.
+      let { data: priorRows, error: priorError } = await priorQuery(PRIOR_COLUMNS_WITH_FIRST_CALL);
+      if (priorError && this.tolerateMissingFirstCallColumns(priorError)) {
+        ({ data: priorRows } = await priorQuery(PRIOR_COLUMNS));
+      }
+
+      const prior = priorRows?.[0] ? this.mapPriorRow(priorRows[0]) : null;
       if (prior) {
         toInsert = {
           ...entry,
@@ -414,6 +435,38 @@ export class ContractsRepo extends BaseRepo {
       messageId: row.message_id,
       timestamp: row.timestamp,
       fdvAtCall: row.fdv_at_call != null ? Number(row.fdv_at_call) : undefined,
+    };
+  }
+
+  /**
+   * Maps a PRIOR_COLUMNS row — only the enrichment fields the repeat-mention
+   * carry-forward in logContract reads. If that block starts reading a new
+   * field, add its column to PRIOR_COLUMNS first.
+   */
+  private mapPriorRow(row: any): Pick<
+    ContractEntry,
+    | 'tokenName' | 'tokenSymbol' | 'tokenPair' | 'description'
+    | 'liquidityUsd' | 'liquidityDisplay' | 'volumeUsd' | 'volumeDisplay'
+    | 'priceUsd' | 'tokenAge' | 'enrichmentSource' | 'enrichedAt' | 'evmChain'
+    | 'firstCallerName' | 'firstCallMcapUsd' | 'firstCallAt'
+  > {
+    return {
+      tokenName: row.token_name ?? undefined,
+      tokenSymbol: row.token_symbol ?? undefined,
+      tokenPair: row.token_pair ?? undefined,
+      description: row.description ?? undefined,
+      liquidityUsd: row.liquidity_usd != null ? Number(row.liquidity_usd) : undefined,
+      liquidityDisplay: row.liquidity_display ?? undefined,
+      volumeUsd: row.volume_usd != null ? Number(row.volume_usd) : undefined,
+      volumeDisplay: row.volume_display ?? undefined,
+      priceUsd: row.price_usd != null ? Number(row.price_usd) : undefined,
+      tokenAge: row.token_age ?? undefined,
+      enrichmentSource: row.enrichment_source ?? undefined,
+      enrichedAt: row.enriched_at ?? undefined,
+      evmChain: row.evm_chain ?? undefined,
+      firstCallerName: row.first_caller_name ?? undefined,
+      firstCallMcapUsd: row.first_call_mcap_usd != null ? Number(row.first_call_mcap_usd) : undefined,
+      firstCallAt: row.first_call_at ?? undefined,
     };
   }
 

@@ -1,11 +1,17 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { BellRing, Plus, Trash2, RefreshCw } from 'lucide-react';
 import ConsoleEmptyState from '../console/ConsoleEmptyState';
+import FullPageSpinner from '../common/FullPageSpinner';
 import { useAppStore } from '../../stores/appStore';
 import { API_BASE, apiFetch } from '../../stores/appStore.helpers';
 import type { PriceAlert, PriceAlertDirection, PriceAlertMetric } from '../../types';
 
+// Header cells share SortHeader's padding so the Radar and this table line up.
 const TH = 'px-3 py-2 font-medium';
+// Body cells: 12px horizontal, 6px vertical — one step tighter than before.
+const TD = 'px-comfy py-snug';
+const FIELD_LABEL = 'font-mono type-caption uppercase tracking-wider text-oct-muted';
+const FIELD = 'oct-input type-data px-cozy py-snug';
 /**
  * Slow background refresh. The `price_alert` WS frame is what actually moves a
  * row from armed to fired in real time; this only catches alerts that fired
@@ -54,7 +60,7 @@ function parseTarget(raw: string): number | null {
  * watchlist, not a position: these are tokens the operator wants to BUY at a
  * level, and Journal only knows about coins they already hold. It is a Callers
  * subnav tab rather than a new top-level page, and rather than a control inside
- * RadarTable.tsx (~960 lines and a known refactor target).
+ * RadarTable.tsx (~555 lines).
  *
  * This is its own independent signal. It shares no detection with revival or
  * breakout — there is no detection at all. The operator names the number.
@@ -146,33 +152,29 @@ export default function PriceAlerts() {
   };
 
   if (alerts == null) {
-    return (
-      <div className="flex items-center justify-center h-full bg-oct-bg">
-        <div className="w-6 h-6 border-2 border-oct-accent border-t-transparent rounded-full animate-spin" />
-      </div>
-    );
+    return <FullPageSpinner />;
   }
 
   const armed = alerts.filter((a) => a.status === 'armed');
   const rest = alerts.filter((a) => a.status !== 'armed');
 
   const form = (
-    <div className="shrink-0 border-b border-oct-border bg-oct-surface-raised/40 px-4 py-3">
-      <div className="flex flex-wrap items-end gap-2">
-        <label className="flex flex-col gap-1 flex-1 min-w-[260px]">
-          <span className="font-mono text-[10px] uppercase tracking-wider text-oct-muted">Token address (Solana)</span>
+    <div className="shrink-0 border-b border-oct-border bg-oct-surface-raised/40 px-roomy py-comfy">
+      <div className="flex flex-wrap items-end gap-cozy">
+        <label className="flex flex-col gap-tight flex-1 min-w-[260px]">
+          <span className={FIELD_LABEL}>Token address (Solana)</span>
           <input
-            className="oct-input font-mono text-xs px-2.5 py-1.5"
+            className={FIELD}
             placeholder="mint address"
             value={mint}
             onChange={(e) => setMint(e.target.value)}
             spellCheck={false}
           />
         </label>
-        <label className="flex flex-col gap-1">
-          <span className="font-mono text-[10px] uppercase tracking-wider text-oct-muted">Crosses</span>
+        <label className="flex flex-col gap-tight">
+          <span className={FIELD_LABEL}>Crosses</span>
           <select
-            className="oct-input font-mono text-xs px-2.5 py-1.5"
+            className={FIELD}
             value={direction}
             onChange={(e) => setDirection(e.target.value as PriceAlertDirection)}
           >
@@ -180,10 +182,10 @@ export default function PriceAlerts() {
             <option value="below">below</option>
           </select>
         </label>
-        <label className="flex flex-col gap-1">
-          <span className="font-mono text-[10px] uppercase tracking-wider text-oct-muted">Measured in</span>
+        <label className="flex flex-col gap-tight">
+          <span className={FIELD_LABEL}>Measured in</span>
           <select
-            className="oct-input font-mono text-xs px-2.5 py-1.5"
+            className={FIELD}
             value={metric}
             onChange={(e) => setMetric(e.target.value as PriceAlertMetric)}
           >
@@ -191,19 +193,19 @@ export default function PriceAlerts() {
             <option value="price">price</option>
           </select>
         </label>
-        <label className="flex flex-col gap-1 w-[140px]">
-          <span className="font-mono text-[10px] uppercase tracking-wider text-oct-muted">Target (USD)</span>
+        <label className="flex flex-col gap-tight w-[140px]">
+          <span className={FIELD_LABEL}>Target (USD)</span>
           <input
-            className="oct-input font-mono text-xs px-2.5 py-1.5"
+            className={FIELD}
             placeholder="150k"
             value={target}
             onChange={(e) => setTarget(e.target.value)}
           />
         </label>
-        <label className="flex flex-col gap-1 flex-1 min-w-[200px]">
-          <span className="font-mono text-[10px] uppercase tracking-wider text-oct-muted">Note (why this level)</span>
+        <label className="flex flex-col gap-tight flex-1 min-w-[200px]">
+          <span className={FIELD_LABEL}>Note (why this level)</span>
           <input
-            className="oct-input font-mono text-xs px-2.5 py-1.5"
+            className={FIELD}
             placeholder="entry band from the 4h retest"
             value={note}
             onChange={(e) => setNote(e.target.value)}
@@ -213,14 +215,14 @@ export default function PriceAlerts() {
           type="button"
           onClick={() => void submit()}
           disabled={submitting}
-          className="oct-btn-primary px-3 py-1.5 text-xs font-bold uppercase"
+          className="oct-btn-primary px-comfy py-snug type-label uppercase"
         >
           {submitting ? 'saving…' : 'arm alert'}
         </button>
       </div>
-      <div className="mt-2 font-mono text-[11px] text-oct-muted">
+      <div className="mt-cozy font-mono type-caption font-normal text-oct-muted">
         {formError ? (
-          <span className="text-oct-flame">{formError}</span>
+          <span className="text-oct-critical">{formError}</span>
         ) : (
           <>
             {parsedTarget != null && <span className="text-oct-text">reads as {formatUsd(parsedTarget)} · </span>}
@@ -234,18 +236,18 @@ export default function PriceAlerts() {
 
   return (
     <div className="h-full flex flex-col min-h-0 bg-oct-bg overflow-hidden">
-      <div className="oct-headerbar shrink-0 flex items-center gap-2 px-4 py-2.5">
+      <div className="oct-headerbar shrink-0 flex items-center gap-cozy px-roomy py-cozy">
         <span className="oct-eyebrow">view: price alerts</span>
         <div className="flex-1" />
-        {error && <span className="font-mono text-[11px] text-oct-flame">{error}</span>}
-        <span className="font-mono text-[11px] text-oct-muted tabular-nums">
+        {error && <span className="type-caption text-oct-critical">{error}</span>}
+        <span className="type-data text-oct-muted">
           {armed.length} armed · {rest.length} fired
         </span>
         <button
           type="button"
           onClick={() => void load()}
           disabled={refreshing}
-          className="oct-icon-btn flex items-center gap-1.5 px-2.5 py-1.5 text-xs font-bold uppercase"
+          className="oct-icon-btn flex items-center gap-snug px-cozy py-snug font-mono text-2xs font-bold uppercase"
         >
           <RefreshCw size={12} className={refreshing ? 'animate-spin' : undefined} />
           refresh
@@ -253,7 +255,7 @@ export default function PriceAlerts() {
         <button
           type="button"
           onClick={() => setShowForm((v) => !v)}
-          className="oct-icon-btn flex items-center gap-1.5 px-2.5 py-1.5 text-xs font-bold uppercase"
+          className="oct-icon-btn flex items-center gap-snug px-cozy py-snug font-mono text-2xs font-bold uppercase"
         >
           <Plus size={12} />
           new alert
@@ -275,7 +277,7 @@ export default function PriceAlerts() {
         <div className="flex-1 min-h-0 overflow-auto overscroll-contain" style={{ overflowAnchor: 'none' }}>
           <table className="w-full text-left border-collapse min-w-[900px]">
             <thead className="oct-thead sticky top-0 z-10">
-              <tr className="font-mono text-[10px] font-bold uppercase tracking-wider text-oct-muted">
+              <tr className="font-mono type-caption font-bold uppercase tracking-wider text-oct-muted">
                 <th className={TH}>Status</th>
                 <th className={TH}>Token</th>
                 <th className={TH}>Level</th>
@@ -294,19 +296,19 @@ export default function PriceAlerts() {
                     key={a.id}
                     className={`border-b border-oct-border/50 oct-row-hover ${fired ? 'bg-oct-accent/5' : ''}`}
                   >
-                    <td className="px-3 py-2 font-mono text-[11px] whitespace-nowrap">
+                    <td className={`${TD} type-caption whitespace-nowrap`}>
                       {fired ? (
-                        <span className="text-oct-green font-bold">crossed</span>
+                        <span className="text-oct-good font-bold">crossed</span>
                       ) : a.status === 'disabled' ? (
                         <span className="text-oct-muted">off</span>
                       ) : (
-                        <span className="text-oct-yellow flex items-center gap-1.5">
-                          <span className="w-1.5 h-1.5 rounded-full bg-oct-yellow animate-pulse-live" />
+                        <span className="text-oct-warn flex items-center gap-snug">
+                          <span className="w-1.5 h-1.5 rounded-full bg-oct-warn animate-pulse-live" />
                           armed
                         </span>
                       )}
                     </td>
-                    <td className="px-3 py-2">
+                    <td className={TD}>
                       <button
                         type="button"
                         onClick={() =>
@@ -316,33 +318,33 @@ export default function PriceAlerts() {
                             'noopener,noreferrer',
                           )
                         }
-                        className="font-mono text-xs font-bold text-oct-text hover:text-oct-accent hover:underline transition-colors"
+                        className="type-data font-bold text-oct-text hover:text-oct-accent hover:underline transition-colors"
                         title={a.mint}
                       >
                         {sym}
                       </button>
                     </td>
-                    <td className="px-3 py-2 font-mono text-xs text-oct-text whitespace-nowrap">
+                    <td className={`${TD} type-data text-oct-text whitespace-nowrap`}>
                       {a.direction} {formatUsd(a.targetUsd)}
-                      <span className="ml-1.5 text-[10px] uppercase tracking-wider text-oct-muted">
+                      <span className="ml-snug text-2xs uppercase tracking-wider text-oct-muted">
                         {a.metric === 'mcap' ? 'mcap' : 'price'}
                       </span>
                     </td>
-                    <td className="px-3 py-2 font-mono text-xs text-right tabular-nums text-oct-muted">
+                    <td className={`${TD} type-data text-right text-oct-muted`}>
                       {/* Fired rows show the value AT the crossing; armed rows the latest observation. */}
                       {fired ? formatUsd(a.firedValueUsd) : formatUsd(a.lastSeenUsd)}
                     </td>
-                    <td className="px-3 py-2 font-mono text-[11px] text-right tabular-nums text-oct-muted whitespace-nowrap">
+                    <td className={`${TD} type-data text-right text-oct-muted whitespace-nowrap`}>
                       {timeLabel(fired ? a.firedAt : a.lastSeenAt)}
                     </td>
-                    <td className="px-3 py-2 font-mono text-[11px] text-oct-muted max-w-[280px] truncate" title={a.note ?? ''}>
+                    <td className={`${TD} type-caption font-normal text-oct-muted max-w-[280px] truncate`} title={a.note ?? ''}>
                       {a.note ?? '—'}
                     </td>
-                    <td className="px-3 py-2 text-right">
+                    <td className={`${TD} text-right`}>
                       <button
                         type="button"
                         onClick={() => void remove(a.id)}
-                        className="oct-icon-btn p-1.5"
+                        className="oct-icon-btn p-snug"
                         title="Delete alert"
                       >
                         <Trash2 size={12} />

@@ -16,16 +16,16 @@
 import { ExternalLink, RefreshCw, Trophy, Plus, Check, Megaphone } from 'lucide-react';
 import { usePumpTopCallers, TOP_CALLERS_WINDOWS, TOP_CALLERS_METRICS } from '../../hooks/usePumpTopCallers';
 import { usePumpCallers } from '../../hooks/usePumpCallers';
+import { useDroppedRoster } from '../../hooks/useDroppedRoster';
+import { isDropped } from '../../lib/droppedRoster';
+import NotLiveBadge from '../common/NotLiveBadge';
+import DroppedRosterNotice from './DroppedRosterNotice';
+import PeakMultiple from './PeakMultiple';
 
 const SOLSCAN_ACCOUNT = 'https://solscan.io/account/';
 
 function shortAddress(a: string): string {
   return a.length <= 12 ? a : `${a.slice(0, 4)}…${a.slice(-4)}`;
-}
-
-function formatMultiple(m: number | null): string {
-  if (m == null) return '—';
-  return `${m >= 10 ? m.toFixed(0) : m.toFixed(1)}×`;
 }
 
 function formatRelative(iso: string | null): string {
@@ -44,7 +44,10 @@ function formatRelative(iso: string | null): string {
 
 export default function PumpTopCallersTab() {
   const { callers, loading, needsAuth, error, window, setWindow, metric, setMetric, refresh } = usePumpTopCallers();
-  const { followedAddresses, followByAddress, busy } = usePumpCallers();
+  const { callers: followed, followedAddresses, followByAddress, busy } = usePumpCallers();
+  // Which of these callers j7 has no slot for. A followed-but-dropped caller
+  // gets a "not live" badge; the notice above the board counts the user's own.
+  const { dropped } = useDroppedRoster();
 
   if (needsAuth) {
     return (
@@ -109,10 +112,17 @@ export default function PumpTopCallersTab() {
         </button>
       </div>
 
-      <p className="shrink-0 px-5 py-1.5 text-[11px] text-oct-muted border-b border-oct-border">
+      <p className="shrink-0 px-5 py-1.5 text-2xs text-oct-muted border-b border-oct-border">
         Peak × is the highest price a call's token touched afterward, not a return — most calls never get back there.
         This ranks callout volume and reach, not track record.
       </p>
+
+      <DroppedRosterNotice
+        dropped={dropped}
+        tracker="pump"
+        items={followed.map((c) => ({ key: c.callerAddress, label: c.username ? `@${c.username}` : null }))}
+        className="shrink-0 mx-5 mt-comfy"
+      />
 
       {/* Board */}
       <div className="flex-1 min-h-0 overflow-auto">
@@ -165,8 +175,11 @@ export default function PumpTopCallersTab() {
                           <span className="h-8 w-8 rounded-full bg-oct-surface-raised shrink-0" />
                         )}
                         <div className="min-w-0">
-                          <div className="font-bold text-oct-text truncate">
-                            {c.username ? `@${c.username}` : shortAddress(c.callerAddress)}
+                          <div className="flex items-center gap-snug min-w-0">
+                            <span className="font-bold text-oct-text truncate">
+                              {c.username ? `@${c.username}` : shortAddress(c.callerAddress)}
+                            </span>
+                            {isDropped(dropped, 'pump', c.callerAddress) && <NotLiveBadge tracker="pump" />}
                           </div>
                           <a
                             href={`${SOLSCAN_ACCOUNT}${c.callerAddress}`}
@@ -184,11 +197,11 @@ export default function PumpTopCallersTab() {
                     <td className="px-3 py-2.5 text-right font-mono font-bold text-oct-text tabular-nums">
                       {c.calloutCount}
                     </td>
-                    <td className="px-3 py-2.5 text-right font-mono text-oct-text tabular-nums">
-                      {formatMultiple(c.avgMultiple)}
+                    <td className="px-3 py-2.5 text-right">
+                      <PeakMultiple value={c.avgMultiple} />
                     </td>
-                    <td className="px-3 py-2.5 text-right font-mono text-oct-green tabular-nums">
-                      {formatMultiple(c.maxMultiple)}
+                    <td className="px-3 py-2.5 text-right">
+                      <PeakMultiple value={c.maxMultiple} />
                     </td>
                     <td className="px-3 py-2.5 text-right text-xs text-oct-muted whitespace-nowrap">
                       {formatRelative(c.lastCalloutAt)}

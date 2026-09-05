@@ -64,8 +64,6 @@ export const PRESET_SOUNDS = [
   { id: 'sparkle', label: 'Sparkle', file: '/sounds/sparkle.wav' },
 ] as const;
 
-export type PresetSoundId = (typeof PRESET_SOUNDS)[number]['id'];
-
 function getPresetUrl(presetId: string): string | undefined {
   return PRESET_SOUNDS.find((p) => p.id === presetId)?.file;
 }

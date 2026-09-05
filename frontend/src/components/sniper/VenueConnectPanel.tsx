@@ -6,8 +6,13 @@ import { truncateAddress } from '../../types/wallets';
 import type { SniperStatus } from '../../types/sniper';
 import type { useSniperVenues } from '../../hooks/useSniperVenues';
 
-const FIELD = 'oct-input w-full px-3 py-2 text-sm font-mono disabled:opacity-60';
-const LABEL = 'block oct-label text-oct-muted mb-1.5 uppercase tracking-wide';
+const FIELD = 'oct-input w-full px-comfy py-cozy type-body font-mono disabled:opacity-60';
+const LABEL = 'block type-label text-oct-muted mb-snug uppercase tracking-wide';
+const CARD = 'oct-card p-roomy space-y-comfy';
+const COPY = 'type-body text-oct-muted leading-relaxed';
+/** key: value rows. Keys are labels, values are data, so the two roles differ. */
+const KV = 'grid grid-cols-[auto_1fr] gap-x-comfy gap-y-tight type-caption font-mono uppercase tracking-wider text-oct-muted';
+const KV_VALUE = 'type-data normal-case tracking-normal text-oct-text';
 
 interface VenueConnectPanelProps {
   venues: ReturnType<typeof useSniperVenues>;
@@ -17,9 +22,9 @@ interface VenueConnectPanelProps {
 /** Where trigger configuration actually lives, stated once and linked out. */
 function TriggerConfigNote() {
   return (
-    <div className="oct-card p-4 space-y-2">
+    <div className={CARD}>
       <p className="oct-eyebrow">Trigger configuration</p>
-      <p className="text-xs text-oct-muted leading-relaxed">
+      <p className={COPY}>
         Twitter triggers are created, capped and disabled inside Slotshark, not here. OCT is not told when one fires, so
         nothing on this page can list, bound or stop them. There is no OCT-side trigger API to build against — this
         codebase knows exactly one Slotshark endpoint, the one it buys through.
@@ -28,7 +33,7 @@ function TriggerConfigNote() {
         href="https://slotshark.com"
         target="_blank"
         rel="noreferrer noopener"
-        className="inline-flex items-center gap-1.5 font-mono text-xs text-oct-accent hover:underline"
+        className="inline-flex items-center gap-snug type-label font-mono text-oct-accent hover:underline"
       >
         Open Slotshark&rsquo;s dashboard <ExternalLink size={12} />
       </a>
@@ -39,27 +44,24 @@ function TriggerConfigNote() {
 /** Local mode: the credential is two env vars and the backend must not edit its own .env. */
 function LocalVenueNote({ status }: { status: SniperStatus | null }) {
   return (
-    <div className="oct-card p-4 space-y-3">
+    <div className={CARD}>
       <p className="oct-eyebrow">Local mode</p>
-      <p className="text-xs text-oct-muted leading-relaxed">
-        The venue token is read from <span className="font-mono text-oct-text">SLOTSHARK_API_TOKEN</span> in{' '}
-        <span className="font-mono text-oct-text">backend/.env</span>, and the region from{' '}
-        <span className="font-mono text-oct-text">SLOTSHARK_REGION</span> (<span className="font-mono">us</span> or{' '}
-        <span className="font-mono">eu</span>; anything else falls back to <span className="font-mono">us</span>).
+      <p className={COPY}>
+        The venue token is read from <span className="type-data text-oct-text">SLOTSHARK_API_TOKEN</span> in{' '}
+        <span className="type-data text-oct-text">backend/.env</span>, and the region from{' '}
+        <span className="type-data text-oct-text">SLOTSHARK_REGION</span> (<span className="type-data">us</span> or{' '}
+        <span className="type-data">eu</span>; anything else falls back to <span className="type-data">us</span>).
         Connecting locally means editing that file and restarting the backend — there is deliberately no way for the
         console to write it.
       </p>
-      <div className="font-mono text-xs space-y-1">
-        <div>
-          token:{' '}
-          <span className={status?.venue.connected ? 'text-oct-green' : 'text-oct-muted'}>
-            {status?.venue.connected ? 'set' : 'not set'}
-          </span>
-        </div>
-        <div>
-          region: <span className="text-oct-text">{status?.venue.region ?? 'us (default)'}</span>
-        </div>
-      </div>
+      <dl className={KV}>
+        <dt>token</dt>
+        <dd className={`${KV_VALUE} ${status?.venue.connected ? 'text-oct-good' : 'text-oct-muted'}`}>
+          {status?.venue.connected ? 'set' : 'not set'}
+        </dd>
+        <dt>region</dt>
+        <dd className={KV_VALUE}>{status?.venue.region ?? 'us (default)'}</dd>
+      </dl>
     </div>
   );
 }
@@ -107,7 +109,7 @@ export default function VenueConnectPanel({ venues, status }: VenueConnectPanelP
 
   if (!isHostedMode) {
     return (
-      <div className="h-full overflow-auto p-4 sm:p-6 space-y-4 bg-oct-bg">
+      <div className="h-full overflow-auto p-roomy sm:p-section space-y-roomy bg-oct-bg">
         <LocalVenueNote status={status} />
         <TriggerConfigNote />
       </div>
@@ -115,38 +117,30 @@ export default function VenueConnectPanel({ venues, status }: VenueConnectPanelP
   }
 
   return (
-    <div className="h-full overflow-auto p-4 sm:p-6 space-y-4 bg-oct-bg">
-      <div className="oct-card p-4 space-y-3">
+    <div className="h-full overflow-auto p-roomy sm:p-section space-y-roomy bg-oct-bg">
+      <div className={CARD}>
         <p className="oct-eyebrow">Slotshark</p>
 
-        {venues.error && <p className="font-mono text-xs text-oct-flame">{venues.error}</p>}
+        {venues.error && <p className="type-body font-mono text-oct-critical">{venues.error}</p>}
 
         {existing ? (
-          <div className="font-mono text-xs space-y-1">
-            <div>
-              status: <span className="text-oct-green">connected</span>
-            </div>
-            <div>
-              wallet:{' '}
-              <span className="text-oct-text">
-                {existing.wallet_address ? truncateAddress(existing.wallet_address) : '—'}
-              </span>
-            </div>
-            <div>
-              region: <span className="text-oct-text">{existing.region ?? 'us (default)'}</span>
-            </div>
-            <div>
-              label: <span className="text-oct-text">{existing.label ?? '—'}</span>
-            </div>
-            <div>
-              updated: <span className="text-oct-text">{new Date(existing.updated_at).toLocaleString()}</span>
-            </div>
-          </div>
+          <dl className={KV}>
+            <dt>status</dt>
+            <dd className={`${KV_VALUE} text-oct-good`}>connected</dd>
+            <dt>wallet</dt>
+            <dd className={KV_VALUE}>{existing.wallet_address ? truncateAddress(existing.wallet_address) : '—'}</dd>
+            <dt>region</dt>
+            <dd className={KV_VALUE}>{existing.region ?? 'us (default)'}</dd>
+            <dt>label</dt>
+            <dd className={KV_VALUE}>{existing.label ?? '—'}</dd>
+            <dt>updated</dt>
+            <dd className={KV_VALUE}>{new Date(existing.updated_at).toLocaleString()}</dd>
+          </dl>
         ) : (
-          <p className="text-xs text-oct-muted">No venue connected. A live fire will refuse with no_credential.</p>
+          <p className="type-body text-oct-warn">No venue connected. A live fire will refuse with no_credential.</p>
         )}
 
-        <p className="text-xs text-oct-muted leading-relaxed">
+        <p className={COPY}>
           The token goes from this browser straight into Supabase Vault — it never reaches the OCT backend at connect
           time, and the backend reads it only at the instant it is about to send a buy. It cannot be read back, not even
           by you: there is no reveal, no copy and no fingerprint here because none is possible by design. Rotating means
@@ -154,7 +148,7 @@ export default function VenueConnectPanel({ venues, status }: VenueConnectPanelP
         </p>
       </div>
 
-      <form onSubmit={handleConnect} className="oct-card p-4 space-y-3">
+      <form onSubmit={handleConnect} className={CARD}>
         <p className="oct-eyebrow">
           {existing ? 'Rotate token' : 'Connect'}
         </p>
@@ -185,14 +179,14 @@ export default function VenueConnectPanel({ venues, status }: VenueConnectPanelP
               type="button"
               tabIndex={-1}
               onClick={() => setShowSecret((v) => !v)}
-              className="absolute right-2 top-1/2 -translate-y-1/2 text-oct-muted hover:text-oct-text transition-colors"
+              className="absolute right-cozy top-1/2 -translate-y-1/2 text-oct-muted hover:text-oct-text transition-colors"
             >
               {showSecret ? <EyeOff size={16} /> : <Eye size={16} />}
             </button>
           </div>
         </div>
 
-        <div className="grid grid-cols-2 gap-3">
+        <div className="grid grid-cols-2 gap-comfy">
           <div>
             <label htmlFor="sniper-venue-region" className={LABEL}>
               Region
@@ -232,23 +226,26 @@ export default function VenueConnectPanel({ venues, status }: VenueConnectPanelP
         </div>
 
         {formError && (
-          <p className="text-sm text-oct-flame bg-oct-flame/10 border border-oct-flame/50 rounded-oct px-3 py-2 font-mono">
+          <p
+            role="alert"
+            className="type-body font-mono text-oct-critical bg-oct-critical-dim border border-oct-critical/50 rounded-oct px-comfy py-cozy"
+          >
             {formError}
           </p>
         )}
 
-        <div className="flex justify-end gap-2">
+        <div className="flex justify-end gap-cozy">
           {existing && (
             <button
               type="button"
               onClick={() => setDisconnecting(true)}
               disabled={submitting}
-              className="oct-icon-btn px-4 py-2 text-sm"
+              className="oct-icon-btn px-roomy py-cozy type-body"
             >
               Disconnect
             </button>
           )}
-          <button type="submit" disabled={submitting} className="oct-btn-primary px-4 py-2 text-sm">
+          <button type="submit" disabled={submitting} className="oct-btn-primary px-roomy py-cozy type-body">
             {submitting ? 'Saving…' : existing ? 'Rotate' : 'Connect'}
           </button>
         </div>

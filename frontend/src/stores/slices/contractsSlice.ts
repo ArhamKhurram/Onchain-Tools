@@ -22,7 +22,7 @@ export interface ContractsSlice {
   fetchContracts: () => Promise<void>;
 }
 
-export const createContractsSlice: StateCreator<AppState, [], [], ContractsSlice> = (set, get) => {
+export const createContractsSlice: StateCreator<AppState, [], [], ContractsSlice> = (set) => {
   return {
     contracts: [],
     addressChains: {},

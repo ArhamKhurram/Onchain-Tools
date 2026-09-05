@@ -1,8 +1,14 @@
 import { useEffect, useRef, useState } from 'react';
-import { X } from 'lucide-react';
 import type { HoldingWallet, HoldingWalletInsert } from '../../types/holdingWallets';
 import type { WalletChain } from '../../types/wallets';
 import { validateWalletAddress, WALLET_CHAINS } from '../../types/wallets';
+import { cn } from '../../lib/utils';
+import WalletModalShell, {
+  chainButtonClass,
+  FIELD_CLASS,
+  FIELD_ERROR_CLASS,
+  LABEL_CLASS,
+} from './WalletModalShell';
 
 export type HoldingWalletFormValues = HoldingWalletInsert;
 
@@ -50,17 +56,6 @@ export default function HoldingWalletFormModal({
     setTimeout(() => addressRef.current?.focus(), 50);
   }, [open, mode, wallet]);
 
-  useEffect(() => {
-    if (!open) return;
-    const handleKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape' && !submitting) onClose();
-    };
-    window.addEventListener('keydown', handleKey);
-    return () => window.removeEventListener('keydown', handleKey);
-  }, [open, submitting, onClose]);
-
-  if (!open) return null;
-
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     const addrError = validateWalletAddress(values.address, values.chain);
@@ -90,96 +85,84 @@ export default function HoldingWalletFormModal({
   };
 
   return (
-    <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/75 p-4" onClick={() => !submitting && onClose()}>
-      <div
-        className="w-full max-w-lg oct-card oct-card-flush shadow-oct-soft-lg overflow-hidden"
-        onClick={(e) => e.stopPropagation()}
-      >
-        <div className="oct-headerbar flex items-center justify-between px-5 py-4">
-          <h3 className="oct-section-title text-base uppercase">
-            {mode === 'add' ? 'Add my wallet' : 'Edit wallet'}
-          </h3>
+    <WalletModalShell
+      open={open}
+      title={mode === 'add' ? 'Add my wallet' : 'Edit wallet'}
+      busy={submitting}
+      onClose={onClose}
+    >
+      <form onSubmit={handleSubmit} className="px-roomy py-comfy space-y-comfy">
+        <p className="type-caption text-oct-muted leading-relaxed">
+          Addresses you buy from. Used for missed-runner alerts — not shared with whale tracking.
+        </p>
+
+        <div>
+          <span className={LABEL_CLASS}>Chain</span>
+          <div className="flex flex-wrap gap-snug">
+            {CHAIN_OPTIONS.map(({ value, label }) => (
+              <button
+                key={value}
+                type="button"
+                onClick={() => set('chain', value)}
+                className={chainButtonClass(values.chain === value)}
+              >
+                {label}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        <div>
+          <label htmlFor="holding-wallet-address" className={LABEL_CLASS}>
+            Address
+          </label>
+          <input
+            ref={addressRef}
+            id="holding-wallet-address"
+            type="text"
+            value={values.address}
+            onChange={(e) => set('address', e.target.value)}
+            placeholder={values.chain === 'solana' ? 'Base58 address…' : '0x…'}
+            disabled={mode === 'edit'}
+            spellCheck={false}
+            className={cn(FIELD_CLASS, 'type-data text-sm disabled:opacity-60 disabled:cursor-not-allowed')}
+          />
+        </div>
+
+        <div>
+          <label htmlFor="holding-wallet-label" className={LABEL_CLASS}>
+            Label <span className="normal-case font-normal text-oct-muted/70">(optional)</span>
+          </label>
+          <input
+            id="holding-wallet-label"
+            type="text"
+            value={values.label}
+            onChange={(e) => set('label', e.target.value)}
+            placeholder="Main SOL wallet"
+            className={FIELD_CLASS}
+          />
+        </div>
+
+        {fieldError && (
+          <p role="alert" className={FIELD_ERROR_CLASS}>
+            {fieldError}
+          </p>
+        )}
+
+        <div className="flex justify-end gap-cozy pt-tight">
           <button
             type="button"
             onClick={onClose}
             disabled={submitting}
-            className="oct-icon-btn p-1.5 disabled:opacity-50"
+            className="oct-icon-btn px-comfy py-snug type-label"
           >
-            <X size={18} />
+            Cancel
+          </button>
+          <button type="submit" disabled={submitting} className="oct-btn-primary px-comfy py-snug type-label">
+            {submitting ? 'Saving…' : mode === 'add' ? 'Add wallet' : 'Save changes'}
           </button>
         </div>
-
-        <form onSubmit={handleSubmit} className="px-5 py-4 space-y-4">
-          <p className="text-xs text-oct-muted leading-relaxed">
-            Addresses you buy from. Used for missed-runner alerts — not shared with whale tracking.
-          </p>
-
-          <div>
-            <label className="block oct-label text-oct-muted mb-1.5 uppercase tracking-wide">Chain</label>
-            <div className="flex flex-wrap gap-2">
-              {CHAIN_OPTIONS.map(({ value, label }) => (
-                <button
-                  key={value}
-                  type="button"
-                  onClick={() => set('chain', value)}
-                  className={`px-3 py-2 rounded-oct-sm text-xs font-bold uppercase border transition-all ${
-                    values.chain === value
-                      ? 'border-oct-accent/50 bg-oct-accent text-white shadow-oct-glow-accent'
-                      : 'border-oct-border text-oct-muted hover:border-oct-border-bright hover:text-oct-text'
-                  }`}
-                >
-                  {label}
-                </button>
-              ))}
-            </div>
-          </div>
-
-          <div>
-            <label htmlFor="holding-wallet-address" className="block oct-label text-oct-muted mb-1.5 uppercase tracking-wide">
-              Address
-            </label>
-            <input
-              ref={addressRef}
-              id="holding-wallet-address"
-              type="text"
-              value={values.address}
-              onChange={(e) => set('address', e.target.value)}
-              placeholder={values.chain === 'solana' ? 'Base58 address…' : '0x…'}
-              disabled={mode === 'edit'}
-              className="oct-input w-full px-3 py-2 text-sm font-mono disabled:opacity-60 disabled:cursor-not-allowed"
-            />
-          </div>
-
-          <div>
-            <label htmlFor="holding-wallet-label" className="block oct-label text-oct-muted mb-1.5 uppercase tracking-wide">
-              Label <span className="normal-case text-oct-muted/70">(optional)</span>
-            </label>
-            <input
-              id="holding-wallet-label"
-              type="text"
-              value={values.label}
-              onChange={(e) => set('label', e.target.value)}
-              placeholder="Main SOL wallet"
-              className="oct-input w-full px-3 py-2 text-sm"
-            />
-          </div>
-
-          {fieldError && (
-            <p className="text-sm text-oct-flame bg-oct-flame/10 border border-oct-flame/50 rounded-oct px-3 py-2">
-              {fieldError}
-            </p>
-          )}
-
-          <div className="flex justify-end gap-2 pt-1">
-            <button type="button" onClick={onClose} disabled={submitting} className="oct-icon-btn px-4 py-2 text-sm">
-              Cancel
-            </button>
-            <button type="submit" disabled={submitting} className="oct-btn-primary px-4 py-2 text-sm">
-              {submitting ? 'Saving…' : mode === 'add' ? 'Add wallet' : 'Save changes'}
-            </button>
-          </div>
-        </form>
-      </div>
-    </div>
+      </form>
+    </WalletModalShell>
   );
 }

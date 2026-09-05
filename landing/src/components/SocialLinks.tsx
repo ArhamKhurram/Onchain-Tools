@@ -25,7 +25,7 @@ function DiscordIcon({ size = 15 }: { size?: number }) {
  * controls colour/typography — the landing nav inherits `currentColor`, which
  * flips black/white per section.
  */
-export function SocialLinks({ className = '', showLabels = false }: { className?: string; showLabels?: boolean }) {
+export function SocialLinks({ className = '' }: { className?: string }) {
   // p-2 keeps the mark visually 14-15px while giving a ~30px hit area — a bare
   // icon anchor is a 14px tap target, well under the accessible minimum. The
   // caller pairs this with a tight gap so the padding reads as the spacing.
@@ -41,7 +41,6 @@ export function SocialLinks({ className = '', showLabels = false }: { className?
         className={base}
       >
         <XIcon />
-        {showLabels && <span className="hidden sm:inline">{SOCIAL_X_HANDLE}</span>}
       </a>
       <a
         href={SOCIAL_DISCORD_URL}
@@ -52,7 +51,6 @@ export function SocialLinks({ className = '', showLabels = false }: { className?
         className={base}
       >
         <DiscordIcon />
-        {showLabels && <span className="hidden sm:inline">Discord</span>}
       </a>
     </>
   );

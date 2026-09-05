@@ -115,11 +115,6 @@ export interface MaskedToken {
   invalid?: boolean;
 }
 
-export interface MaskedTokensResponse {
-  tokens: MaskedToken[];
-  count: number;
-}
-
 export interface ReactionUser {
   id: string;
   username: string;

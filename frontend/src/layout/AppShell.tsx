@@ -29,7 +29,8 @@ const NAV: { to: string; label: string; end?: boolean }[] = [
 
 function navClass({ isActive }: { isActive: boolean }) {
   return [
-    'px-2.5 py-1 text-[11px] sm:text-xs font-mono uppercase tracking-[0.14em] transition-opacity',
+    // 12px floor (`text-2xs`), never the old 11px arbitrary size.
+    'px-cozy py-tight text-2xs sm:text-xs font-mono uppercase tracking-[0.14em] transition-opacity duration-fast',
     isActive ? 'text-oct-accent opacity-100' : 'text-oct-muted opacity-70 hover:opacity-100',
   ].join(' ');
 }
@@ -45,10 +46,8 @@ export default function AppShell() {
     hydrateTheme();
   }, [hydrateTheme]);
 
-  const unseenCount = UPDATE_SLIDES.filter((s) => {
-    const seen = new Set([...getSeenIds(), ...(config?.seenAnnouncements ?? [])]);
-    return !seen.has(s.id);
-  }).length;
+  const seen = new Set([...getSeenIds(), ...(config?.seenAnnouncements ?? [])]);
+  const unseenCount = UPDATE_SLIDES.filter((s) => !seen.has(s.id)).length;
 
   const handleSignOut = async () => {
     if (isHostedMode) {
@@ -68,7 +67,7 @@ export default function AppShell() {
           OCT
         </a>
 
-        <span className="hidden md:inline font-mono text-[10px] uppercase tracking-[0.2em] text-oct-muted/80">
+        <span className="hidden md:inline font-mono text-2xs uppercase tracking-[0.2em] text-oct-muted/80">
           ONCHAIN.TOOLS
         </span>
 
@@ -99,14 +98,14 @@ export default function AppShell() {
             <button
               type="button"
               onClick={() => navigate(routes.login)}
-              className="font-mono text-[10px] sm:text-xs uppercase tracking-[0.12em] text-oct-text border-2 border-oct-border-bright px-2.5 py-1 hover:bg-oct-accent hover:text-white hover:border-oct-accent transition-colors"
+              className="font-mono text-2xs sm:text-xs uppercase tracking-[0.12em] text-oct-text border-2 border-oct-border-bright px-2.5 py-1 hover:bg-oct-accent hover:text-white hover:border-oct-accent transition-colors"
             >
               [ SIGN IN ]
             </button>
           ) : isAuthenticated && user ? (
             <div className="group flex items-center gap-2">
               <span
-                className="hidden sm:inline font-mono text-[10px] text-oct-muted max-w-[140px] truncate"
+                className="hidden sm:inline font-mono text-2xs text-oct-muted max-w-[140px] truncate"
                 title={user.email ?? undefined}
               >
                 <span className="group-hover:hidden">Signed in</span>
@@ -115,7 +114,7 @@ export default function AppShell() {
               <button
                 type="button"
                 onClick={handleSignOut}
-                className="font-mono text-[10px] text-oct-muted hover:text-oct-text transition-colors uppercase"
+                className="font-mono text-2xs text-oct-muted hover:text-oct-text transition-colors uppercase"
               >
                 Out
               </button>

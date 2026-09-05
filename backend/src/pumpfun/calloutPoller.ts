@@ -352,6 +352,11 @@ class PumpCalloutPoller {
           thesis: c.thesis,
           multiple: c.multiple,
           createdAt: c.createdAt,
+          // pump's firehose never exposes the peak-since-call; only the j7 path
+          // (j7/mappers.ts) recovers it. Sent explicitly as null so the frame
+          // shape is identical on both paths and the console never has to
+          // special-case a missing key.
+          maxMultiplier: null,
         },
       };
 

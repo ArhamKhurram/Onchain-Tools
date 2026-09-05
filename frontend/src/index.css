@@ -47,8 +47,23 @@
   --oct-live: 210 75 92;
   --oct-live-dim: 210 75 92 / 0.16;
   --oct-live-pulse: 210 75 92 / 0.55;
-  --oct-green: 45 210 122;
-  --oct-yellow: 251 191 36;
+  /* ── Semantic status ramp ───────────────────────────────────────────────
+     Deliberately independent of the brand accent. In the dark theme the accent
+     IS a red, so "critical" cannot just be "the red one" — a failed sniper fire
+     and a branded primary button would read identically. `--oct-critical` is
+     pushed ~18° hotter and to full saturation so alarm still separates from
+     brand at a glance. The light theme's accent is blue, so critical there is a
+     plain true red. Use good/warn/critical for MEANING; the accent is for
+     BRAND. `--oct-green` / `--oct-yellow` remain as the legacy hue-named
+     aliases (they now point at the semantic tokens, so the two can't drift). */
+  --oct-good: 45 210 122;
+  --oct-warn: 251 191 36;
+  --oct-critical: 255 92 61;
+  --oct-good-dim: 45 210 122 / 0.14;
+  --oct-warn-dim: 251 191 36 / 0.14;
+  --oct-critical-dim: 255 92 61 / 0.14;
+  --oct-green: var(--oct-good);
+  --oct-yellow: var(--oct-warn);
   /* Telegram brand blue. Platform identity, like the SOL/EVM chain colours —
      deliberately the same value in both themes so a Telegram source always
      reads as Telegram. */
@@ -89,8 +104,16 @@
   --oct-live: 61 107 158;
   --oct-live-dim: 61 107 158 / 0.14;
   --oct-live-pulse: 61 107 158 / 0.45;
-  --oct-green: 45 122 74;
-  --oct-yellow: 168 132 26;
+  /* Semantic status ramp, retuned for paper. Critical is a true red here — the
+     light accent is blue, so there is no brand collision to dodge. */
+  --oct-good: 45 122 74;
+  --oct-warn: 168 132 26;
+  --oct-critical: 192 46 38;
+  --oct-good-dim: 45 122 74 / 0.12;
+  --oct-warn-dim: 168 132 26 / 0.14;
+  --oct-critical-dim: 192 46 38 / 0.12;
+  --oct-green: var(--oct-good);
+  --oct-yellow: var(--oct-warn);
   --oct-telegram: 42 171 238;
   --oct-shadow: 26 28 24;
   --oct-feed-bg: 235 232 224;
@@ -103,6 +126,39 @@
   --oct-card-to: 246 244 239;
   --oct-header-from: 250 249 246;
   --oct-header-to: 235 232 224;
+}
+
+/* ── Non-theme tokens ───────────────────────────────────────────────────────
+   Density and motion are identical in both themes, so they live in their own
+   :root block rather than being duplicated into the dark/light rules above.
+
+   DENSITY. OCT is a dense console; Tailwind's stock 4px ramp is tuned for
+   marketing pages and leaves too much dead air between rows, cells and controls.
+   Rather than redefine Tailwind's numeric `spacing` scale — which would silently
+   move every existing `p-4` in the app — these are NAMED roles layered on top
+   (`p-cozy`, `gap-snug`, `px-gutter`; see `spacing` in tailwind.config.js).
+   Screens migrate onto them one at a time.
+
+   They resolve through CSS variables on purpose: a future "compact mode" toggle
+   can retune the whole console by rewriting these eight values on <html>,
+   without touching a single component.
+
+   MOTION. Durations are shared with lib/motion.ts so CSS transitions and Motion
+   springs stay on one clock. See the reduced-motion guard further down. */
+:root {
+  --oct-space-hair: 0.125rem; /* 2px  — icon nudges, hairline gaps */
+  --oct-space-tight: 0.25rem; /* 4px  — chip padding, inline gaps */
+  --oct-space-snug: 0.375rem; /* 6px  — dense table row padding */
+  --oct-space-cozy: 0.5rem; /* 8px  — control padding, tight stacks */
+  --oct-space-comfy: 0.75rem; /* 12px — dense card inner padding */
+  --oct-space-roomy: 1rem; /* 16px — default card inner padding */
+  --oct-space-section: 1.5rem; /* 24px — gap between sections */
+  --oct-space-gutter: 2rem; /* 32px — page gutter */
+
+  --oct-duration-instant: 100ms; /* press / active feedback */
+  --oct-duration-fast: 150ms; /* hover, colour, small state changes */
+  --oct-duration-base: 220ms; /* entrances, fades, tab switches */
+  --oct-duration-slow: 320ms; /* drawers, modals, larger surfaces */
 }
 
 * {
@@ -168,6 +224,31 @@ h3 {
 ::selection {
   background: rgb(var(--oct-accent));
   color: #ffffff;
+}
+
+/* ── Reduced motion ─────────────────────────────────────────────────────────
+   The global half of the accessibility contract. `lib/motion.ts` collapses
+   Motion's springs and tweens to zero duration for the same users, but the
+   console had ~200 hand-written CSS `transition:` / `animation:` declarations
+   long before Motion arrived, and those need honouring too — so the guard lives
+   here, at the stylesheet level, and covers both.
+
+   Two deliberate exemptions. `.animate-spin` is a loading indicator: freezing it
+   removes feedback rather than reducing motion, which is the opposite of the
+   intent. `.motion-always` is the documented escape hatch for anything else that
+   is load-bearing rather than decorative — use it sparingly and say why. */
+@media (prefers-reduced-motion: reduce) {
+  *:not(.animate-spin):not(.motion-always),
+  *:not(.animate-spin):not(.motion-always)::before,
+  *:not(.animate-spin):not(.motion-always)::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+
+  html {
+    scroll-behavior: auto !important;
+  }
 }
 
 @layer components {

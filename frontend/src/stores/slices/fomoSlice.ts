@@ -31,7 +31,7 @@ export interface FomoSlice {
   clearFocusFilter: () => void;
 }
 
-export const createFomoSlice: StateCreator<AppState, [], [], FomoSlice> = (set, get) => ({
+export const createFomoSlice: StateCreator<AppState, [], [], FomoSlice> = (set) => ({
   connected: false,
   focusFilter: null,
   sidebarCollapsed: false,

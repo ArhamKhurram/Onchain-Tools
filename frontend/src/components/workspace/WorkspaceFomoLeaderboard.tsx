@@ -15,8 +15,8 @@ export default function WorkspaceFomoLeaderboard() {
 
   if (!userId) {
     return (
-      <div className="flex items-center justify-center h-full p-6 text-center">
-        <p className="text-sm text-oct-muted font-mono">Sign in to view leaderboard</p>
+      <div className="flex items-center justify-center h-full p-section text-center">
+        <p className="type-body font-mono text-oct-muted">Sign in to view leaderboard</p>
       </div>
     );
   }
@@ -26,7 +26,7 @@ export default function WorkspaceFomoLeaderboard() {
       embedded
       trackedIds={trackedIds}
       trackedHandles={trackedHandles}
-      onTrack={async (query, fomoUserId) => {
+      onTrack={async (query, _fomoUserId) => {
         const result = await track(query);
         if (result.ok) return { ok: true as const };
         return { ok: false as const, status: result.status, error: result.error };

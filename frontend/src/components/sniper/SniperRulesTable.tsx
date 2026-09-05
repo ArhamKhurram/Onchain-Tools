@@ -4,12 +4,20 @@ import ConfirmModal from '../ConfirmModal';
 import ConsoleEmptyState from '../console/ConsoleEmptyState';
 import SniperRuleFormModal from './SniperRuleFormModal';
 import SniperFireModal from './SniperFireModal';
+import SniperBadge from './SniperBadge';
 import { describeValidationReason, type SnipeRule, type SniperWallet } from '../../types/sniper';
 import type { useSniperRules } from '../../hooks/useSniperRules';
+import { cn } from '../../lib/utils';
 
-const TH = 'px-3 py-2 font-medium';
+const TH = 'px-comfy py-snug font-semibold';
+const TD = 'px-comfy py-snug';
 const ROW_BTN =
-  'px-2 py-0.5 rounded-oct-sm text-[10px] font-mono font-bold uppercase border border-oct-border text-oct-muted hover:text-oct-text hover:border-oct-border-bright transition-colors disabled:opacity-40 disabled:cursor-not-allowed';
+  'px-cozy py-hair rounded-oct-sm type-caption font-mono font-bold uppercase border border-oct-border text-oct-muted hover:text-oct-text hover:border-oct-border-bright transition-colors disabled:opacity-40 disabled:cursor-not-allowed';
+// The fire button is the one ACTION on the row, so it alone wears the accent
+// — outlined, filling on hover. Every status colour on this row is semantic
+// (good / warn / critical), so nothing else can be mistaken for it.
+const FIRE_BTN =
+  'px-cozy py-hair rounded-oct-sm type-caption font-mono font-bold uppercase border border-oct-accent text-oct-accent hover:bg-oct-accent hover:text-white transition-colors disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-transparent disabled:hover:text-oct-accent';
 
 interface SniperRulesTableProps {
   rules: ReturnType<typeof useSniperRules>;
@@ -20,13 +28,10 @@ interface SniperRulesTableProps {
 }
 
 function StateBadge({ state }: { state: SnipeRule['state'] }) {
-  const cls =
-    state === 'armed'
-      ? 'border-oct-accent/60 bg-oct-accent/15 text-oct-accent'
-      : state === 'disabled'
-        ? 'border-oct-border text-oct-muted'
-        : 'border-oct-border text-oct-muted';
-  return <span className={`text-[10px] font-mono uppercase tracking-wider px-2 py-0.5 rounded-oct-sm border ${cls}`}>{state}</span>;
+  // Only `armed` gets its own styling; `draft` and `disabled` share the muted
+  // look. Armed is `warn`, not the accent: it means "may be fired live", which
+  // is a caution, not a brand moment.
+  return <SniperBadge tone={state === 'armed' ? 'warn' : 'neutral'}>{state}</SniperBadge>;
 }
 
 export default function SniperRulesTable({ rules, wallets, processDryRun, killed }: SniperRulesTableProps) {
@@ -109,14 +114,14 @@ export default function SniperRulesTable({ rules, wallets, processDryRun, killed
 
   return (
     <div className="h-full flex flex-col min-h-0 bg-oct-bg overflow-hidden">
-      <div className="oct-headerbar shrink-0 flex items-center gap-2 px-4 py-2.5">
+      <div className="oct-headerbar shrink-0 flex items-center gap-comfy px-roomy py-cozy">
         <span className="oct-eyebrow">view: rules</span>
         <div className="flex-1" />
-        <span className="font-mono text-[11px] text-oct-muted tabular-nums">{rules.rules.length} rules</span>
+        <span className="type-data text-oct-muted">{rules.rules.length} rules</span>
         <button
           type="button"
           onClick={openAdd}
-          className="oct-icon-btn flex items-center gap-1.5 px-2.5 py-1.5 text-xs font-bold uppercase"
+          className="oct-icon-btn flex items-center gap-snug px-cozy py-snug type-label uppercase"
         >
           <Plus size={12} />
           new rule
@@ -129,12 +134,12 @@ export default function SniperRulesTable({ rules, wallets, processDryRun, killed
         refuse three times in a row and read as a dead button.
       */}
       {notice && (
-        <div className="shrink-0 flex items-start gap-2 px-4 py-2 border-b border-oct-border border-l-4 border-l-oct-flame bg-oct-flame/10">
-          <span className="flex-1 font-mono text-[11px] leading-relaxed text-oct-flame">{notice}</span>
+        <div className="shrink-0 flex items-start gap-cozy px-roomy py-cozy border-b border-oct-border border-l-4 border-l-oct-critical bg-oct-critical-dim">
+          <span className="flex-1 font-mono text-xs leading-relaxed text-oct-critical">{notice}</span>
           <button
             type="button"
             onClick={() => setNotice(null)}
-            className="shrink-0 font-mono text-[10px] uppercase text-oct-muted hover:text-oct-text"
+            className="shrink-0 type-caption font-mono uppercase text-oct-muted hover:text-oct-text"
           >
             dismiss
           </button>
@@ -144,7 +149,7 @@ export default function SniperRulesTable({ rules, wallets, processDryRun, killed
       <div className="flex-1 min-h-0 overflow-auto overscroll-contain" style={{ overflowAnchor: 'none' }}>
         <table className="w-full text-left border-collapse min-w-[1000px]">
           <thead className="oct-thead sticky top-0 z-10">
-            <tr className="font-mono text-[10px] font-bold uppercase tracking-wider text-oct-muted">
+            <tr className="type-caption font-mono uppercase tracking-wider text-oct-muted">
               <th className={TH}>Name</th>
               <th className={TH}>State</th>
               <th className={TH}>Mode</th>
@@ -167,38 +172,32 @@ export default function SniperRulesTable({ rules, wallets, processDryRun, killed
                 <tr
                   key={r.id}
                   // "Which of these spends real money" has to be readable at a
-                  // glance, not by reading two columns and combining them.
-                  className={`border-b border-oct-border/50 oct-row-hover ${
-                    armedLive ? 'border-l-2 border-l-oct-accent bg-oct-accent/5' : ''
-                  }`}
+                  // glance, not by reading two columns and combining them. Amber,
+                  // because armed-and-live is the caution state of this table.
+                  className={cn(
+                    'border-b border-oct-border/50 oct-row-hover',
+                    armedLive && 'border-l-2 border-l-oct-warn bg-oct-warn-dim',
+                  )}
                 >
-                  <td className="px-3 py-2 text-sm text-oct-text">{r.name}</td>
-                  <td className="px-3 py-2">
+                  <td className={`${TD} type-body text-oct-text`}>{r.name}</td>
+                  <td className={TD}>
                     <StateBadge state={r.state} />
                   </td>
-                  <td className="px-3 py-2">
-                    <span
-                      className={`text-[10px] font-mono uppercase tracking-wider px-2 py-0.5 rounded-oct-sm border ${
-                        live
-                          ? 'border-oct-accent bg-oct-accent text-white'
-                          : 'border-oct-green/60 bg-oct-green/15 text-oct-green'
-                      }`}
-                    >
-                      {live ? 'live' : 'dry'}
-                    </span>
+                  <td className={TD}>
+                    <SniperBadge tone={live ? 'warnSolid' : 'good'}>{live ? 'live' : 'dry'}</SniperBadge>
                   </td>
-                  <td className="px-3 py-2 font-mono text-xs text-oct-text" title={r.mint ?? undefined}>
+                  <td className={`${TD} type-data text-oct-text`} title={r.mint ?? undefined}>
                     {r.mint ? `${r.mint.slice(0, 6)}…${r.mint.slice(-4)}` : '—'}
                   </td>
-                  <td className="px-3 py-2 font-mono text-xs text-oct-text text-right">
+                  <td className={`${TD} type-data text-oct-text text-right`}>
                     {r.sizeTotal} {r.sizeUnit}
                   </td>
-                  <td className="px-3 py-2 font-mono text-xs text-oct-muted text-right tabular-nums">{r.walletIds.length}</td>
-                  <td className="px-3 py-2 font-mono text-xs text-oct-text text-right tabular-nums">{r.perFireCap}</td>
-                  <td className="px-3 py-2 font-mono text-xs text-oct-text text-right tabular-nums">{r.perTriggerCap}</td>
-                  <td className="px-3 py-2 font-mono text-xs text-oct-muted text-right tabular-nums">{r.slippageBps}</td>
-                  <td className="px-3 py-2">
-                    <div className="flex items-center justify-end gap-1.5 flex-wrap">
+                  <td className={`${TD} type-data text-oct-muted text-right`}>{r.walletIds.length}</td>
+                  <td className={`${TD} type-data text-oct-text text-right`}>{r.perFireCap}</td>
+                  <td className={`${TD} type-data text-oct-text text-right`}>{r.perTriggerCap}</td>
+                  <td className={`${TD} type-data text-oct-muted text-right`}>{r.slippageBps}</td>
+                  <td className={TD}>
+                    <div className="flex items-center justify-end gap-snug flex-wrap">
                       {r.state === 'armed' ? (
                         <button type="button" onClick={() => void rules.disarmRule(r.id)} className={ROW_BTN}>
                           disarm
@@ -222,7 +221,7 @@ export default function SniperRulesTable({ rules, wallets, processDryRun, killed
                         onClick={() => setFiring(r)}
                         disabled={killed}
                         title={killed ? 'The kill switch is on — console fires are blocked.' : undefined}
-                        className={ROW_BTN}
+                        className={FIRE_BTN}
                       >
                         fire
                       </button>

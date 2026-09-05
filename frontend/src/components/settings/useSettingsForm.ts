@@ -1,7 +1,7 @@
 import { useState, useEffect, useMemo, useRef, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAppStore } from '../../stores/appStore';
-import type { SolPlatform, EvmPlatform, ContractClickAction, BadgeClickAction, KeywordPattern, KeywordMatchMode, SoundSettings, SoundType, SoundConfig, PushoverPriority, PushoverSound, PushoverTriggers, PushoverFilters, MessageDisplay, FeedChromePreset, SplitLayout, MissedRunnerConfig, MissedRunnerNotifyVia, ToastPosition, DiscordBotDmConfig, CallerTierEntry } from '../../types';
+import type { SolPlatform, EvmPlatform, ContractClickAction, BadgeClickAction, KeywordPattern, SoundSettings, SoundType, SoundConfig, PushoverPriority, PushoverSound, PushoverTriggers, PushoverFilters, MessageDisplay, FeedChromePreset, SplitLayout, MissedRunnerNotifyVia, ToastPosition, DiscordBotDmConfig, CallerTierEntry } from '../../types';
 import type { Section } from './constants';
 import { defaultSoundConfig, defaultRevivalSoundConfig, defaultTriggers, defaultFilters, defaultMissedRunner, defaultDiscordBotDm } from './constants';
 import { apiBase, authedFetch } from './fields';
@@ -125,9 +125,6 @@ export function useSettingsForm() {
   const [roleColors, setRoleColors] = useState(true);
   const [mobileZoomScale, setMobileZoomScale] = useState(1);
   const [splitLayout, setSplitLayout] = useState<SplitLayout>('row');
-  const [newKeywordPattern, setNewKeywordPattern] = useState('');
-  const [newKeywordMatchMode, setNewKeywordMatchMode] = useState<KeywordMatchMode>('includes');
-  const [newKeywordLabel, setNewKeywordLabel] = useState('');
   const [saving, setSaving] = useState(false);
   const [newToken, setNewToken] = useState('');
   const [showNewToken, setShowNewToken] = useState(false);
@@ -506,22 +503,12 @@ export function useSettingsForm() {
     setGlobalUsers((prev) => prev.filter((u) => u !== userId));
   };
 
-  const addKeyword = () => {
-    if (!newKeywordPattern.trim()) return;
-    setGlobalKeywordPatterns((prev) => [
-      ...prev,
-      { pattern: newKeywordPattern.trim(), matchMode: newKeywordMatchMode, label: newKeywordLabel.trim() || undefined },
-    ]);
-    setNewKeywordPattern('');
-    setNewKeywordLabel('');
-  };
-
   return {
-    config, updateConfig, guilds, rooms, dmChannels, fetchGuilds,
-    fetchDMChannels, fetchConfig, maskedTokens, fetchMaskedTokens, addToken, removeToken,
-    navigate, settingsSection, sidebarCollapsed, toggleSidebar, authStatus,
-    telegramDisconnect, fetchRooms, userNameMap, section, setSection, globalUsers,
-    setGlobalUsers, newUserId, setNewUserId, contractDetection, setContractDetection, guildColors,
+    config, updateConfig, guilds, rooms, dmChannels,
+    fetchConfig, maskedTokens, addToken, removeToken,
+    navigate, sidebarCollapsed, toggleSidebar, authStatus,
+    telegramDisconnect, userNameMap, section, setSection, globalUsers,
+    newUserId, setNewUserId, contractDetection, setContractDetection, guildColors,
     setGuildColors, dmColors, setDmColors, telegramColors, setTelegramColors, enabledGuilds,
     setEnabledGuilds, guildSearch, setGuildSearch, evmAddressColor, setEvmAddressColor, solAddressColor,
     setSolAddressColor, openInDiscordApp, setOpenInDiscordApp, openInTelegramApp, setOpenInTelegramApp, messageSounds,
@@ -533,7 +520,7 @@ export function useSettingsForm() {
     setPushoverFilters, missedRunnerEnabled, setMissedRunnerEnabled, missedRunnerMultiplier, setMissedRunnerMultiplier, missedRunnerLookbackHours,
     setMissedRunnerLookbackHours, missedRunnerCooldownHours, setMissedRunnerCooldownHours, missedRunnerMinMcAtCall, setMissedRunnerMinMcAtCall, missedRunnerNotifyVia,
     setMissedRunnerNotifyVia, missedRunnerTestAddress, setMissedRunnerTestAddress, missedRunnerTestForce, setMissedRunnerTestForce, missedRunnerTestLoading,
-    setMissedRunnerTestLoading, missedRunnerTestResult, setMissedRunnerTestResult, solPlatform, setSolPlatform, evmPlatform,
+    missedRunnerTestResult, setMissedRunnerTestResult, solPlatform, setSolPlatform, evmPlatform,
     setEvmPlatform, customSolUrl, setCustomSolUrl, customEvmUrl, setCustomEvmUrl, contractClickAction,
     setContractClickAction, showFullContractAddress, setShowFullContractAddress, autoOpenHighlightedContracts, setAutoOpenHighlightedContracts,
     callerTiers, setCallerTiers, callerTierShowMuted, setCallerTierShowMuted, callerQualityRanking, setCallerQualityRanking,
@@ -543,14 +530,13 @@ export function useSettingsForm() {
     setMentionsUserEnabled, mentionsRoleEnabled, setMentionsRoleEnabled, mentionsHereEnabled, setMentionsHereEnabled, mentionsEveryoneEnabled,
     setMentionsEveryoneEnabled, badgeClickAction, setBadgeClickAction, chattingEnabled, setChattingEnabled, messageDisplay,
     setMessageDisplay, feedChromePreset, setFeedChromePreset, compactModeAvatars, setCompactModeAvatars, roleColors, setRoleColors, mobileZoomScale,
-    setMobileZoomScale, splitLayout, setSplitLayout, newKeywordPattern, setNewKeywordPattern, newKeywordMatchMode,
-    setNewKeywordMatchMode, newKeywordLabel, setNewKeywordLabel, saving, setSaving, newToken,
+    setMobileZoomScale, splitLayout, setSplitLayout, saving, newToken,
     setNewToken, showNewToken, setShowNewToken, tokenError, setTokenError, addingToken,
     setAddingToken, proxyUrl, setProxyUrl, proxySaving, setProxySaving, proxySaved,
-    setProxySaved, saveError, setSaveError, showTelegramSetup, setShowTelegramSetup, exporting,
-    setExporting, importing, setImporting, importError, setImportError, importSuccess,
-    setImportSuccess, importFileRef, hasUnsavedChanges, guardNavigation, handleSave, handleMissedRunnerTest,
-    handleExport, handleImportFile, addGlobalUser, addGlobalUsers, removeGlobalUser, addKeyword,
+    setProxySaved, saveError, showTelegramSetup, setShowTelegramSetup, exporting,
+    importing, importError, importSuccess,
+    importFileRef, hasUnsavedChanges, guardNavigation, handleSave, handleMissedRunnerTest,
+    handleExport, handleImportFile, addGlobalUser, addGlobalUsers, removeGlobalUser,
   };
 }
 

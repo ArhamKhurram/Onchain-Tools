@@ -1,6 +1,9 @@
 import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
+import { m } from '../../../lib/motion';
 import { routes } from '../../../lib/routes';
+import { useChromeFade } from '../chromeMotion';
+import PresetSwitcher from '../PresetSwitcher';
 import type { FeedChromeEntry, FeedChromePresetProps } from '../feedChromeContract';
 
 const RAIL_WIDTH = 64;
@@ -52,6 +55,7 @@ function useClock(): string {
 
 export default function RailChrome({ model, paletteOpen, onOpenPalette }: FeedChromePresetProps) {
   const {
+    preset,
     entries,
     activeLabel,
     channelCount,
@@ -67,20 +71,27 @@ export default function RailChrome({ model, paletteOpen, onOpenPalette }: FeedCh
     selectRoom,
     createRoom,
     toggleLayoutEditMode,
+    setPreset,
   } = model;
 
   const { hostRef, anchor } = useRailAnchor();
   const clock = useClock();
+  // Three roots (nav, room strip, footer) must stay direct children of the
+  // shell's flex column — the strip is sticky, the footer is `order-last`, and
+  // the host insets the pane row via a sibling selector — so the crossfade is
+  // applied to each rather than to one wrapper.
+  const fade = useChromeFade();
 
-  const segment = 'flex items-center gap-1.5 px-3.5 border-r-2 border-black/35';
+  const segment = 'flex items-center gap-snug px-comfy border-r-2 border-black/35';
 
   return (
     <>
       {/* Zero-height host: measures the rail's corner and insets the pane row it precedes. */}
       <div ref={hostRef} className="shrink-0 h-0 [&~*:last-child]:pl-16">
-        <nav
+        <m.nav
+          {...fade}
           aria-label="Rooms"
-          className="fixed z-20 flex flex-col items-center gap-1.5 py-2.5 border-r-2 border-oct-border bg-oct-surface overflow-y-auto"
+          className="fixed z-20 flex flex-col items-center gap-snug py-cozy border-r-2 border-oct-border bg-oct-surface overflow-y-auto"
           style={{ top: anchor.top, left: anchor.left, width: RAIL_WIDTH, bottom: STATUS_HEIGHT }}
         >
           {entries.map((entry) => (
@@ -91,7 +102,7 @@ export default function RailChrome({ model, paletteOpen, onOpenPalette }: FeedCh
               title={entry.kind === 'mentions' ? 'Mentions' : `#${entry.label}`}
               className={[
                 'relative shrink-0 w-11 h-10 flex items-center justify-center rounded-cockpit border-2',
-                'font-mono text-[10px] font-bold uppercase tracking-[0.06em] transition-colors duration-100',
+                'type-caption font-mono font-bold uppercase tracking-[0.06em] transition-colors duration-fast',
                 entry.active
                   ? 'border-oct-accent bg-oct-accent-dim text-oct-accent'
                   : 'border-transparent text-oct-muted hover:border-oct-border-bright hover:text-oct-text',
@@ -99,7 +110,7 @@ export default function RailChrome({ model, paletteOpen, onOpenPalette }: FeedCh
             >
               {tileGlyph(entry)}
               {entry.unread > 0 && (
-                <span className="absolute -top-1 -right-1 min-w-[16px] px-1 rounded-cockpit bg-oct-accent text-white text-[9px] font-bold leading-4 text-center">
+                <span className="absolute -top-1 -right-1 min-w-[16px] px-tight rounded-cockpit bg-oct-accent text-white type-data text-2xs font-bold leading-4 text-center">
                   {entry.unread > 99 ? '99+' : entry.unread}
                 </span>
               )}
@@ -110,16 +121,16 @@ export default function RailChrome({ model, paletteOpen, onOpenPalette }: FeedCh
             type="button"
             onClick={createRoom}
             title="New room"
-            className="mt-auto shrink-0 w-11 h-10 flex items-center justify-center rounded-cockpit border-2 border-transparent font-mono text-sm font-bold text-oct-border-bright hover:border-oct-border-bright hover:text-oct-accent transition-colors duration-100"
+            className="mt-auto shrink-0 w-11 h-10 flex items-center justify-center rounded-cockpit border-2 border-transparent font-mono text-sm font-bold text-oct-border-bright hover:border-oct-border-bright hover:text-oct-accent transition-colors duration-fast"
           >
             +
           </button>
-        </nav>
+        </m.nav>
       </div>
 
       {paneCount <= 1 && (
-        <div className="sticky top-0 z-10 shrink-0 pl-16 border-y-2 border-oct-border bg-oct-surface-raised">
-          <div className="flex items-center gap-2 px-4 py-1.5 font-mono text-[10px] sm:text-[11px] uppercase tracking-[0.18em] text-oct-muted">
+        <m.div {...fade} className="sticky top-0 z-10 shrink-0 pl-16 border-y-2 border-oct-border bg-oct-surface-raised">
+          <div className="flex items-center gap-cozy px-roomy py-snug type-caption font-mono uppercase tracking-[0.18em] text-oct-muted">
             <span className="shrink-0 text-oct-border-bright">▸</span>
             <button
               type="button"
@@ -135,12 +146,12 @@ export default function RailChrome({ model, paletteOpen, onOpenPalette }: FeedCh
               </span>
             )}
             <span className="shrink-0 hidden sm:inline tabular-nums">· {contractCount} CA</span>
-            <span className="ml-auto shrink-0 text-oct-border-bright tabular-nums">{clock} →</span>
+            <span className="ml-auto shrink-0 text-oct-border-bright type-data text-2xs">{clock} →</span>
           </div>
-        </div>
+        </m.div>
       )}
 
-      <div className="order-last shrink-0 h-8 flex items-stretch px-3.5 bg-oct-accent text-black font-mono text-[10px] sm:text-[11px] font-bold uppercase tracking-[0.14em]">
+      <m.div {...fade} className="order-last shrink-0 h-8 flex items-stretch px-comfy bg-oct-accent text-black type-caption font-mono font-bold uppercase tracking-[0.14em]">
         <span className={`${segment} pl-0 min-w-0`}>
           <span className="truncate">{activeLabel}</span>
         </span>
@@ -179,34 +190,38 @@ export default function RailChrome({ model, paletteOpen, onOpenPalette }: FeedCh
           </button>
         )}
 
-        <span className="ml-auto flex items-center gap-3 pl-3.5">
-          <span className={`flex items-center gap-1.5 ${discordConnected ? '' : 'text-black/45'}`}>
+        <span className="ml-auto flex items-center gap-comfy pl-comfy">
+          {/* Connection dots carry meaning (good/warn/critical), not brand — the
+              footer itself is already the accent. */}
+          <span className={`flex items-center gap-snug ${discordConnected ? '' : 'text-black/45'}`}>
             <span
-              className={`w-2 h-2 rounded-full border border-black/40 ${discordConnected ? 'bg-oct-green' : 'bg-oct-accent'}`}
+              className={`w-2 h-2 rounded-full border border-black/40 ${discordConnected ? 'bg-oct-good' : 'bg-oct-critical'}`}
             />
             <span className="hidden sm:inline">Discord</span>
           </span>
 
           {telegramConfigured && (
-            <span className={`flex items-center gap-1.5 ${telegramConnected ? '' : 'text-black/45'}`}>
+            <span className={`flex items-center gap-snug ${telegramConnected ? '' : 'text-black/45'}`}>
               <span
-                className={`w-2 h-2 rounded-full border border-black/40 ${telegramConnected ? 'bg-oct-telegram' : 'bg-oct-yellow'}`}
+                className={`w-2 h-2 rounded-full border border-black/40 ${telegramConnected ? 'bg-oct-good' : 'bg-oct-warn'}`}
               />
               <span className="hidden sm:inline">Telegram</span>
             </span>
           )}
 
+          <PresetSwitcher value={preset} onChange={setPreset} tone="accent" className="hidden sm:flex" />
+
           <button
             type="button"
             onClick={onOpenPalette}
             aria-expanded={paletteOpen}
-            className={`px-1.5 rounded-cockpit tracking-[0.14em] ${paletteOpen ? 'bg-black/85 text-oct-accent' : ''}`}
+            className={`px-snug rounded-cockpit tracking-[0.14em] ${paletteOpen ? 'bg-black/85 text-oct-accent' : ''}`}
             title="Rooms and actions (⌘K)"
           >
             ⌘K
           </button>
         </span>
-      </div>
+      </m.div>
     </>
   );
 }

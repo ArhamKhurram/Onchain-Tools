@@ -115,7 +115,7 @@ missing on the service.
 
 ## Secrets hygiene
 
-- Never commit tokens; `.env` is gitignored, `gmgn_*.pem` is gitignored.
+- Never commit tokens; `.env` is gitignored.
 - `TOKEN_ENCRYPTION_KEY` must differ per environment and must never change
   once set (previously encrypted Discord tokens become undecryptable).
 - The backend loads `.env` with `override: false` — platform-injected vars

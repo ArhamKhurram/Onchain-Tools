@@ -14,8 +14,8 @@ export class TelegramClientManager extends EventEmitter {
   private readyPromise: Promise<void>;
 
   constructor(
-    private apiId: number,
-    private apiHash: string,
+    apiId: number,
+    apiHash: string,
     sessions: string[],
   ) {
     super();
@@ -178,13 +178,5 @@ export class TelegramClientManager extends EventEmitter {
 
   isConnected(): boolean {
     return this.clients.some((c) => c.isConnected());
-  }
-
-  getClientCount(): number {
-    return this.clients.length;
-  }
-
-  getFirstClient(): TelegramClientWrapper | null {
-    return this.clients[0] ?? null;
   }
 }

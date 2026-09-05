@@ -13,16 +13,35 @@ import {
   CircleDot,
 } from 'lucide-react';
 import ConfirmModal from '../ConfirmModal';
+import Chip from '../common/Chip';
 import WalletFormModal, { type WalletFormValues } from './WalletFormModal';
+import WalletsEmptyState from '../empty/WalletsEmptyState';
 import { useTrackedWallets } from '../../hooks/useTrackedWallets';
+import { cn } from '../../lib/utils';
 import type { TrackedWallet, WalletChain } from '../../types/wallets';
 import { CHAIN_META, truncateAddress, WALLET_CHAINS } from '../../types/wallets';
+
+// ── Tracked-wallet directory ─────────────────────────────────────────────────
+// A blotter, not a card grid: one dense table, mono addresses, tabular digits.
+// Type roles carry the hierarchy (`type-title` for the page, `type-caption`
+// for column labels, `type-data` for every address), so the row height comes
+// down to the content rather than the padding. No motion here — the table is
+// user-driven, not streamed, but the page-level entrance in DirectoryPage
+// already covers it and a second animation on the same surface would stack.
 
 interface WalletTrackerProps {
   userId: string;
 }
 
 type ChainFilter = WalletChain | 'all';
+
+/**
+ * Column labels. `type-caption` (12px) mono with the wide tracking the legacy
+ * `.oct-eyebrow` helper uses — that helper is 11px, under the floor, and being
+ * a utilities-layer class it cannot be lifted from a call site.
+ */
+const TH_CLASS = 'px-comfy py-snug type-caption font-mono uppercase tracking-[0.14em] text-oct-muted text-left';
+const TD_CLASS = 'px-comfy py-snug';
 
 export default function WalletTracker({ userId }: WalletTrackerProps) {
   const { wallets, loading, error, refresh, createWallet, updateWallet, deleteWallet } =
@@ -100,55 +119,55 @@ export default function WalletTracker({ userId }: WalletTrackerProps) {
   return (
     <div className="flex flex-col h-full min-h-0 bg-oct-bg">
       {/* Toolbar */}
-      <div className="oct-headerbar shrink-0 px-4 sm:px-6 py-3">
-        <div className="flex flex-wrap items-center gap-3 mb-3">
-          <div className="flex items-center gap-2">
-            <Wallet size={18} className="text-oct-accent" />
-            <h1 className="oct-section-title text-base uppercase tracking-wide">Tracked Wallets</h1>
-            <span className="oct-chip tabular-nums">{filtered.length}</span>
+      <div className="oct-headerbar shrink-0 px-roomy sm:px-section py-cozy">
+        <div className="flex flex-wrap items-center gap-comfy mb-cozy">
+          <div className="flex items-center gap-cozy">
+            <Wallet size={16} className="text-oct-accent" />
+            <h1 className="type-title uppercase tracking-wide text-oct-text">Tracked Wallets</h1>
+            <Chip>{filtered.length}</Chip>
           </div>
           <div className="flex-1" />
           <button
             type="button"
             onClick={() => refresh()}
             disabled={loading}
-            className="oct-icon-btn p-2"
+            className="oct-icon-btn p-snug"
             title="Refresh"
           >
-            <RefreshCw size={16} className={loading ? 'animate-spin' : ''} />
+            <RefreshCw size={14} className={loading ? 'animate-spin' : ''} />
           </button>
-          <button
-            type="button"
-            onClick={openAdd}
-            className="oct-btn-primary px-3 py-1.5 text-sm"
-          >
-            <Plus size={16} />
+          <button type="button" onClick={openAdd} className="oct-btn-primary px-comfy py-snug type-label">
+            <Plus size={14} />
             Add wallet
           </button>
         </div>
 
-        <div className="flex flex-col sm:flex-row gap-2">
+        <div className="flex flex-col sm:flex-row gap-cozy">
           <div className="relative flex-1">
-            <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-oct-muted pointer-events-none" />
+            <Search
+              size={14}
+              className="absolute left-cozy top-1/2 -translate-y-1/2 text-oct-muted pointer-events-none"
+            />
             <input
               type="text"
               value={search}
               onChange={(e) => setSearch(e.target.value)}
               placeholder="Search address, label, profile…"
-              className="oct-input w-full pl-9 pr-3 py-2 text-sm"
+              className="oct-input w-full pl-8 pr-comfy py-snug type-body"
             />
           </div>
-          <div className="flex gap-1 p-0.5 rounded-oct bg-oct-bg border border-oct-border">
-            {WALLET_CHAINS.map(({ value, label }) => (
+          <div className="flex gap-tight p-hair rounded-oct bg-oct-bg border border-oct-border">
+            {WALLET_CHAINS.map(({ value }) => (
               <button
                 key={value}
                 type="button"
                 onClick={() => setChainFilter(value)}
-                className={`px-2.5 py-1.5 rounded-oct-sm text-xs font-bold uppercase transition-all whitespace-nowrap ${
+                className={cn(
+                  'px-cozy py-tight rounded-oct-sm type-caption font-bold uppercase transition-all duration-fast whitespace-nowrap',
                   chainFilter === value
                     ? 'bg-oct-accent text-white shadow-oct-glow-accent'
-                    : 'text-oct-muted hover:text-oct-text'
-                }`}
+                    : 'text-oct-muted hover:text-oct-text',
+                )}
               >
                 {value === 'all' ? 'All' : CHAIN_META[value].short}
               </button>
@@ -158,51 +177,44 @@ export default function WalletTracker({ userId }: WalletTrackerProps) {
       </div>
 
       {/* Body */}
-      <div className="flex-1 min-h-0 overflow-auto px-4 sm:px-6 py-4">
+      <div className="flex-1 min-h-0 overflow-auto px-roomy sm:px-section py-comfy">
         {(error || actionError) && (
-          <div className="mb-4 px-4 py-3 rounded-oct border border-oct-flame/50 bg-oct-flame/10 text-sm text-oct-flame">
+          // `oct-critical`, not the accent: the accent is a red in the dark theme,
+          // so an error styled with it reads as branded chrome.
+          <div
+            role="alert"
+            className="mb-comfy px-comfy py-cozy rounded-oct border border-oct-critical/50 bg-oct-critical-dim type-body text-oct-critical"
+          >
             {error ?? actionError}
           </div>
         )}
 
         {loading && wallets.length === 0 ? (
-          <div className="flex items-center justify-center py-24">
+          <div className="flex items-center justify-center py-gutter">
             <div className="w-6 h-6 border-2 border-oct-accent border-t-transparent rounded-full animate-spin" />
           </div>
+        ) : wallets.length === 0 ? (
+          <WalletsEmptyState onAdd={openAdd} />
         ) : filtered.length === 0 ? (
-          <div className="flex flex-col items-center justify-center py-24 text-center">
-            <div className="w-14 h-14 rounded-oct-lg border border-oct-accent/40 bg-gradient-to-b from-oct-flame to-oct-accent shadow-oct-glow-accent flex items-center justify-center mb-4">
-              <Wallet size={24} className="text-white" />
+          <div className="flex flex-col items-center justify-center py-gutter text-center">
+            <div className="w-12 h-12 rounded-oct-lg border border-oct-border bg-oct-surface-raised flex items-center justify-center mb-comfy">
+              <Wallet size={20} className="text-oct-muted" />
             </div>
-            <p className="text-oct-text font-bold uppercase mb-1.5">
-              {wallets.length === 0 ? 'No wallets tracked yet' : 'No matches'}
+            <p className="type-title uppercase tracking-wide text-oct-text mb-tight">No matches</p>
+            <p className="type-body text-oct-muted mb-roomy max-w-sm leading-relaxed">
+              Try a different search or chain filter.
             </p>
-            <p className="text-sm text-oct-muted mb-5 max-w-sm leading-relaxed">
-              {wallets.length === 0
-                ? 'Add whale or KOL addresses to monitor their on-chain activity.'
-                : 'Try a different search or chain filter.'}
-            </p>
-            {wallets.length === 0 && (
-              <button
-                type="button"
-                onClick={openAdd}
-                className="oct-btn-primary px-4 py-2 text-sm"
-              >
-                <Plus size={16} />
-                Add your first tracked wallet
-              </button>
-            )}
           </div>
         ) : (
           <div className="oct-card oct-card-flush overflow-hidden">
-            <table className="w-full text-sm">
+            <table className="w-full type-body">
               <thead className="oct-thead">
-                <tr className="text-left">
-                  <th className="px-3 py-2.5 oct-eyebrow font-medium">Wallet</th>
-                  <th className="px-3 py-2.5 oct-eyebrow font-medium hidden md:table-cell">Address</th>
-                  <th className="px-3 py-2.5 oct-eyebrow font-medium w-20">Chain</th>
-                  <th className="px-3 py-2.5 oct-eyebrow font-medium hidden lg:table-cell w-28">Alerts</th>
-                  <th className="px-3 py-2.5 oct-eyebrow font-medium w-24 text-right">Actions</th>
+                <tr>
+                  <th className={TH_CLASS}>Wallet</th>
+                  <th className={cn(TH_CLASS, 'hidden md:table-cell')}>Address</th>
+                  <th className={cn(TH_CLASS, 'w-20')}>Chain</th>
+                  <th className={cn(TH_CLASS, 'hidden lg:table-cell w-28')}>Alerts</th>
+                  <th className={cn(TH_CLASS, 'w-24 text-right')}>Actions</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-oct-border/60">
@@ -264,48 +276,55 @@ function WalletRow({
 
   return (
     <tr className="oct-row-hover group">
-      <td className="px-3 py-2.5">
-        <div className="flex items-center gap-2 min-w-0">
-          <span className="text-base shrink-0 w-6 text-center">{wallet.emoji || '·'}</span>
+      <td className={TD_CLASS}>
+        <div className="flex items-center gap-cozy min-w-0">
+          <span className="text-base shrink-0 w-6 text-center leading-none">{wallet.emoji || '·'}</span>
           <div className="min-w-0">
-            <div className="font-medium text-oct-text truncate">{displayName}</div>
-            <div className="text-xs text-oct-muted truncate">{wallet.profile}</div>
-            <div className="md:hidden font-mono text-xs text-oct-muted truncate mt-0.5">{truncateAddress(wallet.address, 8, 6)}</div>
+            <div className="type-label text-oct-text truncate">{displayName}</div>
+            <div className="type-caption text-oct-muted truncate">{wallet.profile}</div>
+            <div className="md:hidden type-data text-oct-muted truncate mt-hair">
+              {truncateAddress(wallet.address, 8, 6)}
+            </div>
           </div>
         </div>
       </td>
-      <td className="px-3 py-2.5 hidden md:table-cell">
+      <td className={cn(TD_CLASS, 'hidden md:table-cell')}>
         <button
           type="button"
           onClick={onCopy}
-          className="inline-flex items-center gap-1.5 font-mono text-xs text-oct-muted hover:text-oct-accent transition-colors max-w-[220px]"
+          className="inline-flex items-center gap-snug type-data text-oct-muted hover:text-oct-text transition-colors duration-fast max-w-[220px]"
           title={wallet.address}
         >
           <span className="truncate">{truncateAddress(wallet.address, 8, 6)}</span>
-          {copied ? <Check size={12} className="text-oct-green shrink-0" /> : <Copy size={12} className="shrink-0 opacity-0 group-hover:opacity-100" />}
+          {copied ? (
+            <Check size={12} className="text-oct-good shrink-0" />
+          ) : (
+            <Copy size={12} className="shrink-0 opacity-0 group-hover:opacity-100" />
+          )}
         </button>
       </td>
-      <td className="px-3 py-2.5">
+      <td className={TD_CLASS}>
+        {/* Chain colour is per-chain brand data (from CHAIN_META), not a status — inline style is correct here. */}
         <span
-          className="inline-flex px-2 py-0.5 rounded-oct-sm text-[10px] font-bold uppercase tracking-wide"
+          className="inline-flex px-snug py-hair rounded-oct-sm type-caption font-bold uppercase tracking-wide"
           style={{ color: chain.color, backgroundColor: `${chain.color}18` }}
         >
           {chain.short}
         </span>
       </td>
-      <td className="px-3 py-2.5 hidden lg:table-cell">
-        <div className="flex items-center gap-2 text-oct-muted">
+      <td className={cn(TD_CLASS, 'hidden lg:table-cell')}>
+        <div className="flex items-center gap-cozy text-oct-muted">
           <AlertIcon active={wallet.alerts_on_toast} icon={Bell} title="Toast" />
           <AlertIcon active={wallet.alerts_on_feed} icon={Rss} title="Feed" />
           <AlertIcon active={wallet.alerts_on_bubble} icon={CircleDot} title="Bubble" />
         </div>
       </td>
-      <td className="px-3 py-2.5">
-        <div className="flex items-center justify-end gap-1">
+      <td className={TD_CLASS}>
+        <div className="flex items-center justify-end gap-tight">
           <button
             type="button"
             onClick={onEdit}
-            className="p-1.5 rounded-oct-sm text-oct-muted hover:text-oct-text hover:bg-oct-surface-raised transition-colors"
+            className="p-snug rounded-oct-sm text-oct-muted hover:text-oct-text hover:bg-oct-surface-raised transition-colors duration-fast"
             title="Edit"
           >
             <Pencil size={14} />
@@ -313,7 +332,7 @@ function WalletRow({
           <button
             type="button"
             onClick={onDelete}
-            className="p-1.5 rounded-oct-sm text-oct-muted hover:text-oct-accent hover:bg-oct-accent-dim transition-colors"
+            className="p-snug rounded-oct-sm text-oct-muted hover:text-oct-critical hover:bg-oct-critical-dim transition-colors duration-fast"
             title="Delete"
           >
             <Trash2 size={14} />

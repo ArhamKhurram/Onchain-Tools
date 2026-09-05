@@ -1,5 +1,4 @@
 import { GatewayManager } from '../discord/gatewayManager.js';
-import type { WsServer } from '../ws/server.js';
 
 const DEFAULT_IDLE_TIMEOUT_MS = 30 * 60 * 1000; // 30 minutes
 
@@ -16,12 +15,9 @@ function fingerprint(tokens: string[]): string {
 
 export class UserGatewayPool {
   private gateways = new Map<string, PoolEntry>();
-  private idleTimer: ReturnType<typeof setInterval> | null = null;
-  private idleTimeoutMs: number;
 
-  constructor(idleTimeoutMs = DEFAULT_IDLE_TIMEOUT_MS) {
-    this.idleTimeoutMs = idleTimeoutMs;
-    this.idleTimer = setInterval(() => this.disconnectIdle(), 60_000);
+  constructor() {
+    setInterval(() => this.disconnectIdle(), 60_000);
   }
 
   get(userId: string): GatewayManager | null {
@@ -87,22 +83,11 @@ export class UserGatewayPool {
   private disconnectIdle(): void {
     const now = Date.now();
     for (const [userId, entry] of this.gateways) {
-      if (entry.activeClients === 0 && now - entry.lastActive > this.idleTimeoutMs) {
+      if (entry.activeClients === 0 && now - entry.lastActive > DEFAULT_IDLE_TIMEOUT_MS) {
         console.log(`[GatewayPool] Disconnecting idle gateway for user ${userId.slice(0, 8)}...`);
         entry.manager.disconnect();
         this.gateways.delete(userId);
       }
-    }
-  }
-
-  disconnectAll(): void {
-    for (const [_userId, entry] of this.gateways) {
-      entry.manager.disconnect();
-    }
-    this.gateways.clear();
-    if (this.idleTimer) {
-      clearInterval(this.idleTimer);
-      this.idleTimer = null;
     }
   }
 

@@ -1,6 +1,7 @@
 import { Check, Columns3, LayoutGrid, Pencil, RotateCcw, X } from 'lucide-react';
 import WidgetPicker from './WidgetPicker';
 import { WORKSPACE_MAX_COLUMNS, countPanels } from '../../data/workspaceWidgets';
+import { cn } from '../../lib/utils';
 import type { WorkspaceLayout } from '../../types/workspace';
 
 interface WorkspaceToolbarProps {
@@ -15,6 +16,12 @@ interface WorkspaceToolbarProps {
   onPickRoom: () => void;
   onAddColumn: () => void;
 }
+
+// One recipe for every toolbar button so their heights agree: the toolbar is a
+// single row and a 1px mismatch between "Column" and "Cancel" reads as sloppy.
+// `type-label` (13px/600) replaces the old 11px mono — still a label, now on
+// the ramp.
+const TOOLBAR_BTN = 'inline-flex items-center gap-tight px-cozy py-tight type-label uppercase tracking-wide';
 
 export default function WorkspaceToolbar({
   layout,
@@ -32,13 +39,13 @@ export default function WorkspaceToolbar({
   const canAddColumn = layout.columns.length < WORKSPACE_MAX_COLUMNS;
 
   return (
-    <div className="oct-headerbar shrink-0 flex flex-wrap items-center gap-2 px-3 sm:px-4 py-2.5">
+    <div className="oct-headerbar shrink-0 flex flex-wrap items-center gap-cozy px-comfy py-snug">
       <LayoutGrid size={16} className="text-oct-accent shrink-0" />
-      <span className="oct-eyebrow hidden sm:inline">
+      <span className="type-label uppercase tracking-wider text-oct-muted hidden sm:inline">
         Workspace
       </span>
       {!editMode && panelCount > 0 && (
-        <span className="font-mono text-[11px] text-oct-muted tabular-nums">
+        <span className="type-data text-oct-muted">
           {layout.columns.length} col · {panelCount} panels
         </span>
       )}
@@ -50,7 +57,7 @@ export default function WorkspaceToolbar({
             type="button"
             onClick={onAddColumn}
             disabled={!canAddColumn}
-            className="oct-icon-btn inline-flex items-center gap-1 px-2.5 py-1.5 font-mono text-[11px] font-bold uppercase disabled:opacity-40"
+            className={cn('oct-icon-btn', TOOLBAR_BTN)}
             title="Add column"
           >
             <Columns3 size={14} />
@@ -59,24 +66,28 @@ export default function WorkspaceToolbar({
           <button
             type="button"
             onClick={onReset}
-            className="oct-icon-btn p-1.5"
+            className="oct-icon-btn p-tight"
             title="Reset to default layout"
           >
             <RotateCcw size={14} />
           </button>
-          <button
-            type="button"
-            onClick={onCancel}
-            className="oct-icon-btn inline-flex items-center gap-1 px-2.5 py-1.5 font-mono text-[11px] font-bold uppercase"
-          >
+          <button type="button" onClick={onCancel} className={cn('oct-icon-btn', TOOLBAR_BTN)}>
             <X size={14} />
             Cancel
           </button>
+          {/* Save is the one confirming action on the bar, so it carries the
+              semantic `good` colour rather than the brand accent — in the dark
+              theme the accent is red, which is the wrong signal for "commit". */}
           <button
             type="button"
             onClick={onSave}
             disabled={saving}
-            className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-oct-sm font-mono text-[11px] font-bold uppercase border border-oct-green/50 bg-oct-green text-black shadow-[0_6px_18px_-8px_rgb(var(--oct-green)/0.5)] hover:brightness-105 disabled:opacity-50 transition-all"
+            className={cn(
+              TOOLBAR_BTN,
+              'rounded-oct-sm border border-oct-good/50 bg-oct-good text-black',
+              'shadow-[0_6px_18px_-8px_rgb(var(--oct-good)/0.5)] hover:brightness-105',
+              'disabled:opacity-50 transition-all duration-fast',
+            )}
           >
             <Check size={14} strokeWidth={2.5} />
             Save
@@ -86,7 +97,7 @@ export default function WorkspaceToolbar({
         <button
           type="button"
           onClick={onStartEdit}
-          className="oct-icon-btn inline-flex items-center gap-1.5 px-3 py-1.5 font-mono text-[11px] sm:text-xs font-bold uppercase tracking-wide hover:!border-oct-accent"
+          className={cn('oct-icon-btn hover:!border-oct-accent', TOOLBAR_BTN)}
         >
           <Pencil size={14} />
           Customize

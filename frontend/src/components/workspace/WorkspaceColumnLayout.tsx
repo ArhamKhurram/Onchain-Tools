@@ -1,7 +1,7 @@
 import { Fragment, useCallback, useState } from 'react';
 import { Panel, PanelGroup, PanelResizeHandle } from 'react-resizable-panels';
 import WorkspacePanelChrome from './WorkspacePanelChrome';
-import { movePanel } from '../../data/workspaceWidgets';
+import { countPanels, movePanel } from '../../data/workspaceWidgets';
 import type { WorkspaceColumn, WorkspaceLayout, WorkspacePanelSlot } from '../../types/workspace';
 
 interface WorkspaceColumnLayoutProps {
@@ -42,11 +42,11 @@ export default function WorkspaceColumnLayout({
     [layout, onChange],
   );
 
-  if (colCount === 0 || countAllPanels(columns) === 0) {
+  if (colCount === 0 || countPanels(layout) === 0) {
     return (
-      <div className="flex-1 flex flex-col items-center justify-center min-h-0 border border-dashed border-oct-border-bright m-4 rounded-oct-lg">
-        <p className="text-oct-text font-bold uppercase mb-1.5">No panels yet</p>
-        <p className="text-sm text-oct-muted font-mono">
+      <div className="flex-1 flex flex-col items-center justify-center min-h-0 border border-dashed border-oct-border-bright m-roomy rounded-oct-lg">
+        <p className="type-title uppercase text-oct-text mb-snug">No panels yet</p>
+        <p className="type-caption font-mono text-oct-muted">
           {editMode ? 'Add panels from the toolbar' : 'Customize layout to add widgets'}
         </p>
       </div>
@@ -94,10 +94,6 @@ export default function WorkspaceColumnLayout({
       </PanelGroup>
     </div>
   );
-}
-
-function countAllPanels(columns: WorkspaceColumn[]): number {
-  return columns.reduce((n, c) => n + c.panels.length, 0);
 }
 
 interface ColumnStackProps {
@@ -148,7 +144,7 @@ function ColumnStack({
   if (panelCount === 0) {
     return (
       <div
-        className={`h-full min-h-0 flex items-center justify-center border border-dashed rounded-oct m-1 transition-colors ${
+        className={`h-full min-h-0 flex items-center justify-center border border-dashed rounded-oct m-tight transition-colors duration-fast ${
           dragOver ? 'border-oct-accent bg-oct-accent/5' : 'border-oct-border-bright'
         } ${editMode ? '' : 'opacity-50'}`}
         onDragOver={handleDragOver}
@@ -156,7 +152,7 @@ function ColumnStack({
         onDrop={(e) => onDropOnColumn(e)}
       >
         {editMode && (
-          <p className="text-xs font-mono text-oct-muted uppercase">Drop panel here</p>
+          <p className="type-caption font-mono text-oct-muted uppercase tracking-wide">Drop panel here</p>
         )}
       </div>
     );
@@ -166,7 +162,7 @@ function ColumnStack({
     const panel = column.panels[0];
     return (
       <div
-        className={`h-full min-h-0 p-0.5 ${dragOver ? 'ring-2 ring-inset ring-oct-accent/30' : ''}`}
+        className={`h-full min-h-0 p-hair ${dragOver ? 'ring-2 ring-inset ring-oct-accent/30' : ''}`}
         onDragOver={handleDragOver}
         onDragLeave={onDragLeaveColumn}
         onDrop={(e) => handleDrop(e, 0)}
@@ -206,7 +202,7 @@ function ColumnStack({
             defaultSize={100 / panelCount}
           >
             <div
-              className="h-full min-h-0 p-0.5"
+              className="h-full min-h-0 p-hair"
               onDragOver={(e) => {
                 if (!editMode) return;
                 e.preventDefault();

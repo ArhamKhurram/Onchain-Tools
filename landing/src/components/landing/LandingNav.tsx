@@ -1,4 +1,5 @@
 import { APP_CONSOLE_PATH, USER_DOCS_URL } from '../../constants';
+import { scrollLandingToTop } from '../../lib/scroll';
 import { SocialLinks } from '../SocialLinks';
 
 interface LandingNavProps {
@@ -20,7 +21,7 @@ export function LandingNav({ entered, lightNav = false }: LandingNavProps) {
         href="#"
         onClick={(e) => {
           e.preventDefault();
-          document.getElementById('landing-scroll')?.scrollTo({ top: 0, behavior: 'smooth' });
+          scrollLandingToTop();
         }}
         className="font-display text-sm sm:text-base tracking-tight normal-case pointer-events-auto hover:opacity-80 transition-opacity shrink-0"
       >

@@ -5,7 +5,7 @@
  */
 
 import { detectContractAddresses, normalizeContractAddress } from './contract.js';
-import { lookupCachedMessage } from './messageReplyCache.js';
+import { lookupCachedMessage } from '@oct/shared';
 
 export interface TokenEnrichment {
   address: string;
@@ -45,7 +45,6 @@ type EmbedLike = {
 };
 
 const ADDR_RE = /0x[a-fA-F0-9]{40}/;
-const SOL_ADDR_RE = /[1-9A-HJ-NP-Za-km-z]{32,44}/;
 
 /** Compact display → number: "21.9K" → 21900, "1.2M" → 1200000 */
 export function parseCompactUsd(raw: string): number | undefined {

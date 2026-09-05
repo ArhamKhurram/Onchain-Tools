@@ -5,12 +5,6 @@ import type { FomoTrade } from '../types/fomo';
 const SIGNAL_CONVERGENCE_WINDOW_MS = 30 * 60 * 1000;
 export const DEFAULT_SIGNAL_CONVERGENCE_WINDOW_MINUTES = 30;
 
-export interface SignalConvergenceMatch {
-  contract: ContractEntry;
-  trade: FomoTrade;
-  key: string;
-}
-
 export function getSignalConvergenceWindowMs(config?: AppConfig | null): number {
   const minutes = config?.signalConvergenceWindowMinutes ?? DEFAULT_SIGNAL_CONVERGENCE_WINDOW_MINUTES;
   return Math.max(1, minutes) * 60_000;

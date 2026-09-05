@@ -101,11 +101,6 @@ export function getBackfillStatus(): BackfillStatus {
   return { ...status };
 }
 
-/** Test seam. */
-export function resetBackfillStatus(): void {
-  status = { state: 'idle', candidates: 0, alreadySeeded: 0, seeded: 0, unpriced: 0, failed: 0 };
-}
-
 async function userIds(): Promise<string[]> {
   if (!isHostedMode()) return [LOCAL_USER_ID];
   const db = getFomoServiceClient();

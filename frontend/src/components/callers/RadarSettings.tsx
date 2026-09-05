@@ -1,6 +1,8 @@
 import { useEffect, useRef, useState } from 'react';
 import { Settings2, X } from 'lucide-react';
 import type { RadarMultipleEmojiRule } from '@oct/shared';
+import { cn } from '../../lib/utils';
+import { m, AnimatePresence, MotionFeatures, slideInRight, useTransition } from '../../lib/motion';
 import {
   RADAR_COLUMN_LABELS,
   RADAR_COLUMN_ORDER,
@@ -9,6 +11,12 @@ import {
   type RadarColumnId,
 } from './radarColumns';
 import RadarEmojiRules from './RadarEmojiRules';
+import {
+  RADAR_PILL_CLASS,
+  RADAR_PILL_OFF_CLASS,
+  RADAR_PILL_ON_CLASS,
+  RADAR_PILL_OUTLINE_CLASS,
+} from './radarPills';
 
 export type MentionWindow = '15m' | '1h' | '4h';
 
@@ -22,6 +30,13 @@ interface RadarSettingsProps {
   onEmojiRulesChange: (next: RadarMultipleEmojiRule[]) => void;
 }
 
+/**
+ * The Radar's display settings popover: mention window, column set and the
+ * × emoji ladder. This is chrome, not stream — it is the one animated surface
+ * on the Radar, and `MotionFeatures` is mounted here rather than higher so
+ * the motion runtime rides in with the settings panel and never touches the
+ * row render path.
+ */
 export default function RadarSettings({
   mentionWindow,
   onMentionWindowChange,
@@ -32,6 +47,7 @@ export default function RadarSettings({
 }: RadarSettingsProps) {
   const [open, setOpen] = useState(false);
   const rootRef = useRef<HTMLDivElement>(null);
+  const drawer = useTransition('drawer');
 
   useEffect(() => {
     if (!open) return;
@@ -61,81 +77,90 @@ export default function RadarSettings({
       <button
         type="button"
         onClick={() => setOpen((v) => !v)}
-        className={`flex items-center gap-1.5 px-2.5 py-1 rounded-oct-sm text-[11px] font-mono font-bold uppercase border transition-all ${
-          open
-            ? 'bg-oct-accent text-white border-oct-accent/50 shadow-oct-glow-accent'
-            : 'text-oct-muted border-transparent hover:text-oct-text hover:border-oct-border-bright'
-        }`}
+        className={cn(
+          RADAR_PILL_CLASS,
+          'flex items-center gap-snug',
+          open ? RADAR_PILL_ON_CLASS : RADAR_PILL_OFF_CLASS,
+        )}
         title="Radar columns & window"
       >
         <Settings2 size={12} />
         columns
       </button>
 
-      {open && (
-        <div className="oct-card absolute left-0 top-full mt-2 z-50 w-72 max-h-[70vh] overflow-y-auto shadow-oct-soft-lg p-3.5">
-          <div className="flex items-center justify-between mb-3">
-            <span className="oct-eyebrow">
-              Radar display
-            </span>
-            <button
-              type="button"
-              onClick={() => setOpen(false)}
-              className="p-0.5 text-oct-muted hover:text-oct-text"
-              aria-label="Close"
+      <MotionFeatures>
+        <AnimatePresence>
+          {open && (
+            <m.div
+              variants={slideInRight}
+              initial="hidden"
+              animate="visible"
+              exit="exit"
+              transition={drawer}
+              className="oct-card absolute left-0 top-full mt-cozy z-50 w-72 max-h-[70vh] overflow-y-auto shadow-oct-soft-lg p-comfy"
             >
-              <X size={14} />
-            </button>
-          </div>
+              <div className="flex items-center justify-between mb-comfy">
+                <span className="type-title text-oct-text">Radar display</span>
+                <button
+                  type="button"
+                  onClick={() => setOpen(false)}
+                  className="p-hair text-oct-muted hover:text-oct-text"
+                  aria-label="Close"
+                >
+                  <X size={14} />
+                </button>
+              </div>
 
-          <p className="oct-eyebrow mb-2">Mention window</p>
-          <div className="flex gap-1 mb-4">
-            {(['15m', '1h', '4h'] as const).map((w) => (
+              <p className="oct-eyebrow mb-cozy">Mention window</p>
+              <div className="flex gap-tight mb-roomy">
+                {(['15m', '1h', '4h'] as const).map((w) => (
+                  <button
+                    key={w}
+                    type="button"
+                    onClick={() => onMentionWindowChange(w)}
+                    className={cn(
+                      RADAR_PILL_CLASS,
+                      'flex-1 normal-case',
+                      mentionWindow === w ? RADAR_PILL_ON_CLASS : RADAR_PILL_OUTLINE_CLASS,
+                    )}
+                  >
+                    {w}
+                  </button>
+                ))}
+              </div>
+
+              <p className="oct-eyebrow mb-cozy">Columns</p>
+              <ul className="space-y-tight max-h-48 overflow-y-auto">
+                {RADAR_COLUMN_ORDER.map((id) => (
+                  <li key={id}>
+                    <label className="flex items-center gap-cozy cursor-pointer font-mono type-label font-normal text-oct-text">
+                      <input
+                        type="checkbox"
+                        checked={visibleColumns.has(id)}
+                        onChange={() => toggleColumn(id)}
+                        className="accent-oct-accent"
+                      />
+                      {RADAR_COLUMN_LABELS[id]}
+                    </label>
+                  </li>
+                ))}
+              </ul>
+
               <button
-                key={w}
                 type="button"
-                onClick={() => onMentionWindowChange(w)}
-                className={`flex-1 px-2 py-1 rounded-oct-sm text-[11px] font-mono font-bold border transition-all ${
-                  mentionWindow === w
-                    ? 'bg-oct-accent text-white border-oct-accent/50 shadow-oct-glow-accent'
-                    : 'text-oct-muted border-oct-border-bright hover:text-oct-text hover:border-oct-text'
-                }`}
+                onClick={resetColumns}
+                className="mt-comfy w-full font-mono text-2xs uppercase text-oct-muted hover:text-oct-accent"
               >
-                {w}
+                Reset to defaults
               </button>
-            ))}
-          </div>
 
-          <p className="oct-eyebrow mb-2">Columns</p>
-          <ul className="space-y-1.5 max-h-48 overflow-y-auto">
-            {RADAR_COLUMN_ORDER.map((id) => (
-              <li key={id}>
-                <label className="flex items-center gap-2 cursor-pointer font-mono text-[13px] text-oct-text">
-                  <input
-                    type="checkbox"
-                    checked={visibleColumns.has(id)}
-                    onChange={() => toggleColumn(id)}
-                    className="accent-oct-accent"
-                  />
-                  {RADAR_COLUMN_LABELS[id]}
-                </label>
-              </li>
-            ))}
-          </ul>
-
-          <button
-            type="button"
-            onClick={resetColumns}
-            className="mt-3 w-full text-[10px] font-mono uppercase text-oct-muted hover:text-oct-accent"
-          >
-            Reset to defaults
-          </button>
-
-          <div className="mt-4 pt-3.5 border-t border-oct-border">
-            <RadarEmojiRules rules={emojiRules} onChange={onEmojiRulesChange} />
-          </div>
-        </div>
-      )}
+              <div className="mt-roomy pt-comfy border-t border-oct-border">
+                <RadarEmojiRules rules={emojiRules} onChange={onEmojiRulesChange} />
+              </div>
+            </m.div>
+          )}
+        </AnimatePresence>
+      </MotionFeatures>
     </div>
   );
 }

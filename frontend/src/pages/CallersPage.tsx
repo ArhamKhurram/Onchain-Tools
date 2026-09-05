@@ -8,7 +8,9 @@ import RevivalLog from '../components/callers/RevivalLog';
 import PriceAlerts from '../components/callers/PriceAlerts';
 import ConsoleEmptyState from '../components/console/ConsoleEmptyState';
 import ConsoleSubnav from '../components/console/ConsoleSubnav';
+import FullPageSpinner from '../components/common/FullPageSpinner';
 import { routes } from '../lib/routes';
+import { m, MotionFeatures, fadeInUp, useTransition } from '../lib/motion';
 
 type CallersView = 'feed' | 'radar' | 'revival' | 'alerts';
 
@@ -24,6 +26,9 @@ const CALLERS_TABS = [
 
 export default function CallersPage() {
   const { isAuthenticated, ready } = useAuthSession();
+  // Page-container entrance only. The tab bodies (radar rows, contract rows,
+  // the revival log) are live streams and must never animate — see lib/motion.
+  const enter = useTransition('snappy');
   const [searchParams, setSearchParams] = useSearchParams();
   const view = useMemo<CallersView>(() => {
     const q = searchParams.get('view');
@@ -35,11 +40,7 @@ export default function CallersPage() {
   };
 
   if (!ready) {
-    return (
-      <div className="flex items-center justify-center h-full bg-oct-bg">
-        <div className="w-6 h-6 border-2 border-oct-accent border-t-transparent rounded-full animate-spin" />
-      </div>
-    );
+    return <FullPageSpinner />;
   }
 
   if (!isAuthenticated) {
@@ -58,17 +59,25 @@ export default function CallersPage() {
   }
 
   return (
-    <div className="h-full min-h-0 flex flex-col bg-oct-bg">
-      <ConsoleSubnav tabs={CALLERS_TABS} active={view} onChange={setView} />
-      {view === 'radar' ? (
-        <RadarTable />
-      ) : view === 'revival' ? (
-        <RevivalLog />
-      ) : view === 'alerts' ? (
-        <PriceAlerts />
-      ) : (
-        <ContractDashboard />
-      )}
-    </div>
+    <MotionFeatures>
+      <m.div
+        variants={fadeInUp}
+        initial="hidden"
+        animate="visible"
+        transition={enter}
+        className="h-full min-h-0 flex flex-col bg-oct-bg"
+      >
+        <ConsoleSubnav tabs={CALLERS_TABS} active={view} onChange={setView} />
+        {view === 'radar' ? (
+          <RadarTable />
+        ) : view === 'revival' ? (
+          <RevivalLog />
+        ) : view === 'alerts' ? (
+          <PriceAlerts />
+        ) : (
+          <ContractDashboard />
+        )}
+      </m.div>
+    </MotionFeatures>
   );
 }

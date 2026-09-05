@@ -5,20 +5,15 @@
 export { matchKeywords } from './keyword.js';
 export {
   SOL_ADDRESS_REGEX,
-  EVM_ADDRESS_REGEX,
   detectContractAddresses,
   isEvmAddress,
   normalizeContractAddress,
   REFERRALS,
-  getPresetTemplate,
-  injectReferralIntoCustomTemplate,
   buildContractUrl,
-  FOMO_NETWORK_CHAIN_SLUGS,
   chainSlugFromNetworkId,
   chainKindFromNetworkId,
   REVIVAL_NETWORKS,
   REVIVAL_NETWORK_CHAIN_SLUGS,
-  REVIVAL_NETWORK_LABELS,
   isRevivalNetwork,
   revivalNetworkForChain,
   revivalNetworkLabel,
@@ -30,8 +25,6 @@ export {
   DEFAULT_RADAR_MULTIPLE_EMOJI_RULES,
   MAX_RADAR_EMOJI_RULES,
   MAX_RADAR_EMOJI_LENGTH,
-  MIN_RADAR_EMOJI_THRESHOLD,
-  MAX_RADAR_EMOJI_THRESHOLD,
   sanitizeRadarEmoji,
   sanitizeRadarEmojiRules,
   resolveRadarEmojiRules,
@@ -39,7 +32,15 @@ export {
 } from './radarEmoji.js';
 
 export { processDiscordMessage } from './message.js';
-export type { MessageProcessorContext, MessageGateway } from './message.js';
+export type { MessageProcessorContext } from './message.js';
+
+// Recently-seen Discord message cache (reply/reference preview resolution).
+export { cacheDiscordMessage, lookupCachedMessage } from './messageReplyCache.js';
+
+// Shared number formatting. usd/compactUsd/shortAddress are the transport-agnostic
+// card formatters shared by the Discord bot (bot/layout.ts) and the Telegram bot
+// (tgbot/render.ts).
+export { formatCompact, usd, compactUsd, shortAddress } from './format.js';
 
 // Bot API contract (see docs/architecture/discord-bot.md).
 export type {
@@ -49,12 +50,9 @@ export type {
   BotHoldersResponse,
   BotThesisEntry,
   BotThesesResponse,
-  BotLeaderboardEntry,
   BotLeaderboardResponse,
   BotSnapshotResponse,
-  BotTrackedTrader,
   BotTrackedResponse,
-  BotWalletHolding,
   BotWalletProfile,
   BotSwapDirection,
   BotTraderSwap,
@@ -85,19 +83,16 @@ export {
   pickRoomScore,
   effectiveBand,
   callerRank,
-  sortCallerScores,
   foldCallerCalls,
   rateCall,
   scoreFromAggregate,
   splitCallerAggregates,
 } from './callerQuality.js';
 export type {
-  CallerPlatform,
   CallerBand,
   RatedCall,
   CallerScore,
   RoomCallerScores,
-  PeakLookup,
   CallerCall,
   CallerAggregateRow,
 } from './callerQuality.js';

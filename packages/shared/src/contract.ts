@@ -9,7 +9,7 @@
 import type { ContractLinkTemplates } from './types.js';
 
 export const SOL_ADDRESS_REGEX = /(?<![1-9A-HJ-NP-Za-km-z])[1-9A-HJ-NP-Za-km-z]{32,48}(?![1-9A-HJ-NP-Za-km-z])/g;
-export const EVM_ADDRESS_REGEX = /\b0x[a-fA-F0-9]{40}\b/g;
+const EVM_ADDRESS_REGEX = /\b0x[a-fA-F0-9]{40}\b/g;
 
 export interface ContractDetectionResult {
   hasContract: boolean;
@@ -88,7 +88,7 @@ export function detectContractAddresses(content: string): ContractDetectionResul
 
 export const REFERRALS = { axiom: 'xpertalt', padre: 'xpertisback', gmgn: 'xpert', bloom: '9S8HSYE56E' };
 
-export function getPresetTemplate(platform: string, chain: 'sol' | 'evm', evmChain?: string): string {
+function getPresetTemplate(platform: string, chain: 'sol' | 'evm', evmChain?: string): string {
   const evmSlug = evmChain || 'base';
   switch (platform) {
     case 'axiom':
@@ -110,7 +110,7 @@ export function getPresetTemplate(platform: string, chain: 'sol' | 'evm', evmCha
   }
 }
 
-export function injectReferralIntoCustomTemplate(template: string): string {
+function injectReferralIntoCustomTemplate(template: string): string {
   if (template.includes('axiom.trade')) {
     return template.replace('{address}', `{address}/@${REFERRALS.axiom}`);
   }
@@ -157,7 +157,7 @@ export function buildContractUrl(
 // Shared so the backend can resolve token metadata from a trade and the frontend
 // can build explorer/chart links for the same trade.
 
-export const FOMO_NETWORK_CHAIN_SLUGS: Record<number, string> = {
+const FOMO_NETWORK_CHAIN_SLUGS: Record<number, string> = {
   1: 'eth',
   56: 'bsc',
   143: 'robinhood',
@@ -202,7 +202,7 @@ export const REVIVAL_NETWORK_CHAIN_SLUGS: Record<RevivalNetwork, string> = {
 };
 
 /** Short display label per network (matches EVM_CHAIN_LABELS in the backend). */
-export const REVIVAL_NETWORK_LABELS: Record<RevivalNetwork, string> = {
+const REVIVAL_NETWORK_LABELS: Record<RevivalNetwork, string> = {
   solana: 'SOL',
   bsc: 'BNB',
   robinhood: 'HOOD',

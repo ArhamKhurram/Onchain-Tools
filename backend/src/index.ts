@@ -2,8 +2,8 @@ import { config as dotenvConfig } from 'dotenv';
 import path from 'path';
 import { fileURLToPath } from 'url';
 
-const __envDir = path.dirname(fileURLToPath(import.meta.url));
-const envPath = path.resolve(__envDir, '../.env');
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
+const envPath = path.resolve(__dirname, '../.env');
 // Never let a bundled/empty .env override Railway/Vercel injected secrets.
 dotenvConfig({ path: envPath, override: false });
 import express from 'express';
@@ -25,6 +25,7 @@ import { createBotRouter } from './api/routes/bot.js';
 import { createSniperRouter } from './api/sniper/router.js';
 import { requireBotAuth } from './auth/botAuth.js';
 import { startBot } from './bot/index.js';
+import { startTelegramBot, tgDeliverMcapCross, tgSubscriberCount } from './tgbot/index.js';
 import { startDailyDigestScheduler } from './bot/dailyDigest.js';
 import { getStorageProvider, isHostedMode } from './storage/index.js';
 import { authMiddleware } from './auth/middleware.js';
@@ -36,7 +37,7 @@ import { buildContractUrl, detectEvmChainFromContent, extractEvmChainFromGmgnLin
 import { tryParseTokenEnrichment, buildRickReplyContext } from './utils/rickEmbedParser.js';
 import { enrichToken, persistEnrichment } from './utils/tokenSnapshot.js';
 import { resolveFallbackTarget, recordFallbackFdv } from './utils/dexFallback.js';
-import { cacheDiscordMessage } from './utils/messageReplyCache.js';
+import { cacheDiscordMessage } from '@oct/shared';
 import type { TokenEnrichment } from './utils/rickEmbedParser.js';
 import { processDiscordMessage } from './utils/messageProcessor.js';
 import type { MessageProcessorContext } from './utils/messageProcessor.js';
@@ -45,6 +46,7 @@ import { broadcastFrontendAlerts } from './utils/frontendAlerts.js';
 import { startFomoPoller } from './fomo/poller.js';
 import { startFomoJoinWatcher } from './fomo/joinWatcher.js';
 import { startPumpCalloutPoller } from './pumpfun/calloutPoller.js';
+import { startJ7Consumer } from './j7/index.js';
 import { startWalletMovementPoller } from './wallets/movementPoller.js';
 import { startFomoRetentionSweeper } from './fomo/retention.js';
 import { startMissedRunnerPoller } from './alerts/missedRunnerPoller.js';
@@ -52,6 +54,7 @@ import { startRevivalPoller } from './revival/poller.js';
 import { startJournalPoller } from './journal/poller.js';
 import { startJournalVolumeDeathPoller } from './journal/volumeDeathPoller.js';
 import { startPriceAlertPoller } from './priceAlerts/poller.js';
+import { startMcapCrossPoller } from './mcapCross/poller.js';
 import { startTokenPeakSampler } from './alerts/tokenPeakSampler.js';
 import { onPeakRaised } from './alerts/tokenPeakStore.js';
 import {
@@ -68,7 +71,6 @@ import { installProcessGuards, guardAsyncHandler } from './utils/processGuards.j
 // bundles and forks `backend/dist/index.js` directly.
 installProcessGuards();
 
-const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const PORT = parseInt(process.env.PORT ?? '3001', 10);
 const LOCAL_USER_ID = 'local';
 
@@ -693,7 +695,21 @@ app.use('/sniper/v1', createSniperRouter());
 // responses on this app (they would need res.flush()).
 app.use(compression());
 
-// CORS: restrict origins in hosted mode, allow all in local mode
+// CORS: restrict origins in hosted mode, allow all in local mode.
+//
+// maxAge matters more than it looks: every console request carries an
+// Authorization header, which is not CORS-safelisted, so the browser
+// preflights it — and without Access-Control-Max-Age the preflight cache
+// defaults to FIVE SECONDS. Every poll cadence in the console (sniper 20s,
+// radar/journal/price-alerts 60s, revival 120s) exceeds that, so each poll
+// was two round-trips to Railway: OPTIONS, then the real request. Advertising
+// a long cache collapses that to one preflight per URL per browser cap
+// (Chrome clamps to 2h, Firefox to 24h) — roughly halving polled request
+// volume and removing a full cross-origin RTT from each poll's latency.
+// Preflight results are keyed per URL and revalidated on any header/method
+// change, so a long maxAge is safe: the policy it caches is origin-scoped,
+// and origin changes always bypass the cache.
+const CORS_PREFLIGHT_MAX_AGE_SECONDS = 86_400;
 if (isHostedMode()) {
   const allowedOrigins = process.env.ALLOWED_ORIGINS
     ? process.env.ALLOWED_ORIGINS.split(',').map((o) => o.trim())
@@ -709,9 +725,13 @@ if (isHostedMode()) {
         }
       : true,
     credentials: true,
+    maxAge: CORS_PREFLIGHT_MAX_AGE_SECONDS,
   }));
 } else {
-  app.use(cors());
+  // Local dev (vite origin → backend origin) preflights JSON POSTs the same
+  // way; the desktop app is same-origin and never preflights. Harmless there,
+  // cheap here.
+  app.use(cors({ maxAge: CORS_PREFLIGHT_MAX_AGE_SECONDS }));
 }
 
 // Security headers in hosted mode
@@ -844,9 +864,33 @@ httpServer.listen(PORT, HOST, async () => {
   // armed alert (zero armed = zero requests). Its own independent signal:
   // no detection, no scoring, never fused with revival/breakout/missed-runner.
   startPriceAlertPoller(wsServer);
+  // Chain-wide market-cap crossings ($750K on Solana/BNB/Robinhood, scam-gated).
+  // Its own independent signal — never fused with revival, breakout,
+  // missed-runner, convergence or FOMO. Self-gates HARD: with no Telegram chat
+  // subscribed it makes zero upstream requests, so the chain-wide sweep costs
+  // nothing until somebody deliberately opts in. Delivery is injected rather
+  // than imported so mcapCross/ never reaches into tgbot/.
+  startMcapCrossPoller(wsServer, {
+    hasSubscribers: async () => (await tgSubscriberCount('mcapCross')) > 0,
+    deliver: (data) =>
+      tgDeliverMcapCross({
+        address: data.address,
+        network: data.network,
+        symbol: data.symbol,
+        mcapUsd: data.mcapUsd,
+        targetUsd: data.targetUsd,
+        liquidityUsd: data.liquidityUsd,
+        liquidityRatio: data.liquidityRatio,
+      }),
+  });
   // Global pump.fun KOL-callout fan-out poller. Self-gates on Supabase (idle in
   // local mode), keyless upstream, so it never crashes the server.
   startPumpCalloutPoller(wsServer);
+  // In-process j7tracker socket consumer — recovers the dead fomo.family + pump
+  // callout upstreams and re-emits them as the existing pump_callout/fomo_trade
+  // frames. Self-gates on J7_JWTS_JSON (idle without JWTs), so it never crashes
+  // the server; runs in BOTH modes (env-gated, not Supabase-gated).
+  startJ7Consumer(wsServer);
   // On-chain buy/sell alerter for Directory (user_tracked_wallets) SOLANA wallets.
   // Self-gates on Supabase (idle in local mode), keyless upstream (profile-api),
   // so it never crashes the server.
@@ -884,6 +928,12 @@ httpServer.listen(PORT, HOST, async () => {
   // In-process OCT Discord bot. Self-gates on DISCORD_BOT_TOKEN and swallows
   // its own failures, so it can never take the backend down.
   startBot(wsServer);
+
+  // In-process OCT Telegram bot (Bot API long-polling — NOT the MTProto
+  // ingestion client in telegram/). Delivers alerts into a Telegram group with
+  // no credential handover from the user. Self-gates on TELEGRAM_BOT_TOKEN and
+  // swallows its own failures, exactly like the Discord bot above.
+  startTelegramBot(wsServer);
 
   // Once-a-day signal digest DMs (opt-in). Self-gates on Supabase + the bot
   // token; if the process was down at the scheduled hour it waits for the next

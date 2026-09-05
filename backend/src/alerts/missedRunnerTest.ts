@@ -11,7 +11,7 @@ import { fetchLiveMarketCap } from '../utils/tokenEnrichment.js';
 import { buildContractUrl } from '../utils/contract.js';
 import { checkTokenHeldByWallets, formatCompact, type TrackedWalletRow } from '../wallets/balanceChecker.js';
 import type { ContractEntry } from '../utils/contractLog.js';
-import type { AppConfig, FrontendMessage } from '../discord/types.js';
+import type { AppConfig } from '../discord/types.js';
 import type { WsServer } from '../ws/server.js';
 import {
   buildMissedRunnerMessage,

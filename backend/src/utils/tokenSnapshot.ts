@@ -80,9 +80,11 @@ export async function getTokenSnapshot(chainSlug: string, address: string): Prom
   }
 
   await persistEnrichment(enrichment, chainSlug, { raw: enrichment });
-  const row = await getCatalogEntry(address, chainSlug);
-  if (row) return rowToSnapshot(row, chainSlug, false);
-
+  // Build the snapshot from the enrichment we just persisted instead of
+  // re-reading the catalog row we just wrote: that second getCatalogEntry was
+  // a whole extra Supabase round-trip per cache miss that could only return
+  // what the upsert put there (and, if the upsert failed, a STALE row silently
+  // relabelled fresh — the in-memory enrichment is strictly newer).
   return {
     address: enrichment.address,
     chain: chainSlug,

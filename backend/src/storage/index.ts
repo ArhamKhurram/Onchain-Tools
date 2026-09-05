@@ -1,6 +1,6 @@
 import type { StorageProvider } from './interface.js';
 import { JsonStorageProvider } from './json.js';
-import { SupabaseStorageProvider } from './supabase.js';
+import { SupabaseStorageProvider } from './supabase/index.js';
 
 export type { StorageProvider } from './interface.js';
 

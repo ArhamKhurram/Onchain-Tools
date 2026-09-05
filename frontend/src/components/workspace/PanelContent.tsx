@@ -23,8 +23,8 @@ export default function PanelContent({ panel, onRoomChange }: PanelContentProps)
       case 'room':
         if (!roomId) {
           return (
-            <div className="flex items-center justify-center h-full p-6 text-center">
-              <p className="text-sm text-oct-muted font-mono">Pick a room in panel settings</p>
+            <div className="flex items-center justify-center h-full p-section text-center">
+              <p className="type-body font-mono text-oct-muted">Pick a room in panel settings</p>
             </div>
           );
         }
@@ -43,7 +43,7 @@ export default function PanelContent({ panel, onRoomChange }: PanelContentProps)
       case 'top-callers-feed':
         return <ContractDashboard embedded topOnly />;
       case 'radar':
-        return <RadarTable embedded />;
+        return <RadarTable />;
       case 'fomo-feed':
         return <FomoTradeFeed embedded />;
       case 'fomo-leaderboard':

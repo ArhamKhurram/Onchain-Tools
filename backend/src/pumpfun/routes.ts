@@ -38,6 +38,7 @@ import {
   sessionStatus,
 } from './leaderboardClient.js';
 import type { PumpLeaderboardPeriod } from './types.js';
+import { getDroppedRoster } from '../j7/roster.js';
 import { getStorageProvider } from '../storage/index.js';
 import {
   getCached,
@@ -811,6 +812,28 @@ export function createPumpfunRouter(): Router {
       console.error('[PumpfunAPI] Failed to load top callers:', err instanceof Error ? err.message : err);
       res.status(500).json({ error: 'Failed to load the top-callers board.' });
     }
+  });
+
+  // -------------------------------------------------------------------------
+  // Dropped roster — the picks j7 could NOT take upstream.
+  //
+  // j7 caps each account at 50 pump + 50 fomo targets and OCT's collective
+  // demand routinely exceeds that (see j7/roster.ts header). The reconciler
+  // ranks and drops the tail, and until now nothing told the user that a caller
+  // they followed is simply not being watched. This is that signal.
+  //
+  // GET /api/pumpfun/roster/dropped → { pump: DroppedTarget[], fomo: DroppedTarget[], at }
+  //
+  // Read-only, GLOBAL (the cut is global — every user sees the same dropped set
+  // and intersects it with their own picks client-side), and deliberately NOT
+  // gated on the callout store: in local mode the reconciler idles, so the
+  // honest answer is "nothing dropped", not a 503 that the console would have
+  // to explain away. Keys are wallet addresses (pump) / handles (fomo), the
+  // same identifiers the tracked-set endpoints already return — nothing here
+  // is new information about who follows whom.
+  // -------------------------------------------------------------------------
+  router.get('/roster/dropped', (_req, res) => {
+    res.json(getDroppedRoster());
   });
 
   return router;

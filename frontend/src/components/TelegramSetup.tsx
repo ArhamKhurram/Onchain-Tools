@@ -1,8 +1,49 @@
-import { useState } from 'react';
+import { useState, type ReactNode } from 'react';
 import { useAppStore } from '../stores/appStore';
 import { Loader2, AlertCircle, CheckCircle2, ExternalLink, ArrowLeft } from 'lucide-react';
+import { cn } from '../lib/utils';
+import { ExtLink, Field, INPUT_CLASS, INPUT_MONO_CLASS, StatusBox } from './settings/fields';
 
 type Step = 'credentials' | 'phone' | 'code' | '2fa' | 'success';
+
+// Telegram's own brand blue for the primary action — the one place a literal
+// hex is deliberate, since it is the platform's colour rather than ours.
+const TG_BUTTON_CLASS =
+  'w-full py-cozy bg-[#2AABEE] hover:bg-[#229ED9] disabled:opacity-50 disabled:cursor-not-allowed rounded-oct-sm type-body font-medium text-white transition-colors flex items-center justify-center gap-cozy';
+
+/** Step header: optional back arrow + title. */
+function StepHeader({ onBack, children }: { onBack?: () => void; children: ReactNode }) {
+  return (
+    <div className="flex items-center gap-cozy">
+      {onBack && (
+        <button type="button" onClick={onBack} className="text-oct-muted hover:text-oct-text p-tight">
+          <ArrowLeft size={18} />
+        </button>
+      )}
+      <h2 className="type-title text-oct-text">{children}</h2>
+    </div>
+  );
+}
+
+function ErrorBox({ message }: { message: string }) {
+  return (
+    <StatusBox tone="critical" className="flex items-start gap-cozy type-body">
+      <AlertCircle size={16} className="shrink-0 mt-hair" />
+      <span>{message}</span>
+    </StatusBox>
+  );
+}
+
+function BusyLabel({ busy, idle, children }: { busy: boolean; idle: string; children: string }) {
+  return busy ? (
+    <>
+      <Loader2 size={16} className="animate-spin" />
+      {children}
+    </>
+  ) : (
+    <>{idle}</>
+  );
+}
 
 export default function TelegramSetup({ onClose }: { onClose?: () => void }) {
   const telegramAuthStart = useAppStore((s) => s.telegramAuthStart);
@@ -68,111 +109,70 @@ export default function TelegramSetup({ onClose }: { onClose?: () => void }) {
   return (
     <div className="w-full max-w-md">
       {step === 'credentials' && (
-        <form onSubmit={handleCredentialsSubmit} className="space-y-4">
-          <div className="flex items-center gap-3 mb-2">
-            {onClose && (
-              <button type="button" onClick={onClose} className="text-discord-text-muted hover:text-white p-1">
-                <ArrowLeft size={18} />
-              </button>
-            )}
-            <h2 className="text-lg font-semibold text-white">Connect Telegram</h2>
-          </div>
+        <form onSubmit={handleCredentialsSubmit} className="space-y-comfy">
+          <StepHeader onBack={onClose}>Connect Telegram</StepHeader>
 
-          <p className="text-sm text-discord-text-muted leading-relaxed">
+          <p className="type-body text-oct-muted">
             To connect your Telegram account, you need an API ID and API Hash from{' '}
-            <a
-              href="https://my.telegram.org/apps"
-              target="_blank"
-              rel="noopener noreferrer"
-              className="text-discord-blurple hover:underline inline-flex items-center gap-1"
-            >
+            <ExtLink href="https://my.telegram.org/apps" className="inline-flex items-center gap-tight">
               my.telegram.org <ExternalLink size={12} />
-            </a>
+            </ExtLink>
           </p>
 
-          <div>
-            <label className="block text-[11px] font-semibold uppercase tracking-wide text-discord-text-muted mb-2">
-              API ID
-            </label>
+          <Field label="API ID">
             <input
               type="text"
               value={apiId}
               onChange={(e) => setApiId(e.target.value)}
               placeholder="12345678"
               disabled={loading}
-              className="w-full px-3 py-2.5 bg-discord-darker border border-discord-dark rounded text-sm text-discord-text placeholder:text-discord-channel-icon focus:outline-none focus:ring-2 focus:ring-discord-blurple/40 disabled:opacity-50"
+              className={INPUT_MONO_CLASS}
             />
-          </div>
+          </Field>
 
-          <div>
-            <label className="block text-[11px] font-semibold uppercase tracking-wide text-discord-text-muted mb-2">
-              API Hash
-            </label>
+          <Field label="API Hash">
             <input
               type="password"
               value={apiHash}
               onChange={(e) => setApiHash(e.target.value)}
               placeholder="Your API hash"
               disabled={loading}
-              className="w-full px-3 py-2.5 bg-discord-darker border border-discord-dark rounded text-sm text-discord-text placeholder:text-discord-channel-icon focus:outline-none focus:ring-2 focus:ring-discord-blurple/40 disabled:opacity-50"
+              className={INPUT_MONO_CLASS}
             />
-          </div>
+          </Field>
 
-          <div>
-            <label className="block text-[11px] font-semibold uppercase tracking-wide text-discord-text-muted mb-2">
-              Phone Number
-            </label>
+          <Field label="Phone Number">
             <input
               type="tel"
               value={phone}
               onChange={(e) => setPhone(e.target.value)}
               placeholder="+1234567890"
               disabled={loading}
-              className="w-full px-3 py-2.5 bg-discord-darker border border-discord-dark rounded text-sm text-discord-text placeholder:text-discord-channel-icon focus:outline-none focus:ring-2 focus:ring-discord-blurple/40 disabled:opacity-50"
+              className={INPUT_MONO_CLASS}
             />
-          </div>
+          </Field>
 
-          {error && (
-            <div className="flex items-start gap-2 px-3 py-2.5 bg-discord-red/10 border border-discord-red/20 rounded text-sm text-discord-red">
-              <AlertCircle size={16} className="shrink-0 mt-0.5" />
-              <span>{error}</span>
-            </div>
-          )}
+          {error && <ErrorBox message={error} />}
 
           <button
             type="submit"
             disabled={loading || !apiId.trim() || !apiHash.trim() || !phone.trim()}
-            className="w-full py-2.5 bg-[#2AABEE] hover:bg-[#229ED9] disabled:opacity-50 disabled:cursor-not-allowed rounded text-sm font-medium text-white transition-colors flex items-center justify-center gap-2"
+            className={TG_BUTTON_CLASS}
           >
-            {loading ? (
-              <>
-                <Loader2 size={16} className="animate-spin" />
-                Sending code...
-              </>
-            ) : (
-              'Send Verification Code'
-            )}
+            <BusyLabel busy={loading} idle="Send Verification Code">Sending code...</BusyLabel>
           </button>
         </form>
       )}
 
       {step === 'code' && (
-        <form onSubmit={handleCodeSubmit} className="space-y-4">
-          <div className="flex items-center gap-3 mb-2">
-            <button type="button" onClick={() => { setStep('credentials'); setError(null); }} className="text-discord-text-muted hover:text-white p-1">
-              <ArrowLeft size={18} />
-            </button>
-            <h2 className="text-lg font-semibold text-white">Enter Verification Code</h2>
-          </div>
+        <form onSubmit={handleCodeSubmit} className="space-y-comfy">
+          <StepHeader onBack={() => { setStep('credentials'); setError(null); }}>Enter Verification Code</StepHeader>
 
-          <p className="text-sm text-discord-text-muted leading-relaxed">
+          <p className="type-body text-oct-muted">
             A verification code has been sent to your Telegram app. Enter it below.
           </p>
 
-          <div>
-            <label className="block text-[11px] font-semibold uppercase tracking-wide text-discord-text-muted mb-2">
-              Verification Code
-            </label>
+          <Field label="Verification Code">
             <input
               type="text"
               value={code}
@@ -180,51 +180,27 @@ export default function TelegramSetup({ onClose }: { onClose?: () => void }) {
               placeholder="12345"
               autoFocus
               disabled={loading}
-              className="w-full px-3 py-2.5 bg-discord-darker border border-discord-dark rounded text-sm text-discord-text placeholder:text-discord-channel-icon focus:outline-none focus:ring-2 focus:ring-discord-blurple/40 disabled:opacity-50 text-center text-lg tracking-[0.3em]"
+              className={cn(INPUT_CLASS, 'type-data text-center text-lg tracking-[0.3em]')}
             />
-          </div>
+          </Field>
 
-          {error && (
-            <div className="flex items-start gap-2 px-3 py-2.5 bg-discord-red/10 border border-discord-red/20 rounded text-sm text-discord-red">
-              <AlertCircle size={16} className="shrink-0 mt-0.5" />
-              <span>{error}</span>
-            </div>
-          )}
+          {error && <ErrorBox message={error} />}
 
-          <button
-            type="submit"
-            disabled={loading || !code.trim()}
-            className="w-full py-2.5 bg-[#2AABEE] hover:bg-[#229ED9] disabled:opacity-50 disabled:cursor-not-allowed rounded text-sm font-medium text-white transition-colors flex items-center justify-center gap-2"
-          >
-            {loading ? (
-              <>
-                <Loader2 size={16} className="animate-spin" />
-                Verifying...
-              </>
-            ) : (
-              'Verify Code'
-            )}
+          <button type="submit" disabled={loading || !code.trim()} className={TG_BUTTON_CLASS}>
+            <BusyLabel busy={loading} idle="Verify Code">Verifying...</BusyLabel>
           </button>
         </form>
       )}
 
       {step === '2fa' && (
-        <form onSubmit={handle2FASubmit} className="space-y-4">
-          <div className="flex items-center gap-3 mb-2">
-            <button type="button" onClick={() => { setStep('code'); setError(null); }} className="text-discord-text-muted hover:text-white p-1">
-              <ArrowLeft size={18} />
-            </button>
-            <h2 className="text-lg font-semibold text-white">Two-Factor Authentication</h2>
-          </div>
+        <form onSubmit={handle2FASubmit} className="space-y-comfy">
+          <StepHeader onBack={() => { setStep('code'); setError(null); }}>Two-Factor Authentication</StepHeader>
 
-          <p className="text-sm text-discord-text-muted leading-relaxed">
+          <p className="type-body text-oct-muted">
             Your account has two-factor authentication enabled. Enter your password to continue.
           </p>
 
-          <div>
-            <label className="block text-[11px] font-semibold uppercase tracking-wide text-discord-text-muted mb-2">
-              Password
-            </label>
+          <Field label="Password">
             <input
               type="password"
               value={password}
@@ -232,48 +208,29 @@ export default function TelegramSetup({ onClose }: { onClose?: () => void }) {
               placeholder="Your 2FA password"
               autoFocus
               disabled={loading}
-              className="w-full px-3 py-2.5 bg-discord-darker border border-discord-dark rounded text-sm text-discord-text placeholder:text-discord-channel-icon focus:outline-none focus:ring-2 focus:ring-discord-blurple/40 disabled:opacity-50"
+              className={INPUT_CLASS}
             />
-          </div>
+          </Field>
 
-          {error && (
-            <div className="flex items-start gap-2 px-3 py-2.5 bg-discord-red/10 border border-discord-red/20 rounded text-sm text-discord-red">
-              <AlertCircle size={16} className="shrink-0 mt-0.5" />
-              <span>{error}</span>
-            </div>
-          )}
+          {error && <ErrorBox message={error} />}
 
-          <button
-            type="submit"
-            disabled={loading || !password.trim()}
-            className="w-full py-2.5 bg-[#2AABEE] hover:bg-[#229ED9] disabled:opacity-50 disabled:cursor-not-allowed rounded text-sm font-medium text-white transition-colors flex items-center justify-center gap-2"
-          >
-            {loading ? (
-              <>
-                <Loader2 size={16} className="animate-spin" />
-                Verifying...
-              </>
-            ) : (
-              'Submit Password'
-            )}
+          <button type="submit" disabled={loading || !password.trim()} className={TG_BUTTON_CLASS}>
+            <BusyLabel busy={loading} idle="Submit Password">Verifying...</BusyLabel>
           </button>
         </form>
       )}
 
       {step === 'success' && (
-        <div className="text-center space-y-4">
-          <div className="w-16 h-16 rounded-full bg-discord-green/10 flex items-center justify-center mx-auto">
-            <CheckCircle2 size={32} className="text-discord-green" />
+        <div className="text-center space-y-comfy">
+          <div className="w-14 h-14 rounded-full bg-oct-good-dim flex items-center justify-center mx-auto">
+            <CheckCircle2 size={28} className="text-oct-good" />
           </div>
-          <h2 className="text-lg font-semibold text-white">Telegram Connected</h2>
-          <p className="text-sm text-discord-text-muted">
+          <h2 className="type-title text-oct-text">Telegram Connected</h2>
+          <p className="type-body text-oct-muted">
             Your Telegram account has been connected. You can now add Telegram chats to your rooms.
           </p>
           {onClose && (
-            <button
-              onClick={onClose}
-              className="px-6 py-2.5 bg-discord-blurple hover:bg-discord-blurple-hover rounded text-sm font-medium text-white transition-colors"
-            >
+            <button onClick={onClose} className="oct-btn-primary px-roomy py-cozy text-sm">
               Done
             </button>
           )}

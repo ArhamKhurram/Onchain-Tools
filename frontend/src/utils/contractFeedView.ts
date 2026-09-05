@@ -42,10 +42,6 @@ export interface FeedRowQuality {
   rank: number;
 }
 
-export interface QualifiedFeedItem extends ContractFeedItem {
-  quality: FeedRowQuality;
-}
-
 /**
  * Is this caller proven — a record good enough to act on?
  *

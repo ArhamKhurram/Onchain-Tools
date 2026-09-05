@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { Flame, RefreshCw, Copy, Check } from 'lucide-react';
 import ConsoleEmptyState from '../console/ConsoleEmptyState';
 import RevivalStats from './RevivalStats';
+import FullPageSpinner from '../common/FullPageSpinner';
 import { useAppStore } from '../../stores/appStore';
 import { API_BASE, apiFetch } from '../../stores/appStore.helpers';
 import {
@@ -12,7 +13,10 @@ import {
 import { formatMcap } from '../../types/pumpfun';
 import type { RevivalAlertEntry } from '../../types';
 
+// Header cells share SortHeader's padding so the Radar and this log line up.
 const TH = 'px-3 py-2 font-medium';
+// Body cells: 12px horizontal, 6px vertical — one step tighter than before.
+const TD = 'px-comfy py-snug';
 /** Peaks update server-side every ~10 min; a slow background refresh keeps
  * open rows honest without hammering the API. */
 const REFRESH_MS = 120_000;
@@ -27,7 +31,7 @@ function timeLabel(iso: string): string {
 
 function multipleClass(multiple: number | null): string {
   if (multiple == null) return 'text-oct-muted';
-  if (multiple >= 2) return 'text-oct-green font-bold';
+  if (multiple >= 2) return 'text-oct-good font-bold';
   if (multiple < 1.2) return 'text-oct-muted';
   return 'text-oct-text';
 }
@@ -42,8 +46,10 @@ function multipleClass(multiple: number | null): string {
  */
 function runClass(multiple: number | null): string {
   if (multiple == null) return 'text-oct-muted';
-  if (multiple > 3) return 'text-oct-flame font-bold';
-  if (multiple > 1.5) return 'text-oct-yellow';
+  // Semantic, not brand: >3x at alert time is a failure of the gate, so it
+  // reads as critical; 1.5–3x is caution.
+  if (multiple > 3) return 'text-oct-critical font-bold';
+  if (multiple > 1.5) return 'text-oct-warn';
   return 'text-oct-muted';
 }
 
@@ -95,11 +101,7 @@ export default function RevivalLog() {
   }, [load, latestRevivalAt]);
 
   if (alerts == null) {
-    return (
-      <div className="flex items-center justify-center h-full bg-oct-bg">
-        <div className="w-6 h-6 border-2 border-oct-accent border-t-transparent rounded-full animate-spin" />
-      </div>
-    );
+    return <FullPageSpinner />;
   }
 
   if (alerts.length === 0) {
@@ -119,16 +121,16 @@ export default function RevivalLog() {
 
   return (
     <div className="h-full flex flex-col min-h-0 bg-oct-bg overflow-hidden">
-      <div className="oct-headerbar shrink-0 flex items-center gap-2 px-4 py-2.5">
+      <div className="oct-headerbar shrink-0 flex items-center gap-cozy px-roomy py-cozy">
         <span className="oct-eyebrow">view: revival log</span>
         <div className="flex-1" />
-        {error && <span className="font-mono text-[11px] text-oct-flame">{error}</span>}
-        <span className="font-mono text-[11px] text-oct-muted tabular-nums">{alerts.length} alerts</span>
+        {error && <span className="type-caption text-oct-critical">{error}</span>}
+        <span className="type-data text-oct-muted">{alerts.length} alerts</span>
         <button
           type="button"
           onClick={() => void load()}
           disabled={refreshing}
-          className="oct-icon-btn flex items-center gap-1.5 px-2.5 py-1.5 text-xs font-bold uppercase"
+          className="oct-icon-btn flex items-center gap-snug px-cozy py-snug font-mono text-2xs font-bold uppercase"
         >
           <RefreshCw size={12} className={refreshing ? 'animate-spin' : undefined} />
           refresh
@@ -140,7 +142,7 @@ export default function RevivalLog() {
       <div className="flex-1 min-h-0 overflow-auto overscroll-contain" style={{ overflowAnchor: 'none' }}>
         <table className="w-full text-left border-collapse min-w-[920px]">
           <thead className="oct-thead sticky top-0 z-10">
-            <tr className="font-mono text-[10px] font-bold uppercase tracking-wider text-oct-muted">
+            <tr className="font-mono type-caption font-bold uppercase tracking-wider text-oct-muted">
               <th className={TH}>When</th>
               <th className={TH}>Token</th>
               <th className={TH}>Network</th>
@@ -162,14 +164,14 @@ export default function RevivalLog() {
               const tracking = a.outcomeWindowClosedAt == null;
               return (
                 <tr key={a.id} className="border-b border-oct-border/50 oct-row-hover">
-                  <td className="px-3 py-2 font-mono text-xs text-oct-muted tabular-nums whitespace-nowrap">
+                  <td className={`${TD} type-data text-oct-muted whitespace-nowrap`}>
                     {timeLabel(a.triggeredAt)}
                   </td>
-                  <td className="px-3 py-2">
+                  <td className={TD}>
                     <button
                       type="button"
                       onClick={() => window.open(url, '_blank', 'noopener,noreferrer')}
-                      className="font-mono text-xs font-bold text-oct-text hover:text-oct-accent hover:underline transition-colors"
+                      className="type-data font-bold text-oct-text hover:text-oct-accent hover:underline transition-colors"
                       title={`Open ${sym} on ${chain} (${a.mint})`}
                     >
                       {sym}
@@ -179,30 +181,30 @@ export default function RevivalLog() {
                     <button
                       type="button"
                       onClick={() => copyMint(a.mint)}
-                      className="ml-1.5 align-middle p-0.5 rounded-oct-sm text-oct-muted hover:text-oct-accent hover:bg-oct-surface transition-colors"
+                      className="ml-snug align-middle p-hair rounded-oct-sm text-oct-muted hover:text-oct-accent hover:bg-oct-surface transition-colors"
                       title={copiedMint === a.mint ? 'Copied' : `Copy CA (${a.mint})`}
                       aria-label="Copy contract address"
                     >
-                      {copiedMint === a.mint ? <Check size={12} className="text-oct-green" /> : <Copy size={12} />}
+                      {copiedMint === a.mint ? <Check size={12} className="text-oct-good" /> : <Copy size={12} />}
                     </button>
                     {/* Signal kind — rows without one predate breakout and are revivals. */}
-                    <span className={`ml-1.5 align-middle text-[9px] font-mono font-bold uppercase tracking-wider px-1.5 py-0.5 rounded-oct-sm border ${a.kind === 'breakout' ? 'text-oct-accent-2 border-oct-accent-2/40 bg-oct-accent-2/10' : 'text-red-500 border-red-500/40 bg-red-500/10'}`}>
+                    <span className={`ml-snug align-middle text-2xs leading-none font-mono font-bold uppercase tracking-wider px-snug py-hair rounded-oct-sm border ${a.kind === 'breakout' ? 'text-oct-accent-2 border-oct-accent-2/40 bg-oct-accent-2/10' : 'text-oct-accent border-oct-accent/40 bg-oct-accent/10'}`}>
                       {a.kind === 'breakout' ? 'BREAKOUT' : 'REVIVAL'}
                     </span>
                   </td>
-                  <td className="px-3 py-2">
+                  <td className={TD}>
                     <span
-                      className="text-[10px] font-mono uppercase tracking-wider px-2 py-0.5 rounded-oct-sm border border-oct-border bg-oct-surface-raised/60 text-oct-muted"
+                      className="text-2xs leading-none font-mono uppercase tracking-wider px-cozy py-hair rounded-oct-sm border border-oct-border bg-oct-surface-raised/60 text-oct-muted"
                       title={a.network}
                     >
                       {chain}
                     </span>
                   </td>
-                  <td className="px-3 py-2 font-mono text-xs text-oct-text text-right tabular-nums">
+                  <td className={`${TD} type-data text-oct-text text-right`}>
                     {formatMcap(a.mcapUsd)}
                   </td>
                   <td
-                    className={`px-3 py-2 font-mono text-xs text-right tabular-nums ${runClass(a.runMultiple)}`}
+                    className={`${TD} type-data text-right ${runClass(a.runMultiple)}`}
                     title={
                       a.runMultiple != null
                         ? `Already ${a.runMultiple.toFixed(2)}× above its pre-ignition baseline${a.baselinePriceUsd != null ? ` ($${a.baselinePriceUsd})` : ''} when the alert fired`
@@ -211,19 +213,19 @@ export default function RevivalLog() {
                   >
                     {a.runMultiple != null ? `${a.runMultiple.toFixed(2)}×` : '—'}
                   </td>
-                  <td className="px-3 py-2 font-mono text-xs text-oct-text text-right tabular-nums">
+                  <td className={`${TD} type-data text-oct-text text-right`}>
                     {formatMcap(a.peakMcapUsd)}
                   </td>
-                  <td className={`px-3 py-2 font-mono text-xs text-right tabular-nums ${multipleClass(a.peakMultiple)}`}>
+                  <td className={`${TD} type-data text-right ${multipleClass(a.peakMultiple)}`}>
                     {a.peakMultiple != null ? `${a.peakMultiple.toFixed(2)}×` : '—'}
                   </td>
-                  <td className="px-3 py-2 font-mono text-[11px] text-oct-muted text-right tabular-nums whitespace-nowrap">
+                  <td className={`${TD} type-data text-oct-muted text-right whitespace-nowrap`}>
                     z {a.atrZ.toFixed(1)} · {a.rvol.toFixed(1)}x vol
                   </td>
-                  <td className="px-3 py-2 font-mono text-[11px]">
+                  <td className={`${TD} type-caption`}>
                     {tracking ? (
-                      <span className="text-oct-yellow flex items-center gap-1.5">
-                        <span className="w-1.5 h-1.5 rounded-full bg-oct-yellow animate-pulse-live" />
+                      <span className="text-oct-warn flex items-center gap-snug">
+                        <span className="w-1.5 h-1.5 rounded-full bg-oct-warn animate-pulse-live" />
                         tracking…
                       </span>
                     ) : (
