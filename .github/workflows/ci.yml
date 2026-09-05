@@ -74,14 +74,28 @@ jobs:
         run: npm run build -w @oct/shared
 
       # --- Typecheck every workspace (no emit) ---
-      - name: Typecheck backend
-        run: npm run typecheck -w backend
-      - name: Typecheck frontend
-        run: npm run typecheck -w frontend
-      - name: Typecheck landing
-        run: npm run typecheck -w landing
-      - name: Typecheck fomo-worker
-        run: npm run typecheck -w fomo-worker
+      # The four typechecks are independent (each is its own tsc invocation),
+      # so run them concurrently and gate on the slowest instead of the sum.
+      # Logs are captured per workspace and replayed in collapsible groups so
+      # a failure still reads like the old serial output.
+      - name: Typecheck (all workspaces, parallel)
+        run: |
+          set -u
+          run() { npm run typecheck -w "$1" > "/tmp/tc-$1.log" 2>&1; echo $? > "/tmp/tc-$1.code"; }
+          for ws in backend frontend landing fomo-worker; do run "$ws" & done
+          wait
+          fail=0
+          for ws in backend frontend landing fomo-worker; do
+            code=$(cat "/tmp/tc-$ws.code")
+            echo "::group::typecheck $ws (exit $code)"
+            cat "/tmp/tc-$ws.log"
+            echo "::endgroup::"
+            if [ "$code" != "0" ]; then
+              echo "::error::typecheck $ws failed (exit $code)"
+              fail=1
+            fi
+          done
+          exit $fail
 
       # --- Unit tests (pure functions: contract/keyword detection, convergence) ---
       - name: Test backend
@@ -92,12 +106,26 @@ jobs:
         run: npm run test -w fomo-worker
 
       # --- Build the three deploy targets (backend→Railway, frontend+landing→Vercel) ---
-      - name: Build backend
-        run: npm run build -w backend
-      - name: Build frontend
-        run: npm run build -w frontend
-      - name: Build landing
-        run: npm run build -w landing
+      # Independent workspaces with separate output dirs — same parallel
+      # pattern as the typecheck step above.
+      - name: Build (backend, frontend, landing, parallel)
+        run: |
+          set -u
+          run() { npm run build -w "$1" > "/tmp/build-$1.log" 2>&1; echo $? > "/tmp/build-$1.code"; }
+          for ws in backend frontend landing; do run "$ws" & done
+          wait
+          fail=0
+          for ws in backend frontend landing; do
+            code=$(cat "/tmp/build-$ws.code")
+            echo "::group::build $ws (exit $code)"
+            cat "/tmp/build-$ws.log"
+            echo "::endgroup::"
+            if [ "$code" != "0" ]; then
+              echo "::error::build $ws failed (exit $code)"
+              fail=1
+            fi
+          done
+          exit $fail
 
   # NOTE: the Foundry job that verifies the LP automation Safe module lives on
   # the `LP-Feats` and `dev` branches, where that code now sits. It is still the
