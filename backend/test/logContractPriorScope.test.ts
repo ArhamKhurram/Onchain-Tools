@@ -46,6 +46,7 @@ const PRIOR_ROW = {
 
 function makeClient(opts: { firstCallColumnsMissing: boolean }) {
   const selects: string[] = [];
+  const guardSelects: string[] = [];
   const inserts: Record<string, unknown>[] = [];
 
   class Query {
@@ -53,6 +54,7 @@ function makeClient(opts: { firstCallColumnsMissing: boolean }) {
     private columns = '';
     private payload?: Record<string, unknown>;
     private head = false;
+    private filters: string[] = [];
 
     select(cols?: string, options?: { head?: boolean }) {
       if (options?.head) this.head = true;
@@ -64,7 +66,7 @@ function makeClient(opts: { firstCallColumnsMissing: boolean }) {
       this.payload = row;
       return this;
     }
-    eq() { return this; }
+    eq(col?: string) { if (col) this.filters.push(col); return this; }
     ilike() { return this; }
     or() { return this; }
     order() { return this; }
@@ -78,6 +80,11 @@ function makeClient(opts: { firstCallColumnsMissing: boolean }) {
       } else if (this.head) {
         // hasAddress: the address is known -> repeat-mention path.
         result = { data: null, error: null, count: 1 };
+      } else if (this.filters.includes('message_id')) {
+        // The duplicate-call guard. This entry's own message has not been
+        // logged before, so it finds nothing and logging proceeds.
+        guardSelects.push(this.columns);
+        result = { data: [], error: null };
       } else {
         selects.push(this.columns);
         if (opts.firstCallColumnsMissing && /first_call/.test(this.columns)) {
@@ -96,13 +103,13 @@ function makeClient(opts: { firstCallColumnsMissing: boolean }) {
   }
 
   const client = { from: (_table: string) => new Query() };
-  return { client, selects, inserts };
+  return { client, selects, guardSelects, inserts };
 }
 
 function makeRepo(opts: { firstCallColumnsMissing: boolean }) {
-  const { client, selects, inserts } = makeClient(opts);
+  const { client, selects, guardSelects, inserts } = makeClient(opts);
   const repo = new ContractsRepo({ supabase: client } as unknown as SupabaseContext);
-  return { repo, selects, inserts };
+  return { repo, selects, guardSelects, inserts };
 }
 
 const REPEAT_ENTRY: ContractEntry = {
@@ -120,11 +127,12 @@ const REPEAT_ENTRY: ContractEntry = {
 };
 
 describe('logContract prior-row lookup column budget', () => {
-  it('never selects "*" for the prior row', async () => {
-    const { repo, selects } = makeRepo({ firstCallColumnsMissing: false });
+  it('never selects "*" for the prior row (nor for the duplicate-call guard)', async () => {
+    const { repo, selects, guardSelects } = makeRepo({ firstCallColumnsMissing: false });
     await repo.logContract('u1', REPEAT_ENTRY);
     expect(selects.length).toBeGreaterThan(0);
-    for (const cols of selects) {
+    expect(guardSelects.length).toBeGreaterThan(0);
+    for (const cols of [...selects, ...guardSelects]) {
       expect(cols).not.toBe('*');
       expect(cols).not.toContain('author_name');
       expect(cols).not.toContain('room_ids');
