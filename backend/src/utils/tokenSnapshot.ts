@@ -41,15 +41,30 @@ async function fetchEnrichment(address: string, chainSlug?: string): Promise<Tok
       const gmgnChain = resolveGmgnChain(slug) ?? (slug === 'sol' ? 'sol' : null);
       if (!gmgnChain) continue;
       const gmgn = await enrichFromGmgn(gmgnChain, address);
-      if (gmgn?.tokenSymbol || gmgn?.tokenName) return gmgn;
-      if (gmgn && !gmgn.tokenSymbol) {
-        // Keep MC/liq even if symbol missing — last resort before Dex
-        const dex = await enrichFromDexScreener(address);
-        if (dex?.tokenSymbol) {
-          return { ...gmgn, tokenSymbol: dex.tokenSymbol, tokenName: dex.tokenName ?? gmgn.tokenName, tokenPair: dex.tokenPair ?? gmgn.tokenPair };
-        }
-        return gmgn;
-      }
+      if (!gmgn) continue;
+
+      // A complete GMGN answer is the end of it.
+      if (gmgn.fdvAtCall != null && (gmgn.tokenSymbol || gmgn.tokenName)) return gmgn;
+
+      // GMGN answered but left a hole. A missing MC@call used to be accepted
+      // silently whenever a symbol came back, because the only DexScreener
+      // consultation here was gated on the SYMBOL being absent — the opposite
+      // condition. GMGN derives FDV as supply x price and returns neither
+      // field for every token whose supply it has not indexed yet, so a
+      // freshly-launched token routinely came back named, priced, and with no
+      // market cap at all, and MC@call — the denominator of the Radar
+      // multiplier and of caller scoring — was left blank on a token
+      // DexScreener could price perfectly well.
+      const dex = await enrichFromDexScreener(address);
+      if (!dex) return gmgn;
+      return {
+        ...gmgn,
+        tokenSymbol: gmgn.tokenSymbol ?? dex.tokenSymbol,
+        tokenName: gmgn.tokenName ?? dex.tokenName,
+        tokenPair: gmgn.tokenPair ?? dex.tokenPair,
+        fdvAtCall: gmgn.fdvAtCall ?? dex.fdvAtCall,
+        fdvAtCallDisplay: gmgn.fdvAtCallDisplay ?? dex.fdvAtCallDisplay,
+      };
     }
   }
 

@@ -1,7 +1,7 @@
 import { readFileSync, writeFileSync, existsSync } from 'fs';
 import { join, dirname } from 'path';
 import { fileURLToPath } from 'url';
-import { mergeEnrichmentPatch } from './enrichmentMerge.js';
+import { mergeEnrichmentPatch, needsMetadataFallback } from './enrichmentMerge.js';
 import { normalizeContractAddress } from '@oct/shared';
 import type { ContractEntry } from '@oct/shared';
 
@@ -114,13 +114,20 @@ class ContractLog {
   // Entries are unshifted, so the first match is the newest — which is the one
   // a caller holding a (messageId, address) pair means, on the rare message
   // that logs the same address twice.
+  /**
+   * The row a fallback timer scheduled itself for. When one message logged the
+   * same address more than once, the one still missing a symbol or an MC@call
+   * wins — `enrichContract` fans its write across the whole group, so returning
+   * a still-blank member is what gets every member filled. See the matching
+   * note in storage/supabase/contractsRepo.ts.
+   */
   getContractByMessage(messageId: string, address: string): ContractEntry | null {
     const key = normalizeContractAddress(address);
-    return (
-      this.entries.find(
-        (e) => e.messageId === messageId && normalizeContractAddress(e.address) === key,
-      ) ?? null
+    const matches = this.entries.filter(
+      (e) => e.messageId === messageId && normalizeContractAddress(e.address) === key,
     );
+    if (matches.length === 0) return null;
+    return matches.find((e) => needsMetadataFallback(e)) ?? matches[0];
   }
 
   deleteContract(messageId: string, address: string): boolean {
@@ -158,14 +165,20 @@ class ContractLog {
     const messageId = options?.messageId;
     const key = address.toLowerCase();
     let best: ContractEntry | null = null;
+    // Every entry (messageId, address) matches. One ingested message can be
+    // logged more than once — `logContract` always appends — and all of those
+    // entries describe the same call, so the enrichment has to reach all of
+    // them, not just the first one found. See the fan-out note in
+    // storage/supabase/contractsRepo.ts.
+    const siblings: ContractEntry[] = [];
 
     if (messageId) {
       for (const entry of this.entries) {
         if (entry.address.toLowerCase() !== key) continue;
         if (entry.messageId !== messageId) continue;
-        best = entry;
-        break;
+        siblings.push(entry);
       }
+      best = siblings[0] ?? null;
     }
 
     if (!best) {
@@ -189,24 +202,28 @@ class ContractLog {
 
     if (!best) return null;
 
-    const merged = mergeEnrichmentPatch(
-      {
-        tokenName: best.tokenName,
-        tokenSymbol: best.tokenSymbol,
-        tokenPair: best.tokenPair,
-        evmChain: best.evmChain,
-        enrichmentSource: best.enrichmentSource,
-        enrichedAt: best.enrichedAt,
-        fdvAtCall: best.fdvAtCall,
-        fdvAtCallDisplay: best.fdvAtCallDisplay,
-        firstCallerName: best.firstCallerName,
-        firstCallMcapUsd: best.firstCallMcapUsd,
-        firstCallAt: best.firstCallAt,
-      },
-      patch,
-    );
-
-    Object.assign(best, merged, { enrichedAt: merged.enrichedAt ?? new Date().toISOString() });
+    // `best` is always the first sibling when the message-scoped lookup found
+    // any, so the loop covers it; the channel/address guesses below produce no
+    // siblings and fall back to enriching `best` alone.
+    for (const entry of siblings.length > 0 ? siblings : [best]) {
+      const merged = mergeEnrichmentPatch(
+        {
+          tokenName: entry.tokenName,
+          tokenSymbol: entry.tokenSymbol,
+          tokenPair: entry.tokenPair,
+          evmChain: entry.evmChain,
+          enrichmentSource: entry.enrichmentSource,
+          enrichedAt: entry.enrichedAt,
+          fdvAtCall: entry.fdvAtCall,
+          fdvAtCallDisplay: entry.fdvAtCallDisplay,
+          firstCallerName: entry.firstCallerName,
+          firstCallMcapUsd: entry.firstCallMcapUsd,
+          firstCallAt: entry.firstCallAt,
+        },
+        patch,
+      );
+      Object.assign(entry, merged, { enrichedAt: merged.enrichedAt ?? new Date().toISOString() });
+    }
     this.save();
     return best;
   }

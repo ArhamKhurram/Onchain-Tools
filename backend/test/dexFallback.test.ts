@@ -94,14 +94,14 @@ describe('resolveFallbackTarget', () => {
   describe('once a provider says it cannot price the address', () => {
     it('stops re-asking for the FDV on every later mention', async () => {
       const store = makeStore([row({ messageId: 'm-2', tokenSymbol: 'puf' })]);
-      recordFallbackFdv(SOL_ADDRESS, undefined);
+      recordFallbackFdv(SOL_ADDRESS, { fdvAtCall: undefined });
 
       expect(await resolveFallbackTarget(store, 'local', SOL_ADDRESS, 'm-2')).toBeNull();
     });
 
     it('still fetches when the row has no symbol either', async () => {
       const store = makeStore([row({ messageId: 'm-2' })]);
-      recordFallbackFdv(SOL_ADDRESS, undefined);
+      recordFallbackFdv(SOL_ADDRESS, { fdvAtCall: undefined });
 
       // Unchanged from before the FDV gate existed: a symbol-less row's only
       // chance at a symbol is this fetch.
@@ -111,7 +111,7 @@ describe('resolveFallbackTarget', () => {
     it('probes again once the window expires', async () => {
       const store = makeStore([row({ messageId: 'm-2', tokenSymbol: 'puf' })]);
       const t0 = Date.UTC(2026, 7, 8, 12, 0, 0);
-      recordFallbackFdv(SOL_ADDRESS, undefined, t0);
+      recordFallbackFdv(SOL_ADDRESS, { fdvAtCall: undefined }, t0);
 
       expect(await resolveFallbackTarget(store, 'local', SOL_ADDRESS, 'm-2', t0 + 60_000)).toBeNull();
       expect(
@@ -120,18 +120,47 @@ describe('resolveFallbackTarget', () => {
     });
 
     it('forgets the address as soon as one fetch does return an FDV', () => {
-      recordFallbackFdv(SOL_ADDRESS, undefined);
+      recordFallbackFdv(SOL_ADDRESS, { fdvAtCall: undefined });
       expect(isFdvUnavailable(SOL_ADDRESS)).toBe(true);
 
-      recordFallbackFdv(SOL_ADDRESS, 2100);
+      recordFallbackFdv(SOL_ADDRESS, { fdvAtCall: 2100 });
       expect(isFdvUnavailable(SOL_ADDRESS)).toBe(false);
     });
 
     // The same EVM token reaches us checksummed from a Rick embed and lowercase
     // from the caller's own post; both must hit the same guard entry.
     it('keys EVM addresses case-insensitively', () => {
-      recordFallbackFdv(EVM_ADDRESS, undefined);
+      recordFallbackFdv(EVM_ADDRESS, { fdvAtCall: undefined });
       expect(isFdvUnavailable(EVM_ADDRESS.toLowerCase())).toBe(true);
+    });
+  });
+
+  // "No provider answered" is not "this token has no price". GMGN inside its
+  // 90s rate-limit cooldown, an open DexScreener breaker or a timeout all make
+  // `enrichToken` return null, and arming the 30-minute guard on that would
+  // blank MC@call for the address on every mention for half an hour — most
+  // often exactly when the feed is busiest.
+  describe('when the fetch produced nothing at all', () => {
+    it('does not arm the negative guard on a null enrichment', () => {
+      recordFallbackFdv(SOL_ADDRESS, null);
+      expect(isFdvUnavailable(SOL_ADDRESS)).toBe(false);
+
+      recordFallbackFdv(SOL_ADDRESS, undefined);
+      expect(isFdvUnavailable(SOL_ADDRESS)).toBe(false);
+    });
+
+    it('leaves the next mention free to fetch again', async () => {
+      const store = makeStore([row({ messageId: 'm-3', tokenSymbol: 'puf' })]);
+      recordFallbackFdv(SOL_ADDRESS, null);
+
+      expect(await resolveFallbackTarget(store, 'local', SOL_ADDRESS, 'm-3')).not.toBeNull();
+    });
+
+    it('does not clear a guard an answering provider had already armed', () => {
+      recordFallbackFdv(SOL_ADDRESS, { fdvAtCall: undefined });
+      recordFallbackFdv(SOL_ADDRESS, null);
+
+      expect(isFdvUnavailable(SOL_ADDRESS)).toBe(true);
     });
   });
 });
