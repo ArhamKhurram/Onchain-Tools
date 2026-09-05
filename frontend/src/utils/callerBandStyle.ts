@@ -150,7 +150,7 @@ export function callerStatChips(score: CallerScore | undefined): CallerStatChip[
   if (score.medianMultiple != null) {
     chips.push({
       label: `${formatMultipleFloor(score.medianMultiple)} med`,
-      title: 'Median reach multiple across scored calls — an observed floor, since peaks are sampled.',
+      title: 'Median reach multiple across scored calls — an observed floor, since peaks are sampled. Reach cannot fall below 1x, so calls that lost sit on the floor with calls that went nowhere.',
     });
   }
   return chips;

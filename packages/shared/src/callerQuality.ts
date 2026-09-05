@@ -29,6 +29,48 @@ export const MIN_RATED_CALLS = 10;
 /** A call that never cleared this multiple counts as slop. */
 export const SLOP_MULTIPLE = 1.2;
 
+/**
+ * The smallest MC@call reading we are willing to divide by.
+ *
+ * A multiple is `peak / mcAtCall`, so the denominator is the whole score. The
+ * old guard was `mcAtCall > 0`, which admits readings that are not market caps
+ * at all — and because `bestMultiple` is a `max`, ONE such row becomes a
+ * caller's headline BEST. On prod that is exactly what happened: a $0.0237
+ * reading against a $4.7M peak rendered as ≥26,959,682×.
+ *
+ * $1,000 is read off the data, not picked for roundness (measured 2026-09-05
+ * over 31,567 priced rows in `caller_calls`):
+ *
+ *   < $1,000        19 rows — every one junk. The values run 0.02, 1.19, 2, 6,
+ *                   10, 14, 54, 60, 73, 79, 269, 373; where the token has a
+ *                   peak at all the implied multiple is 209× – 197,500,455×,
+ *                   i.e. the reading disagrees with the peak by orders of
+ *                   magnitude. $269 is the largest junk reading observed.
+ *   $1,000–$2,000    4 rows — all self-consistent (peaks of $1,417 / $2,051 /
+ *                   $1,921 against calls of $1,400 / $1,738 / $1,880). These
+ *                   are REAL micro-cap calls and must keep scoring.
+ *   $2,000–$5,000  885 rows — the bulk of genuine fresh-launch calls.
+ *
+ * So there is a cliff, and $1,000 sits in it: above every junk reading seen and
+ * below every self-consistent one. Setting it higher (the tempting $5,000, at
+ * the bottom of the "sane launch" band) would silently discard ~890 real
+ * early-launch calls — which is the product. Erring low is the safe direction:
+ * a surviving bad row inflates one caller's BEST, a floor set too high deletes
+ * the early calls the board exists to find.
+ */
+export const MIN_MC_AT_CALL = 1_000;
+
+/**
+ * Is this reading usable as a market cap?
+ *
+ * Shared with the enrichment write path (`mergeEnrichmentPatch`,
+ * `enrichFromGmgn`) so "not a market cap" has one definition: a number that is
+ * refused for scoring should never have been recorded as MC@call either.
+ */
+export function isUsableMarketCap(value: number | null | undefined): value is number {
+  return typeof value === 'number' && Number.isFinite(value) && value >= MIN_MC_AT_CALL;
+}
+
 export function callerKey(platform: CallerPlatform, authorId: string): string {
   return `${platform}:${authorId}`;
 }
@@ -38,26 +80,59 @@ export function normalizeCallerName(name: string): string {
   return name.toLowerCase().replace(/[^a-z0-9]/g, '');
 }
 
+/** One shipped exclusion, with the evidence that put it there. */
+export interface KnownBotCaller {
+  /** A caller key (`telegram:123`) or, for Rick only, a display name. */
+  entry: string;
+  /** What the console shows — the bot's own posted name. */
+  label: string;
+  /** Why it is not a caller. Shown in Settings so the list is auditable. */
+  why: string;
+}
+
 /**
- * Authors excluded from scoring by default.
+ * Authors excluded from scoring by default: scanners and alert bots that
+ * repost every contract crossing the feed.
  *
- * Rick is an enrichment bot: it re-posts an embed for every contract that
- * crosses the feed, so its rows are *scans*, not calls. Left in, it accumulates
- * one "call" per token in the room and lands mid-leaderboard on the average of
- * everything anyone called — a number that describes the room, not a caller.
+ * Their rows are *scans*, not calls. Left in they accumulate one "call" per
+ * token in the room, and because the board sorts by the size of the scoring
+ * sample they pin themselves to the top permanently — the two biggest were
+ * covering half of every token anyone in the room ever posted, so what the
+ * board ranked first was a measurement of the room rather than a caller.
  *
- * Matched by name rather than snowflake on purpose. Discord's `bot` flag never
- * reaches the contract log (see `DiscordUser` in `types.ts` — the gateway
- * payload is narrowed before it gets here), and Rick's user id appears nowhere
- * in this repo, so a hardcoded id would be a guess that silently excludes
- * nobody. The name is the identity the pipeline already keys off:
- * `looksLikeRick` in `backend/src/utils/rickEmbedParser.ts` recognises the same
- * author username when deciding whether an embed is worth parsing.
+ * **Identified by caller key, not by name.** A snowflake / Telegram id is the
+ * same bot in everyone's rooms, so shipping it as a default is safe; shipping
+ * a name like "Cipher" would sweep up any human who happens to use it. Rick is
+ * the one exception and stays name-matched: Discord's `bot` flag never reaches
+ * the contract log (see `DiscordUser` in `types.ts` — the gateway payload is
+ * narrowed before it gets here) and Rick's user id appears nowhere in this
+ * repo, so an id would be a guess that silently excludes nobody. The name is
+ * the identity the pipeline already keys off — `looksLikeRick` in
+ * `backend/src/utils/rickEmbedParser.ts` recognises the same author username.
  *
- * Exclusion is scoring-only. Rick's messages, embeds, and the enrichment
- * derived from them are untouched — this is not a mute.
+ * Coverage figures below are the share of the 8,617 distinct tokens on the
+ * prod record that the account posted (measured 2026-09-05). Only accounts
+ * that are unambiguous — self-declared bots by name, or coverage no human
+ * reaches — are here. High-volume humans are NOT bots and are deliberately
+ * left in; an operator who disagrees adds them under Settings → Caller
+ * Quality → Not scored, which layers on top of this list.
+ *
+ * Exclusion is scoring-only. These accounts keep posting, keep showing up in
+ * the feed, and keep feeding enrichment — this is not a mute.
  */
-export const DEFAULT_EXCLUDED_CALLERS: readonly string[] = ['rick'];
+export const KNOWN_BOT_CALLERS: readonly KnownBotCaller[] = [
+  { entry: 'rick', label: 'Rick', why: 'Enrichment bot — posts an embed for every contract in the room.' },
+  { entry: 'telegram:8436907499', label: 'TokenScan', why: 'Scanner — posted 53% of every token on the record.' },
+  { entry: 'telegram:7979852115', label: 'Cipher', why: 'Scanner — posted 51% of every token on the record.' },
+  { entry: 'telegram:7948422606', label: 'Ray Khaki | Wallet Tracker', why: 'Wallet tracker — reposts tracked-wallet buys; 27% coverage.' },
+  { entry: 'discord:1530886531126923396', label: 'Fomo Alerts', why: 'Automated alert feed — 12% coverage.' },
+  { entry: 'discord:1445566018570293498', label: 'fomobot', why: 'Automated alert feed — 11% coverage.' },
+  { entry: 'discord:1527757006004293852', label: 'blue bot', why: 'Self-declared bot — 5% coverage.' },
+  { entry: 'discord:1539965210096443424', label: 'Raybot', why: 'Self-declared bot.' },
+];
+
+/** The shipped exclusions, in the flat form every matcher takes. */
+export const DEFAULT_EXCLUDED_CALLERS: readonly string[] = KNOWN_BOT_CALLERS.map((b) => b.entry);
 
 /**
  * Does this row belong to an author excluded from scoring?
@@ -394,14 +469,36 @@ export function foldCallerCalls(
 }
 
 /**
- * Score one call against a peak, or `null` when either half is missing.
+ * Score one call against a peak, or `null` when either half is unusable.
  *
- * A peak below the call is possible when the call itself was the top; floor at
- * the call so a flat token reads as 1x rather than as a negative signal.
+ * **The denominator must be a market cap.** `mcAtCall > 0` was not a real
+ * guard — see `MIN_MC_AT_CALL` for what got through it and what it did to the
+ * board. A reading below the floor is treated exactly like a missing one: the
+ * call still counts toward `calls`, it is simply not rated. That is the honest
+ * outcome, because we do not know what the caller's market cap was, and an
+ * unrated call is a shape the board already understands.
+ *
+ * **The 1× floor stays, and it is load-bearing.** `peak` is a HIGH-WATER MARK
+ * of sampled observations that begins at (or near) the call itself — the
+ * sampler and `refreshTokenPeakOnRescan` only ever `max` new observations in,
+ * they never record a decline. So a token that rugged to zero after the call
+ * keeps the peak it had at the call, and `peak / mcAtCall` lands on ~1
+ * regardless. Removing `Math.max` would therefore NOT surface real losses; it
+ * would only turn the few percent of provider disagreement between the call's
+ * own reading and the peak store's first sample (prod has calls of $2,200
+ * against peaks of $2,157) into fake sub-1× "losses".
+ *
+ * The dishonesty was never the arithmetic, it was the label. These are
+ * **upside-only peak-reach** multiples, not returns: a call that went to zero
+ * and one that never moved both read 1×, so the lower half of every
+ * distribution — the median very much included — is collapsed onto the floor.
+ * The board says so now, and surfaces the slop rate (the share of rated calls
+ * that never cleared {@link SLOP_MULTIPLE}) as the column that stands in for
+ * the downside this measurement cannot see.
  */
 export function rateCall(call: CallerCall, peak: number | undefined): RatedCall | null {
   const mcAtCall = call.fdvAtCall;
-  if (mcAtCall == null || mcAtCall <= 0) return null;
+  if (!isUsableMarketCap(mcAtCall)) return null;
   if (peak == null || peak <= 0) return null;
   return {
     address: call.address,

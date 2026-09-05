@@ -66,8 +66,11 @@ export type {
 export {
   MIN_RATED_CALLS,
   SLOP_MULTIPLE,
+  MIN_MC_AT_CALL,
+  isUsableMarketCap,
   BAND_LABELS,
   DEFAULT_EXCLUDED_CALLERS,
+  KNOWN_BOT_CALLERS,
   normalizeCallerName,
   isExcludedCaller,
   isExcludedCallerKey,
@@ -95,6 +98,7 @@ export type {
   RoomCallerScores,
   CallerCall,
   CallerAggregateRow,
+  KnownBotCaller,
 } from './callerQuality.js';
 
 // Generated Supabase schema types (see database.types.ts header for regen).

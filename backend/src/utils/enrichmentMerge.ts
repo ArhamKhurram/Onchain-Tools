@@ -1,3 +1,4 @@
+import { isUsableMarketCap } from '@oct/shared';
 import type { ContractEnrichmentPatch } from './contractLog.js';
 
 export type EnrichmentSource = 'rick' | 'dexscreener' | 'gmgn';
@@ -31,6 +32,26 @@ export function needsMetadataFallback(entry: {
   fdvAtCall?: number;
 }): boolean {
   return !entry.tokenSymbol || entry.fdvAtCall == null;
+}
+
+/**
+ * Drop an MC@call that isn't one, before it can be recorded.
+ *
+ * The single choke point every enrichment patch passes through, in both
+ * storage implementations — so this is where "we did not measure a market cap"
+ * is enforced once for all three providers rather than three times. Every
+ * source has produced dust: GMGN a supply times an unindexed price (cents),
+ * Rick a bare `$1` picked out of an embed, DexScreener a $269 FDV for a token
+ * whose peak was $56k. See MIN_MC_AT_CALL for how the floor was chosen.
+ *
+ * Withheld rather than clamped: a wrong reading is not worth keeping at any
+ * value, and leaving MC@call null lets a later, better patch fill it (the
+ * merge rules below only ever fill a hole). Every other enriched field on the
+ * patch survives — this refuses one measurement, not the whole enrichment.
+ */
+function withUsableFdv(patch: ContractEnrichmentPatch): ContractEnrichmentPatch {
+  if (patch.fdvAtCall == null || isUsableMarketCap(patch.fdvAtCall)) return patch;
+  return stripFdvFromPatch(patch);
 }
 
 function stripFdvFromPatch(patch: ContractEnrichmentPatch): ContractEnrichmentPatch {
@@ -93,8 +114,9 @@ function applyGlobalFirst(merged: ContractEnrichmentPatch, winner: GlobalFirstFi
  */
 export function mergeEnrichmentPatch(
   existing: ContractEnrichmentPatch & { enrichmentSource?: EnrichmentSource; fdvAtCall?: number; fdvAtCallDisplay?: string },
-  patch: ContractEnrichmentPatch,
+  rawPatch: ContractEnrichmentPatch,
 ): ContractEnrichmentPatch {
+  const patch = withUsableFdv(rawPatch);
   const globalFirst = pickGlobalFirst(existing, patch);
   if (
     existing.enrichmentSource === 'rick'
