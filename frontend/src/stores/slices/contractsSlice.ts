@@ -28,6 +28,17 @@ export const createContractsSlice: StateCreator<AppState, [], [], ContractsSlice
     addressChains: {},
 
     addContract: (entry, opts) => {
+      // A re-delivery of a call the backend has already logged (#368 suppresses
+      // the row; ingest still broadcasts what logContract returns, flagged).
+      // Drop it rather than folding it into the address's rescan group: it is
+      // the SAME call arriving twice over the transport, not a second scan, so
+      // counting it would put back into the "×N scans" badge exactly the
+      // inflation #368 took out of the database. It carries the original
+      // call's timestamp too, so admitting it would either float a stale row
+      // to the top of the feed or, once the 2000-row cap has evicted the
+      // original, resurrect an hours-old call as a live detection.
+      if (entry.duplicate) return;
+
       set((state) => {
         // A scan can reach the store twice — the browser gateway adds it the
         // instant it's detected, and the backend echoes the same log back

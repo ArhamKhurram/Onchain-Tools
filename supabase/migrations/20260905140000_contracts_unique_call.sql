@@ -31,6 +31,13 @@
 --      Whatever the decision (collapse each group to its earliest row, keep
 --      them and index non-uniquely instead, or archive first), it must land
 --      before step 3.
+--
+--      DECIDED: collapse each group to its earliest row. `scripts/
+--      dedupe-contracts.mjs` is the tool that does it — dry run by default,
+--      full-row NDJSON backup before the first delete, a hard abort if any
+--      group spans more than one channel_id, and a survivor merge that lifts
+--      any field the earliest row lacks off a later sibling (fdv_at_call above
+--      all, or the collapse would undo #367).
 --   3. Only then run this file. The preflight below refuses to proceed with a
 --      clear message rather than failing on an opaque index error.
 --
