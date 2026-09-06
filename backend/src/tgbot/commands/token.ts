@@ -1,5 +1,6 @@
 import { isEvmAddress } from '@oct/shared';
 import { getBotSnapshot } from '../../bot/service.js';
+import { SPEC } from '../commandCatalog.js';
 import { describeServiceError } from '../errors.js';
 import { escapeHtml, joinLines } from '../html.js';
 import { footer, renderTokenSnapshot } from '../render.js';
@@ -18,8 +19,8 @@ import type { TgCommand } from './types.js';
  * catalog for a Solana token at an EVM address can only miss.
  */
 export const token: TgCommand = {
-  name: 'token',
-  description: 'Market snapshot for a token address',
+  name: SPEC.token.name,
+  description: SPEC.token.description,
 
   async execute(ctx) {
     const address = ctx.command.args[0]?.trim();

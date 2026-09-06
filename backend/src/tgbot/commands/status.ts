@@ -1,4 +1,5 @@
 import { readAllowedChatIds } from '../access.js';
+import { SPEC } from '../commandCatalog.js';
 import { getChatStore } from '../chatStore.js';
 import { renderStatus } from '../render.js';
 import { readDefaultAlertSource, resolveAlertSource } from '../source.js';
@@ -15,8 +16,8 @@ import type { TgCommand } from './types.js';
  * Saying "on" for any of them would be a lie the operator discovers by waiting.
  */
 export const status: TgCommand = {
-  name: 'status',
-  description: 'Show what this chat is registered for',
+  name: SPEC.status.name,
+  description: SPEC.status.description,
 
   async execute(ctx) {
     const record = await getChatStore().get(ctx.chatId);

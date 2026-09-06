@@ -6,7 +6,13 @@ they're left as the record of what shipped.
 
 ## 2026-09-06
 
+### Added
+- **The Telegram bot has a control panel** — `/start` now opens a card showing what this chat receives, how it is delivered, how close it is to its hourly ceiling, and whether it is wired to an OCT account at all, with buttons to change any of it. A fresh chat still reads *nothing is turned on*, because the bot stays silent until somebody deliberately turns an alert on. In a group, only an admin can change what the room receives — anyone can look.
+- **Commands you can actually find** — the bot now publishes its commands to Telegram, so typing `/` lists them with descriptions instead of you having to remember them. `/help` is grouped by what you are trying to do. New: **`/mute 2h`** pauses everything without losing your subscriptions, **`/unmute`** lifts it, **`/mcap`** shows the coins that most recently crossed the market-cap threshold, and **`/queued`** shows what the next digest is holding. In a DM you can paste a bare contract address with no command at all.
+
 ### Fixed
+- **The bot knows its own name** — the group-mention hint said to add `@thebotname`, literally, instead of the bot's actual handle.
+- **Typed commands respect group permissions** — `/alerts on` could be run by any member of a group, which meant one person could subscribe a whole room to the loudest alert class in the system. Buttons already checked for this; typed commands now go through the same check.
 - **Busy minutes no longer drop calls** — when a lot of Telegram traffic arrived at once, OCT asked the database the same handful of questions once per message instead of once per burst, ran out of connections, and quietly threw the overflow away. The feed looked calm; the calls that crossed during those seconds were simply never logged. Those repeated questions — your rooms, your keywords, your highlighted names — are now answered once and shared by every message in the burst, so a spike costs the same as a quiet minute. Editing a keyword, a room or a highlighted name still takes effect immediately.
 
 ## 2026-09-05

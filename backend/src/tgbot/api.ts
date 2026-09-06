@@ -127,6 +127,30 @@ export class TelegramBotApi {
   }
 
   /**
+   * Publish the `/` autocomplete menu.
+   *
+   * THE COMMANDS ARE INVISIBLE WITHOUT THIS. Telegram has no command registry
+   * the way Discord does — a bot's commands exist only as strings it recognises
+   * — so until setMyCommands lands, typing `/` in the chat offers nothing and
+   * every command has to be learned from /help. It was never called: the
+   * command list was a block of text somebody was expected to paste into
+   * @BotFather by hand, once, and re-paste after every change. Calling it at
+   * boot makes the menu a property of the deployed build instead.
+   *
+   * IT REPLACES THE WHOLE LIST, and it is scoped to `default` (the scope
+   * parameter is omitted), which is what a menu for a bot with no per-chat
+   * command differences wants. One malformed entry is a 400 that rejects the
+   * ENTIRE payload, which is why telegramCommandMenu drops bad entries rather
+   * than passing them through — see commandCatalog.ts.
+   */
+  async setMyCommands(
+    commands: { command: string; description: string }[],
+    signal?: AbortSignal,
+  ): Promise<TgCallResult<boolean>> {
+    return this.call<boolean>('setMyCommands', { commands }, { signal });
+  }
+
+  /**
    * Long-poll for updates.
    *
    * `offset` is the confirmation mechanism, not a cursor into history: sending

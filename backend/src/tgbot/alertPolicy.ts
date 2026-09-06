@@ -376,6 +376,83 @@ export function parseAlertsCommand(args: string[]): AlertsAction {
   return { kind: 'set', spec, delivery: wantsInstant ? 'instant' : 'digest', confirmed };
 }
 
+// --- /mute command parsing ---------------------------------------------------
+
+/**
+ * Bounds on a manual mute.
+ *
+ * A FLOOR because a mute measured in seconds is not a mute, it is a
+ * misunderstanding of what the command does — the digest interval alone is ten
+ * minutes. A CEILING because an indefinite mute is how a chat quietly stops
+ * being a user: nobody remembers they muted OCT in March, and the bot looks
+ * broken rather than silenced. Seven days is long enough for a holiday and
+ * short enough that it expires while somebody still remembers setting it.
+ *
+ * Out-of-range values are CLAMPED, not refused, because the reply states the
+ * resulting deadline rather than echoing the duration — so a clamp is visible
+ * in the answer instead of being a silent substitution.
+ */
+export const MIN_MUTE_MS = 5 * 60_000;
+export const MAX_MUTE_MS = 7 * 24 * 3_600_000;
+export const DEFAULT_MUTE_MS = 3_600_000;
+
+/** What `/mute …` asked for. */
+export type MuteAction =
+  | { kind: 'mute'; durationMs: number }
+  | { kind: 'usage'; problem: string | null };
+
+const MUTE_UNITS: Record<string, number> = {
+  m: 60_000,
+  min: 60_000,
+  mins: 60_000,
+  minute: 60_000,
+  minutes: 60_000,
+  h: 3_600_000,
+  hr: 3_600_000,
+  hrs: 3_600_000,
+  hour: 3_600_000,
+  hours: 3_600_000,
+  d: 86_400_000,
+  day: 86_400_000,
+  days: 86_400_000,
+};
+
+/**
+ * Parse the argument tail of `/mute`.
+ *
+ *   /mute            → one hour
+ *   /mute 30m|2h|1d  → that long, clamped to [MIN_MUTE_MS, MAX_MUTE_MS]
+ *   /mute 30         → thirty MINUTES; a bare number is the ambiguous case and
+ *                      minutes is the only reading where a typo is cheap
+ *
+ * Pure, so the handler is this call plus one store round-trip. Anything else
+ * returns `usage` with the specific problem rather than a generic complaint —
+ * a group gets one correction, not a guessing game.
+ */
+export function parseMuteCommand(args: string[]): MuteAction {
+  const words = args.map((a) => a.trim().toLowerCase()).filter((a) => a !== '');
+  if (words.length === 0) return { kind: 'mute', durationMs: DEFAULT_MUTE_MS };
+  if (words.length > 1) return { kind: 'usage', problem: '/mute takes one duration, or none.' };
+
+  const raw = words[0] as string;
+  const match = /^(\d+(?:\.\d+)?)\s*([a-z]*)$/.exec(raw);
+  if (!match) return { kind: 'usage', problem: `"${raw}" is not a duration.` };
+
+  const amount = Number(match[1]);
+  if (!Number.isFinite(amount) || amount <= 0) {
+    return { kind: 'usage', problem: `"${raw}" is not a duration.` };
+  }
+
+  const unitWord = match[2] ?? '';
+  const unitMs = unitWord === '' ? 60_000 : MUTE_UNITS[unitWord];
+  if (unitMs === undefined) {
+    return { kind: 'usage', problem: `I do not know the unit "${unitWord}".` };
+  }
+
+  const durationMs = Math.min(Math.max(Math.round(amount * unitMs), MIN_MUTE_MS), MAX_MUTE_MS);
+  return { kind: 'mute', durationMs };
+}
+
 /**
  * Apply a parsed `set` to a settings blob, returning a NEW one.
  *

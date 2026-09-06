@@ -303,11 +303,26 @@ describe('the circuit breaker', () => {
 // ---------------------------------------------------------------------------
 
 describe('/alerts round-trip', () => {
-  const ctx = (args: string[], replies: string[]) => ({
+  // `authorizeWrite` is what index.ts injects after asking Telegram whether the
+  // sender is an admin of this supergroup. The default here is an admin, so the
+  // round-trips below exercise the store path; `writes` counts the calls, which
+  // is how the read branches prove they spend no getChatMember.
+  const ctx = (
+    args: string[],
+    replies: string[],
+    opts: { admin?: boolean; writes?: { count: number } } = {},
+  ) => ({
     chatId: CHAT,
     chat: { id: CHAT, type: 'supergroup' as const, title: 'Trenches' },
     from: { id: 1, is_bot: false, first_name: 'A' },
     command: { name: 'alerts', args, rest: args.join(' '), addressedTo: null },
+    botUsername: 'OctTestBot',
+    authorizeWrite: async () => {
+      if (opts.writes) opts.writes.count += 1;
+      return opts.admin === false
+        ? { allow: false, message: 'Only a group admin can change what this chat receives.' }
+        : { allow: true, message: '' };
+    },
     reply: async (text: string): Promise<boolean> => {
       replies.push(text);
       return true;
@@ -325,6 +340,28 @@ describe('/alerts round-trip', () => {
     await alertsCommand.execute(ctx([], replies));
     expect(replies[0]).toContain('/start');
     expect(roster.has(CHAT)).toBe(false);
+  });
+
+  it('refuses a non-admin in a group, and changes nothing', async () => {
+    // The hole permissions.ts closed: `/alerts on contracts confirm` from any
+    // member used to subscribe the whole room to the class that flooded a live
+    // group — a button that same member could not press.
+    seed();
+    const replies: string[] = [];
+    await alertsCommand.execute(ctx(['on', 'contracts', 'confirm'], replies, { admin: false }));
+
+    expect(settingsOf().alerts.contract).toBe('off');
+    expect(replies[0]).toContain('group admin');
+  });
+
+  it('spends no admin lookup on the read form', async () => {
+    seed();
+    const writes = { count: 0 };
+    await alertsCommand.execute(ctx([], [], { writes }));
+    expect(writes.count).toBe(0);
+
+    await alertsCommand.execute(ctx(['on', 'runners'], [], { writes }));
+    expect(writes.count).toBe(1);
   });
 
   it('opts in as a digest and persists it', async () => {

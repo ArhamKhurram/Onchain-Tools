@@ -1,4 +1,5 @@
 import { panelDeliveryFor } from '../alerts.js';
+import { SPEC } from '../commandCatalog.js';
 import { getChatStore } from '../chatStore.js';
 import { readDigestIntervalMs } from '../digest.js';
 import { readGuardLimits } from '../guard.js';
@@ -40,8 +41,8 @@ import type { TgCommand } from './types.js';
  * that has been closed or has aged past Telegram's 48-hour edit window.
  */
 export const start: TgCommand = {
-  name: 'start',
-  description: 'Open the OCT control panel for this chat',
+  name: SPEC.start.name,
+  description: SPEC.start.description,
 
   async execute(ctx) {
     const record = await getChatStore().register({

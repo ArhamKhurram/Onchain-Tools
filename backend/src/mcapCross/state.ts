@@ -230,6 +230,65 @@ export async function recordObservations(rows: McapCrossRow[]): Promise<void> {
   }
 }
 
+/**
+ * The tokens that most recently ALERTED, newest first.
+ *
+ * WHY THIS BELONGS HERE AND NOT IN A NEW TABLE. `fired_at` already records
+ * exactly one fact — "this token produced a crossing alert at this moment" —
+ * and the migration already carries `mcap_cross_state_fired_at_idx (fired_at
+ * desc nulls last)` for the poller's own cooldown sweep. Reading the same
+ * column the other way round is a history of crossings for free; a second table
+ * to hold what one indexed column already holds would be two writes per alert
+ * where there is currently one.
+ *
+ * IT IS NOT A DELIVERY LOG. It says what crossed, not what any particular chat
+ * was sent — a chat that subscribed an hour ago will see entries older than its
+ * subscription. That is the honest shape of the data, and the card that renders
+ * it says "crossed", never "you missed".
+ *
+ * NO user_id, so there is nothing personal to leak: an address, a chain, a
+ * number and a timestamp, identical for every reader (see the migration's
+ * header). Column-scoped and `limit`ed for the reason every read in this file
+ * is — prod is on Supabase's free plan where egress is the binding constraint.
+ *
+ * Best-effort like the rest of the module: any failure is an empty list, which
+ * the caller renders as "nothing recorded yet" rather than as an error.
+ */
+export async function recentCrossings(limit: number): Promise<McapCrossRow[]> {
+  const capped = Math.max(1, Math.min(Math.trunc(limit), 25));
+
+  const fromMemory = (source: Record<string, McapCrossRow>): McapCrossRow[] =>
+    Object.values(source)
+      .filter((row) => row.firedAt > 0)
+      .sort((a, b) => b.firedAt - a.firedAt)
+      .slice(0, capped);
+
+  if (!isHostedMode()) return fromMemory(loadLocal());
+
+  const client = db();
+  if (!client || hostedTableMissing) return fromMemory(memoryFallback);
+
+  const { data, error } = await client
+    .from(TABLE)
+    .select('address, network, last_seen_mcap, last_seen_at, fired_at')
+    .not('fired_at', 'is', null)
+    .order('fired_at', { ascending: false })
+    .limit(capped);
+
+  if (error) {
+    if (isMissingTable(error.message)) hostedTableMissing = true;
+    else console.warn('[McapCross] Recent crossings read failed:', error.message);
+    return fromMemory(memoryFallback);
+  }
+
+  const rows: McapCrossRow[] = [];
+  for (const raw of (data ?? []) as any[]) {
+    const row = rowFrom(raw);
+    if (row && row.firedAt > 0) rows.push(row);
+  }
+  return rows;
+}
+
 /** Test seam: forget the local file cache and the hosted fallback. */
 export function _resetStateForTest(): void {
   localCache = null;
