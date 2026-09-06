@@ -1,5 +1,5 @@
 import type { ParsedCommand } from '../router.js';
-import type { TgChat, TgUser } from '../types.js';
+import type { TgChat, TgInlineKeyboardMarkup, TgUser } from '../types.js';
 
 /**
  * Everything a command handler is given.
@@ -15,7 +15,12 @@ export interface TgCommandContext {
   /** The sender, when Telegram supplied one (absent for some channel posts). */
   from: TgUser | null;
   command: ParsedCommand;
-  reply(text: string): Promise<boolean>;
+  /**
+   * `keyboard` attaches an inline keyboard to the reply. Only /start uses it —
+   * the panel is the one surface with buttons, and a command that answered with
+   * a stray keyboard would leave a second, unmanaged panel in the chat.
+   */
+  reply(text: string, opts?: { keyboard?: TgInlineKeyboardMarkup }): Promise<boolean>;
 }
 
 export interface TgCommand {

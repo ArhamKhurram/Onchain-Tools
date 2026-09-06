@@ -171,6 +171,24 @@ export class DigestBuffer {
     };
   }
 
+  /**
+   * Read one chat's buffered lines WITHOUT clearing them.
+   *
+   * The panel's "Queued" card needs to show what the next digest will contain,
+   * and `take` is destructive by design — calling it to render a card would
+   * silently swallow the batch, turning a read into a data-losing write. So the
+   * two are separate methods, and this one is the only read path.
+   */
+  peek(chatId: number): { lines: DigestLine[]; dropped: number } {
+    const buffer = this.chats.get(chatId);
+    if (!buffer) return { lines: [], dropped: 0 };
+    const slots = [...buffer.slots.values()].sort((a, b) => a.firstAt - b.firstAt);
+    return {
+      lines: slots.map((s) => ({ type: s.entry.type, line: s.entry.line, count: s.count })),
+      dropped: buffer.dropped,
+    };
+  }
+
   /** Discard a chat's batch without rendering it. Used when a chat is muted. */
   discard(chatId: number): void {
     this.chats.delete(chatId);

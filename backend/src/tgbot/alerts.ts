@@ -56,6 +56,37 @@ export type { AlertLike };
 // the historic import path keeps working.
 export { isContractDetection };
 
+/** The in-memory delivery figures the /start panel renders. */
+export interface PanelDelivery {
+  usedThisHour: number;
+  pending: { line: string; count: number }[];
+  pendingDropped: number;
+}
+
+/** What the panel shows when no fan-out exists: nothing sent, nothing queued. */
+const NO_DELIVERY: PanelDelivery = { usedThisHour: 0, pending: [], pendingDropped: 0 };
+
+/**
+ * The live fan-out, for the two callers that need to READ its counters without
+ * owning it: the panel's home card and its Queued card.
+ *
+ * index.ts owns the router's lifecycle (one per process, never torn down — see
+ * the note there), and both panel entry points sit downstream of it, so a
+ * direct import would be a cycle. This is the narrow door instead: a setter
+ * index.ts calls once, and a getter that answers honestly when the bot has
+ * never started rather than constructing a fan-out as a side effect of
+ * rendering a card.
+ */
+let panelSource: TgAlertRouter | null = null;
+
+export function setPanelDeliverySource(router: TgAlertRouter): void {
+  panelSource = router;
+}
+
+export function panelDeliveryFor(chatId: number, now: number = Date.now()): PanelDelivery {
+  return panelSource ? panelSource.panelDelivery(chatId, now) : NO_DELIVERY;
+}
+
 /** Flatten an alert into the fields a card renders. Pure; exported for tests. */
 export function buildContractAlertView(alert: AlertLike): ContractAlertView {
   const msg = alert.message;
@@ -223,6 +254,26 @@ export class TgAlertRouter {
     } catch {
       return 0;
     }
+  }
+
+  /**
+   * What the /start panel needs to describe this chat's delivery, read
+   * entirely from PROCESS MEMORY.
+   *
+   * Deliberately zero I/O. The panel has a Refresh button anyone in a group can
+   * press, and production is already running its Supabase connection pool hot —
+   * so every field the panel can answer without a query is one it must. The
+   * hourly figure comes from the same guard the fan-out consults, and the
+   * queued lines from the same buffer the digest flushes, so the card cannot
+   * report a state the delivery path disagrees with.
+   */
+  panelDelivery(chatId: number, now: number = Date.now()): PanelDelivery {
+    const { lines, dropped } = this.buffer.peek(chatId);
+    return {
+      usedThisHour: this.guard.usedThisHour(chatId, now),
+      pending: lines.map((l) => ({ line: l.line, count: l.count })),
+      pendingDropped: dropped,
+    };
   }
 
   /** One event, one chat. Split out so `handle` reads as the policy it is. */
