@@ -867,17 +867,24 @@ httpServer.listen(PORT, HOST, async () => {
   // than imported so mcapCross/ never reaches into tgbot/.
   startMcapCrossPoller(wsServer, {
     hasSubscribers: async () => (await tgSubscriberCount('mcapCross')) > 0,
-    deliver: (data) =>
-      tgDeliverMcapCross({
-        address: data.address,
-        network: data.network,
-        symbol: data.symbol,
-        mcapUsd: data.mcapUsd,
-        targetUsd: data.targetUsd,
-        liquidityUsd: data.liquidityUsd,
-        liquidityRatio: data.liquidityRatio,
-        caveats: data.caveats,
-      }),
+    // The verdict travels with the payload so the bot can apply the OWNER's
+    // per-user filters per chat (tg_bot_chats.source_user_id → an OCT user).
+    // A chat that resolves to nobody falls back to `baselinePass`, i.e. exactly
+    // what it received before per-user filters existed.
+    deliver: (data, verdict) =>
+      tgDeliverMcapCross(
+        {
+          address: data.address,
+          network: data.network,
+          symbol: data.symbol,
+          mcapUsd: data.mcapUsd,
+          targetUsd: data.targetUsd,
+          liquidityUsd: data.liquidityUsd,
+          liquidityRatio: data.liquidityRatio,
+          caveats: data.caveats,
+        },
+        verdict,
+      ),
   });
   // Global pump.fun KOL-callout fan-out poller. Self-gates on Supabase (idle in
   // local mode), keyless upstream, so it never crashes the server.

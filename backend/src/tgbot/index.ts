@@ -40,6 +40,7 @@ import { panelDeliveryFor, setPanelDeliverySource, TgAlertRouter } from './alert
 import { readDigestIntervalMs } from './digest.js';
 import type { TgAlertType } from './alertPolicy.js';
 import type { McapCrossView } from './render.js';
+import type { SignalFilterGate } from './source.js';
 
 /** Seconds Telegram holds an empty getUpdates open before answering. */
 const POLL_SECONDS = 30;
@@ -125,9 +126,15 @@ export async function tgSubscriberCount(type: TgAlertType): Promise<number> {
   return alertRouter ? alertRouter.subscriberCount(type) : 0;
 }
 
-/** Deliver one market-cap crossing. No-ops when the bot is not running. */
-export function tgDeliverMcapCross(view: McapCrossView): void {
-  void alertRouter?.handleSignal(view).catch((err) => {
+/**
+ * Deliver one market-cap crossing. No-ops when the bot is not running.
+ *
+ * `gate` carries the per-user filter question (see tgbot/source.ts). It is
+ * optional so a caller that has no filter context still delivers the operator
+ * baseline rather than nothing.
+ */
+export function tgDeliverMcapCross(view: McapCrossView, gate?: SignalFilterGate): void {
+  void alertRouter?.handleSignal(view, gate).catch((err) => {
     console.error('[TgBot] Crossing delivery failed:', (err as Error)?.message ?? err);
   });
 }

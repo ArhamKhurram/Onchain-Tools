@@ -29,7 +29,7 @@ import {
   MAX_FEE_COMPONENT,
   VENUE_FEE_RATE,
   estimateFees,
-  isValidFeeComponent,
+  parseFeeComponent,
 } from '../../sniper/fees.js';
 import { fireRuleNow } from '../../sniper/fireOrchestrator.js';
 import { getSniperRuntime } from '../../sniper/runtime.js';
@@ -366,29 +366,14 @@ export function createSniperRouter(): Router {
       const { store } = getSniperRuntime();
 
       // Absent = leave that component alone, so the console can PATCH one field.
-      // Anything PRESENT but not a real bounded amount is REFUSED, not coerced:
-      // a negative or a NaN would disable cap accounting rather than change it
-      // (`NaN > cap` is false), and silently storing a coerced 0 would tell the
-      // operator their tip was accepted when it was discarded.
-      //
-      // `null` is rejected rather than read as zero for one specific reason:
-      // JSON.stringify turns Infinity into the literal `null`, so accepting it
-      // would silently write 0 for an operator who typed something enormous.
+      // Anything PRESENT but not a real bounded amount is REFUSED, not coerced.
+      // The rules — and the reasoning behind each of them — live in
+      // `parseFeeComponent` (sniper/fees.ts), because the Telegram `/fees`
+      // command has to apply exactly the same ones and two copies would drift.
       const current = await store.getFeeSettings(userId);
-      const parse = (v: unknown, fallback: number): number | null => {
-        if (v === undefined) return fallback;
-        if (typeof v === 'number') return isValidFeeComponent(v) ? v : null;
-        // A form field arrives as a string; anything else (null, boolean,
-        // object) is not a fee.
-        if (typeof v === 'string' && v.trim() !== '') {
-          const n = Number(v);
-          return isValidFeeComponent(n) ? n : null;
-        }
-        return null;
-      };
 
-      const tip = parse(body.tip, current.tip);
-      const priorityFee = parse(body.priorityFee, current.priorityFee);
+      const tip = parseFeeComponent(body.tip, current.tip);
+      const priorityFee = parseFeeComponent(body.priorityFee, current.priorityFee);
       if (tip === null || priorityFee === null) {
         return bad(res, 400, 'invalid_fees', `each fee must be a number between 0 and ${MAX_FEE_COMPONENT}`);
       }
