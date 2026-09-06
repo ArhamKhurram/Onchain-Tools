@@ -20,7 +20,15 @@ import { estimateFees } from './fees.js';
 import { computeLegs } from './legs.js';
 import { utcDay } from './store.js';
 import type { SniperStore } from './storeInterface.js';
-import type { FireIntent, FireLeg, NormalizedTweet, SendOutcome, SnipeRule, Venue } from './types.js';
+import type {
+  FireIntent,
+  FireLeg,
+  NormalizedTweet,
+  SendOutcome,
+  SnipeRule,
+  SniperFeeSettings,
+  Venue,
+} from './types.js';
 
 export type LegState = 'filled' | 'expired' | 'aborted' | 'unknown';
 
@@ -88,10 +96,26 @@ export async function executeFire(
   const day = utcDay(now);
   const legs = computeLegs(rule);
 
+  // The account-level tip/priority fee every rule inherits, read ONCE per fire
+  // and threaded into every leg, so a fire is internally consistent even if the
+  // operator edits the setting while it runs.
+  //
+  // An unreadable setting ABORTS. It must never fall back to zero: the fees are
+  // part of what the reservation debits, so firing with fees we could not read
+  // would under-reserve every leg by the tip and make the daily cap soft — the
+  // precise failure this whole module exists to prevent.
+  let feeSettings: SniperFeeSettings;
+  try {
+    feeSettings = await store.getFeeSettings(userId);
+  } catch (err) {
+    console.error(`[sniper] fee settings unreadable for rule=${rule.id}:`, (err as Error)?.message ?? err);
+    return { outcome: 'aborted', reason: 'fee_settings_unavailable', legs: [], ruleDisabled: false };
+  }
+
   // Step 2 — per-trigger cap: the whole tweet's spend, fees included, before any leg
   // sends. Without this, N ladder legs each within perFireCap spend N x perFireCap.
   const triggerTotal = legs.reduce(
-    (sum, leg) => sum + leg.amount + estimateFees(rule, leg.amount),
+    (sum, leg) => sum + leg.amount + estimateFees(rule, leg.amount, feeSettings),
     0,
   );
   if (triggerTotal > rule.perTriggerCap) {
@@ -119,7 +143,7 @@ export async function executeFire(
   const results: LegResult[] = [];
 
   for (const leg of legs) {
-    results.push(await runLeg(rule, intent, leg, executor, deps, day, mint, isDry));
+    results.push(await runLeg(rule, intent, leg, executor, deps, day, mint, isDry, feeSettings));
   }
 
   const anyMovement = results.some((r) => r.state === 'filled' || r.state === 'unknown');
@@ -141,11 +165,12 @@ async function runLeg(
   day: string,
   mint: string,
   isDry: boolean,
+  feeSettings: SniperFeeSettings,
 ): Promise<LegResult> {
   const { store, clock } = deps;
   const userId = rule.userId;
   const startedAt = clock();
-  const fees = estimateFees(rule, leg.amount);
+  const fees = estimateFees(rule, leg.amount, feeSettings);
   const amountWithFees = leg.amount + fees;
   const correlationId = `${rule.id}:${intent.triggerKey}:${leg.walletId}:${leg.legNo}`;
   const venue: Venue = isDry ? 'dryrun' : rule.venue;

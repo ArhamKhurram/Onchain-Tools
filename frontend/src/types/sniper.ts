@@ -33,11 +33,31 @@ export type MatcherNode =
 
 export interface SolanaExecParams {
   kind: 'sol';
-  /** SOL. Omitted selects the venue's auto tip. */
+  /**
+   * SOL. An EXPLICIT override of the account-level tip. Omitted means "not set
+   * on this rule": the account setting applies. Mirrors backend fees.ts.
+   */
   tip?: number;
-  /** SOL. Omitted selects the venue's auto priority fee. */
+  /** SOL. Same override/inherit semantics as `tip`. */
   priorityFee?: number;
   antimev: boolean;
+}
+
+/**
+ * Account-level fees, inherited by every rule that does not override them.
+ * Mirrors backend `SniperFeeSettings`; GET/POST /sniper/v1/fees.
+ */
+export interface SniperFeeSettings {
+  tip: number;
+  priorityFee: number;
+}
+
+/** What GET/POST /sniper/v1/fees returns. */
+export interface SniperFeesResponse {
+  fees: SniperFeeSettings;
+  /** Per-venue trading fee rate, so the console never hardcodes 0.5%. */
+  venueFeeRate: Record<string, number>;
+  maxFeeComponent?: number;
 }
 
 export interface EvmExecParams {
@@ -299,15 +319,52 @@ const VENUE_FEE_RATE: Record<Venue, number> = {
   dryrun: 0.005,
 };
 
-/** Mirrors backend/src/sniper/fees.ts. Native units; EVM gas is not modelled. */
-export function estimateFeesPreview(rule: FeeShape, legAmount: number): number {
+/** Zeroes on both components — the account default, and the pre-global behaviour. */
+export const DEFAULT_FEE_SETTINGS: SniperFeeSettings = { tip: 0, priorityFee: 0 };
+
+/** A fee component the preview can trust. Mirrors backend `isValidFeeComponent`. */
+function safeComponent(v: unknown): number {
+  return typeof v === 'number' && Number.isFinite(v) && v >= 0 ? v : 0;
+}
+
+/**
+ * The tip and priority fee a rule actually bids, after inheritance. PRECEDENCE,
+ * mirroring backend/src/sniper/fees.ts exactly: an explicitly-set rule value
+ * wins; otherwise the account-level setting applies. An explicit ZERO is an
+ * override, not "unset".
+ */
+export function resolveExecFeesPreview(
+  rule: FeeShape,
+  global: SniperFeeSettings = DEFAULT_FEE_SETTINGS,
+): { tip: number; priorityFee: number } {
+  // The account setting is denominated in SOL; an EVM rule prices gas in wei on
+  // a different asset and must not inherit it.
+  if (rule.exec.kind !== 'sol') return { tip: 0, priorityFee: 0 };
+  return {
+    tip: rule.exec.tip === undefined ? safeComponent(global.tip) : safeComponent(rule.exec.tip),
+    priorityFee:
+      rule.exec.priorityFee === undefined
+        ? safeComponent(global.priorityFee)
+        : safeComponent(rule.exec.priorityFee),
+  };
+}
+
+/**
+ * Mirrors backend/src/sniper/fees.ts. Native units; EVM gas is not modelled.
+ *
+ * `global` defaults to zeroes so a caller that has not loaded the account
+ * setting yet renders the pre-global figure rather than a NaN — this is a
+ * PREVIEW, and the server's own number is what the reservation uses.
+ */
+export function estimateFeesPreview(
+  rule: FeeShape,
+  legAmount: number,
+  global: SniperFeeSettings = DEFAULT_FEE_SETTINGS,
+): number {
   const rate = VENUE_FEE_RATE[rule.venue] ?? 0.005;
-  let fee = legAmount * rate;
-  if (rule.exec.kind === 'sol') {
-    fee += rule.exec.tip ?? 0;
-    fee += rule.exec.priorityFee ?? 0;
-  }
-  return fee;
+  const amount = Number.isFinite(legAmount) && legAmount > 0 ? legAmount : 0;
+  const { tip, priorityFee } = resolveExecFeesPreview(rule, global);
+  return amount * rate + tip + priorityFee;
 }
 
 /**
@@ -316,8 +373,14 @@ export function estimateFeesPreview(rule: FeeShape, legAmount: number): number {
  * whose trigger total exceeds its own cap aborts at executeFire step 2 on every
  * trigger, so the form warns before the server rejects it at arm time.
  */
-export function triggerTotalPreview(rule: LegShape & FeeShape): number {
-  return computeLegsPreview(rule).reduce((sum, leg) => sum + leg.amount + estimateFeesPreview(rule, leg.amount), 0);
+export function triggerTotalPreview(
+  rule: LegShape & FeeShape,
+  global: SniperFeeSettings = DEFAULT_FEE_SETTINGS,
+): number {
+  return computeLegsPreview(rule).reduce(
+    (sum, leg) => sum + leg.amount + estimateFeesPreview(rule, leg.amount, global),
+    0,
+  );
 }
 
 /**
@@ -355,6 +418,8 @@ export function describeValidationReason(reason: string): string {
       return 'Venue/chain mismatch — Slotshark executes Solana only.';
     case 'exec_kind_mismatch':
       return 'Exec params do not match the chain — Solana rules take tip/priority fee, EVM rules take gas.';
+    case 'exec_fee_out_of_range':
+      return "This rule's tip or priority fee is not a real amount — clear it to inherit the account setting.";
     case 'matcher_too_deep':
       return 'Trigger matcher is nested too deeply — flatten the AND/OR/NOT tree.';
     case 'matcher_too_many_nodes':
@@ -400,6 +465,8 @@ export function describeAbortReason(reason: string): string {
       return 'Max open — this wallet already holds its maximum open positions.';
     case 'unit_mismatch':
       return "Unit mismatch — the rule sizes in a unit this wallet's budget is not denominated in.";
+    case 'fee_settings_unavailable':
+      return 'Could not read the account fee settings, so nothing was fired — firing without them would under-reserve every leg.';
     case 'kill_switch':
       return 'Kill switch — the console kill switch was on.';
     case 'mcap_ceiling':

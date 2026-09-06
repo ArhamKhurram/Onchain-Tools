@@ -7,6 +7,7 @@ import {
   triggerTotalPreview,
   type FireResponse,
   type SnipeRule,
+  type SniperFeeSettings,
   type SniperWallet,
 } from '../../types/sniper';
 import type { SniperResult } from '../../lib/sniperApi';
@@ -16,6 +17,8 @@ interface SniperFireModalProps {
   open: boolean;
   rule: SnipeRule | null;
   wallets: SniperWallet[];
+  /** Account-level fees this rule inherits where it sets none of its own. */
+  fees: SniperFeeSettings;
   /** OCT_SNIPER_DRY_RUN. It overrides the rule flag, so it decides the band. */
   processDryRun: boolean;
   onClose: () => void;
@@ -43,6 +46,7 @@ export default function SniperFireModal({
   open,
   rule,
   wallets,
+  fees,
   processDryRun,
   onClose,
   onFire,
@@ -70,7 +74,7 @@ export default function SniperFireModal({
   }, [open, firing, onClose]);
 
   const legs = useMemo(() => (rule ? computeLegsPreview(rule) : []), [rule]);
-  const total = useMemo(() => (rule ? triggerTotalPreview(rule) : 0), [rule]);
+  const total = useMemo(() => (rule ? triggerTotalPreview(rule, fees) : 0), [rule, fees]);
 
   // The process flag wins over the rule flag (backend registry.ts) — so the band
   // must be computed the same way, or it would promise DRY RUN on a rule that is
@@ -134,7 +138,7 @@ export default function SniperFireModal({
                         <td className="py-snug type-data text-oct-muted">#{leg.legNo}</td>
                         <td className="py-snug type-data text-right text-oct-text">{leg.amount}</td>
                         <td className="py-snug type-data text-right text-oct-muted">
-                          {fmt(estimateFeesPreview(rule, leg.amount))}
+                          {fmt(estimateFeesPreview(rule, leg.amount, fees))}
                         </td>
                       </tr>
                     ))}

@@ -580,7 +580,7 @@ describe('sniper control plane — arming, editing and unknown legs', () => {
     const { walletId, ruleId, rule } = await seedWalletAndRule();
     const at = Date.now();
     const day = utcDay(at);
-    const legTotal = 1 + estimateFees(rule, 1);
+    const legTotal = 1 + estimateFees(rule, 1, { tip: 0, priorityFee: 0 });
 
     // Two prior legs stay reserved, so the release is MEASURABLE rather than
     // hidden by the floor at zero: one release must land spentToday on 4, a
@@ -759,5 +759,69 @@ describe('sniper control plane — a rule may only name the caller’s own walle
     expect(res.body.legs[0].walletId).toBe(walletId);
     // …while the persisted row references none, so the hosted FK holds.
     expect((await store.fireLog('local'))[0].walletId).toBe('');
+  });
+});
+
+
+// ---------------------------------------------------------------------------
+// GET/POST /fees -- the account-level tip + priority fee every rule inherits.
+// ---------------------------------------------------------------------------
+describe('fee settings', () => {
+  it('starts at zero, which is the pre-global arithmetic', async () => {
+    const res = await call('GET', '/fees');
+    expect(res.status).toBe(200);
+    expect(res.body.fees).toEqual({ tip: 0, priorityFee: 0 });
+    // The venue rate ships alongside so the console renders ONE combined
+    // "prio & tip & trading fees" figure without hardcoding it.
+    expect(res.body.venueFeeRate.slotshark).toBe(0.005);
+  });
+
+  it('round-trips a value and patches one component at a time', async () => {
+    expect((await call('POST', '/fees', { tip: 0.01, priorityFee: 0.002 })).body.fees).toEqual({
+      tip: 0.01,
+      priorityFee: 0.002,
+    });
+    // Omitting a component leaves it alone rather than zeroing it.
+    expect((await call('POST', '/fees', { tip: 0.02 })).body.fees).toEqual({
+      tip: 0.02,
+      priorityFee: 0.002,
+    });
+    expect((await call('GET', '/fees')).body.fees).toEqual({ tip: 0.02, priorityFee: 0.002 });
+  });
+
+  // The cases that would DISABLE cap accounting rather than change it: each of
+  // these reaches `amountWithFees` as a NaN or as a shrink, and every cap
+  // comparison against a NaN is false. Refused at the boundary, not coerced --
+  // storing a silent 0 would tell the operator their tip was accepted.
+  it.each([-1, 'abc', null, Infinity, 'Infinity', 1001])('refuses the invalid value %p', async (v) => {
+    const res = await call('POST', '/fees', { tip: v });
+    expect(res.status).toBe(400);
+    expect(res.body.reason).toBe('invalid_fees');
+    // And nothing was written.
+    expect((await call('GET', '/fees')).body.fees.tip).toBe(0);
+  });
+
+  it('makes a rule inherit the global at fire time', async () => {
+    // The end-to-end property: setting the account fee tightens the caps of a
+    // rule that never mentioned a tip. The per-TRIGGER cap is left roomy so the
+    // refusal lands at the per-leg check and names the leg, which is the more
+    // specific of the two proofs.
+    const { ruleId } = await seedWalletAndRule({ sizeTotal: 1, perFireCap: 1.006, perTriggerCap: 10 });
+    expect((await call('POST', `/rules/${ruleId}/fire`, { confirm: 'FIRE' })).body.legs[0].state).toBe('filled');
+
+    expect((await call('POST', '/fees', { tip: 0.01 })).status).toBe(200);
+    const after = await call('POST', `/rules/${ruleId}/fire`, { confirm: 'FIRE' });
+    expect(after.body.legs[0].state).toBe('aborted');
+    expect(after.body.legs[0].reason).toBe('per_fire_cap');
+  });
+
+  it('refuses to ARM a rule the inherited fees push past its own cap', async () => {
+    const { ruleId } = await seedWalletAndRule({ sizeTotal: 1, perFireCap: 1.006, perTriggerCap: 1.006 });
+    expect((await call('POST', `/rules/${ruleId}/arm`, { confirm: 'ARM' })).status).toBe(200);
+    await call('POST', `/rules/${ruleId}/disarm`);
+    expect((await call('POST', '/fees', { tip: 0.01 })).status).toBe(200);
+    const res = await call('POST', `/rules/${ruleId}/arm`, { confirm: 'ARM' });
+    expect(res.status).toBe(422);
+    expect(res.body.reason).toBe('size_over_trigger_cap');
   });
 });

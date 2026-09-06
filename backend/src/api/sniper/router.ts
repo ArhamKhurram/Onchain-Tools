@@ -24,7 +24,13 @@ import rateLimit from 'express-rate-limit';
 import { randomUUID } from 'crypto';
 import { isHostedMode } from '../../storage/index.js';
 import { processDryRun } from '../../sniper/executors/registry.js';
-import { estimateFees } from '../../sniper/fees.js';
+import {
+  DEFAULT_FEE_SETTINGS,
+  MAX_FEE_COMPONENT,
+  VENUE_FEE_RATE,
+  estimateFees,
+  isValidFeeComponent,
+} from '../../sniper/fees.js';
 import { fireRuleNow } from '../../sniper/fireOrchestrator.js';
 import { getSniperRuntime } from '../../sniper/runtime.js';
 import { utcDay } from '../../sniper/store.js';
@@ -47,6 +53,7 @@ import type {
   NormalizedTweet,
   SizeUnit,
   SnipeRule,
+  SniperFeeSettings,
   Venue,
   WalletConfig,
 } from '../../sniper/types.js';
@@ -323,6 +330,74 @@ export function createSniperRouter(): Router {
       res.json(await store.getKillState(userId));
     } catch (err) {
       bad(res, 500, 'kill_failed', (err as Error)?.message);
+    }
+  });
+
+  // -------------------------------------------------------------------------
+  // Fees — the ACCOUNT-LEVEL tip + priority fee every rule inherits.
+  //
+  // One setting for the whole account rather than a field on each rule: the tip
+  // is how the operator bids for blockspace, not a property of any one rule.
+  // Precedence lives in sniper/fees.ts — an explicit `exec.tip` on a rule wins;
+  // otherwise this applies. The global defaults to zero, so an account that
+  // never touches this endpoint reserves exactly what it reserved before the
+  // setting existed.
+  //
+  // Not gated on armed rules, unlike PATCH /rules/:id. This is a description of
+  // what the venue charges rather than an authorization to spend, and every
+  // fire reads it ONCE at the top of executeFire, so a change cannot land
+  // mid-fire. Raising it only tightens what the caps allow.
+  // -------------------------------------------------------------------------
+  router.get('/fees', async (req, res) => {
+    try {
+      const fees = await getSniperRuntime().store.getFeeSettings(userIdOf(req));
+      // `venueFeeRate` ships alongside so the console can render ONE combined
+      // "prio & tip & trading fees" figure without hardcoding the venue's rate.
+      res.json({ fees, venueFeeRate: VENUE_FEE_RATE, maxFeeComponent: MAX_FEE_COMPONENT });
+    } catch (err) {
+      bad(res, 500, 'fees_failed', (err as Error)?.message);
+    }
+  });
+
+  router.post('/fees', async (req, res) => {
+    try {
+      const userId = userIdOf(req);
+      const body = (req.body ?? {}) as Body;
+      const { store } = getSniperRuntime();
+
+      // Absent = leave that component alone, so the console can PATCH one field.
+      // Anything PRESENT but not a real bounded amount is REFUSED, not coerced:
+      // a negative or a NaN would disable cap accounting rather than change it
+      // (`NaN > cap` is false), and silently storing a coerced 0 would tell the
+      // operator their tip was accepted when it was discarded.
+      //
+      // `null` is rejected rather than read as zero for one specific reason:
+      // JSON.stringify turns Infinity into the literal `null`, so accepting it
+      // would silently write 0 for an operator who typed something enormous.
+      const current = await store.getFeeSettings(userId);
+      const parse = (v: unknown, fallback: number): number | null => {
+        if (v === undefined) return fallback;
+        if (typeof v === 'number') return isValidFeeComponent(v) ? v : null;
+        // A form field arrives as a string; anything else (null, boolean,
+        // object) is not a fee.
+        if (typeof v === 'string' && v.trim() !== '') {
+          const n = Number(v);
+          return isValidFeeComponent(n) ? n : null;
+        }
+        return null;
+      };
+
+      const tip = parse(body.tip, current.tip);
+      const priorityFee = parse(body.priorityFee, current.priorityFee);
+      if (tip === null || priorityFee === null) {
+        return bad(res, 400, 'invalid_fees', `each fee must be a number between 0 and ${MAX_FEE_COMPONENT}`);
+      }
+      const next: SniperFeeSettings = { tip, priorityFee };
+
+      await store.setFeeSettings(userId, next);
+      res.json({ fees: await store.getFeeSettings(userId), venueFeeRate: VENUE_FEE_RATE });
+    } catch (err) {
+      bad(res, 500, 'fees_update_failed', (err as Error)?.message);
     }
   });
 
@@ -641,7 +716,14 @@ export function createSniperRouter(): Router {
       const rule = await store.getRule(userId, req.params.id);
       if (!rule) return bad(res, 404, 'not_found');
 
-      const check = validateRule(rule, await store.listWallets(userId));
+      const [wallets, feeSettings] = await Promise.all([
+        store.listWallets(userId),
+        store.getFeeSettings(userId),
+      ]);
+      // Armed against the fees the rule will actually bid, inherited global
+      // included — otherwise a rule can arm and then abort `per_trigger_cap` on
+      // every fire.
+      const check = validateRule(rule, wallets, feeSettings);
       if (!check.ok) {
         res.status(422).json({ error: check.reason, reason: check.reason, ...(check.detail ? { detail: check.detail } : {}) });
         return;
@@ -812,7 +894,17 @@ export function createSniperRouter(): Router {
         // A deleted rule leaves `fees` at 0, so the release under-returns by the
         // fee. That is the deliberate direction to be wrong in — it leaves the
         // day slightly MORE constrained than it should be, never less.
-        const fees = rule ? estimateFees(rule, fire.amount) : 0;
+        //
+        // DEFAULT_FEE_SETTINGS (zeros), not the account's CURRENT global, for
+        // the same reason. The reservation was taken with whatever global was
+        // in force at fire time and nothing records it; using today's value
+        // could release MORE than was ever debited if the operator raised the
+        // tip in between, which frees budget that was never taken and makes the
+        // daily cap soft. Excluding the inherited component can only under-
+        // return, which is the safe direction. Explicit per-rule overrides ARE
+        // included: they are pinned on the rule and cannot be edited while it
+        // is armed.
+        const fees = rule ? estimateFees(rule, fire.amount, DEFAULT_FEE_SETTINGS) : 0;
         await store.releaseLeg(userId, {
           walletId: fire.walletId,
           chain,

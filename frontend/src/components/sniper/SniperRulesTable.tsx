@@ -5,7 +5,12 @@ import ConsoleEmptyState from '../console/ConsoleEmptyState';
 import SniperRuleFormModal from './SniperRuleFormModal';
 import SniperFireModal from './SniperFireModal';
 import SniperBadge from './SniperBadge';
-import { describeValidationReason, type SnipeRule, type SniperWallet } from '../../types/sniper';
+import {
+  describeValidationReason,
+  type SnipeRule,
+  type SniperFeeSettings,
+  type SniperWallet,
+} from '../../types/sniper';
 import type { useSniperRules } from '../../hooks/useSniperRules';
 import { cn } from '../../lib/utils';
 
@@ -22,6 +27,12 @@ const FIRE_BTN =
 interface SniperRulesTableProps {
   rules: ReturnType<typeof useSniperRules>;
   wallets: SniperWallet[];
+  /**
+   * Account-level tip + priority fee, inherited by every rule that does not
+   * override it. Threaded into the form and the fire modal so both previews
+   * show the fees the server will actually reserve.
+   */
+  fees: SniperFeeSettings;
   processDryRun: boolean;
   /** Kill switch state — a fire is pointless while it is on, so the button says so. */
   killed: boolean;
@@ -34,7 +45,7 @@ function StateBadge({ state }: { state: SnipeRule['state'] }) {
   return <SniperBadge tone={state === 'armed' ? 'warn' : 'neutral'}>{state}</SniperBadge>;
 }
 
-export default function SniperRulesTable({ rules, wallets, processDryRun, killed }: SniperRulesTableProps) {
+export default function SniperRulesTable({ rules, wallets, fees, processDryRun, killed }: SniperRulesTableProps) {
   const [formOpen, setFormOpen] = useState(false);
   const [editing, setEditing] = useState<SnipeRule | null>(null);
   const [arming, setArming] = useState<SnipeRule | null>(null);
@@ -105,6 +116,7 @@ export default function SniperRulesTable({ rules, wallets, processDryRun, killed
           open={formOpen}
           mode="add"
           wallets={wallets}
+          fees={fees}
           onClose={() => setFormOpen(false)}
           onSubmit={rules.createRule}
         />
@@ -254,6 +266,7 @@ export default function SniperRulesTable({ rules, wallets, processDryRun, killed
         mode={editing ? 'edit' : 'add'}
         rule={editing}
         wallets={wallets}
+        fees={fees}
         onClose={() => setFormOpen(false)}
         onSubmit={(draft) => (editing ? rules.updateRule(editing.id, draft) : rules.createRule(draft))}
       />
@@ -262,6 +275,7 @@ export default function SniperRulesTable({ rules, wallets, processDryRun, killed
         open={!!firing}
         rule={firing}
         wallets={wallets}
+        fees={fees}
         processDryRun={processDryRun}
         onClose={() => setFiring(null)}
         onFire={rules.fireRule}

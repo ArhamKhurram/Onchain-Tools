@@ -7,6 +7,7 @@ import {
   validateLadderSplit,
   type MatcherNode,
   type SnipeRule,
+  type SniperFeeSettings,
   type SniperWallet,
 } from '../../types/sniper';
 import type { SnipeRuleDraft } from '../../hooks/useSniperRules';
@@ -152,6 +153,12 @@ interface SniperRuleFormModalProps {
   mode: 'add' | 'edit';
   rule?: SnipeRule | null;
   wallets: SniperWallet[];
+  /**
+   * Account-level fees. Blank tip/priority inputs INHERIT these rather than
+   * meaning zero, so the trigger-total preview has to be computed against them
+   * or it understates what the server will reserve.
+   */
+  fees: SniperFeeSettings;
   onClose: () => void;
   onSubmit: (draft: SnipeRuleDraft) => Promise<{ ok: true } | { ok: false; reason: string; detail?: string }>;
 }
@@ -169,6 +176,7 @@ export default function SniperRuleFormModal({
   mode,
   rule,
   wallets,
+  fees,
   onClose,
   onSubmit,
 }: SniperRuleFormModalProps) {
@@ -203,7 +211,7 @@ export default function SniperRuleFormModal({
   // Σ over every leg of (amount + fees) — what perTriggerCap actually bounds.
   // Shown live because a rule whose own legs cannot clear its own trigger cap is
   // rejected at arm time, and finding that out three clicks later is worse.
-  const triggerTotal = triggerTotalPreview(draft);
+  const triggerTotal = triggerTotalPreview(draft, fees);
   const legCount = draft.walletIds.length * (draft.entryStyle === 'ladder' ? (draft.ladderSplit?.length ?? 1) : 1);
   const overTriggerCap = draft.walletIds.length > 0 && triggerTotal > draft.perTriggerCap;
 
@@ -510,9 +518,15 @@ export default function SniperRuleFormModal({
                 min="0"
                 value={values.tip}
                 onChange={(e) => set('tip', e.target.value)}
-                placeholder="auto"
+                placeholder={`inherit ${fees.tip}`}
                 className={FIELD}
               />
+              {/* Blank does NOT mean zero. It means this rule sets nothing and
+                  the account-level fee applies — the same precedence the server
+                  uses when it computes what to reserve. */}
+              <p className={`mt-tight ${HINT}`}>
+                Blank inherits the account setting (<span className="type-data">{fees.tip}</span>).
+              </p>
             </div>
             <div>
               <label htmlFor="sniper-rule-priority" className={LABEL}>
@@ -525,9 +539,12 @@ export default function SniperRuleFormModal({
                 min="0"
                 value={values.priorityFee}
                 onChange={(e) => set('priorityFee', e.target.value)}
-                placeholder="auto"
+                placeholder={`inherit ${fees.priorityFee}`}
                 className={FIELD}
               />
+              <p className={`mt-tight ${HINT}`}>
+                Blank inherits the account setting (<span className="type-data">{fees.priorityFee}</span>).
+              </p>
             </div>
           </div>
           <Toggle value={values.antimev} onChange={(v) => set('antimev', v)} label="Anti-MEV (the venue picks the relay)" />
