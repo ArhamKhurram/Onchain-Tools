@@ -78,39 +78,18 @@ function name(value: string | null | undefined, fallback = '—'): string {
   return escapeHtml(clampName(value, fallback));
 }
 
-/**
- * `/start` — registration confirmation.
- *
- * The wording here is load-bearing. The previous version said "contract
- * detections will land here", because they did: registration switched them on.
- * That is what flooded a live group. Registration now subscribes a chat to
- * NOTHING, so this card's job is to say so plainly and point at the one command
- * that changes it — a group must never be surprised by the first alert.
- */
-export function renderStart(chatTitle: string | null, isGroup: boolean): string {
-  return joinLines([
-    bold('OCT is listening. 👀'),
-    '',
-    isGroup
-      ? `This chat${chatTitle ? ` (${name(chatTitle)})` : ''} is registered, and it is subscribed to nothing yet — the bot will stay quiet until you turn an alert on.`
-      : 'This chat is registered, and it is subscribed to nothing yet — the bot will stay quiet until you turn an alert on.',
-    '',
-    `Run ${code('/alerts')} to see what is available and how loud each one is.`,
-    '',
-    `No Telegram or Discord account of yours is connected, and none is needed — this bot reads only messages addressed to it with a ${code('/command')}.`,
-    '',
-    `Type ${code('/help')} for the command list.`,
-    '',
-    footer(),
-  ]);
-}
+// `/start`'s card used to live here, as prose. It is now the control PANEL —
+// a status block plus an inline keyboard — and it lives in panel.ts with the
+// callback-data grammar and the permission rule it cannot be separated from.
+// The wording that mattered survived the move intact: registration subscribes a
+// chat to nothing, and the card says so in its first status line.
 
 /** `/help` — the command list. */
 export function renderHelp(): string {
   return joinLines([
     bold('OCT bot commands'),
     '',
-    `${code('/start')} — register this chat (subscribes to nothing)`,
+    `${code('/start')} — open the control panel (subscribes to nothing)`,
     `${code('/alerts')} — see and change what this chat receives`,
     `${code('/help')} — this list`,
     `${code('/status')} — what this chat is registered for`,

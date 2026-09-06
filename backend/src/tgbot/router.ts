@@ -20,7 +20,7 @@
 // Telegram's own convention, `/cmd@ourname` is explicitly ours, and
 // `/cmd@anyoneelse` is somebody else's message that we must not answer.
 
-import type { TgChat, TgUpdate, TgUser } from './types.js';
+import type { TgCallbackQuery, TgChat, TgUpdate, TgUser } from './types.js';
 import { isChatAllowed } from './access.js';
 
 export interface ParsedCommand {
@@ -73,6 +73,7 @@ export function parseCommand(text: string, botUsername: string): ParsedCommand |
 export type RouteDecision =
   | { kind: 'ignore'; reason: string }
   | { kind: 'decline'; chatId: number }
+  | { kind: 'callback'; query: TgCallbackQuery }
   | {
       kind: 'command';
       chatId: number;
@@ -97,6 +98,23 @@ export interface RouteContext {
  * too: a channel has no interactive sender to answer.
  */
 export function classifyUpdate(update: TgUpdate, ctx: RouteContext): RouteDecision {
+  // A panel button press. It is routed BEFORE the message branch and is NOT
+  // allowlist-checked here: the check exists, but it belongs with the rest of
+  // the per-press authorization in panel.ts's decidePanelPress, where the
+  // refusal can be delivered as an answered callback query rather than as a
+  // chat message. Answering a press with a new message is exactly the spam the
+  // panel is built to avoid, and a chat outside the allowlist has already been
+  // told once.
+  //
+  // A press from a bot is dropped for the same reason a message from one is:
+  // that is how loops start. Telegram does not currently deliver such a query,
+  // which is why this is a cheap guard rather than a load-bearing one.
+  const callback = update.callback_query;
+  if (callback) {
+    if (callback.from.is_bot) return { kind: 'ignore', reason: 'callback from a bot' };
+    return { kind: 'callback', query: callback };
+  }
+
   const message = update.message;
   if (!message) return { kind: 'ignore', reason: 'not a new message' };
 

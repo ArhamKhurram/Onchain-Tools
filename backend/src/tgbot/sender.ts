@@ -27,7 +27,7 @@
 //     onPermanentFailure callback, which disables its roster row.
 
 import type { TelegramBotApi } from './api.js';
-import type { TgCallResult } from './types.js';
+import type { TgCallResult, TgInlineKeyboardMarkup } from './types.js';
 
 /** ~30/sec, with headroom. The floor gap between any two outgoing messages. */
 export const GLOBAL_MIN_GAP_MS = 40;
@@ -105,6 +105,8 @@ interface QueueItem {
   /** High-priority items skip the per-chat budget: they are a user's own reply. */
   priority: 'high' | 'normal';
   disableNotification: boolean;
+  /** The inline keyboard, for the one message type that has one: the panel. */
+  replyMarkup?: TgInlineKeyboardMarkup;
   attempt: number;
   resolve: (delivered: boolean) => void;
 }
@@ -140,7 +142,11 @@ export class TelegramSender {
   send(
     chatId: number,
     text: string,
-    opts?: { priority?: 'high' | 'normal'; disableNotification?: boolean },
+    opts?: {
+      priority?: 'high' | 'normal';
+      disableNotification?: boolean;
+      replyMarkup?: TgInlineKeyboardMarkup;
+    },
   ): Promise<boolean> {
     if (this.stopped) return Promise.resolve(false);
 
@@ -157,6 +163,7 @@ export class TelegramSender {
         text,
         priority,
         disableNotification: opts?.disableNotification ?? false,
+        replyMarkup: opts?.replyMarkup,
         attempt: 0,
         resolve,
       };
@@ -223,6 +230,7 @@ export class TelegramSender {
         this.lastSentAt = Date.now();
         const result = await this.api.sendMessage(item.chatId, item.text, {
           disableNotification: item.disableNotification,
+          replyMarkup: item.replyMarkup,
         });
 
         if (result.ok) {

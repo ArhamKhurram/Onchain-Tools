@@ -29,7 +29,8 @@ import { getChatStore } from './chatStore.js';
 import { commandMap } from './commands/index.js';
 import { classifyUpdate, nextOffset } from './router.js';
 import { TelegramSender } from './sender.js';
-import { TgAlertRouter } from './alerts.js';
+import { PanelCallbackHandler } from './callbacks.js';
+import { panelDeliveryFor, setPanelDeliverySource, TgAlertRouter } from './alerts.js';
 import { readDigestIntervalMs } from './digest.js';
 import type { TgAlertType } from './alertPolicy.js';
 import type { McapCrossView } from './render.js';
@@ -43,6 +44,14 @@ const BACKOFF_MAX_MS = 60_000;
 
 interface BotState {
   sender: TelegramSender;
+  /**
+   * The /start panel's button handler. Per-lifetime rather than per-process,
+   * unlike the alert router: everything it holds is a cache or a press budget
+   * measured in seconds, so a restart handing a chat a fresh one costs nothing
+   * — where handing a chat a fresh HOURLY alert budget would undo the flood
+   * protection. It also closes over the api instance, which the router does not.
+   */
+  panel: PanelCallbackHandler;
   /** Resolves when the poll loop has actually exited. */
   loop: Promise<void>;
 }
@@ -66,7 +75,13 @@ let alertRouter: TgAlertRouter | null = null;
 let digestTimer: NodeJS.Timeout | null = null;
 
 function getAlertRouter(): TgAlertRouter {
-  if (!alertRouter) alertRouter = new TgAlertRouter(getSender);
+  if (!alertRouter) {
+    alertRouter = new TgAlertRouter(getSender);
+    // The panel reads this router's in-memory counters (hourly usage, queued
+    // digest lines) so its cards cost no database work. Registered here rather
+    // than imported by the panel, which sits downstream of this module.
+    setPanelDeliverySource(alertRouter);
+  }
   return alertRouter;
 }
 
@@ -185,7 +200,12 @@ async function boot(token: string, abort: AbortController): Promise<void> {
       `${allowlist ? `${allowlist.size} allowlisted chat(s)` : 'no chat allowlist — serving any chat that runs /start'}).`,
   );
 
-  state = { sender, loop: pollLoop(api, sender, username, abort.signal) };
+  // Created before the loop so the very first press has somewhere to land, and
+  // given the router's counters through a thunk so it works even when no alert
+  // has ever been routed (the fan-out is created lazily).
+  const panel = new PanelCallbackHandler({ api, delivery: panelDeliveryFor });
+
+  state = { sender, panel, loop: pollLoop(api, sender, panel, username, abort.signal) };
 }
 
 /**
@@ -199,6 +219,7 @@ async function boot(token: string, abort: AbortController): Promise<void> {
 async function pollLoop(
   api: TelegramBotApi,
   sender: TelegramSender,
+  panel: PanelCallbackHandler,
   username: string,
   signal: AbortSignal,
 ): Promise<void> {
@@ -235,7 +256,7 @@ async function pollLoop(
 
     for (const update of updates) {
       try {
-        await handleUpdate(update, sender, username);
+        await handleUpdate(update, sender, panel, username);
       } catch (err) {
         // One malformed update must not stall the loop or, worse, prevent the
         // offset advancing — which would replay it on every poll forever.
@@ -252,11 +273,20 @@ async function pollLoop(
 async function handleUpdate(
   update: Parameters<typeof classifyUpdate>[0],
   sender: TelegramSender,
+  panel: PanelCallbackHandler,
   username: string,
 ): Promise<void> {
   const decision = classifyUpdate(update, { botUsername: username, allowlist: readAllowedChatIds() });
 
   if (decision.kind === 'ignore') return;
+
+  // A panel button press. It carries its own allowlist and admin checks (see
+  // panel.ts's decidePanelPress) because the refusal has to be delivered as an
+  // answered callback query rather than as a chat message.
+  if (decision.kind === 'callback') {
+    await panel.handle(decision.query);
+    return;
+  }
 
   if (decision.kind === 'decline') {
     // One short line, high priority, no roster write: a chat outside the
@@ -290,7 +320,8 @@ async function handleUpdate(
     chat: decision.chat,
     from: decision.from,
     command: decision.command,
-    reply: (text) => sender.send(decision.chatId, text, { priority: 'high' }),
+    reply: (text, opts) =>
+      sender.send(decision.chatId, text, { priority: 'high', replyMarkup: opts?.keyboard }),
   });
 }
 
