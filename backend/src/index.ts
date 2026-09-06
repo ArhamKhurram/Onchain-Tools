@@ -23,6 +23,9 @@ import { WsServer } from './ws/server.js';
 import { createRouter } from './api/routes.js';
 import { createBotRouter } from './api/routes/bot.js';
 import { createSniperRouter } from './api/sniper/router.js';
+import { readEvmSniperConfig } from './sniper/evm/config.js';
+import { createProcessTelegramEvmTrigger } from './sniper/triggers/telegramChannel.js';
+import { getSniperRuntime } from './sniper/runtime.js';
 import { requireBotAuth } from './auth/botAuth.js';
 import { startBot } from './bot/index.js';
 import { startTelegramBot, tgDeliverMcapCross, tgSubscriberCount } from './tgbot/index.js';
@@ -500,6 +503,29 @@ function wireTelegramEvents(tg: TelegramClientManager, wsServer: WsServer, userI
     console.log(`[App] Telegram logged in as ${user.firstName} (@${user.username ?? 'no-username'})`);
     wsServer.broadcastRaw({ type: 'telegram_ready', data: { username: user.username, firstName: user.firstName } }, userId);
   });
+
+  // EVM sniper trigger (Robinhood Chain). A SECOND, independent listener rather
+  // than a hook inside the handler below, and that is the whole point:
+  //
+  //   * the handler below returns early when no console room is subscribed to
+  //     the chat (`rooms.length === 0`), which would silently disarm the sniper
+  //     for an operator who never added the channel to a room;
+  //   * it also runs contract detection only when `config.contractDetection` is
+  //     on — a display preference that must not be able to switch a money path
+  //     off, or on.
+  //
+  // Neither of those should govern spending, so the trigger re-runs the same
+  // pure detector on its own. It self-gates completely (hosted mode, and an
+  // empty SNIPER_EVM_TRIGGER_CHAT_IDS) and returns null when disarmed, so with
+  // no configuration there is no listener on this emitter at all.
+  const evmSniperTrigger = createProcessTelegramEvmTrigger(userId, {
+    hosted: isHostedMode(),
+    config: readEvmSniperConfig(),
+    store: getSniperRuntime().store,
+  });
+  if (evmSniperTrigger) {
+    tg.on('message', guardAsyncHandler('App:evm-sniper-trigger', evmSniperTrigger));
+  }
 
   tg.on('message', guardAsyncHandler('App:telegram-message', async (raw: TelegramRawMessage) => {
     // See the Discord handler above: heartbeat before room gating.

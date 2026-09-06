@@ -126,11 +126,18 @@ export function validateRuleStructure(rule: SnipeRule): ValidationResult {
   // than at ExecutorRegistry.resolve, i.e. at configuration time rather than
   // inside the fire path.
   if (rule.venue === 'slotshark' && rule.chain !== 'sol') return fail('venue_chain_mismatch');
+  // The EVM executor is bound to Robinhood Chain specifically (its address book
+  // is one chain's), so an `evm_uniswap` rule on `bsc` is refused here rather
+  // than at ExecutorRegistry.resolve — i.e. at configuration time, where an
+  // operator can see it, rather than inside the fire path.
+  if (rule.venue === 'evm_uniswap' && rule.chain !== 'rhc') return fail('venue_chain_mismatch');
 
   // A sol rule carrying EvmExecParams loses its tip/priorityFee from
   // estimateFees, which makes the daily cap soft by exactly those amounts.
   const execMatches =
-    (rule.chain === 'sol' && rule.exec.kind === 'sol') || (rule.chain === 'bsc' && rule.exec.kind === 'evm');
+    (rule.chain === 'sol' && rule.exec.kind === 'sol') ||
+    (rule.chain === 'bsc' && rule.exec.kind === 'evm') ||
+    (rule.chain === 'rhc' && rule.exec.kind === 'evm');
   if (!execMatches) return fail('exec_kind_mismatch');
 
   if (!Number.isFinite(rule.slippageBps) || rule.slippageBps < 1 || rule.slippageBps > 10_000) {

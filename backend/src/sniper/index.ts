@@ -59,3 +59,82 @@ export type {
 export type { SniperReconciler, ReconciledFill } from './reconcile.js';
 export { getVenueSecret, getVenueConnection, storeVenueSecretAsService } from './venueCredentials.js';
 export type { VenueConnection } from './venueCredentials.js';
+
+// --- EVM venue: Robinhood Chain (chainId 4663), Uniswap V3 + V4 -------------
+//
+// Non-custodial, unlike Slotshark: OCT signs with a key read from the process
+// environment at fire time. The whole read path (routing, both pre-trade gates)
+// works with no key at all, which is what makes the module testable and
+// dry-runnable before one exists.
+export {
+  ROBINHOOD_CHAIN_ID,
+  ROBINHOOD_DEFAULT_RPC_URL,
+  robinhoodChain,
+  WETH_ADDRESS,
+  UNISWAP_V3_FACTORY,
+  UNISWAP_SWAP_ROUTER_02,
+  UNISWAP_UNIVERSAL_ROUTER,
+  UNISWAP_V4_POOL_MANAGER,
+  DEXSCREENER_CHAIN_SLUG,
+} from './evm/chain.js';
+export {
+  readEvmSniperConfig,
+  hasEvmSigningKey,
+  parseAmount,
+  parseIntIn,
+  parseGateEnabled,
+  parseTriggerChatIds,
+  parseAddress,
+  parseRpcUrl,
+  DEFAULT_BUY_ETH,
+  DEFAULT_DAILY_CAP_ETH,
+  DEFAULT_SLIPPAGE_BPS,
+  DEFAULT_MIN_LIQUIDITY_USD,
+  DEFAULT_MIN_ROUNDTRIP_BPS,
+  DEFAULT_DEADLINE_SECONDS,
+  MAX_BUY_ETH,
+  MAX_DAILY_CAP_ETH,
+} from './evm/config.js';
+export type { EvmSniperConfig, EnvBag } from './evm/config.js';
+export { makeHttpEvmRpc, EvmRpcError } from './evm/rpc.js';
+export type { EvmRpc, SimCall, SimCallResult, SimStateOverride } from './evm/rpc.js';
+export {
+  classifyPool,
+  rankPools,
+  bestRoutable,
+  resolveRoute,
+  parseDexScreenerPools,
+  fetchDexScreenerPools,
+  readV3Fee,
+  readV4PoolKey,
+  describeCandidates,
+} from './evm/routing.js';
+export type {
+  DiscoveredPool,
+  PoolCandidate,
+  PoolFamily,
+  PoolFetcher,
+  Route,
+  RoutingDecision,
+  UnroutableReason,
+  V4PoolKey,
+} from './evm/routing.js';
+export { buildBuyTx, buildSellTx, buildSellApprovals, applySlippage, PERMIT2_ADDRESS } from './evm/swap.js';
+export type { SwapTx, BuildSwapParams } from './evm/swap.js';
+export { runPreTradeGates, SIMULATION_SENDER } from './evm/gates.js';
+export type { GateParams, GateResult, GateRejection } from './evm/gates.js';
+export { EvmUniswapExecutor, ethToWei, classifySendFailure } from './executors/evmUniswap.js';
+export type { EvmUniswapConfig } from './executors/evmUniswap.js';
+export {
+  createTelegramEvmTrigger,
+  createProcessTelegramEvmTrigger,
+  buildEvmRule,
+  buildEvmWallet,
+  ensureEvmWallet,
+  extractEvmTokens,
+  isTriggerChat,
+  toTokenTrigger,
+  EVM_RULE_ID,
+  EVM_WALLET_ID,
+} from './triggers/telegramChannel.js';
+export type { EvmTriggerDeps } from './triggers/telegramChannel.js';

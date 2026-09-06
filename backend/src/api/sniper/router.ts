@@ -64,9 +64,14 @@ const SOL_ADDRESS = /^[1-9A-HJ-NP-Za-km-z]{32,48}$/;
 const MAX_FIRE_LIMIT = 500;
 const DEFAULT_FIRE_LIMIT = 200;
 
-const CHAINS: Chain[] = ['sol', 'bsc'];
-const UNITS: SizeUnit[] = ['SOL', 'BNB', 'USDC'];
-const VENUES: Venue[] = ['slotshark', 'dryrun'];
+const CHAINS: Chain[] = ['sol', 'bsc', 'rhc'];
+const UNITS: SizeUnit[] = ['SOL', 'BNB', 'USDC', 'ETH'];
+const VENUES: Venue[] = ['slotshark', 'dryrun', 'evm_uniswap'];
+// Venues whose credential OCT stores and serves metadata for. `evm_uniswap` is
+// deliberately absent: its credential is a signing key read from the process
+// environment at fire time, never written to sniper_venue_credentials and never
+// reachable through this control plane. There is nothing here to connect,
+// inspect or return, which is the point.
 const FUNDABLE_VENUES: Exclude<Venue, 'dryrun'>[] = ['slotshark'];
 
 type Body = Record<string, unknown>;
@@ -116,9 +121,11 @@ function validateWalletShape(w: WalletConfig): string | null {
   // silently, at the reservation.
   if (w.dailyCap < w.perFireCap) return 'daily_below_per_fire';
   if (w.venue === 'slotshark' && w.chain !== 'sol') return 'venue_chain_mismatch';
+  if (w.venue === 'evm_uniswap' && w.chain !== 'rhc') return 'venue_chain_mismatch';
   const unitOk =
     (w.chain === 'sol' && (w.unit === 'SOL' || w.unit === 'USDC')) ||
-    (w.chain === 'bsc' && (w.unit === 'BNB' || w.unit === 'USDC'));
+    (w.chain === 'bsc' && (w.unit === 'BNB' || w.unit === 'USDC')) ||
+    (w.chain === 'rhc' && w.unit === 'ETH');
   if (!unitOk) return 'unit_chain_mismatch';
   return null;
 }

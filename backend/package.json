@@ -32,6 +32,7 @@
     "socket.io-client": "^4.8.1",
     "teleproto": "^1.227.1",
     "undici": "^6.21.0",
+    "viem": "^2.56.3",
     "ws": "^8.18.0"
   },
   "devDependencies": {

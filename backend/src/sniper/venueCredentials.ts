@@ -42,7 +42,15 @@ function getServiceClient(): SupabaseClient | null {
 // wiring it here would make every snipe trade on the operator's own GMGN
 // account. GMGN trading, when it lands, is a per-user connected credential
 // resolved from Vault (ADR-012), never a shared env key.
-const LOCAL_ENV_VAR: Record<Exclude<Venue, 'dryrun'>, string> = {
+//
+// `evm_uniswap` is absent for a different reason, and it is excluded from the
+// key type rather than mapped to an env var so the compiler enforces it: its
+// credential is a SIGNING KEY, not a bearer token, and it must never travel any
+// of the paths in this file. It is not written to Vault, not read by the
+// service-role RPC, not returned by `getVenueSecret`, and never assigned to a
+// variable outside the one `send()` frame that uses it. The executor reads it
+// itself — see the key discipline at the top of executors/evmUniswap.ts.
+const LOCAL_ENV_VAR: Record<Exclude<Venue, 'dryrun' | 'evm_uniswap'>, string> = {
   slotshark: 'SLOTSHARK_API_TOKEN',
 };
 
@@ -52,6 +60,11 @@ const LOCAL_ENV_VAR: Record<Exclude<Venue, 'dryrun'>, string> = {
  */
 export async function getVenueSecret(userId: string, venue: Venue): Promise<string | null> {
   if (venue === 'dryrun') return null;
+  // Not "no credential configured" — this venue's credential is deliberately
+  // unreachable from here. `fireOrchestrator` branches on the venue BEFORE
+  // calling this, so reaching this line means a new caller was added; returning
+  // null keeps that caller unable to fire rather than silently unable to check.
+  if (venue === 'evm_uniswap') return null;
 
   if (!isHostedMode()) {
     return process.env[LOCAL_ENV_VAR[venue]]?.trim() || null;
@@ -97,6 +110,12 @@ export async function getVenueConnection(userId: string, venue: Venue): Promise<
     updatedAt: null,
   };
   if (venue === 'dryrun') return empty;
+  // The EVM venue has no stored connection to report. Saying "not connected"
+  // is the honest answer for a console that can neither connect nor inspect it:
+  // arming it is an environment change, not an action this backend can take or
+  // reflect. (`FUNDABLE_VENUES` in api/sniper/router.ts keeps it out of the
+  // venue listing for the same reason.)
+  if (venue === 'evm_uniswap') return empty;
 
   if (!isHostedMode()) {
     // Local mode's "connection" is two env vars. There is nothing to look up

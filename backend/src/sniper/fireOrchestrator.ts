@@ -16,7 +16,9 @@
 // Bearer` header (executors/slotshark.ts:69).
 
 import { executeFire, type FireResult } from './executeFire.js';
+import { hasEvmSigningKey, readEvmSniperConfig } from './evm/config.js';
 import { DryRunExecutor } from './executors/dryRun.js';
+import { EvmUniswapExecutor } from './executors/evmUniswap.js';
 import { ExecutorRegistry } from './executors/registry.js';
 import { SlotsharkExecutor, narrowRegion } from './executors/slotshark.js';
 import { getSniperRuntime } from './runtime.js';
@@ -49,41 +51,64 @@ export async function fireRuleNow(params: FireRuleNowParams): Promise<FireResult
   const registry = new ExecutorRegistry(new DryRunExecutor());
 
   if (!registry.isDryRun(rule)) {
-    // Read the secret as late as possible and only when this fire will actually
-    // touch a venue. A dry run never reaches this branch, so a dry-run test buy
-    // works with no credential connected at all — which is what makes
-    // "dry-run first, then live" a real workflow rather than a two-step setup.
-    const secret = await getVenueSecret(userId, rule.venue);
-    if (!secret) {
-      // Return BEFORE constructing anything. `no_credential` is the whole
-      // message: no length, no prefix, no hint about what was found.
-      return abortedBefore('no_credential');
-    }
+    // The venue is branched on BEFORE any credential lookup, because the two
+    // live venues keep their credentials in different places and asking the
+    // wrong store the wrong question returns a misleading answer. In particular
+    // `evm_uniswap` has no row in sniper_venue_credentials by design, so routing
+    // it through `getVenueSecret` would report `no_credential` for a correctly
+    // configured deployment.
+    if (rule.venue === 'evm_uniswap') {
+      // Presence only — `hasEvmSigningKey` returns a bare boolean, so the key
+      // value never enters this frame. The executor reads it itself, inside
+      // `send()`, and refuses independently if it has since gone away.
+      if (!hasEvmSigningKey()) {
+        return abortedBefore('no_credential');
+      }
+      // The executor is handed a READER, not a key (see evmUniswap.ts's header),
+      // so even this per-fire object never holds the secret. Everything else it
+      // needs — RPC, slippage, deadline, both gate settings — is public config.
+      registry.register(new EvmUniswapExecutor({ config: readEvmSniperConfig() }));
 
-    if (rule.venue !== 'slotshark') {
+      // Fall through to executeFire. There is deliberately no wallet-address
+      // preflight here: `evm_uniswap` is non-custodial, so a fire does not need
+      // a venue-side pubkey the way Slotshark does. The equivalent check —
+      // "does the key match the wallet the operator declared?" — lives in the
+      // executor, because only the executor may derive an address from the key.
+    } else if (rule.venue === 'slotshark') {
+      // Read the secret as late as possible and only when this fire will actually
+      // touch a venue. A dry run never reaches this branch, so a dry-run test buy
+      // works with no credential connected at all — which is what makes
+      // "dry-run first, then live" a real workflow rather than a two-step setup.
+      const secret = await getVenueSecret(userId, rule.venue);
+      if (!secret) {
+        // Return BEFORE constructing anything. `no_credential` is the whole
+        // message: no length, no prefix, no hint about what was found.
+        return abortedBefore('no_credential');
+      }
+
+      const connection = await getVenueConnection(userId, rule.venue);
+      const region = narrowRegion(connection.region);
+
+      // resolveWalletAddress is the mapping SlotsharkConfig always wanted and
+      // never had a backing store for. It is built from the user's own wallet
+      // rows, once, so the executor cannot reach across tenants even if a rule
+      // carried someone else's walletId.
+      const wallets = await store.listWallets(userId);
+      const addressByWalletId = new Map(wallets.map((w) => [w.walletId, w.address]));
+      if (rule.walletIds.some((id) => !addressByWalletId.get(id))) {
+        return abortedBefore('no_wallet_address');
+      }
+
+      registry.register(
+        new SlotsharkExecutor({
+          apiToken: secret,
+          region,
+          resolveWalletAddress: (walletId) => addressByWalletId.get(walletId),
+        }),
+      );
+    } else {
       return abortedBefore('venue_unsupported');
     }
-
-    const connection = await getVenueConnection(userId, rule.venue);
-    const region = narrowRegion(connection.region);
-
-    // resolveWalletAddress is the mapping SlotsharkConfig always wanted and
-    // never had a backing store for. It is built from the user's own wallet
-    // rows, once, so the executor cannot reach across tenants even if a rule
-    // carried someone else's walletId.
-    const wallets = await store.listWallets(userId);
-    const addressByWalletId = new Map(wallets.map((w) => [w.walletId, w.address]));
-    if (rule.walletIds.some((id) => !addressByWalletId.get(id))) {
-      return abortedBefore('no_wallet_address');
-    }
-
-    registry.register(
-      new SlotsharkExecutor({
-        apiToken: secret,
-        region,
-        resolveWalletAddress: (walletId) => addressByWalletId.get(walletId),
-      }),
-    );
   }
 
   // ExecutorRegistry.resolve throws on an unregistered venue or a chain
