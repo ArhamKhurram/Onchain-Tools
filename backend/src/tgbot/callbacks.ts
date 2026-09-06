@@ -49,6 +49,7 @@
 // actually applies to them.
 
 import { isChatAllowed, readAllowedChatIds } from './access.js';
+import { AdminCache } from './admin.js';
 import {
   applyAlertSetting,
   ALERT_CATALOG,
@@ -100,15 +101,24 @@ const REFRESH_MAX_IN_WINDOW = 6;
 const PRESS_WINDOW_MS = 10_000;
 const PRESS_MAX_IN_WINDOW = 10;
 
-/** How long an admin verdict is trusted before getChatMember is asked again. */
-const ADMIN_CACHE_MS = 60_000;
-
 /** Beyond this many cached entries the map is pruned. Bounds a long uptime. */
 const CACHE_PRUNE_AT = 500;
 
 /** What the handler needs from the rest of the bot. Injected, never imported. */
 export interface CallbackDeps {
   api: TelegramBotApi;
+  /**
+   * Whether a user may perform a write here. Shared with the typed commands so
+   * the answer is cached once per user per minute across both surfaces — and so
+   * the fail-closed rule has one implementation. See admin.ts.
+   */
+  admins: AdminCache;
+  /**
+   * The bot's own @username from getMe, or '' when Telegram gave none. Only the
+   * Help card reads it; it is threaded rather than imported because a renderer
+   * that reached for module state would be a renderer this file could not test.
+   */
+  botUsername: string;
   /**
    * In-memory delivery figures for one chat — see TgAlertRouter.panelDelivery.
    * A thunk because the router is owned by index.ts and may not exist yet.
@@ -132,7 +142,6 @@ interface CachedRecord {
  */
 export class PanelCallbackHandler {
   private readonly records = new Map<number, CachedRecord>();
-  private readonly admins = new Map<string, { isAdmin: boolean; expiresAt: number }>();
   private readonly refreshes = new PerChatRateLimiter(REFRESH_WINDOW_MS, REFRESH_MAX_IN_WINDOW);
   private readonly presses = new PerChatRateLimiter(PRESS_WINDOW_MS, PRESS_MAX_IN_WINDOW);
 
@@ -186,7 +195,9 @@ export class PanelCallbackHandler {
         chatAllowed: isChatAllowed(chatId, readAllowedChatIds()),
         // Resolved only for the actions that need it: a read in a group must
         // not spend a getChatMember round trip per press.
-        isAdmin: isPanelWrite(action) ? await this.isAdmin(chatId, query.from.id, now) : false,
+        isAdmin: isPanelWrite(action)
+          ? await this.deps.admins.isAdmin(chatId, query.from.id, now)
+          : false,
       });
 
       if (!verdict.allow) {
@@ -352,7 +363,11 @@ export class PanelCallbackHandler {
     fresh = false,
   ): Promise<{ text: string; keyboard: TgInlineKeyboardMarkup | undefined; answer?: string }> {
     const state = await this.state(view, chatId, now, fresh);
-    return { text: renderPanelView(state, readConsoleUrl()), keyboard: buildPanelKeyboard(state), answer };
+    return {
+      text: renderPanelView(state, readConsoleUrl(), this.deps.botUsername),
+      keyboard: buildPanelKeyboard(state),
+      answer,
+    };
   }
 
   /**
@@ -402,37 +417,6 @@ export class PanelCallbackHandler {
     return record;
   }
 
-  /**
-   * Is this user an admin of this chat?
-   *
-   * FAILS CLOSED. A transport error, a rate limit, a chat the bot was just
-   * removed from — every one of them resolves false, because "we could not
-   * check" and "not permitted" must have the same consequence for a control
-   * that changes what a whole group receives.
-   */
-  private async isAdmin(chatId: number, userId: number, now: number): Promise<boolean> {
-    const key = `${chatId}:${userId}`;
-    const cached = this.admins.get(key);
-    if (cached && cached.expiresAt > now) return cached.isAdmin;
-
-    const result = await this.deps.api.getChatMember(chatId, userId);
-    const status = result.ok ? result.result?.status : undefined;
-    const isAdmin = status === 'creator' || status === 'administrator';
-
-    if (!result.ok) {
-      console.warn(
-        `[TgBot] Could not resolve admin status on chat ${chatId} (${result.errorCode}); ` +
-          'treating the presser as a non-admin.',
-      );
-      // NOT cached: a failure is a transient answer, and caching it for a
-      // minute would lock a real admin out of their own panel over one blip.
-      return false;
-    }
-
-    this.admins.set(key, { isAdmin, expiresAt: now + ADMIN_CACHE_MS });
-    return isAdmin;
-  }
-
   /** Drop expired cache entries once either map has grown past the threshold. */
   private prune(now: number): void {
     if (this.records.size > CACHE_PRUNE_AT) {
@@ -440,10 +424,6 @@ export class PanelCallbackHandler {
         if (entry.expiresAt <= now) this.records.delete(chatId);
       }
     }
-    if (this.admins.size > CACHE_PRUNE_AT) {
-      for (const [key, entry] of this.admins) {
-        if (entry.expiresAt <= now) this.admins.delete(key);
-      }
-    }
+    this.deps.admins.prune(now);
   }
 }

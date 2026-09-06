@@ -69,6 +69,41 @@ export function parseCommand(text: string, botUsername: string): ParsedCommand |
   };
 }
 
+/**
+ * A bare contract address, as `/token <address>`.
+ *
+ * WHY THIS EXISTS. Pasting a mint into a DM and getting a snapshot is what
+ * every trading bot does, and it is what people try first — typing `/token`
+ * before the address is a step nobody expects. The command is not removed:
+ * this is a second door onto the same handler, and `/token <addr> <chain>`
+ * remains the way to name a chain.
+ *
+ * PRIVATE CHATS ONLY, and that restriction is the whole safety argument. In a
+ * group, "answer any message that looks like an address" would break the
+ * promise the bot is sold on — that it reads only what is addressed to it —
+ * and would make it a bot that talks over every call in the room. Telegram's
+ * privacy mode does not save us here: a REPLY to one of the bot's own messages
+ * IS delivered, so a group member quoting a card and pasting an address would
+ * otherwise trigger it. classifyUpdate checks the chat type, not the privacy
+ * setting.
+ *
+ * The shape test is deliberately loose — base58 of plausible length, or an EVM
+ * `0x…` — because the handler already bounds the work (length check, then one
+ * catalog read) and a stricter check here would reject real addresses on
+ * chains OCT adds later. Returns null for anything with whitespace in it: a
+ * sentence that happens to contain an address is chat, not a lookup.
+ */
+export function bareAddressCommand(text: string): ParsedCommand | null {
+  const candidate = text.trim();
+  if (candidate === '' || /\s/.test(candidate)) return null;
+
+  const isEvm = /^0x[0-9a-fA-F]{40}$/.test(candidate);
+  const isBase58 = /^[1-9A-HJ-NP-Za-km-z]{32,44}$/.test(candidate);
+  if (!isEvm && !isBase58) return null;
+
+  return { name: 'token', args: [candidate], rest: candidate, addressedTo: null };
+}
+
 /** What index.ts should do about one update. */
 export type RouteDecision =
   | { kind: 'ignore'; reason: string }
@@ -126,9 +161,14 @@ export function classifyUpdate(update: TgUpdate, ctx: RouteContext): RouteDecisi
   // A bot answering another bot is how loops start.
   if (message.from?.is_bot) return { kind: 'ignore', reason: 'from a bot' };
 
-  const command = parseCommand(text, ctx.botUsername);
   // The single rule that keeps the bot quiet in someone else's group: anything
   // that is not a command addressed to us is dropped before any other check.
+  // The ONE exception is a bare contract address in a DM, where there is no
+  // room to be quiet in and no other conversation to talk over — see
+  // bareAddressCommand for why it can never apply to a group.
+  const command =
+    parseCommand(text, ctx.botUsername) ??
+    (message.chat.type === 'private' ? bareAddressCommand(text) : null);
   if (!command) return { kind: 'ignore', reason: 'not a command for this bot' };
 
   const chatId = message.chat.id;

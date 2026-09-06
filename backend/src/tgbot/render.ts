@@ -36,6 +36,8 @@ import {
   type TgChatSettings,
 } from './alertPolicy.js';
 import type { PendingDigest } from './digest.js';
+import { COMMAND_GROUPS } from './commandCatalog.js';
+import { groupMentionNote } from './identity.js';
 
 /**
  * Chart links use OCT's shipped defaults rather than a user's own preferences:
@@ -84,18 +86,36 @@ function name(value: string | null | undefined, fallback = '—'): string {
 // The wording that mattered survived the move intact: registration subscribes a
 // chat to nothing, and the card says so in its first status line.
 
-/** `/help` — the command list. */
-export function renderHelp(): string {
+/**
+ * `/help` — the command list, GROUPED BY WHAT SOMEBODY IS TRYING TO DO.
+ *
+ * The flat five-line version it replaces was readable only because there were
+ * five commands; the ordering carried no information, so a reader with a
+ * question ("why is this thing so loud") had to know which command answered it
+ * before reading the list. The groups and their order live in
+ * commandCatalog.ts, shared with the panel's Help view and Telegram's own `/`
+ * menu, so adding a command cannot leave one of the three behind.
+ *
+ * `botUsername` comes from getMe — see identity.ts for why it is a parameter,
+ * and what the card does when Telegram gave us no username.
+ */
+export function renderHelp(botUsername: string): string {
   return joinLines([
     bold('OCT bot commands'),
+    ...COMMAND_GROUPS.flatMap((group): (string | null)[] => [
+      '',
+      bold(group.title),
+      group.note ? italic(group.note) : null,
+      ...group.commands.map((spec) => `${code(spec.usage)} — ${escapeHtml(spec.blurb)}`),
+    ]),
     '',
-    `${code('/start')} — open the control panel (subscribes to nothing)`,
-    `${code('/alerts')} — see and change what this chat receives`,
-    `${code('/help')} — this list`,
-    `${code('/status')} — what this chat is registered for`,
-    `${code('/token <address> [chain]')} — market snapshot from OCT enrichment`,
-    '',
-    italic('In a group, add @thebotname to any command if other bots are present.'),
+    italic('In a DM, paste a bare contract address — no command needed.'),
+    // Null when getMe returned no username: the line vanishes rather than
+    // rendering a sentence with a hole where the handle should be.
+    (() => {
+      const note = groupMentionNote(botUsername);
+      return note ? italic(note) : null;
+    })(),
     '',
     footer(),
   ]);
@@ -455,6 +475,146 @@ export function renderDigest(pending: PendingDigest, now: number): string {
     ...pending.lines.map((l) => (l.count > 1 ? `${l.line} ${bold(`×${l.count}`)}` : l.line)),
     pending.dropped > 0 ? italic(`+${pending.dropped} more not shown`) : null,
     '',
+    footer(),
+  ]);
+}
+
+/**
+ * `3h ago`, `12m ago`, `just now`.
+ *
+ * Absolute UTC timestamps are what the mute notice uses, because "until when"
+ * is a deadline somebody has to plan around. Recency is the opposite question —
+ * a reader scanning crossings wants to know whether the top line is minutes or
+ * days old, and "4h ago" answers it without arithmetic. Pure, clock-injected,
+ * and it never renders a negative age: a clock skew that puts a row in the
+ * future reads as "just now" rather than as "-3m ago".
+ */
+export function formatAgo(then: number, now: number): string {
+  const seconds = Math.max(0, Math.round((now - then) / 1000));
+  if (seconds < 90) return 'just now';
+  const minutes = Math.round(seconds / 60);
+  if (minutes < 60) return `${minutes}m ago`;
+  const hours = Math.round(minutes / 60);
+  if (hours < 48) return `${hours}h ago`;
+  return `${Math.round(hours / 24)}d ago`;
+}
+
+/** One row of `/mcap`: what crossed, on which chain, and when. */
+export interface RecentCrossingView {
+  address: string;
+  /** GeckoTerminal network id — 'solana' | 'bsc' | 'robinhood'. */
+  network: string;
+  /** The last market cap recorded for the token, not the value at the cross. */
+  mcapUsd: number;
+  /** Epoch ms of the alert. Always > 0; rows that never fired are not listed. */
+  firedAt: number;
+}
+
+/**
+ * `/mcap` — the last few market-cap crossings.
+ *
+ * WHAT THIS IS AND IS NOT. It reads `mcap_cross_state.fired_at`, which records
+ * that a TOKEN crossed the threshold — not that any particular chat was sent
+ * anything. So it lists crossings a chat may never have been subscribed for,
+ * and the copy says "crossed", never "you missed". Inventing a per-chat
+ * delivery history to make the second sentence true would need a table this bot
+ * does not have, which is the same call renderPanelRecent made about "Queued".
+ *
+ * NO SYMBOL, ON PURPOSE. The state row holds an address, a chain and a number;
+ * resolving five tickers means five token-catalog reads per invocation, on a
+ * command any group member can run, against a database whose connection pool is
+ * already the production constraint. The address is `<code>` and therefore
+ * tap-to-copy, which is what a reader does with it next anyway.
+ */
+export function renderRecentCrossings(
+  rows: RecentCrossingView[],
+  opts: { targetUsd: number; now: number; enabled: boolean },
+): string {
+  if (!opts.enabled) {
+    return joinLines([
+      bold('📈 Market-cap crossings'),
+      '',
+      escapeHtml('The crossing poller is not running on this OCT instance.'),
+      footer(),
+    ]);
+  }
+
+  if (rows.length === 0) {
+    return joinLines([
+      bold('📈 Market-cap crossings'),
+      '',
+      italic(`Nothing has crossed ${compactUsd(opts.targetUsd)} on record yet.`),
+      footer(),
+    ]);
+  }
+
+  return joinLines([
+    bold(`📈 Last ${rows.length} to cross ${compactUsd(opts.targetUsd)}`),
+    '',
+    ...rows.flatMap((row) => [
+      `${bold(compactUsd(row.mcapUsd))} ${escapeHtml(
+        `· ${revivalNetworkLabel(row.network)} · ${formatAgo(row.firedAt, opts.now)}`,
+      )}`,
+      `${code(row.address)}\n${link('Chart ↗', buildRevivalContractUrl(row.address, row.network, LINK_TEMPLATES))}`,
+    ]),
+    '',
+    italic('Market cap is the latest reading, not the value at the cross.'),
+    footer('Scam-filtered'),
+  ]);
+}
+
+/**
+ * `/queued` — what this chat's next digest will contain.
+ *
+ * The typed twin of the panel's Queued card, and it reads the SAME in-process
+ * buffer through `peek` rather than `take`: rendering must never consume the
+ * batch it is describing. It costs no storage read at all, which is why it can
+ * be a command anyone in the room may run.
+ */
+export function renderQueued(
+  view: { lines: { line: string; count: number }[]; dropped: number },
+  opts: { digestMinutes: number; subscribed: number },
+): string {
+  const empty = view.lines.length === 0;
+  return joinLines([
+    bold('🕘 Queued for the next digest'),
+    '',
+    empty
+      ? italic(
+          opts.subscribed === 0
+            ? 'Nothing — this chat is subscribed to nothing yet. Run /alerts to choose.'
+            : 'Nothing buffered right now.',
+        )
+      : null,
+    ...view.lines.map((l) => (l.count > 1 ? `${l.line} ${bold(`×${l.count}`)}` : l.line)),
+    view.dropped > 0 ? italic(`+${view.dropped} more not shown`) : null,
+    '',
+    italic(`Next flush is at most ${opts.digestMinutes} min away.`),
+    footer(),
+  ]);
+}
+
+/** The reply to a successful `/mute`. States the deadline, not the duration. */
+export function renderMuted(untilMs: number): string {
+  const until = new Date(untilMs).toISOString().replace('T', ' ').slice(0, 16);
+  return joinLines([
+    `${bold('🔇 Muted.')} ${escapeHtml(`No alerts here until ${until} UTC.`)}`,
+    italic('Subscriptions are untouched — /unmute resumes them early.'),
+    footer(),
+  ]);
+}
+
+/** The reply to a malformed `/mute …`. */
+export function renderMuteUsage(problem: string | null): string {
+  return joinLines([
+    problem ? escapeHtml(problem) : null,
+    problem ? '' : null,
+    bold('Usage'),
+    `${code('/mute')} — pause alerts for 1 hour`,
+    `${code('/mute 30m')} · ${code('/mute 2h')} · ${code('/mute 1d')} — pause for that long`,
+    `${code('/unmute')} — resume now`,
+    '',
+    italic('Muting changes nothing about what this chat is subscribed to.'),
     footer(),
   ]);
 }

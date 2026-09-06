@@ -1,12 +1,13 @@
+import { SPEC } from '../commandCatalog.js';
 import { renderHelp } from '../render.js';
 import type { TgCommand } from './types.js';
 
 /** `/help` — the command list. Works whether or not the chat is registered. */
 export const help: TgCommand = {
-  name: 'help',
-  description: 'Show the OCT bot command list',
+  name: SPEC.help.name,
+  description: SPEC.help.description,
 
   async execute(ctx) {
-    await ctx.reply(renderHelp());
+    await ctx.reply(renderHelp(ctx.botUsername));
   },
 };

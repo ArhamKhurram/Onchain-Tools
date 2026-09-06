@@ -26,7 +26,11 @@ import type { WsServer } from '../ws/server.js';
 import { describeCallError, looksLikeBotToken, TelegramBotApi } from './api.js';
 import { DECLINE_MESSAGE, readAllowedChatIds } from './access.js';
 import { getChatStore } from './chatStore.js';
-import { commandMap } from './commands/index.js';
+import { AdminCache } from './admin.js';
+import { telegramCommandMenu } from './commandCatalog.js';
+import { commandCoverageGaps, commandMap } from './commands/index.js';
+import type { TgCommandContext } from './commands/types.js';
+import { decideChatWrite } from './permissions.js';
 import { classifyUpdate, nextOffset } from './router.js';
 import { TelegramSender } from './sender.js';
 import { PanelCallbackHandler } from './callbacks.js';
@@ -41,6 +45,23 @@ const POLL_SECONDS = 30;
 /** Backoff bounds for a failing poll. */
 const BACKOFF_START_MS = 1_000;
 const BACKOFF_MAX_MS = 60_000;
+
+/**
+ * Everything one bot lifetime needs to handle an update.
+ *
+ * Gathered into one object rather than threaded as five parameters because the
+ * admin cache is the third thing (after the api and the username) that both the
+ * panel and the typed commands need, and a handler signature is not the place
+ * to discover that.
+ */
+interface Runtime {
+  api: TelegramBotApi;
+  sender: TelegramSender;
+  panel: PanelCallbackHandler;
+  admins: AdminCache;
+  /** From getMe. '' when Telegram returned no username — see identity.ts. */
+  username: string;
+}
 
 interface BotState {
   sender: TelegramSender;
@@ -203,9 +224,45 @@ async function boot(token: string, abort: AbortController): Promise<void> {
   // Created before the loop so the very first press has somewhere to land, and
   // given the router's counters through a thunk so it works even when no alert
   // has ever been routed (the fan-out is created lazily).
-  const panel = new PanelCallbackHandler({ api, delivery: panelDeliveryFor });
+  const admins = new AdminCache(api);
+  const panel = new PanelCallbackHandler({ api, admins, botUsername: username, delivery: panelDeliveryFor });
+  const runtime: Runtime = { api, sender, panel, admins, username };
 
-  state = { sender, panel, loop: pollLoop(api, sender, panel, username, abort.signal) };
+  // Best-effort, and deliberately not awaited: it is one HTTPS call whose only
+  // effect is the `/` autocomplete menu, and the bot must start answering
+  // commands whether or not Telegram is in the mood to accept the list.
+  void publishCommandMenu(api, abort.signal);
+
+  state = { sender, panel, loop: pollLoop(runtime, abort.signal) };
+}
+
+/**
+ * Hand Telegram the `/` autocomplete menu.
+ *
+ * Called once per boot rather than once per deploy-by-hand, so the menu is a
+ * property of the running build. A failure is logged and dropped: an absent
+ * menu costs discoverability, never a command.
+ */
+async function publishCommandMenu(api: TelegramBotApi, signal: AbortSignal): Promise<void> {
+  const gaps = commandCoverageGaps();
+  if (gaps.unhandled.length > 0) {
+    console.warn(`[TgBot] Catalogued commands with no handler: ${gaps.unhandled.join(', ')}.`);
+  }
+  if (gaps.uncatalogued.length > 0) {
+    console.warn(`[TgBot] Handlers missing from the command catalog: ${gaps.uncatalogued.join(', ')}.`);
+  }
+
+  const menu = telegramCommandMenu(undefined, (problem) =>
+    console.warn(`[TgBot] Dropped a command from the Telegram menu: ${problem}.`),
+  );
+
+  const result = await api.setMyCommands(menu, signal);
+  if (result.ok) {
+    console.log(`[TgBot] Published ${menu.length} commands to Telegram's / menu.`);
+    return;
+  }
+  if (signal.aborted) return;
+  console.warn(`[TgBot] ${describeCallError('setMyCommands', result)}; the / menu may be stale.`);
 }
 
 /**
@@ -216,13 +273,8 @@ async function boot(token: string, abort: AbortController): Promise<void> {
  * unconfirmed update is redelivered forever. It advances only AFTER the batch
  * has been handled, so a crash mid-batch replays rather than drops.
  */
-async function pollLoop(
-  api: TelegramBotApi,
-  sender: TelegramSender,
-  panel: PanelCallbackHandler,
-  username: string,
-  signal: AbortSignal,
-): Promise<void> {
+async function pollLoop(runtime: Runtime, signal: AbortSignal): Promise<void> {
+  const { api } = runtime;
   let offset = 0;
   let backoff = BACKOFF_START_MS;
 
@@ -256,7 +308,7 @@ async function pollLoop(
 
     for (const update of updates) {
       try {
-        await handleUpdate(update, sender, panel, username);
+        await handleUpdate(update, runtime);
       } catch (err) {
         // One malformed update must not stall the loop or, worse, prevent the
         // offset advancing — which would replay it on every poll forever.
@@ -272,10 +324,9 @@ async function pollLoop(
  *  by a restart-free env update on hosts that support it. */
 async function handleUpdate(
   update: Parameters<typeof classifyUpdate>[0],
-  sender: TelegramSender,
-  panel: PanelCallbackHandler,
-  username: string,
+  runtime: Runtime,
 ): Promise<void> {
+  const { sender, panel, admins, username } = runtime;
   const decision = classifyUpdate(update, { botUsername: username, allowlist: readAllowedChatIds() });
 
   if (decision.kind === 'ignore') return;
@@ -303,26 +354,64 @@ async function handleUpdate(
     if (decision.chat.type === 'private') {
       const help = commandMap.get('help');
       if (help) {
-        await help.execute({
-          chatId: decision.chatId,
-          chat: decision.chat,
-          from: decision.from,
-          command: decision.command,
-          reply: (text) => sender.send(decision.chatId, text, { priority: 'high' }),
-        });
+        await help.execute(
+          commandContext(decision, runtime, (text) =>
+            sender.send(decision.chatId, text, { priority: 'high' }),
+          ),
+        );
       }
     }
     return;
   }
 
-  await command.execute({
+  await command.execute(
+    commandContext(decision, runtime, (text, opts) =>
+      sender.send(decision.chatId, text, { priority: 'high', replyMarkup: opts?.keyboard }),
+    ),
+  );
+  admins.prune();
+}
+
+/**
+ * Build the context one command handler runs with.
+ *
+ * `authorizeWrite` is a THUNK, not a resolved boolean: resolving it eagerly
+ * would spend a getChatMember round trip on every /status and /help, and the
+ * read commands are the common case by a wide margin. Handlers call it on the
+ * branch that is about to write. See permissions.ts for the rule and admin.ts
+ * for the cache it shares with the panel.
+ */
+function commandContext(
+  decision: Extract<ReturnType<typeof classifyUpdate>, { kind: 'command' }>,
+  runtime: Runtime,
+  reply: TgCommandContext['reply'],
+): TgCommandContext {
+  return {
     chatId: decision.chatId,
     chat: decision.chat,
     from: decision.from,
     command: decision.command,
-    reply: (text, opts) =>
-      sender.send(decision.chatId, text, { priority: 'high', replyMarkup: opts?.keyboard }),
-  });
+    botUsername: runtime.username,
+    async authorizeWrite() {
+      // No sender means no actor to authorize. Telegram omits `from` on some
+      // service and channel messages; refusing is the only fail-closed answer.
+      const userId = decision.from?.id;
+      if (userId === undefined) {
+        return { allow: false, message: 'Only a group admin can change what this chat receives.' };
+      }
+      const verdict = decideChatWrite({
+        chatId: decision.chatId,
+        chatType: decision.chat.type,
+        userId,
+        isAdmin:
+          decision.chat.type === 'private'
+            ? false
+            : await runtime.admins.isAdmin(decision.chatId, userId),
+      });
+      return verdict.allow ? { allow: true, message: '' } : { allow: false, message: verdict.message };
+    },
+    reply,
+  };
 }
 
 /**

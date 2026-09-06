@@ -57,7 +57,10 @@ import {
   type TgChatSettings,
 } from './alertPolicy.js';
 import type { TgChatRecord } from './chatStore.js';
+import { COMMAND_GROUPS } from './commandCatalog.js';
 import { bold, code, escapeHtml, italic, joinLines, link, truncate } from './html.js';
+import { groupMentionNote } from './identity.js';
+import { decideChatWrite } from './permissions.js';
 import { footer } from './render.js';
 import type { TgChat, TgInlineKeyboardButton, TgInlineKeyboardMarkup } from './types.js';
 
@@ -285,6 +288,12 @@ export function isPanelRead(action: PanelAction): boolean {
  *
  * Anonymous group admins post as the group, but a CALLBACK query always carries
  * a real user, so there is no anonymous-admin hole here to close.
+ *
+ * Clauses 2 and 3 are NOT written out here any more: they are `decideChatWrite`
+ * in permissions.ts, which the typed commands now call as well. The panel had
+ * this rule and the commands did not, which made `/alerts on contracts confirm`
+ * from any group member a way around a button any group member could not press.
+ * One function, both surfaces.
  */
 export function decidePanelPress(action: PanelAction, actor: PanelActor): PanelPressVerdict {
   if (!actor.chatAllowed) {
@@ -295,22 +304,11 @@ export function decidePanelPress(action: PanelAction, actor: PanelActor): PanelP
     };
   }
 
-  if (actor.chatType === 'private') {
-    if (actor.userId !== actor.chatId) {
-      return { allow: false, reason: 'not_owner', message: 'This panel is not yours.' };
-    }
-    return { allow: true };
-  }
+  // A read in a group is open to any member (clause 4). Everything else — every
+  // write, and every action in a private chat — goes to the shared rule.
+  if (isPanelRead(action) && actor.chatType !== 'private') return { allow: true };
 
-  if (isPanelWrite(action) && !actor.isAdmin) {
-    return {
-      allow: false,
-      reason: 'not_admin',
-      message: 'Only a group admin can change what this chat receives.',
-    };
-  }
-
-  return { allow: true };
+  return decideChatWrite(actor);
 }
 
 // --- subscription cycle ------------------------------------------------------
@@ -669,22 +667,32 @@ export function renderPanelStatus(state: PanelState): string {
   ]);
 }
 
-/** The help card. The command list, phrased for someone holding a panel. */
-export function renderPanelHelp(): string {
+/**
+ * The help card. The command list, phrased for someone holding a panel.
+ *
+ * The list itself is COMMAND_GROUPS — the same table `/help` renders and the
+ * same one Telegram's `/` menu is built from — so the panel can no longer be
+ * the surface that forgets a command. It stays a distinct renderer because the
+ * framing differs: this reader has buttons in front of them and needs to know
+ * what the typed commands add, not what the bot is.
+ *
+ * `botUsername` reaches here from getMe through CallbackDeps; see identity.ts.
+ */
+export function renderPanelHelp(botUsername: string): string {
+  const mention = groupMentionNote(botUsername);
   return joinLines([
     bold('❓ OCT bot commands'),
-    '',
-    `${code('/start')} — open this panel (subscribes to nothing)`,
-    `${code('/alerts')} — the same subscriptions, as typed commands`,
-    `${code('/status')} — what this chat is registered for`,
-    `${code('/token <address> [chain]')} — market snapshot from OCT enrichment`,
-    `${code('/help')} — this list`,
+    ...COMMAND_GROUPS.flatMap((group): (string | null)[] => [
+      '',
+      bold(group.title),
+      group.note ? italic(group.note) : null,
+      ...group.commands.map((spec) => `${code(spec.usage)} — ${escapeHtml(spec.blurb)}`),
+    ]),
     '',
     italic(
       'The buttons and the commands do the same things. Buttons are faster; commands work when someone else has the panel open.',
     ),
-    '',
-    italic('In a group, add @thebotname to any command if other bots are present.'),
+    mention ? italic(mention) : null,
     '',
     italic('No Telegram or Discord account of yours is connected, and none is needed.'),
     footer(),
@@ -730,7 +738,11 @@ export const PANEL_STALE_MESSAGE = 'This panel is out of date. Run /start to ope
  * One switch, so a view added to PanelView is a compile error here rather than
  * a blank card in production.
  */
-export function renderPanelView(state: PanelState, consoleUrl: string | null): string {
+export function renderPanelView(
+  state: PanelState,
+  consoleUrl: string | null,
+  botUsername: string,
+): string {
   switch (state.view) {
     case 'home':
       return renderPanelHome(state, consoleUrl);
@@ -743,7 +755,7 @@ export function renderPanelView(state: PanelState, consoleUrl: string | null): s
     case 'status':
       return renderPanelStatus(state);
     case 'help':
-      return renderPanelHelp();
+      return renderPanelHelp(botUsername);
   }
 }
 

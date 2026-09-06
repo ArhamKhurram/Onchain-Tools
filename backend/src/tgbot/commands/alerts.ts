@@ -1,5 +1,6 @@
 import { applyAlertSetting, clearMute, isMuted, parseAlertsCommand } from '../alertPolicy.js';
 import { getChatStore } from '../chatStore.js';
+import { SPEC } from '../commandCatalog.js';
 import { readDigestIntervalMs } from '../digest.js';
 import { readGuardLimits } from '../guard.js';
 import { escapeHtml, joinLines } from '../html.js';
@@ -25,8 +26,8 @@ import type { TgCommand } from './types.js';
  * round-trip around it.
  */
 export const alerts: TgCommand = {
-  name: 'alerts',
-  description: 'See and change what alerts this chat receives',
+  name: SPEC.alerts.name,
+  description: SPEC.alerts.description,
 
   async execute(ctx) {
     const store = getChatStore();
@@ -57,6 +58,20 @@ export const alerts: TgCommand = {
 
     if (action.kind === 'show') {
       await ctx.reply(renderAlertSettings(record.settings, { digestMinutes, maxPerHour, now }));
+      return;
+    }
+
+    // EVERYTHING PAST HERE WRITES, and in a group a write needs an admin — the
+    // same rule the panel's buttons have always obeyed. It was missing here,
+    // which made `/alerts on contracts confirm` from any member a way around a
+    // button that member could not press: one typed command subscribed a whole
+    // room to the class that flooded a live group. See permissions.ts.
+    //
+    // Resolved AFTER the read branches so `/alerts` on its own still costs no
+    // getChatMember round trip.
+    const authorized = await ctx.authorizeWrite();
+    if (!authorized.allow) {
+      await ctx.reply(joinLines([escapeHtml(authorized.message), footer()]));
       return;
     }
 
