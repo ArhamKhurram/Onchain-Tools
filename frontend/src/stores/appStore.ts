@@ -8,6 +8,7 @@ import { createContractsSlice, type ContractsSlice } from './slices/contractsSli
 import { createConfigSlice, type ConfigSlice } from './slices/configSlice';
 import { createSourcesSlice, type SourcesSlice } from './slices/sourcesSlice';
 import { createFomoSlice, type FomoSlice } from './slices/fomoSlice';
+import { createRobinhoodSlice, type RobinhoodSlice } from './slices/robinhoodSlice';
 import { createRevivalSlice, type RevivalSlice } from './slices/revivalSlice';
 import { createJournalSlice, type JournalSlice } from './slices/journalSlice';
 import { createPriceAlertsSlice, type PriceAlertsSlice } from './slices/priceAlertsSlice';
@@ -25,6 +26,7 @@ export type AppState = AuthSlice &
   ConfigSlice &
   SourcesSlice &
   FomoSlice &
+  RobinhoodSlice &
   RevivalSlice &
   JournalSlice &
   PriceAlertsSlice &
@@ -41,6 +43,7 @@ export const useAppStore = create<AppState>()((...a) => ({
   ...createConfigSlice(...a),
   ...createSourcesSlice(...a),
   ...createFomoSlice(...a),
+  ...createRobinhoodSlice(...a),
   ...createRevivalSlice(...a),
   ...createJournalSlice(...a),
   ...createPriceAlertsSlice(...a),

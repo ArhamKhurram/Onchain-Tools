@@ -1,6 +1,7 @@
 import { Router } from 'express';
 import type { WsServer } from '../ws/server.js';
 import { createFomoRouter } from '../fomo/routes.js';
+import { createRobinhoodRouter } from '../robinhood/routes.js';
 import { createPumpfunRouter } from '../pumpfun/routes.js';
 import { createPortfolioRouter } from '../portfolio/routes.js';
 import { createRouterContext } from './context.js';
@@ -49,6 +50,9 @@ export function createRouter(wsServer: WsServer): Router {
   router.use(createPushoverRoutes(ctx));   // /pushover/signal-convergence
 
   router.use('/fomo', createFomoRouter(wsServer));
+  // Robinhood Chain (4663) tape/radar/flow from robinhoodtrenches — a separate,
+  // clearly-labelled third-party source, NOT a fomo.family proxy.
+  router.use('/robinhood', createRobinhoodRouter());
   router.use('/pumpfun', createPumpfunRouter());
   router.use('/portfolio', createPortfolioRouter());
 

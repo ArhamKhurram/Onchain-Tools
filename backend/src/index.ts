@@ -44,6 +44,7 @@ import type { MessageProcessorContext } from './utils/messageProcessor.js';
 import { sendPushover } from './utils/pushover.js';
 import { broadcastFrontendAlerts } from './utils/frontendAlerts.js';
 import { startFomoPoller } from './fomo/poller.js';
+import { startRobinhoodPoller } from './robinhood/poller.js';
 import { startFomoJoinWatcher } from './fomo/joinWatcher.js';
 import { startPumpCalloutPoller } from './pumpfun/calloutPoller.js';
 import { startJ7Consumer } from './j7/index.js';
@@ -835,6 +836,10 @@ httpServer.listen(PORT, HOST, async () => {
   // signal). Self-gates exactly like the poller above: idle without Supabase
   // or the shared FOMO refresh token.
   startFomoJoinWatcher(wsServer);
+  // Robinhood Chain live tape (robinhoodtrenches, keyless). Opt-in via
+  // OCT_ROBINHOOD_ENABLED; broadcasts `robinhood_fill` on the existing WS.
+  // Self-gates and never throws — a third-party outage parks the interval.
+  startRobinhoodPoller(wsServer);
   // Keeps the FOMO trade log from growing without bound; the console only ever
   // replays the last day of it.
   startFomoRetentionSweeper();
