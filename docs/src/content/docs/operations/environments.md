@@ -22,6 +22,7 @@ rather than crashing.
 | `OCT_DATA_DIR` | `backend/data` | Local-mode JSON store location. |
 | `OCT_FRONTEND_DIST` | — | Where the backend serves the console from (desktop packaging). |
 | `ALLOWED_ORIGINS` | — | Comma-separated CORS/WS allow-list (hosted). |
+| `OCT_STORAGE_CACHE_MS` | `30000` | TTL of the hosted-mode storage cache in front of config / rooms / keywords / highlighted users. Console edits invalidate explicitly, so this only bounds staleness for writes made outside the API. `0` disables caching (debugging only — it removes the stampede protection that keeps ingest bursts off the Supabase pool). |
 
 ## Supabase (hosted mode)
 

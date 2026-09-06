@@ -104,11 +104,18 @@ export class RoomsRepo extends BaseRepo {
     return (await this.getRoomsBundle(userId)).rooms;
   }
 
+  /**
+   * The single hottest read in the process: every inbound Discord and Telegram
+   * message resolves its rooms through here, and getConfig fans out to it too.
+   * It costs up to four PostgREST round-trips on a miss, so it goes through
+   * `cached()` (single-flight) — a plain TTL cache let an ingest burst launch
+   * one four-query load per message and exhausted the pool on 2026-09-06.
+   */
   async getRoomsBundle(userId: string): Promise<RoomsBundle> {
-    const cacheKey = `${userId}:rooms`;
-    const cached = this.getCached<RoomsBundle>(cacheKey);
-    if (cached) return cached;
+    return this.cached(`${userId}:rooms`, () => this.loadRoomsBundle(userId));
+  }
 
+  private async loadRoomsBundle(userId: string): Promise<RoomsBundle> {
     const { data: roomRows } = await this.supabase
       .from('rooms')
       .select('*')
@@ -122,13 +129,11 @@ export class RoomsRepo extends BaseRepo {
         this.loadHighlightRows(userId),
         this.loadKeywordRows(userId),
       ]);
-      const bundle: RoomsBundle = {
+      return {
         rooms: [],
         globalHighlightRows: highlightRows.filter((row) => row.room_id === null),
         globalKeywordRows: keywordRows.filter((row) => row.room_id === null),
       };
-      this.setCache(cacheKey, bundle);
-      return bundle;
     }
 
     const roomIds = roomRows.map((r) => r.id);
@@ -177,13 +182,11 @@ export class RoomsRepo extends BaseRepo {
         keywordsByRoom.get(r.id) ?? [],
       ),
     );
-    const bundle: RoomsBundle = {
+    return {
       rooms,
       globalHighlightRows: highlightRows.filter((row) => row.room_id === null),
       globalKeywordRows: keywordRows.filter((row) => row.room_id === null),
     };
-    this.setCache(cacheKey, bundle);
-    return bundle;
   }
 
   async getRoom(userId: string, roomId: string): Promise<Room | null> {
