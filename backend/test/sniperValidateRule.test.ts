@@ -28,12 +28,18 @@ function rule(over: Partial<SnipeRule> = {}): SnipeRule {
   };
 }
 
+/**
+ * The account-level fees a rule inherits. Zeroed here so these cases measure
+ * the rule alone; the inheritance itself is covered in sniperFees.test.ts.
+ */
+const NO_FEES = { tip: 0, priorityFee: 0 };
+
 const reasonOf = (r: ReturnType<typeof validateRule>) => (r.ok ? null : r.reason);
 
 describe('validateRule — accepts a well-formed rule', () => {
   it('passes both halves', () => {
     expect(validateRuleStructure(rule())).toEqual({ ok: true });
-    expect(validateRule(rule(), [wallet()])).toEqual({ ok: true });
+    expect(validateRule(rule(), [wallet()], NO_FEES)).toEqual({ ok: true });
   });
 });
 
@@ -189,11 +195,11 @@ describe('validateRuleStructure — the half that runs on create and patch', () 
 
 describe('validateRule — the arm-time half that needs wallet rows', () => {
   it('rejects a rule with no wallets', () => {
-    expect(reasonOf(validateRule(rule({ walletIds: [] }), [wallet()]))).toBe('no_wallets');
+    expect(reasonOf(validateRule(rule({ walletIds: [] }), [wallet()], NO_FEES))).toBe('no_wallets');
   });
 
   it('rejects a walletId with no row', () => {
-    const res = validateRule(rule({ walletIds: ['ghost'] }), [wallet()]);
+    const res = validateRule(rule({ walletIds: ['ghost'] }), [wallet()], NO_FEES);
     expect(reasonOf(res)).toBe('unknown_wallet');
     expect(res.ok === false && res.detail).toBe('ghost');
   });
@@ -202,11 +208,11 @@ describe('validateRule — the arm-time half that needs wallet rows', () => {
   // a price oracle out of the hot path. A SOL-sized rule spending from a USDC
   // wallet makes the reservation compare 5 SOL against a 1000-USDC cap.
   it('rejects a wallet whose unit differs from the rule size unit', () => {
-    expect(reasonOf(validateRule(rule(), [wallet({ unit: 'USDC' })]))).toBe('unit_mismatch');
+    expect(reasonOf(validateRule(rule(), [wallet({ unit: 'USDC' })], NO_FEES))).toBe('unit_mismatch');
   });
 
   it('rejects a wallet on a different chain', () => {
-    expect(reasonOf(validateRule(rule(), [wallet({ chain: 'bsc' })]))).toBe('wallet_chain_mismatch');
+    expect(reasonOf(validateRule(rule(), [wallet({ chain: 'bsc' })], NO_FEES))).toBe('wallet_chain_mismatch');
   });
 
   // The bug this guards: sizeTotal is spend PER WALLET, so a 2-wallet rule
@@ -214,7 +220,7 @@ describe('validateRule — the arm-time half that needs wallet rows', () => {
   // aborts at executeFire step 2 on EVERY trigger and must not sit armed.
   it('rejects a rule whose legs can never clear its own per-trigger cap', () => {
     const r = rule({ walletIds: ['w1', 'w2'], sizeTotal: 3, perFireCap: 4, perTriggerCap: 5 });
-    expect(reasonOf(validateRule(r, [wallet(), wallet({ walletId: 'w2' })]))).toBe('size_over_trigger_cap');
+    expect(reasonOf(validateRule(r, [wallet(), wallet({ walletId: 'w2' })], NO_FEES))).toBe('size_over_trigger_cap');
   });
 
   // The arm-time half caught NOTHING here before the finiteness guard: the
@@ -223,15 +229,15 @@ describe('validateRule — the arm-time half that needs wallet rows', () => {
   // armed clean and reached executeFire with an infinite leg amount.
   it('rejects a non-finite cap at arm time too', () => {
     const r = rule({ sizeTotal: Infinity, perFireCap: Infinity, perTriggerCap: Infinity });
-    expect(reasonOf(validateRule(r, [wallet()]))).toBe('caps_inconsistent');
+    expect(reasonOf(validateRule(r, [wallet()], NO_FEES))).toBe('caps_inconsistent');
   });
 
   it('accounts for fees when checking the trigger total', () => {
     // 2 wallets x 1 SOL + 0.5% each = 2.01. A cap of exactly 2 must refuse.
     const wallets = [wallet(), wallet({ walletId: 'w2' })];
     const tight = rule({ walletIds: ['w1', 'w2'], sizeTotal: 1, perFireCap: 2, perTriggerCap: 2 });
-    expect(reasonOf(validateRule(tight, wallets))).toBe('size_over_trigger_cap');
+    expect(reasonOf(validateRule(tight, wallets, NO_FEES))).toBe('size_over_trigger_cap');
     const roomy = rule({ walletIds: ['w1', 'w2'], sizeTotal: 1, perFireCap: 2, perTriggerCap: 2.5 });
-    expect(validateRule(roomy, wallets)).toEqual({ ok: true });
+    expect(validateRule(roomy, wallets, NO_FEES)).toEqual({ ok: true });
   });
 });

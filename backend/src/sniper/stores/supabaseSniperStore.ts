@@ -36,9 +36,11 @@ import type {
   RuleState,
   SizeUnit,
   SnipeRule,
+  SniperFeeSettings,
   Venue,
   WalletConfig,
 } from '../types.js';
+import { normalizeFeeSettings } from '../fees.js';
 
 let _client: SupabaseClient | null = null;
 
@@ -197,12 +199,48 @@ export class SupabaseSniperStore implements SniperStore {
   }
 
   async setKillSwitch(userId: string, on: boolean, reason: string | null): Promise<void> {
+    // The upsert names only the kill columns, so an existing row's fee columns
+    // survive it. Listing them here with fallbacks would zero an operator's tip
+    // on every resume.
     const { error } = await serviceClient().from('sniper_state').upsert(
       {
         user_id: userId,
         kill_switch: on,
         tripped_at: on ? new Date().toISOString() : null,
         tripped_reason: on ? reason : null,
+        updated_at: new Date().toISOString(),
+      },
+      { onConflict: 'user_id' },
+    );
+    if (error) throw new Error(error.message);
+  }
+
+  // --- fee settings (account-level; see fees.ts) ---
+  async getFeeSettings(userId: string): Promise<SniperFeeSettings> {
+    const { data, error } = await serviceClient()
+      .from('sniper_state')
+      .select('fee_tip, fee_priority_fee')
+      .eq('user_id', userId)
+      .maybeSingle();
+    // Throwing rather than defaulting to zero, for the same reason getKillState
+    // throws: executeFire treats an unreadable fee setting as an abort, and a
+    // transient blip answered as `0` would under-reserve every leg by the tip.
+    // The MISSING-ROW case is not a failure — `data` is null and normalize maps
+    // it to DEFAULT_FEE_SETTINGS, which is what a user who never set fees has.
+    if (error) throw new Error(error.message);
+    const row = data as { fee_tip?: unknown; fee_priority_fee?: unknown } | null;
+    // `numeric` arrives as a string through PostgREST; normalizeFeeSettings
+    // coerces it, and refuses anything that is not a real, bounded amount.
+    return normalizeFeeSettings({ tip: row?.fee_tip, priorityFee: row?.fee_priority_fee });
+  }
+
+  async setFeeSettings(userId: string, settings: SniperFeeSettings): Promise<void> {
+    const safe = normalizeFeeSettings(settings);
+    const { error } = await serviceClient().from('sniper_state').upsert(
+      {
+        user_id: userId,
+        fee_tip: safe.tip,
+        fee_priority_fee: safe.priorityFee,
         updated_at: new Date().toISOString(),
       },
       { onConflict: 'user_id' },
