@@ -124,6 +124,19 @@ export interface GateVerdict {
   abstainReason: string | null;
   /** Liquidity / mcap, for the log line and the alert card. Null when unknown. */
   liquidityRatio: number | null;
+  /**
+   * Things that did NOT fail a gate but that the reader deserves to know, e.g.
+   * `honeypotUnknown`. Empty on a clean pass.
+   *
+   * WHY THIS EXISTS. The EVM honeypot gate rejects only an explicit `true`,
+   * because `is_honeypot` is null far more often than it is false and abstaining
+   * on null would silence BNB almost entirely. That is the right call for
+   * DELIVERY and the wrong one for SILENCE: a reader who sees "Scam-filtered"
+   * on a token whose honeypot status was never evaluated has been told something
+   * untrue. So the permissiveness is kept and surfaced, rather than hidden.
+   * A caveat never blocks; it only ever adds a line to the card.
+   */
+  caveats: string[];
 }
 
 function verdict(
@@ -131,8 +144,9 @@ function verdict(
   failed: string[],
   abstainReason: string | null,
   liquidityRatio: number | null,
+  caveats: string[] = [],
 ): GateVerdict {
-  return { decision, failed, abstainReason, liquidityRatio };
+  return { decision, failed, abstainReason, liquidityRatio, caveats };
 }
 
 /**
@@ -151,6 +165,7 @@ export function evaluateMcapGates(
 ): GateVerdict {
   const { mcapUsd, liquidityUsd, network } = input;
   const failed: string[] = [];
+  const caveats: string[] = [];
 
   // --- Market data ---------------------------------------------------------
   // No market cap means there is nothing to have crossed; the poller should
@@ -194,6 +209,10 @@ export function evaluateMcapGates(
     // strict alternative — abstain on null — would silence BNB almost
     // entirely, and the concentration, liquidity and tax gates still stand.
     if (sec.honeypot === true) failed.push('honeypot');
+    // Null is "GMGN did not evaluate it", not "clean". It does not reject —
+    // see GateVerdict.caveats for why — but it is carried onto the card so the
+    // footer never claims a check that did not happen.
+    else if (sec.honeypot == null) caveats.push('honeypotUnknown');
     if (sec.buyTax != null && sec.buyTax >= cfg.maxTaxRate) failed.push('buyTax');
     if (sec.sellTax != null && sec.sellTax >= cfg.maxTaxRate) failed.push('sellTax');
   }
@@ -207,7 +226,7 @@ export function evaluateMcapGates(
   const unknown = missingCriticalFields(sec, network, cfg);
   if (unknown) return verdict('abstain', [], unknown, ratio);
 
-  return verdict('pass', [], null, ratio);
+  return verdict('pass', [], null, ratio, caveats);
 }
 
 /**

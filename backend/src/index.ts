@@ -881,6 +881,7 @@ httpServer.listen(PORT, HOST, async () => {
         targetUsd: data.targetUsd,
         liquidityUsd: data.liquidityUsd,
         liquidityRatio: data.liquidityRatio,
+        caveats: data.caveats,
       }),
   });
   // Global pump.fun KOL-callout fan-out poller. Self-gates on Supabase (idle in

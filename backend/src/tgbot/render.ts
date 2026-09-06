@@ -383,6 +383,8 @@ export interface McapCrossView {
   targetUsd: number;
   liquidityUsd: number | null;
   liquidityRatio: number | null;
+  /** Non-blocking gate caveats, e.g. `honeypotUnknown`. Absent = clean pass. */
+  caveats?: string[];
 }
 
 /**
@@ -408,15 +410,22 @@ export function renderMcapCrossCard(view: McapCrossView): string {
       ? `${compactUsd(view.liquidityUsd)}${view.liquidityRatio != null ? ` (${(view.liquidityRatio * 100).toFixed(1)}% of mcap)` : ''}`
       : 'unknown';
 
+  // An unevaluated honeypot check is stated, not swallowed. See
+  // GateVerdict.caveats: the EVM gate deliberately passes a null `is_honeypot`
+  // (abstaining there would silence BNB almost entirely), so the ONLY honest
+  // place to put that uncertainty is in front of the person about to buy.
+  const caveated = view.caveats?.includes('honeypotUnknown') === true;
+
   return joinLines([
     bold(heading),
     `${bold('MCap:')} ${escapeHtml(compactUsd(view.mcapUsd))}`,
     `${bold('Liquidity:')} ${escapeHtml(depth)}`,
     `${bold('Chain:')} ${escapeHtml(revivalNetworkLabel(view.network))}`,
+    ...(caveated ? [`${bold('⚠ Honeypot:')} ${escapeHtml('not evaluated — verify before buying')}`] : []),
     '',
     code(view.address),
     link('Chart ↗', buildRevivalContractUrl(view.address, view.network, LINK_TEMPLATES)),
-    footer('Scam-filtered'),
+    footer(caveated ? 'Scam-filtered · honeypot status unknown' : 'Scam-filtered'),
   ]);
 }
 

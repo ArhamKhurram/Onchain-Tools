@@ -112,6 +112,12 @@ export interface McapCrossAlertData {
   liquidityRatio: number | null;
   /** Previous observation, i.e. where it crossed FROM. */
   previousMcapUsd: number | null;
+  /**
+   * Non-blocking gate caveats (today: `honeypotUnknown`). Carried onto the wire
+   * frame and the Telegram card so a check that never ran is never presented as
+   * a check that passed. See GateVerdict.caveats.
+   */
+  caveats: string[];
   triggeredAt: string;
 }
 
@@ -361,6 +367,7 @@ class McapCrossPoller {
         targetUsd: target,
         liquidityUsd: usable?.liquidityUsd ?? null,
         liquidityRatio: gates.liquidityRatio,
+        caveats: gates.caveats,
         previousMcapUsd: prior?.lastSeenMcap ?? null,
         triggeredAt: nowIso,
       });
