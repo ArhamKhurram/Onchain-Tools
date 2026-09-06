@@ -49,11 +49,38 @@ export const VENUE_FEE_RATE: Record<Venue, number> = {
 export const DEFAULT_FEE_SETTINGS: SniperFeeSettings = { tip: 0, priorityFee: 0 };
 
 /**
- * Ceiling for a single fee component, in native units. Nothing about a real tip
- * approaches this; it exists so a fat-fingered `1e308` cannot be stored and then
- * overflow into Infinity when the two components are summed.
+ * Ceiling for a single fee component, in native units.
+ *
+ * This is a RISK LIMIT, not just an overflow guard. It started as the latter
+ * (1000, picked only so a fat-fingered `1e308` could not be stored and then
+ * overflow to Infinity when the components are summed) — but 1000 SOL is not a
+ * guard against anything a human would actually mistype. A real Jito-style tip
+ * is thousandths of a SOL; an accidental extra zero or a misplaced decimal is
+ * the failure this has to catch, and only a ceiling near the plausible range
+ * does that.
+ *
+ * 1 SOL is therefore the default: far above any honest tip, far below an amount
+ * whose loss would matter. `SNIPER_MAX_FEE_COMPONENT` raises it for an operator
+ * who genuinely bids higher, and the value is still bounded so the env var
+ * cannot reintroduce the overflow this also prevents.
+ *
+ * The DB CHECK constraint stays at 1000 (see the sniper_global_fee_settings
+ * migration): the app ceiling is deliberately the tighter of the two, so
+ * lowering it here needs no migration.
  */
-export const MAX_FEE_COMPONENT = 1_000;
+const MAX_FEE_COMPONENT_HARD_LIMIT = 1_000;
+const DEFAULT_MAX_FEE_COMPONENT = 1;
+
+function readMaxFeeComponent(): number {
+  const raw = process.env.SNIPER_MAX_FEE_COMPONENT;
+  if (raw == null || raw.trim() === '') return DEFAULT_MAX_FEE_COMPONENT;
+  const parsed = Number(raw);
+  // A malformed override must not widen the limit — fall back, never open up.
+  if (!Number.isFinite(parsed) || parsed <= 0) return DEFAULT_MAX_FEE_COMPONENT;
+  return Math.min(parsed, MAX_FEE_COMPONENT_HARD_LIMIT);
+}
+
+export const MAX_FEE_COMPONENT = readMaxFeeComponent();
 
 /** A storable fee component: finite, not negative, not absurd. */
 export function isValidFeeComponent(v: unknown): v is number {

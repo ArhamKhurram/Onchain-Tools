@@ -198,6 +198,18 @@ describe('invalid fee values', () => {
     expect(isValidFeeComponent('0.1')).toBe(false);
   });
 
+  it('caps a component near the plausible range, so a mistyped tip is caught', () => {
+    // The ceiling is a risk limit, not just an overflow guard: a real tip is
+    // thousandths of a SOL, so the failure worth catching is an extra zero or a
+    // misplaced decimal — which a 1000 ceiling would wave straight through.
+    expect(MAX_FEE_COMPONENT).toBeLessThanOrEqual(1);
+
+    expect(isValidFeeComponent(0.005)).toBe(true); // an honest tip
+    expect(isValidFeeComponent(0.05)).toBe(true); // a generous one
+    expect(isValidFeeComponent(5)).toBe(false); // 0.05 with the decimal slipped
+    expect(isValidFeeComponent(50)).toBe(false); // 0.05 with two extra zeros
+  });
+
   it('a NaN amountWithFees would turn caps OFF — the reason all of the above matters', () => {
     // Documentation-as-test: NaN fails every comparison, so an un-normalized
     // fee does not raise the cap, it removes it.
