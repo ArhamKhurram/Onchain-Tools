@@ -51,6 +51,33 @@ export interface FomoLeaderboardEntry {
   pnl?: number | null;
   volume?: number | null;
   rank?: number | null;
+  /** Published by the 985monitor snapshot only; absent on the live FOMO path. */
+  followers?: number | null;
+  numTrades?: number | null;
+}
+
+/**
+ * Windows the leaderboard accepts. The live fomo.family API only ever exposed
+ * 24h and all-time; 7d/30d come from the 985monitor snapshot.
+ */
+export type FomoLeaderboardWindow = '24h' | '7d' | '30d' | 'all';
+
+/**
+ * Which source served a leaderboard read, and how old it is. The console shows
+ * this: 985monitor is a third-party snapshot refreshed every few minutes, not
+ * OCT's own live feed, and it must never be presented as one.
+ */
+export interface FomoLeaderboardSource {
+  source: 'fomo' | '985monitor';
+  sourceLabel: string;
+  sourceUrl: string | null;
+  /** Snapshot generation time (985monitor) or read time (live). ms epoch. */
+  updatedAt: number | null;
+  live: boolean;
+}
+
+export interface FomoLeaderboardResult extends FomoLeaderboardSource {
+  entries: FomoLeaderboardEntry[];
 }
 
 export interface FomoServiceStatus {

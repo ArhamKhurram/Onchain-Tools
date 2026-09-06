@@ -13,6 +13,7 @@ import { isClientGatewayMode } from '../discord/clientGateway';
 import { hasLocalDiscordTokens } from '../discord/tokenStore';
 import type { WsIncoming, Alert, FrontendMessage, ContractEntry, RevivalAlertData, BreakoutAlertData, JournalAlertData, PriceAlertData } from '../types';
 import type { FomoTradeEvent } from '../types/fomo';
+import type { RobinhoodFill } from '../types/robinhood';
 
 let idCounter = 0;
 
@@ -36,6 +37,7 @@ export function useWebSocket() {
   const setGatewayAuthError = useAppStore((s) => s.setGatewayAuthError);
   const fetchMaskedTokens = useAppStore((s) => s.fetchMaskedTokens);
   const addFomoTrade = useAppStore((s) => s.addFomoTrade);
+  const addRobinhoodFill = useAppStore((s) => s.addRobinhoodFill);
   const addPumpCallout = useAppStore((s) => s.addPumpCallout);
   const addRevival = useAppStore((s) => s.addRevival);
   const bumpJournalRefresh = useAppStore((s) => s.bumpJournalRefresh);
@@ -226,6 +228,13 @@ export function useWebSocket() {
               addAlert(alert);
               if (cfg?.messageSounds) playFomoTradeSound(cfg.soundSettings?.fomoTrade);
             }
+          } else if (incoming.type === 'robinhood_fill') {
+            // Robinhood Chain (4663) fill from robinhoodtrenches — a separate,
+            // clearly-labelled third-party source with no Solana/BSC coverage.
+            // It lands in its own slice and raises no alert or sound: it is a
+            // public global tape, not one of the user's tracked signals, and it
+            // is never fused with FOMO trades or convergence.
+            addRobinhoodFill(incoming.data as RobinhoodFill);
           } else if (incoming.type === 'pump_callout') {
             // A followed pump.fun caller posted a callout. `notify` is a
             // delivery-time flag (as on FOMO trades) — stripped from the stored
@@ -578,5 +587,5 @@ export function useWebSocket() {
       clearTimeout(reconnectTimer);
       wsRef.current?.close();
     };
-  }, [addMessage, updateMessage, markMessageDeleted, addAlert, setConnected, updateReaction, addContract, enrichContract, updateContractChain, updateTokenPeak, fetchGuilds, fetchDMChannels, fetchHistory, fetchTelegramChats, checkAuth, setGatewayAuthError, fetchMaskedTokens, addFomoTrade, addPumpCallout, addRevival, bumpJournalRefresh, bumpPriceAlertRefresh]);
+  }, [addMessage, updateMessage, markMessageDeleted, addAlert, setConnected, updateReaction, addContract, enrichContract, updateContractChain, updateTokenPeak, fetchGuilds, fetchDMChannels, fetchHistory, fetchTelegramChats, checkAuth, setGatewayAuthError, fetchMaskedTokens, addFomoTrade, addRobinhoodFill, addPumpCallout, addRevival, bumpJournalRefresh, bumpPriceAlertRefresh]);
 }

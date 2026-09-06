@@ -1,7 +1,60 @@
 import { Plus, RefreshCw, Trophy } from 'lucide-react';
 import { useFomoLeaderboard } from '../../hooks/useFomoTracking';
 import { cn } from '../../lib/utils';
-import type { FomoLeaderboardEntry } from '../../types/fomo';
+import type { FomoLeaderboardEntry, FomoLeaderboardSource } from '../../types/fomo';
+
+// Windows offered. 24h/all can be served live by fomo.family; 7d and 30d exist
+// only on the 985monitor snapshot, and the backend routes accordingly.
+const WINDOWS = [
+  { value: '24h' as const, label: '24H' },
+  { value: '7d' as const, label: '7D' },
+  { value: '30d' as const, label: '30D' },
+  { value: 'all' as const, label: 'ALL' },
+];
+
+function formatAge(updatedAt: number | null): string {
+  if (!updatedAt) return 'age unknown';
+  const minutes = Math.max(0, Math.round((Date.now() - updatedAt) / 60_000));
+  if (minutes < 1) return 'just now';
+  if (minutes < 60) return `${minutes}m ago`;
+  const hours = Math.round(minutes / 60);
+  return hours < 24 ? `${hours}h ago` : `${Math.round(hours / 24)}d ago`;
+}
+
+/**
+ * Names the source under the board. This is load-bearing, not decoration: the
+ * fomo.family service account has been Forbidden upstream since 2026-08-26, so
+ * in practice these rows come from a third-party snapshot, and presenting them
+ * as OCT's own live feed would be misleading.
+ */
+function SourceNote({ meta }: { meta: FomoLeaderboardSource }) {
+  return (
+    <div className="shrink-0 px-comfy py-tight border-b border-oct-border bg-oct-surface-2">
+      <p className="type-caption text-oct-muted">
+        {meta.live ? (
+          <>Live from <span className="font-bold text-oct-text">{meta.sourceLabel}</span>.</>
+        ) : (
+          <>
+            Snapshot from{' '}
+            {meta.sourceUrl ? (
+              <a
+                href={meta.sourceUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="font-bold text-oct-text underline decoration-dotted"
+              >
+                {meta.sourceLabel}
+              </a>
+            ) : (
+              <span className="font-bold text-oct-text">{meta.sourceLabel}</span>
+            )}{' '}
+            — updated {formatAge(meta.updatedAt)}. Third-party data, not OCT's live feed.
+          </>
+        )}
+      </p>
+    </div>
+  );
+}
 
 function entryLabel(entry: FomoLeaderboardEntry): string {
   return entry.displayName || (entry.fomoHandle ? `@${entry.fomoHandle}` : entry.fomoUserId);
@@ -37,7 +90,7 @@ export default function FomoLeaderboard({
   trackingId,
   embedded = false,
 }: FomoLeaderboardProps) {
-  const { window, setWindow, entries, loading, error, refresh } = useFomoLeaderboard();
+  const { window, setWindow, entries, meta, loading, error, refresh } = useFomoLeaderboard();
 
   const isTracked = (entry: FomoLeaderboardEntry) =>
     trackedIds.has(entry.fomoUserId) ||
@@ -63,19 +116,19 @@ export default function FomoLeaderboard({
           </>
         )}
         <div className="flex gap-tight">
-          {(['24h', 'all'] as const).map((w) => (
+          {WINDOWS.map((w) => (
             <button
-              key={w}
+              key={w.value}
               type="button"
-              onClick={() => setWindow(w)}
+              onClick={() => setWindow(w.value)}
               className={cn(
                 'px-cozy py-tight rounded-oct-sm type-caption font-mono font-bold border transition-all duration-fast',
-                window === w
+                window === w.value
                   ? 'bg-oct-accent text-white border-oct-accent/50 shadow-oct-glow-accent'
                   : 'text-oct-muted border-transparent hover:border-oct-border-bright hover:text-oct-text',
               )}
             >
-              {w === '24h' ? '24H' : 'ALL'}
+              {w.label}
             </button>
           ))}
         </div>
@@ -90,6 +143,8 @@ export default function FomoLeaderboard({
           <RefreshCw size={14} className={loading ? 'animate-spin' : ''} />
         </button>
       </div>
+
+      {meta && <SourceNote meta={meta} />}
 
       <div className="flex-1 min-h-0 overflow-auto">
         {error && (

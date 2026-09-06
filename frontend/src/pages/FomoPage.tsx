@@ -11,6 +11,7 @@ import FomoTrackedList from '../components/fomo/FomoTrackedList';
 import FomoHoldersLookup from '../components/fomo/FomoHoldersLookup';
 import FomoThesesLookup from '../components/fomo/FomoThesesLookup';
 import FomoTraderLookup from '../components/fomo/FomoTraderLookup';
+import RobinhoodTape from '../components/robinhood/RobinhoodTape';
 import FullPageSpinner from '../components/common/FullPageSpinner';
 import { routes } from '../lib/routes';
 
@@ -18,7 +19,7 @@ import { routes } from '../lib/routes';
 // Tracking and Leaderboard tabs share a single useFomoTracking instance (owned
 // here) so tracking someone on the leaderboard reflects in the tracked list
 // immediately.
-type FomoView = 'live' | 'leaderboard' | 'tracking' | 'holders' | 'theses' | 'traders';
+type FomoView = 'live' | 'leaderboard' | 'tracking' | 'holders' | 'theses' | 'traders' | 'rhchain';
 
 const FOMO_TABS = [
   { id: 'live' as const, label: 'Live' },
@@ -27,6 +28,9 @@ const FOMO_TABS = [
   { id: 'holders' as const, label: 'Holders' },
   { id: 'theses' as const, label: 'Theses' },
   { id: 'traders' as const, label: 'Traders' },
+  // Independent third-party source (robinhoodtrenches), Robinhood Chain only.
+  // Named for the chain rather than "FOMO" so the scope is obvious from the tab.
+  { id: 'rhchain' as const, label: 'RH Chain' },
 ];
 
 function parseView(raw: string | null): FomoView {
@@ -35,7 +39,8 @@ function parseView(raw: string | null): FomoView {
     raw === 'tracking' ||
     raw === 'holders' ||
     raw === 'theses' ||
-    raw === 'traders'
+    raw === 'traders' ||
+    raw === 'rhchain'
   )
     return raw;
   return 'live';
@@ -109,6 +114,8 @@ export default function FomoPage() {
           <FomoHoldersLookup />
         ) : view === 'theses' ? (
           <FomoThesesLookup />
+        ) : view === 'rhchain' ? (
+          <RobinhoodTape />
         ) : (
           <FomoTraderLookup />
         )}
