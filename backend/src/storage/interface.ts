@@ -1,4 +1,5 @@
 import type { AppConfig, Room } from '../discord/types.js';
+import type { McapCrossFilters } from '../mcapCross/filters.js';
 import type { ContractEntry, ContractEnrichmentPatch, EnrichContractOptions } from '../utils/contractLog.js';
 import type {
   JournalPosition,
@@ -151,4 +152,26 @@ export interface StorageProvider {
     alertId: string,
     patch: PriceAlertObservationPatch,
   ): Promise<void>;
+
+  // ---- Market-cap-crossing filters (per user; see backend/src/mcapCross/) ----
+
+  /**
+   * The caller's own gate-threshold overrides. Only keys the user deliberately
+   * set are present; everything absent inherits the env baseline, which is what
+   * makes "a user who has changed nothing sees today's behaviour" structural
+   * rather than a promise. Both providers keep it in the same JSON settings
+   * blob the rest of AppConfig uses, so this costs no new table and no new
+   * migration; the Supabase side reads the one `settings` column rather than a
+   * whole config bundle, per the egress rule.
+   *
+   * Never throws: an unreadable store returns `{}` and the poller falls back to
+   * the operator baseline. A filter read must not be able to break a sweep.
+   */
+  getMcapCrossFilters(userId: string): Promise<McapCrossFilters>;
+  /**
+   * Replace the caller's overrides wholesale. The caller is responsible for
+   * validating first (`validateFilterPatch`) and for merging a patch onto the
+   * current value (`applyFilterPatch`); this method stores what it is given.
+   */
+  setMcapCrossFilters(userId: string, filters: McapCrossFilters): Promise<McapCrossFilters>;
 }

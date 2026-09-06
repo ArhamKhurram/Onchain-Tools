@@ -27,6 +27,8 @@ import { UserCacheRepo } from './userCacheRepo.js';
 import { RevivalAlertsRepo } from './revivalAlertsRepo.js';
 import { JournalRepo } from './journalRepo.js';
 import { PriceAlertsRepo } from './priceAlertsRepo.js';
+import { McapCrossFiltersRepo } from './mcapCrossFiltersRepo.js';
+import type { McapCrossFilters } from '../../mcapCross/filters.js';
 
 export class SupabaseStorageProvider implements StorageProvider {
   private config: ConfigRepo;
@@ -39,6 +41,7 @@ export class SupabaseStorageProvider implements StorageProvider {
   private revivalAlerts: RevivalAlertsRepo;
   private journal: JournalRepo;
   private priceAlerts: PriceAlertsRepo;
+  private mcapCrossFilters: McapCrossFiltersRepo;
 
   constructor() {
     const ctx = new SupabaseContext(createServiceClient());
@@ -53,6 +56,7 @@ export class SupabaseStorageProvider implements StorageProvider {
     this.revivalAlerts = new RevivalAlertsRepo(ctx);
     this.journal = new JournalRepo(ctx);
     this.priceAlerts = new PriceAlertsRepo(ctx);
+    this.mcapCrossFilters = new McapCrossFiltersRepo(ctx);
 
     // Wire cross-repo dependencies (rooms ↔ config ↔ highlights/keywords seam).
     this.config.rooms = this.rooms;
@@ -271,5 +275,15 @@ export class SupabaseStorageProvider implements StorageProvider {
     patch: PriceAlertObservationPatch,
   ): Promise<void> {
     return this.priceAlerts.updatePriceAlertObservation(userId, alertId, patch);
+  }
+
+  // ---- Market-cap-crossing filters ----
+
+  getMcapCrossFilters(userId: string): Promise<McapCrossFilters> {
+    return this.mcapCrossFilters.getMcapCrossFilters(userId);
+  }
+
+  setMcapCrossFilters(userId: string, filters: McapCrossFilters): Promise<McapCrossFilters> {
+    return this.mcapCrossFilters.setMcapCrossFilters(userId, filters);
   }
 }
