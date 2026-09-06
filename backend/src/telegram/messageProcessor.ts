@@ -21,6 +21,34 @@ export function telegramChannelId(chatId: string, topicId?: number | null): stri
   return topicId != null ? `${chatId}:${topicId}` : chatId;
 }
 
+/**
+ * Rooms a Telegram message routes to, filtered out of one already-loaded room
+ * list.
+ *
+ * A topic message reaches rooms subscribed to EITHER its topic-channel OR the
+ * parent group — so a "whole group" subscription still receives every topic
+ * (backward-compatible), while a per-topic subscription gets just that topic.
+ * Non-topic messages resolve exactly as before.
+ *
+ * This is a pure filter rather than two `getRoomsForChannel` calls on purpose.
+ * `getRoomsForChannel` is itself just `getRooms(...)` plus a filter, so asking
+ * it twice per topic message meant two loads of the same room set on the
+ * hottest path in the process — which is exactly what saturated the Supabase
+ * pool on 2026-09-06. One load, two predicates.
+ */
+export function roomsForTelegramMessage<T extends { id: string; channels: { channelId: string }[] }>(
+  rooms: T[],
+  chatId: string,
+  topicId?: number | null,
+): T[] {
+  const topicChannelId = topicId != null ? telegramChannelId(chatId, topicId) : null;
+  return rooms.filter((room) =>
+    room.channels.some(
+      (ch) => ch.channelId === chatId || (topicChannelId !== null && ch.channelId === topicChannelId),
+    ),
+  );
+}
+
 export function processTelegramMessage(
   raw: TelegramRawMessage,
   roomKeywordPatterns?: KeywordPattern[],

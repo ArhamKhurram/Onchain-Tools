@@ -16,7 +16,7 @@ import { GatewayManager } from './discord/gatewayManager.js';
 import { createProxyBundle } from './discord/proxy.js';
 import { configStore } from './config/store.js';
 import { TelegramClientManager } from './telegram/clientManager.js';
-import { processTelegramMessage, telegramChannelId } from './telegram/messageProcessor.js';
+import { processTelegramMessage, roomsForTelegramMessage } from './telegram/messageProcessor.js';
 import type { TelegramRawMessage } from './telegram/types.js';
 import type { TelegramMessageProcessorContext } from './telegram/messageProcessor.js';
 import { WsServer } from './ws/server.js';
@@ -489,22 +489,12 @@ export function getUserGateway(userId: string): GatewayManager | null {
 function wireTelegramEvents(tg: TelegramClientManager, wsServer: WsServer, userId: string): void {
   const storage = getStorageProvider();
 
-  // Rooms a Telegram message routes to. A topic message reaches rooms subscribed to EITHER its
-  // topic-channel OR the parent group — so a "whole group" subscription still receives every topic
-  // (backward-compatible), while a per-topic subscription gets just that topic. Non-topic messages
-  // resolve exactly as before. Deduped by room id in case a room subscribes to both.
-  const resolveTelegramRooms = async (raw: TelegramRawMessage) => {
-    if (raw.topicId == null) {
-      return storage.getRoomsForChannel(userId, raw.chatId);
-    }
-    const [topicRooms, groupRooms] = await Promise.all([
-      storage.getRoomsForChannel(userId, telegramChannelId(raw.chatId, raw.topicId)),
-      storage.getRoomsForChannel(userId, raw.chatId),
-    ]);
-    const byId = new Map(groupRooms.map((r) => [r.id, r]));
-    for (const r of topicRooms) byId.set(r.id, r);
-    return [...byId.values()];
-  };
+  // Rooms a Telegram message routes to — see roomsForTelegramMessage for the topic/group
+  // routing rules. One `getRooms` load feeds both predicates; this used to be two parallel
+  // `getRoomsForChannel` calls, i.e. two loads of the same room set per topic message on the
+  // hottest path in the process.
+  const resolveTelegramRooms = async (raw: TelegramRawMessage) =>
+    roomsForTelegramMessage(await storage.getRooms(userId), raw.chatId, raw.topicId);
 
   tg.on('ready', (user: { id: string; username: string | null; firstName: string }) => {
     console.log(`[App] Telegram logged in as ${user.firstName} (@${user.username ?? 'no-username'})`);

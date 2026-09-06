@@ -4,6 +4,11 @@ All notable changes to Onchain Tools are documented here. Entries before the
 rename still say "Trenchcord" — that was the product's name at the time, and
 they're left as the record of what shipped.
 
+## 2026-09-06
+
+### Fixed
+- **Busy minutes no longer drop calls** — when a lot of Telegram traffic arrived at once, OCT asked the database the same handful of questions once per message instead of once per burst, ran out of connections, and quietly threw the overflow away. The feed looked calm; the calls that crossed during those seconds were simply never logged. Those repeated questions — your rooms, your keywords, your highlighted names — are now answered once and shared by every message in the burst, so a spike costs the same as a quiet minute. Editing a keyword, a room or a highlighted name still takes effect immediately.
+
 ## 2026-09-05
 
 ### Added
