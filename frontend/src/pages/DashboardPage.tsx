@@ -140,21 +140,18 @@ export default function DashboardPage() {
 
   return (
     <div className="h-full overflow-y-auto bg-oct-bg">
-      {/* Brand band + session readout. The band is deliberately short: the home
-          is a command surface, so the modules belong above the fold, not the
-          slogan. The readout sits in the band's right half, which was dead
-          space, and replaces the status card that used to trail the page. */}
+      {/* Brand band + session readout. The band is status chrome, not a landing
+          hero: the home is a command surface, so the modules belong above the
+          fold. The slogan that used to sit here carried no information and has
+          been cut; the readout fills the right half, which was dead space, and
+          replaces the status card that used to trail the page. */}
       <section className="relative overflow-hidden border-b border-oct-border bg-gradient-to-br from-oct-flame to-oct-accent px-roomy py-section text-black shadow-oct-soft sm:px-gutter">
         <div className="relative mx-auto flex max-w-7xl flex-col gap-section lg:flex-row lg:items-center lg:justify-between lg:gap-gutter">
           <div className="min-w-0">
-            <p className="type-caption mb-cozy font-mono uppercase tracking-[0.24em] opacity-80">
-              [ Console ]
-            </p>
-            <h1 className="font-display text-[clamp(1.625rem,4vw,2.75rem)] leading-[0.95] tracking-tight">
-              PICK A MODULE.
-              <span className="block">GET TO WORK.</span>
+            <h1 className="font-display text-[clamp(1.25rem,2.4vw,1.75rem)] leading-none tracking-tight">
+              CONSOLE
             </h1>
-            <p className="type-label mt-comfy max-w-md font-mono font-normal leading-relaxed opacity-80">
+            <p className="type-label mt-cozy max-w-md font-mono font-normal leading-snug opacity-80">
               Feed needs a Discord token in Settings — it never leaves your browser.
             </p>
           </div>
