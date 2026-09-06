@@ -22,8 +22,10 @@
 // mounted outside /api. getUpdates needs none of that, costs one idle HTTPS
 // connection, and works identically in local mode on a laptop.
 
+import { hostname } from 'os';
 import type { WsServer } from '../ws/server.js';
 import { describeCallError, looksLikeBotToken, TelegramBotApi } from './api.js';
+import { ConflictReporter, decidePolling, instanceLabel, refusalBanner } from './polling.js';
 import { DECLINE_MESSAGE, readAllowedChatIds } from './access.js';
 import { getChatStore } from './chatStore.js';
 import { AdminCache } from './admin.js';
@@ -161,6 +163,18 @@ export function startTelegramBot(wsServer?: WsServer): void {
     return;
   }
 
+  // THE SECOND-POLLER GATE. Refused BEFORE anything is registered or created,
+  // so a refused process holds no listener, no timer and no state — it is as if
+  // the token were unset. See polling.ts for the rule and why it is not simply
+  // "hosted mode only".
+  const decision = decidePolling(process.env);
+  if (!decision.poll) {
+    for (const line of refusalBanner(decision, instanceLabel(process.env, hostname()))) {
+      console.warn(line);
+    }
+    return;
+  }
+
   const abort = new AbortController();
   lifetime = abort;
   // Registered once per process — see getAlertRouter. `alertRouter` being null
@@ -168,7 +182,7 @@ export function startTelegramBot(wsServer?: WsServer): void {
   if (wsServer && !alertRouter) wsServer.onAlert(getAlertRouter().listener());
   startDigestTimer();
 
-  void boot(token, abort).catch((err) => {
+  void boot(token, abort, decision.detail).catch((err) => {
     console.error('[TgBot] Failed to start; continuing without it:', (err as Error)?.message ?? err);
     abandon(abort);
   });
@@ -186,7 +200,7 @@ function abandon(abort: AbortController): void {
   }
 }
 
-async function boot(token: string, abort: AbortController): Promise<void> {
+async function boot(token: string, abort: AbortController, pollingDetail: string): Promise<void> {
   const api = new TelegramBotApi(token);
 
   const me = await api.getMe(abort.signal);
@@ -215,10 +229,20 @@ async function boot(token: string, abort: AbortController): Promise<void> {
     return;
   }
 
+  // A webhook left on the token makes EVERY getUpdates a 409, forever. Clearing
+  // it is idempotent and costs one call per boot, so it is done unconditionally
+  // rather than left as a thing to remember during an incident.
+  await clearAnyWebhook(api, abort.signal);
+  if (abort.signal.aborted || lifetime !== abort) {
+    abandon(abort);
+    return;
+  }
+
   const allowlist = readAllowedChatIds();
   console.log(
     `[TgBot] Online as @${username} (${commandMap.size} commands, ` +
-      `${allowlist ? `${allowlist.size} allowlisted chat(s)` : 'no chat allowlist — serving any chat that runs /start'}).`,
+      `${allowlist ? `${allowlist.size} allowlisted chat(s)` : 'no chat allowlist — serving any chat that runs /start'}); ` +
+      `polling because ${pollingDetail}.`,
   );
 
   // Created before the loop so the very first press has somewhere to land, and
@@ -234,6 +258,33 @@ async function boot(token: string, abort: AbortController): Promise<void> {
   void publishCommandMenu(api, abort.signal);
 
   state = { sender, panel, loop: pollLoop(runtime, abort.signal) };
+}
+
+/**
+ * Clear a webhook if one is set on this token.
+ *
+ * A webhook is the third cause of a 409 (after a duplicate deploy and a laptop),
+ * and the only one this process can fix on its own: with a webhook registered,
+ * Telegram refuses getUpdates outright and the bot receives nothing at all —
+ * not half of it. Best effort; a failure here just leaves the poll loop to
+ * report the conflict.
+ */
+async function clearAnyWebhook(api: TelegramBotApi, signal: AbortSignal): Promise<void> {
+  const info = await api.getWebhookInfo(signal);
+  if (signal.aborted) return;
+  if (!info.ok) {
+    console.warn(`[TgBot] ${describeCallError('getWebhookInfo', info)}; continuing.`);
+    return;
+  }
+  // The URL is the bot owner's own endpoint, not a secret of ours, but it is
+  // not logged anyway — the fact that one existed is the actionable part.
+  if (!info.result?.url) return;
+
+  console.warn('[TgBot] A webhook was set on this token; long polling cannot run alongside it. Removing it.');
+  const removed = await api.deleteWebhook(signal);
+  if (signal.aborted) return;
+  if (removed.ok) console.log('[TgBot] Webhook removed; queued updates will arrive on the first poll.');
+  else console.error(`[TgBot] ${describeCallError('deleteWebhook', removed)} — polling will keep returning 409.`);
 }
 
 /**
@@ -277,6 +328,8 @@ async function pollLoop(runtime: Runtime, signal: AbortSignal): Promise<void> {
   const { api } = runtime;
   let offset = 0;
   let backoff = BACKOFF_START_MS;
+  const conflicts = new ConflictReporter();
+  const label = instanceLabel(process.env, hostname());
 
   while (!signal.aborted) {
     const result = await api.getUpdates(offset, POLL_SECONDS, signal);
@@ -287,12 +340,12 @@ async function pollLoop(runtime: Runtime, signal: AbortSignal): Promise<void> {
       // 409 is the one worth naming: it means a SECOND process (another deploy,
       // a local dev server, a webhook still set) is polling the same token, and
       // Telegram hands each update to only one of them. Silent message loss
-      // otherwise looks like a bug in this code.
+      // otherwise looks like a bug in this code — so this is reported as a
+      // banner naming THIS instance, then re-reported with a running count,
+      // rather than as one line lost in a busy log. See polling.ts.
       if (result.errorCode === 409) {
-        console.error(
-          '[TgBot] Another process is polling this bot token (409). Updates will be split between them — ' +
-            'stop the other instance, or use a separate token per environment.',
-        );
+        const lines = conflicts.record(label);
+        if (lines) for (const line of lines) console.error(line);
       } else {
         console.error(`[TgBot] ${describeCallError('getUpdates', result)}; retrying in ${backoff}ms.`);
       }
@@ -304,6 +357,10 @@ async function pollLoop(runtime: Runtime, signal: AbortSignal): Promise<void> {
     }
 
     backoff = BACKOFF_START_MS;
+    if (conflicts.active) {
+      console.log(`[TgBot] Conflict cleared after ${conflicts.conflicts} rejected poll(s); receiving updates again.`);
+      conflicts.clear();
+    }
     const updates = result.result ?? [];
 
     for (const update of updates) {

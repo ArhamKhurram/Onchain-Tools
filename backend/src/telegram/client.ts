@@ -26,6 +26,25 @@ export function extractTopicId(replyTo: Api.Message['replyTo']): number | null {
 }
 
 /**
+ * Split a room's channel id back into the chat and, if present, the forum topic.
+ *
+ * Rooms address a forum topic as ``chatId:topicId`` (telegramChannelId in
+ * telegram/messageProcessor.ts). MTProto has no such addressing — getEntity
+ * takes the chat and the topic is a `replyTo` thread id — so every read path
+ * that accepts a room channel id has to undo the join first. A chat id is
+ * ``-100…``, so the leading minus is never a separator; only a colon is.
+ *
+ * Pure and exported so the round trip is unit-tested without a live session.
+ */
+export function splitTopicChannelId(channelId: string): { chatId: string; topicId: number | null } {
+  const idx = channelId.indexOf(':');
+  if (idx === -1) return { chatId: channelId, topicId: null };
+  const topic = Number(channelId.slice(idx + 1));
+  if (!Number.isInteger(topic) || topic <= 0) return { chatId: channelId.slice(0, idx), topicId: null };
+  return { chatId: channelId.slice(0, idx), topicId: topic };
+}
+
+/**
  * Whether ``replyTo`` points at a genuine replied-to message versus a forum topic root.
  *
  * In a forum, a top-level topic post carries ``forumTopic`` + ``replyToMsgId`` (the topic root)
@@ -802,11 +821,17 @@ export class TelegramClientWrapper extends EventEmitter {
     return chats;
   }
 
-  async fetchMessages(chatId: string, limit = 30): Promise<TelegramRawMessage[]> {
+  async fetchMessages(channelId: string, limit = 30): Promise<TelegramRawMessage[]> {
     const messages: TelegramRawMessage[] = [];
+    // A forum-topic room's channel id is `chatId:topicId` (see
+    // telegram/messageProcessor.ts). getEntity has never understood that shape,
+    // so every history load for a topic room threw "Cannot find any entity" and
+    // the room opened empty — the repeating log line was the symptom, the empty
+    // pane was the bug.
+    const { chatId, topicId } = splitTopicChannelId(channelId);
     try {
       const entity = await this.client.getEntity(chatId);
-      const result = await this.client.getMessages(entity, { limit });
+      const result = await this.fetchHistory(entity, topicId, limit);
 
       // One batched fetch seeds the reply cache with every uncached reply root on the
       // page — previously each reply-bearing message cost its own serial getMessages
@@ -843,12 +868,37 @@ export class TelegramClientWrapper extends EventEmitter {
       for (const msg of result) {
         if (!msg || !(msg instanceof Api.Message)) continue;
         const raw = await this.buildRawMessage(msg);
-        if (raw) messages.push(raw);
+        // Belt and braces for the fallback path in fetchHistory: an unscoped
+        // read of a forum must not leak another topic's messages into this room.
+        if (raw && (topicId == null || raw.topicId === topicId)) messages.push(raw);
       }
     } catch (err: any) {
-      console.error(`[Telegram] Failed to fetch messages for ${chatId}:`, err.message);
+      console.error(`[Telegram] Failed to fetch messages for ${channelId}:`, err.message);
     }
     return messages.reverse();
+  }
+
+  /**
+   * History for a chat, or for one forum topic within it.
+   *
+   * `replyTo` is how MTProto scopes a history read to a topic (the topic root
+   * message id is the thread id). It is not universally accepted — the General
+   * topic has no root, and non-forum supergroups reject it — so a failure falls
+   * back to the plain chat history rather than surfacing as an empty room.
+   */
+  private async fetchHistory(
+    entity: Parameters<GramJSClient['getMessages']>[0],
+    topicId: number | null,
+    limit: number,
+  ): Promise<Awaited<ReturnType<GramJSClient['getMessages']>>> {
+    if (topicId != null) {
+      try {
+        return await this.client.getMessages(entity, { limit, replyTo: topicId });
+      } catch {
+        // Fall through to the unscoped read below.
+      }
+    }
+    return await this.client.getMessages(entity, { limit });
   }
 
   async downloadMediaByIds(chatId: string, messageId: number): Promise<{ buffer: Buffer; mimeType: string } | null> {
@@ -877,14 +927,32 @@ export class TelegramClientWrapper extends EventEmitter {
     }
   }
 
+  /**
+   * A user's avatar, or null.
+   *
+   * NULL IS ORDINARY HERE, not a fault. The avatar route is called once per
+   * distinct sender the console renders, and a sender the session has never
+   * resolved (no access hash — a member of a group we only read) simply has no
+   * input entity. That produced one `console.error` per request forever: the
+   * route caches successes only, so every re-render of the same message re-asked
+   * and re-logged. Failures now go through the same negative cache as chat and
+   * sender resolution — one attempt and one log line per peer per TTL window.
+   */
   async downloadProfilePhoto(peerId: string): Promise<Buffer | null> {
+    const key = `photo:${peerId}`;
+    if (this.entityRecentlyFailed(key)) return null;
     try {
       const entity = await this.client.getEntity(peerId);
       const buffer = await this.client.downloadProfilePhoto(entity);
-      if (!buffer || !(buffer instanceof Buffer) || buffer.length === 0) return null;
+      if (!buffer || !(buffer instanceof Buffer) || buffer.length === 0) {
+        // No photo set is a permanent-enough answer to be worth not re-asking.
+        this.recordEntityFailure(key);
+        return null;
+      }
       return buffer;
     } catch (err: any) {
-      console.error(`[Telegram] Failed to download profile photo for ${peerId}:`, err.message);
+      this.recordEntityFailure(key);
+      console.warn(`[Telegram] No profile photo for ${peerId}: ${err.message}`);
       return null;
     }
   }

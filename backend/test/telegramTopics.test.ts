@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { extractTopicId, isGenuineReply } from '../src/telegram/client';
+import { extractTopicId, isGenuineReply, splitTopicChannelId } from '../src/telegram/client';
 import { processTelegramMessage, telegramChannelId } from '../src/telegram/messageProcessor';
 import type { TelegramRawMessage } from '../src/telegram/types.js';
 import type { AppConfig } from '../src/discord/types.js';
@@ -101,5 +101,32 @@ describe('processTelegramMessage — topic mapping', () => {
     expect(msg.guildName).toBeNull();
     expect(msg.channelId).toBe('-100999');
     expect(msg.channelName).toBe('SOL Algorithm');
+  });
+});
+
+/**
+ * A room's channel id and MTProto's addressing are not the same thing: a room
+ * joins a forum topic on as `chatId:topicId`, while MTProto has only the chat
+ * plus a `replyTo` thread id. History loading passed the joined form straight
+ * to getEntity, which always threw "Cannot find any entity corresponding to
+ * -100…:1" — so a topic room opened empty and logged that on every load.
+ */
+describe('splitTopicChannelId', () => {
+  it('leaves a plain chat id alone (the leading minus is not a separator)', () => {
+    expect(splitTopicChannelId('-1003705845819')).toEqual({ chatId: '-1003705845819', topicId: null });
+  });
+
+  it('splits a forum-topic channel id', () => {
+    expect(splitTopicChannelId('-1003705845819:4')).toEqual({ chatId: '-1003705845819', topicId: 4 });
+  });
+
+  it('round-trips telegramChannelId, which is the id it will actually be handed', () => {
+    expect(splitTopicChannelId(telegramChannelId('-100123', 9))).toEqual({ chatId: '-100123', topicId: 9 });
+    expect(splitTopicChannelId(telegramChannelId('-100123', null))).toEqual({ chatId: '-100123', topicId: null });
+  });
+
+  it('treats a non-numeric or non-positive suffix as no topic rather than guessing', () => {
+    expect(splitTopicChannelId('-100123:abc')).toEqual({ chatId: '-100123', topicId: null });
+    expect(splitTopicChannelId('-100123:0')).toEqual({ chatId: '-100123', topicId: null });
   });
 });

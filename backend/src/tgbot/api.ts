@@ -151,6 +151,28 @@ export class TelegramBotApi {
   }
 
   /**
+   * What Telegram currently believes about this token's webhook.
+   *
+   * A webhook and getUpdates are mutually exclusive: with one set, EVERY poll
+   * comes back 409 and the bot never receives anything. Checked at boot so that
+   * cause is named rather than hidden inside a generic conflict message.
+   */
+  async getWebhookInfo(signal?: AbortSignal): Promise<TgCallResult<{ url?: string }>> {
+    return this.call<{ url?: string }>('getWebhookInfo', {}, { signal });
+  }
+
+  /**
+   * Remove a webhook so long polling can proceed.
+   *
+   * `drop_pending_updates` is deliberately NOT set: updates queued while the
+   * webhook was live are still real user commands, and the poll loop will
+   * deliver them on its first pass.
+   */
+  async deleteWebhook(signal?: AbortSignal): Promise<TgCallResult<boolean>> {
+    return this.call<boolean>('deleteWebhook', { drop_pending_updates: false }, { signal });
+  }
+
+  /**
    * Long-poll for updates.
    *
    * `offset` is the confirmation mechanism, not a cursor into history: sending
