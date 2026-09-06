@@ -4,6 +4,7 @@ import { revivalAlertLog } from '../utils/revivalAlertLog.js';
 import { journalLog } from '../journal/journalLog.js';
 import { priceAlertLog } from '../priceAlerts/priceAlertLog.js';
 import { pumpSessionStore } from '../pumpfun/pumpSessionStore.js';
+import { sanitizeStoredFilters, type McapCrossFilters } from '../mcapCross/filters.js';
 import type {
   PriceAlertInput,
   PriceAlertObservationPatch,
@@ -211,5 +212,28 @@ export class JsonStorageProvider implements StorageProvider {
     patch: PriceAlertObservationPatch,
   ): Promise<void> {
     priceAlertLog.applyObservation(alertId, patch);
+  }
+
+  // ---- Market-cap-crossing filters ----
+  //
+  // Kept in the same config file as the rest of AppConfig rather than in a
+  // store of its own: there is one local user, the values are four numbers, and
+  // a separate file would need its own load/save/lock for no gain. Sanitized on
+  // the way out because backend/data/config.json is a file a human can and does
+  // hand-edit — a typo there must fall back to the env baseline, never open a
+  // gate.
+
+  async getMcapCrossFilters(_userId: string): Promise<McapCrossFilters> {
+    const config = configStore.getConfig() as unknown as Record<string, unknown>;
+    return sanitizeStoredFilters(config.mcapCrossFilters);
+  }
+
+  async setMcapCrossFilters(
+    _userId: string,
+    filters: McapCrossFilters,
+  ): Promise<McapCrossFilters> {
+    const clean = sanitizeStoredFilters(filters);
+    configStore.updateConfig({ mcapCrossFilters: clean } as any);
+    return clean;
   }
 }
