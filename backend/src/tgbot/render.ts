@@ -556,6 +556,32 @@ export function renderMcapCrossCard(view: McapCrossView): string {
 const OCT_SIGNAL_CHAIN_LABEL: Record<'sol' | 'evm', string> = { sol: 'SOL', evm: 'EVM' };
 
 /**
+ * Human-readable chain name for an OCT Alerts card's `Chain:` line. Unlike the
+ * compact crossing-card label (revivalNetworkLabel → "HOOD"/"BNB"), the forwarded
+ * signal spells the chain out ("Robinhood", "Base") so a fresh subscriber reads
+ * it plainly. Falls back to revivalNetworkLabel for any chain not mapped here.
+ */
+const OCT_SIGNAL_NETWORK_LABELS: Record<string, string> = {
+  solana: 'Solana',
+  sol: 'Solana',
+  robinhood: 'Robinhood',
+  hood: 'Robinhood',
+  base: 'Base',
+  bsc: 'BNB Chain',
+  bnb: 'BNB Chain',
+  eth: 'Ethereum',
+  ethereum: 'Ethereum',
+  arb: 'Arbitrum',
+  polygon: 'Polygon',
+  avax: 'Avalanche',
+};
+
+function octSignalChainLabel(chain: 'sol' | 'evm', network: string): string {
+  if (chain === 'sol') return 'Solana';
+  return OCT_SIGNAL_NETWORK_LABELS[network.trim().toLowerCase()] ?? revivalNetworkLabel(network);
+}
+
+/**
  * The quick-buy keyboard for an OCT Alerts card.
  *
  * DELIBERATELY NOT `mcapCrossQuickBuyKeyboard`. The operator wants a different
@@ -630,9 +656,9 @@ export function octSignalQuickBuyKeyboard(view: {
 export function renderOctSignalCard(view: OctSignalView): string {
   const ticker = clampName(view.ticker ?? '', '');
   const heading = ticker !== '' ? `💠 $${ticker}` : `💠 ${ALERT_CATALOG.octSignals.label}`;
-  // Chain line: SOL reads "Solana"; every EVM/Robinhood signal uses the same
-  // network label the crossing card uses (revivalNetworkLabel).
-  const chainLabel = view.chain === 'sol' ? 'Solana' : revivalNetworkLabel(view.network);
+  // Chain line: SOL reads "Solana"; an EVM signal spells its resolved chain out
+  // ("Robinhood", "Base"), falling back to revivalNetworkLabel for the rest.
+  const chainLabel = octSignalChainLabel(view.chain, view.network);
   const primary = view.addresses[0];
 
   return joinLines([
