@@ -52,6 +52,7 @@
 
 import type { RevivalNetwork } from '@oct/shared';
 import type { TokenSecurity } from './security.js';
+import { estimateTotalFeesUsd } from './fees.js';
 
 /** The market cap a token must cross. The whole point of the signal. */
 export const DEFAULT_TARGET_MCAP_USD = 750_000;
@@ -85,6 +86,24 @@ export interface McapGateConfig {
    *     a no-op for every existing user. See `missingCriticalFields`.
    */
   minVolume24hUsd: number | null;
+  /**
+   * MINIMUM estimated USD paid in trading fees/tax over 24h — Axiom's
+   * "Total Fees" (Prio & Tip & Trading Fees) shape, approximated as
+   * `24h volume × (buyTax + sellTax) / 2`. See `fees.ts` for the model, its
+   * two structural differences from Axiom's column, and why the unit is USD
+   * rather than the ETH/SOL Axiom prints.
+   *
+   * `null` — not 0 — means OFF, exactly as for `minVolume24hUsd`, and for the
+   * same reason: "enough fee flow" is a preference, not a safety floor, so it
+   * ships unevaluated and the user names it.
+   *
+   * IT NEEDS TWO INPUTS AND EITHER ONE MISSING IS AN ABSTAIN. The fee rate is
+   * an EVM concept — `normalizeSecurity` hard-nulls the tax fields on Solana
+   * because a transfer tax cannot exist there — so with this floor set, Solana
+   * tokens abstain rather than fail. The gate goes QUIET on that chain; it
+   * never rejects it for having "no fees".
+   */
+  minTotalFees: number | null;
   /** Require LP burned or locked. Off makes the LP gate abstain-only. */
   requireLpSecured: boolean;
 }
@@ -125,6 +144,10 @@ export const DEFAULT_GATE_CONFIG: McapGateConfig = {
   // default in this table is a safety floor with a stated sample behind it;
   // this one is a preference, so it ships unset and the user names it.
   minVolume24hUsd: null,
+  // Same reasoning, plus one of its own: this gate can only be EVALUATED where
+  // a tax rate exists, so a shipped default would silently narrow EVM alerts
+  // while leaving Solana abstaining. Off unless somebody asks for it.
+  minTotalFees: null,
 };
 
 export interface McapGateInput {
@@ -154,6 +177,14 @@ export interface GateVerdict {
   /** Liquidity / mcap, for the log line and the alert card. Null when unknown. */
   liquidityRatio: number | null;
   /**
+   * Estimated 24h trading fees in USD, for the alert card. Null whenever the
+   * volume or the tax rate was unknown — including EVERY Solana token, whose
+   * tax fields do not exist. Computed whether or not the fee floor is set, so
+   * the card can show the number that justifies an alert without the reader
+   * having to switch a filter on to see it.
+   */
+  totalFeesUsd: number | null;
+  /**
    * Things that did NOT fail a gate but that the reader deserves to know, e.g.
    * `honeypotUnknown`. Empty on a clean pass.
    *
@@ -174,8 +205,9 @@ function verdict(
   abstainReason: string | null,
   liquidityRatio: number | null,
   caveats: string[] = [],
+  totalFeesUsd: number | null = null,
 ): GateVerdict {
-  return { decision, failed, abstainReason, liquidityRatio, caveats };
+  return { decision, failed, abstainReason, liquidityRatio, caveats, totalFeesUsd };
 }
 
 /**
@@ -236,6 +268,14 @@ export function evaluateMcapGates(
       : verdict('abstain', [], 'security lookup unavailable', ratio);
   }
 
+  // Volume × fee rate, computed here because this is the first point where BOTH
+  // halves are in hand. Always computed — the card wants it even with the floor
+  // off — and null wherever either half is missing. See fees.ts.
+  const totalFeesUsd = estimateTotalFeesUsd(input.volume24hUsd, sec);
+  if (cfg.minTotalFees != null && totalFeesUsd != null && totalFeesUsd < cfg.minTotalFees) {
+    failed.push('totalFees');
+  }
+
   if (sec.top10HolderRate != null && sec.top10HolderRate > cfg.maxTop10HolderRate) {
     failed.push('top10Concentration');
   }
@@ -261,7 +301,7 @@ export function evaluateMcapGates(
 
   if (cfg.requireLpSecured && sec.lpSecured === false) failed.push('lpSecured');
 
-  if (failed.length > 0) return verdict('reject', failed, null, ratio);
+  if (failed.length > 0) return verdict('reject', failed, null, ratio, [], totalFeesUsd);
 
   // --- Nothing failed. Is that because everything passed, or because we
   //     could not see? -----------------------------------------------------
@@ -278,13 +318,24 @@ export function evaluateMcapGates(
   // must still abstain rather than fail, because a floor that treats silence as
   // zero rejects exactly the tokens the data is thinnest about.
   if (cfg.minVolume24hUsd != null && (input.volume24hUsd == null || !Number.isFinite(input.volume24hUsd))) {
-    return verdict('abstain', [], '24h volume unknown', ratio);
+    return verdict('abstain', [], '24h volume unknown', ratio, [], totalFeesUsd);
+  }
+
+  // A SET fee floor that could not be computed is the same open question, and
+  // it is open on a whole CHAIN rather than a stray token: Solana has no tax
+  // fields at all, so every Solana crossing lands here while this floor is on.
+  // Abstaining is still the only honest answer — a token whose fee flow was
+  // never measured has neither passed nor failed a fee test — but it does mean
+  // this filter effectively silences Solana, which is why the settings copy
+  // says so instead of leaving the user to discover a quiet chain.
+  if (cfg.minTotalFees != null && totalFeesUsd == null) {
+    return verdict('abstain', [], 'total fees unknown', ratio, [], null);
   }
 
   const unknown = missingCriticalFields(sec, network, cfg);
-  if (unknown) return verdict('abstain', [], unknown, ratio);
+  if (unknown) return verdict('abstain', [], unknown, ratio, [], totalFeesUsd);
 
-  return verdict('pass', [], null, ratio, caveats);
+  return verdict('pass', [], null, ratio, caveats, totalFeesUsd);
 }
 
 /**
@@ -361,6 +412,10 @@ export function resolveGateConfig(): McapGateConfig {
     minVolume24hUsd: envNumOrNull(
       'MCAP_CROSS_MIN_VOLUME_24H_USD',
       DEFAULT_GATE_CONFIG.minVolume24hUsd,
+    ),
+    minTotalFees: envNumOrNull(
+      'MCAP_CROSS_MIN_TOTAL_FEES_USD',
+      DEFAULT_GATE_CONFIG.minTotalFees,
     ),
     requireLpSecured: envBool(
       'MCAP_CROSS_REQUIRE_LP_SECURED',

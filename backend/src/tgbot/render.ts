@@ -384,6 +384,13 @@ export interface McapCrossView {
   liquidityRatio: number | null;
   /** Traded USD over 24h across all pools. Null/absent = not reported. */
   volume24hUsd?: number | null;
+  /**
+   * Estimated USD paid in trading fees/tax over 24h (volume x tax rate).
+   * Null/absent = not computable — no volume, or no tax rate, which is every
+   * Solana token. USD, because Axiom's ETH/SOL would need a native price this
+   * pipeline does not hold.
+   */
+  totalFeesUsd?: number | null;
   /** Non-blocking gate caveats, e.g. `honeypotUnknown`. Absent = clean pass. */
   caveats?: string[];
 }
@@ -427,6 +434,13 @@ export function renderMcapCrossCard(view: McapCrossView): string {
     // because a gate depends on it, and volume's gate is off unless asked for.
     ...(view.volume24hUsd != null
       ? [`${bold('Vol 24h:')} ${escapeHtml(compactUsd(view.volume24hUsd))}`]
+      : []),
+    // Same rule as volume: a line only when the figure is KNOWN. "est." and
+    // the explicit $ are both load-bearing — the reader knows this number from
+    // Axiom, where it is exact and denominated in ETH/SOL, and neither is true
+    // here. Absent on Solana by construction; see fees.ts.
+    ...(view.totalFeesUsd != null
+      ? [`${bold('Fees 24h:')} ${escapeHtml(`~${compactUsd(view.totalFeesUsd)} est.`)}`]
       : []),
     `${bold('Chain:')} ${escapeHtml(revivalNetworkLabel(view.network))}`,
     ...(caveated ? [`${bold('⚠ Honeypot:')} ${escapeHtml('not evaluated — verify before buying')}`] : []),

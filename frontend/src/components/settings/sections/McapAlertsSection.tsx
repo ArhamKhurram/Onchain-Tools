@@ -40,6 +40,8 @@ interface GateConfig {
   maxTaxRate: number;
   /** Null = the filter is OFF, not "zero". See the note on FIELDS below. */
   minVolume24hUsd: number | null;
+  /** Null = OFF, same as volume. USD, never the ETH/SOL Axiom shows. */
+  minTotalFees: number | null;
   requireLpSecured: boolean;
 }
 
@@ -48,7 +50,8 @@ type FilterKey =
   | 'minLiquidityToMcapRatio'
   | 'maxTop10HolderRate'
   | 'maxTaxRate'
-  | 'minVolume24hUsd';
+  | 'minVolume24hUsd'
+  | 'minTotalFees';
 
 interface FilterView {
   filters: Partial<Record<FilterKey, number>>;
@@ -105,6 +108,17 @@ const FIELDS: {
     unit: 'usd',
     step: 10000,
     help: 'Traded USD in the last day, added up across every pool. Off unless you set it. Works on all three chains — and where no volume figure is reported the alert is skipped rather than let through, so this can never pass a token it could not measure.',
+  },
+  {
+    key: 'minTotalFees',
+    label: 'Min 24h fees paid (USD)',
+    unit: 'usd',
+    step: 1000,
+    // The two things a user must know before setting this: it is an estimate,
+    // and it silences Solana. Both are in the first two sentences rather than
+    // buried, because a filter that quietly stops a whole chain alerting is
+    // indistinguishable from a broken feed.
+    help: "Estimated trading fees paid by traders over the last day — 24h volume x the token's buy/sell tax rate, in USD. It approximates Axiom's Total Fees column (which is cumulative and shown in ETH/SOL), so treat it as a ranking figure, not Axiom's exact number. BNB and Robinhood only in practice: Solana tokens have no tax rate, so with this set their alerts are skipped rather than let through.",
   },
 ];
 
@@ -335,9 +349,9 @@ export default function McapAlertsSection() {
         <ul className="space-y-snug type-body text-oct-muted list-disc pl-5">
           <li>
             They never turn an unknown into a pass. If the security provider could
-            not answer for a token — or, with a volume floor set, if no volume
-            figure was reported — it is skipped rather than let through,
-            regardless of what you set here.
+            not answer for a token — or, with a volume or fee floor set, if that
+            figure could not be computed — it is skipped rather than let
+            through, regardless of what you set here.
           </li>
           <li>
             A honeypot check that was never run is still shown as unevaluated on

@@ -50,6 +50,15 @@
  * undocumented policy. `evaluateMcapGates` treats an unset threshold as absent
  * rather than as zero, which is why the distinction survives into the gate.
  *
+ * FEES ARE THE SECOND SUCH FILTER, AND THE ONLY ONE THAT CAN GO QUIET ON A
+ * CHAIN. `minTotalFees` is `24h volume x tax rate` (see `fees.ts`), so it needs
+ * BOTH a volume figure and a tax rate. Solana has no tax rate — the concept
+ * does not exist there — so with this floor set every Solana crossing ABSTAINS.
+ * That is the correct reading of a metric that cannot be computed, and it is
+ * emphatically not a rejection, but it does mean the filter is EVM-only in
+ * practice. The settings copy says so; a user should never have to work out
+ * from a quiet feed that a chain stopped alerting.
+ *
  * A BAD STORED VALUE MUST NEVER DISABLE A GATE. `sanitizeStoredFilters` runs on
  * every READ, not just on write: a value that arrived by some other route (a
  * hand-edited local JSON file, an imported config, a future bug) is DROPPED and
@@ -96,6 +105,26 @@ export interface McapCrossFilters {
    * `evaluateMcapGates`.
    */
   minVolume24hUsd?: number;
+  /**
+   * MINIMUM estimated USD paid in trading fees/tax over the last 24h — the
+   * operator's "Total Fees" metric (Axiom's Prio & Tip & Trading Fees column),
+   * approximated as `24h volume x (buyTax + sellTax) / 2`. The model, its
+   * limits and the unit choice are documented in `fees.ts`.
+   *
+   * IT IS NOT THE VOLUME FILTER IN A HAT. The tax rate varies per token (0.3%,
+   * 1% and 2% all appear in the operator's own sample), so two tokens at
+   * identical volume get different fee figures and the two floors rank the
+   * universe differently. Activity times cost-to-trade is the metric.
+   *
+   * AND IT IS THE ONLY USER FILTER THAT CAN GO QUIET ON A WHOLE CHAIN. Like
+   * `maxTaxRate` it depends on the EVM tax fields, but unlike `maxTaxRate` —
+   * which simply does not apply on Solana and therefore changes nothing there
+   * — this one is a floor that cannot be EVALUATED without a rate, so a Solana
+   * token abstains. Abstain is still not a rejection and never becomes a pass,
+   * but the practical effect of setting it is "EVM only", and the settings copy
+   * says exactly that rather than leaving a user to notice a silent chain.
+   */
+  minTotalFees?: number;
 }
 
 /** The editable keys, in display order. Exhaustive by construction. */
@@ -105,6 +134,7 @@ export const MCAP_CROSS_FILTER_KEYS = [
   'maxTop10HolderRate',
   'maxTaxRate',
   'minVolume24hUsd',
+  'minTotalFees',
 ] as const;
 
 export type McapCrossFilterKey = (typeof MCAP_CROSS_FILTER_KEYS)[number];
@@ -162,6 +192,19 @@ export const MCAP_CROSS_FILTER_BOUNDS: Record<
     direction: 'min',
     unit: 'usd',
     label: 'Min 24h volume',
+  },
+  minTotalFees: {
+    min: 0,
+    // Fees are a small fraction of volume, so they do not need volume's 1e12
+    // headroom; 1e9 is already orders of magnitude above anything a 750K token
+    // could produce. Same purpose as every other bound here: catch a typo.
+    max: 1e9,
+    direction: 'min',
+    unit: 'usd',
+    // The unit is in the label because Axiom prints this figure in ETH/SOL and
+    // OCT prints it in USD. An unlabelled number here would be read in the
+    // wrong unit by exactly the person who asked for the filter.
+    label: 'Min 24h fees paid (USD)',
   },
 };
 
@@ -287,6 +330,8 @@ export function resolveUserGateConfig(
     // The baseline is `null` unless an operator set the env var, so an unset
     // override leaves the gate switched OFF rather than at some default floor.
     minVolume24hUsd: clean.minVolume24hUsd ?? baseline.minVolume24hUsd,
+    // Same null-means-off inheritance as volume above.
+    minTotalFees: clean.minTotalFees ?? baseline.minTotalFees,
     requireLpSecured: baseline.requireLpSecured,
   };
 }

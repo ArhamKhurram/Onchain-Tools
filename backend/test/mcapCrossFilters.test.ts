@@ -101,6 +101,7 @@ const ENV_KEYS = [
   'OCT_MCAP_CROSS_MAX_TAX_RATE',
   'OCT_MCAP_CROSS_REQUIRE_LP_SECURED',
   'OCT_MCAP_CROSS_MIN_VOLUME_24H_USD',
+  'OCT_MCAP_CROSS_MIN_TOTAL_FEES_USD',
 ];
 let saved: Record<string, string | undefined> = {};
 

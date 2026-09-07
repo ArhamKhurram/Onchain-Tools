@@ -142,6 +142,13 @@ export interface McapCrossAlertData {
    * has a volume figure for and a token nobody traded are different claims.
    */
   volume24hUsd: number | null;
+  /**
+   * Estimated USD paid in trading fees/tax over 24h — `volume x tax rate`, the
+   * operator's "Total Fees" metric (fees.ts). Null whenever either half was
+   * unknown, which includes EVERY Solana token, since a transfer tax cannot
+   * exist there. USD, not the ETH/SOL Axiom prints.
+   */
+  totalFeesUsd: number | null;
   /** liquidity / mcap at the crossing. Null when liquidity was unknown. */
   liquidityRatio: number | null;
   /** Previous observation, i.e. where it crossed FROM. */
@@ -500,6 +507,10 @@ class McapCrossPoller {
           targetUsd: target,
           liquidityUsd: usable?.liquidityUsd ?? null,
           volume24hUsd: usable?.volume24hUsd ?? null,
+          // Straight off the verdict rather than recomputed: the gate is the
+          // one place the fee model lives, so a card can never disagree with
+          // the comparison that produced it.
+          totalFeesUsd: gates.totalFeesUsd,
           liquidityRatio: gates.liquidityRatio,
           caveats: gates.caveats,
           previousMcapUsd: prior?.lastSeenMcap ?? null,
