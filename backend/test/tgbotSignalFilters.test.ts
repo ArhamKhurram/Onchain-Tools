@@ -158,6 +158,40 @@ describe('chatsPassingSignalFilters', () => {
     expect(asked).toEqual(['operator']);
   });
 
+  it('does NOT let the instance default filter an unlinked chat by default', async () => {
+    // TG_BOT_ALERT_SOURCE_USER_ID names whose STREAM a chat follows; that
+    // account's console thresholds are a personal reading preference and must
+    // not silently mute every group on the instance. An unlinked chat keeps the
+    // baseline even when the default account would have rejected the signal.
+    delete process.env.TG_BOT_DEFAULT_SOURCE_FILTERS;
+    const { gate, asked } = fakeGate(true, { operator: false });
+    const kept = await chatsPassingSignalFilters([{ sourceUserId: null }], 'operator', gate);
+    expect(kept).toHaveLength(1);
+    expect(asked).toEqual([]); // and it costs no lookup at all
+  });
+
+  it('still personalises a chat that was EXPLICITLY linked', async () => {
+    // Linking is a deliberate act, so inheriting that owner's thresholds is a
+    // fair consequence — this is the half of the feature that must keep working.
+    delete process.env.TG_BOT_DEFAULT_SOURCE_FILTERS;
+    const { gate } = fakeGate(true, { operator: false });
+    expect(await chatsPassingSignalFilters([{ sourceUserId: 'operator' }], 'operator', gate)).toEqual(
+      [],
+    );
+  });
+
+  it('lets an operator opt the instance default back in', async () => {
+    process.env.TG_BOT_DEFAULT_SOURCE_FILTERS = '1';
+    try {
+      const { gate, asked } = fakeGate(true, { operator: false });
+      const kept = await chatsPassingSignalFilters([{ sourceUserId: null }], 'operator', gate);
+      expect(kept).toEqual([]);
+      expect(asked).toEqual(['operator']);
+    } finally {
+      delete process.env.TG_BOT_DEFAULT_SOURCE_FILTERS;
+    }
+  });
+
   it('never delivers an abstain: a gate that cannot say yes is a no', async () => {
     // `passesFor` is documented to be true ONLY for a `pass`; an abstain
     // arrives here as false and must drop, whatever the baseline said.

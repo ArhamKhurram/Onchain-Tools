@@ -49,6 +49,16 @@ export function readDefaultAlertSource(): string | null {
 }
 
 /**
+ * Should a chat that resolves only via the instance default be filtered by that
+ * account's console thresholds? Off unless the operator asks for it — see
+ * `chatsPassingSignalFilters` for why the default is the conservative one.
+ */
+export function readDefaultSourceFiltersEnabled(): boolean {
+  const raw = process.env.TG_BOT_DEFAULT_SOURCE_FILTERS?.trim().toLowerCase();
+  return raw === '1' || raw === 'true' || raw === 'yes';
+}
+
+/**
  * The OCT user id whose alerts this chat receives, or null for "none".
  *
  * Pure apart from the env/mode read, and exported so the fan-out and /status
@@ -95,15 +105,26 @@ export interface SignalFilterGate {
  * already exists; this just uses it. Three cases, and only the third is new:
  *
  *   • an explicit `source_user_id`  → that user's filters decide
- *   • the instance default (env, or 'local' in local mode) → that user's
- *     filters decide, because that IS the account driving the chat's feed
+ *   • the instance default (env, or 'local' in local mode) → `baselinePass`,
+ *     unless the operator opts in (see below)
  *   • nothing resolves              → `baselinePass`, i.e. byte-for-byte what
  *     the chat received before this function existed
  *
- * The third case is load-bearing. A chat nobody has linked, on an instance with
- * no `TG_BOT_ALERT_SOURCE_USER_ID`, must keep getting exactly the operator
- * baseline; starting to drop its alerts because "no filters resolved" would be
- * a silent regression, which is strictly worse than a missing feature.
+ * The last two cases are load-bearing. A chat nobody has linked must keep
+ * getting exactly the operator baseline; starting to drop its alerts because
+ * "no filters resolved" would be a silent regression, strictly worse than a
+ * missing feature.
+ *
+ * WHY THE INSTANCE DEFAULT DOES NOT FILTER BY DEFAULT. It is tempting to let it
+ * — that account IS the one driving the chat's feed. But the two settings mean
+ * different things: `TG_BOT_ALERT_SOURCE_USER_ID` names WHOSE STREAM the chats
+ * follow, while the console filters are a personal reading preference. Letting
+ * the second silently govern the first means an operator tightening their own
+ * console quietly mutes every group chat on the instance, with no indication in
+ * either place that the two are connected. Linking a chat is an explicit act
+ * and personalising it is a fair consequence; inheriting a stranger's
+ * thresholds because of an env var is not. `TG_BOT_DEFAULT_SOURCE_FILTERS=1`
+ * turns it on for an operator who does want their console to drive every chat.
  *
  * ONE READ PER USER, NOT PER CHAT. Twenty chats sharing one instance default
  * ask `passesFor` once. The gate caches on its own side too; this memo only
@@ -116,9 +137,12 @@ export async function chatsPassingSignalFilters<T extends SourcedChat>(
 ): Promise<T[]> {
   const memo = new Map<string, Promise<boolean>>();
   const out: T[] = [];
+  const defaultFilters = readDefaultSourceFiltersEnabled();
 
   for (const chat of chats) {
-    const source = resolveAlertSource(chat, fallback);
+    // Only an EXPLICITLY linked chat is personalised unless the operator opts
+    // in; a chat riding the instance default keeps the baseline.
+    const source = chat.sourceUserId ?? (defaultFilters ? fallback : null);
     if (source === null) {
       if (gate.baselinePass) out.push(chat);
       continue;
