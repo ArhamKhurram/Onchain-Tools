@@ -20,6 +20,8 @@ import {
   revivalNetworkLabel,
   shortAddress,
   type ContractLinkTemplates,
+  type EvmPlatform,
+  type SolPlatform,
 } from '@oct/shared';
 import type { BotSnapshotResponse } from '@oct/shared';
 // The signature is brand, not Discord — one constant so the two bots cannot
@@ -36,6 +38,7 @@ import {
   type TgChatSettings,
 } from './alertPolicy.js';
 import type { PendingDigest } from './digest.js';
+import type { TgInlineKeyboardButton, TgInlineKeyboardMarkup } from './types.js';
 import { COMMAND_GROUPS } from './commandCatalog.js';
 import { groupMentionNote } from './identity.js';
 
@@ -396,6 +399,85 @@ export interface McapCrossView {
 }
 
 /**
+ * Quick-buy venues for the crossing card, in the order they appear as buttons.
+ *
+ * Each entry names a PRESET the shared referral machinery already knows, per
+ * chain — never a referral code. buildRevivalContractUrl → buildContractUrl →
+ * getPresetTemplate embeds the owner's own REFERRALS code into the URL, so the
+ * owner earns the referral fee; this table only says which venue applies where.
+ *
+ * `null` means the venue does not support that chain and is omitted — a
+ * wrong-chain link is a wasted click, or worse points at the wrong token. Which
+ * venues are valid per chain is fixed upstream by SolPlatform/EvmPlatform in
+ * @oct/shared: Axiom and Padre are Solana-only; GMGN and Bloom span both.
+ */
+const MCAP_QUICK_BUY_VENUES: {
+  label: string;
+  sol: SolPlatform | null;
+  evm: EvmPlatform | null;
+}[] = [
+  { label: 'GMGN', sol: 'gmgn', evm: 'gmgn' },
+  { label: 'Axiom', sol: 'axiom', evm: null },
+  { label: 'Padre', sol: 'padre', evm: null },
+  { label: 'Bloom', sol: 'bloom', evm: 'bloom' },
+];
+
+/**
+ * A per-venue link config for buildRevivalContractUrl. buildContractUrl keys
+ * sol-vs-evm off the ADDRESS (`0x…` = EVM), so the venue goes in the field that
+ * matches this chain and the OTHER field gets a valid throwaway default that is
+ * never read (only a `custom` platform reads `sol`/`evm`; a preset never does).
+ */
+function venueConfig(platform: SolPlatform | EvmPlatform, isSol: boolean): ContractLinkTemplates {
+  return {
+    sol: '',
+    evm: '',
+    solPlatform: isSol ? (platform as SolPlatform) : 'axiom',
+    evmPlatform: isSol ? 'gmgn' : (platform as EvmPlatform),
+  };
+}
+
+/**
+ * The Rick-style quick-buy keyboard for a market-cap crossing: one URL button
+ * per venue that supports the token's chain, each carrying the owner's referral.
+ *
+ * URL buttons, not inline `<a>` links: they need no callback handling, and their
+ * `url` is a JSON field of reply_markup (see api.ts) — so it must be RAW, never
+ * escapeHtml'd (that context is text/attributes, and escaping here would corrupt
+ * the URL with `&amp;`). The safe-link path for a button is the same http(s)
+ * guard link() applies; an address is untrusted input, so a URL that does not
+ * build to http(s) is dropped rather than sent.
+ *
+ * Returns undefined when nothing applies, so the caller can simply omit the
+ * reply_markup rather than attach an empty keyboard.
+ */
+export function mcapCrossQuickBuyKeyboard(view: {
+  address: string;
+  network: string;
+}): TgInlineKeyboardMarkup | undefined {
+  // buildContractUrl decides sol-vs-evm from the address, so decide the venue
+  // list the same way — a base58 mint is Solana, an 0x address is EVM.
+  const isSol = !view.address.startsWith('0x');
+
+  const buttons: TgInlineKeyboardButton[] = [];
+  for (const venue of MCAP_QUICK_BUY_VENUES) {
+    const platform = isSol ? venue.sol : venue.evm;
+    if (!platform) continue;
+    const url = buildRevivalContractUrl(view.address, view.network, venueConfig(platform, isSol));
+    // Same guard as link(): only http(s) is a real, tappable link.
+    if (!/^https?:\/\//i.test(url.trim())) continue;
+    buttons.push({ text: venue.label, url });
+  }
+
+  if (buttons.length === 0) return undefined;
+
+  // Two per row keeps four venues to two tidy rows on a phone; never more.
+  const rows: TgInlineKeyboardButton[][] = [];
+  for (let i = 0; i < buttons.length; i += 2) rows.push(buttons.slice(i, i + 2));
+  return { inline_keyboard: rows };
+}
+
+/**
  * A market-cap crossing, as a Telegram card.
  *
  * It does NOT reuse renderAlertCard. That card's frame is "somebody said
@@ -409,6 +491,11 @@ export interface McapCrossView {
  * question anyone asks and is the difference between an alert that gets acted
  * on and one that gets screenshotted. The chain goes on the card for the same
  * reason a wrong-chain address is a wasted click.
+ *
+ * The quick-buy venues (GMGN/Axiom/Padre/Bloom, chain-correct) ride the message
+ * as a reply_markup keyboard, not as text — see mcapCrossQuickBuyKeyboard, which
+ * the delivery path (alerts.ts) attaches. This body keeps `code(address)` so the
+ * CA stays tap-to-copy even for a client that renders no buttons.
  */
 export function renderMcapCrossCard(view: McapCrossView): string {
   const ticker = clampName((view.symbol ?? '').toUpperCase().replace(/^\$/, ''), '');
@@ -454,8 +541,9 @@ export function renderMcapCrossCard(view: McapCrossView): string {
     `${bold('Chain:')} ${escapeHtml(revivalNetworkLabel(view.network))}`,
     ...(caveated ? [`${bold('⚠ Honeypot:')} ${escapeHtml('not evaluated — verify before buying')}`] : []),
     '',
+    // The chart/quick-buy links live in the reply_markup keyboard, not here.
+    // The CA stays as tap-to-copy code so it survives a client with no buttons.
     code(view.address),
-    link('Chart ↗', buildRevivalContractUrl(view.address, view.network, LINK_TEMPLATES)),
     footer(caveated ? 'Scam-filtered · honeypot status unknown' : 'Scam-filtered'),
   ]);
 }

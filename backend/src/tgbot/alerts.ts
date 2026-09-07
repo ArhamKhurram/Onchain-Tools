@@ -41,12 +41,14 @@ import { ChatOutboundGuard, readGuardLimits } from './guard.js';
 import {
   digestLineFor,
   mcapCrossDigestLine,
+  mcapCrossQuickBuyKeyboard,
   renderAlertCard,
   renderDigest,
   renderMcapCrossCard,
   type ContractAlertView,
   type McapCrossView,
 } from './render.js';
+import type { TgInlineKeyboardMarkup } from './types.js';
 import {
   alertMatchesSource,
   chatsPassingSignalFilters,
@@ -133,6 +135,12 @@ interface RenderedEvent {
   key: string;
   card: () => string;
   line: string;
+  /**
+   * The inline keyboard for the INSTANT card, when this event has one (today:
+   * the crossing card's quick-buy venues). Digest delivery is line-based and
+   * ignores it — a keyboard per row would turn a digest into a link farm.
+   */
+  replyMarkup?: TgInlineKeyboardMarkup;
 }
 
 /**
@@ -254,6 +262,7 @@ export class TgAlertRouter {
         key: `${type}:${view.network}:${view.address}`,
         card: () => renderMcapCrossCard(view),
         line: mcapCrossDigestLine(view),
+        replyMarkup: mcapCrossQuickBuyKeyboard(view),
       };
 
       for (const chat of recipients) {
@@ -337,7 +346,7 @@ export class TgAlertRouter {
         );
         return;
       }
-      void sender.send(chat.chatId, rendered.card()).catch(() => {
+      void sender.send(chat.chatId, rendered.card(), { replyMarkup: rendered.replyMarkup }).catch(() => {
         /* sender never rejects; belt-and-braces */
       });
       return;
