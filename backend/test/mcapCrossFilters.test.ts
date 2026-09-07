@@ -102,6 +102,9 @@ const ENV_KEYS = [
   'OCT_MCAP_CROSS_REQUIRE_LP_SECURED',
   'OCT_MCAP_CROSS_MIN_VOLUME_24H_USD',
   'OCT_MCAP_CROSS_MIN_TOTAL_FEES_USD',
+  'OCT_MCAP_CROSS_MAX_BUNDLER_RATE',
+  'OCT_MCAP_CROSS_MAX_SNIPER_RATE',
+  'OCT_MCAP_CROSS_MAX_INSIDER_RATE',
 ];
 let saved: Record<string, string | undefined> = {};
 
@@ -469,5 +472,102 @@ describe('the 24h volume floor inherits OFF, not a number', () => {
     expect(
       applyFilterPatch(stored, { minVolume24hUsd: null }, {}).minVolume24hUsd,
     ).toBeUndefined();
+  });
+});
+
+// --- 6. The manufactured-launch filters (bundler / sniper / insider) ---------
+
+/**
+ * These are the "fake chart" discriminators. Three properties matter and each
+ * is pinned: they ship OFF (adding them is a no-op), they ABSTAIN-TO-FIRE on an
+ * unknown flag (a threshold can narrow, never mute), and they are validated and
+ * bounded like every other fraction filter.
+ */
+describe('the manufactured-launch filters inherit OFF and abstain-to-fire', () => {
+  const MANIP_KEYS = ['maxBundlerRate', 'maxSniperRate', 'maxInsiderRate'] as const;
+
+  it('all three inherit OFF for a user who set nothing', () => {
+    for (const key of MANIP_KEYS) {
+      expect(resolveUserGateConfig({})[key]).toBeNull();
+      expect(resolveUserGateConfig(null)[key]).toBeNull();
+    }
+  });
+
+  it('they are part of the editable key table (so console + bot surface them)', () => {
+    for (const key of MANIP_KEYS) expect(MCAP_CROSS_FILTER_KEYS).toContain(key);
+  });
+
+  it('adding them did not change what an existing user receives', () => {
+    // No manipulation payload at all, no filters set: the organic Solana token
+    // must reach exactly the verdict it did before this filter existed.
+    expect(evaluateMcapGates(solInput(), resolveUserGateConfig({})).decision).toBe('pass');
+    // …and a KNOWN-bad bundler share still fires while nobody has set a ceiling.
+    const bundled = solInput({ manipulation: { bundlerRate: 0.9, sniperRate: 0.9, insiderRate: 0.9 } });
+    expect(evaluateMcapGates(bundled, resolveUserGateConfig({})).decision).toBe('pass');
+  });
+
+  it('a set ceiling rejects a bundled token and passes an organic one', () => {
+    const bundled = solInput({ manipulation: { bundlerRate: 0.2273, sniperRate: 0.127, insiderRate: 0 } });
+    const organic = solInput({ manipulation: { bundlerRate: 0.0017, sniperRate: 0.0000003, insiderRate: 0.0006 } });
+    const cfg = resolveUserGateConfig({ maxBundlerRate: 0.1 });
+    const rejected = evaluateMcapGates(bundled, cfg);
+    expect(rejected.decision).toBe('reject');
+    expect(rejected.failed).toContain('bundlerRate');
+    expect(evaluateMcapGates(organic, cfg).decision).toBe('pass');
+  });
+
+  it('sniper and insider ceilings bite on their own field', () => {
+    const sniped = solInput({ manipulation: { bundlerRate: 0, sniperRate: 0.5, insiderRate: 0 } });
+    expect(evaluateMcapGates(sniped, resolveUserGateConfig({ maxSniperRate: 0.1 })).failed).toContain('sniperRate');
+    const insider = solInput({ manipulation: { bundlerRate: 0, sniperRate: 0, insiderRate: 0.4 } });
+    expect(evaluateMcapGates(insider, resolveUserGateConfig({ maxInsiderRate: 0.1 })).failed).toContain('insiderRate');
+  });
+
+  it('an UNKNOWN flag fires rather than being suppressed — abstain-to-fire, per chain', () => {
+    const cfg = resolveUserGateConfig({ maxBundlerRate: 0.05, maxSniperRate: 0.05, maxInsiderRate: 0.05 });
+    // Whole payload missing (GMGN unindexed / rate-limited / a chain that reports
+    // nothing, e.g. BNB): the crossing still fires, and nothing is marked failed.
+    for (const missing of [
+      solInput({ manipulation: null }),
+      solInput({ manipulation: undefined }),
+      bscInput({ manipulation: null }),
+    ]) {
+      const verdict = evaluateMcapGates(missing, cfg);
+      expect(verdict.decision).toBe('pass');
+      expect(verdict.failed).toEqual([]);
+    }
+    // A single unknown field among known ones is likewise ignored, not failed.
+    const partial = solInput({ manipulation: { bundlerRate: null, sniperRate: 0.01, insiderRate: null } });
+    expect(evaluateMcapGates(partial, cfg).decision).toBe('pass');
+  });
+
+  it('rejects even when the security lookup was unavailable (independent of it)', () => {
+    // Same shape as the momentum gate: a bundled token drops before the security
+    // block, so a null security payload does not rescue it.
+    const bundled = solInput({ security: null, manipulation: { bundlerRate: 0.9, sniperRate: 0, insiderRate: 0 } });
+    const verdict = evaluateMcapGates(bundled, resolveUserGateConfig({ maxBundlerRate: 0.1 }));
+    expect(verdict.decision).toBe('reject');
+    expect(verdict.failed).toContain('bundlerRate');
+  });
+
+  it('an operator env ceiling becomes the value a user inherits, and the user outranks it', () => {
+    process.env.OCT_MCAP_CROSS_MAX_BUNDLER_RATE = '0.1';
+    expect(resolveUserGateConfig({}).maxBundlerRate).toBe(0.1);
+    expect(resolveUserGateConfig({ maxBundlerRate: 0.5 }).maxBundlerRate).toBe(0.5);
+  });
+
+  it('is validated and bounded like every other fraction filter', () => {
+    expect(validateFilterPatch({ maxBundlerRate: 0.1 })).toEqual({ ok: true, value: { maxBundlerRate: 0.1 } });
+    // Zero is legal here (unlike the tax/top-10 ceilings): "no known bundlers".
+    expect(validateFilterPatch({ maxBundlerRate: 0 }).ok).toBe(true);
+    // A percent typed where a fraction belongs is rejected, not divided by 100.
+    expect(validateFilterPatch({ maxSniperRate: 10 }).ok).toBe(false);
+    expect(validateFilterPatch({ maxInsiderRate: -0.1 }).ok).toBe(false);
+    expect(validateFilterPatch({ maxBundlerRate: Number.NaN }).ok).toBe(false);
+  });
+
+  it('a malformed stored value drops back to OFF rather than to some number', () => {
+    expect(sanitizeStoredFilters({ maxBundlerRate: 5 })).toEqual({});
+    expect(resolveUserGateConfig({ maxBundlerRate: 5 } as never).maxBundlerRate).toBeNull();
   });
 });

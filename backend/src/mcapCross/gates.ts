@@ -52,6 +52,7 @@
 
 import type { RevivalNetwork } from '@oct/shared';
 import type { TokenSecurity } from './security.js';
+import type { TokenManipulation } from './manipulation.js';
 import { estimateTotalFeesUsd } from './fees.js';
 
 /** The market cap a token must cross. The whole point of the signal. */
@@ -147,6 +148,24 @@ export interface McapGateConfig {
    * Age therefore stays an env knob; the per-user discriminator is momentum.
    */
   maxPoolAgeDays: number | null;
+  /**
+   * THE MANUFACTURED-LAUNCH DISCRIMINATORS. Maximum fraction of supply held by
+   * bundler / sniper / insider (rat-trader) wallets — GMGN's own launch-analytics
+   * flags, the thing that actually separates a bundled/sniped pump from an
+   * organic run. Each `null` (OFF) by shipped default, so nothing changes for
+   * anyone until an operator or user sets one. Source and per-chain coverage:
+   * `manipulation.ts`.
+   *
+   * ABSTAIN-TO-FIRE, UNLIKE THE SECURITY GATES. These reject ONLY a KNOWN rate
+   * above the ceiling. An unknown flag (GMGN did not index it, a whole chain —
+   * BNB — returns nothing, a rate-limit ban) lets the crossing through, exactly
+   * like `minPriceChangeH24`. They are deliberately NOT in
+   * `missingCriticalFields`: a discriminator that muted every crossing it could
+   * not read would silence the signal the first time the upstream went quiet.
+   */
+  maxBundlerRate: number | null;
+  maxSniperRate: number | null;
+  maxInsiderRate: number | null;
 }
 
 /**
@@ -195,6 +214,12 @@ export const DEFAULT_GATE_CONFIG: McapGateConfig = {
   minPriceChangeH24: 0,
   // Corroborating, off by default — never a sole reason to drop a crossing.
   maxPoolAgeDays: null,
+  // The manufactured-launch discriminators, all OFF by shipped default. Purely
+  // additive: with these null nothing changes for any existing user, and an
+  // unknown flag fires rather than mutes (see the field docs and gate below).
+  maxBundlerRate: null,
+  maxSniperRate: null,
+  maxInsiderRate: null,
 };
 
 /**
@@ -233,6 +258,13 @@ export interface McapGateInput {
   poolAgeMs?: number | null;
   /** Normalised security facts, or null when the provider could not answer. */
   security: TokenSecurity | null;
+  /**
+   * Normalised manufactured-launch facts (bundler/sniper/insider), or null when
+   * GMGN could not answer. Optional so callers and tests written before the
+   * discriminator existed are unaffected — absent reads identically to null,
+   * i.e. UNKNOWN, i.e. fire (see the manipulation gate below).
+   */
+  manipulation?: TokenManipulation | null;
 }
 
 export type GateDecision = 'pass' | 'reject' | 'abstain';
@@ -348,6 +380,24 @@ export function evaluateMcapGates(
     const ageMs = input.poolAgeMs;
     const ceilingMs = cfg.maxPoolAgeDays * 86_400_000;
     if (ageMs != null && Number.isFinite(ageMs) && ageMs > ceilingMs) failed.push('poolAge');
+  }
+
+  // --- Manufactured-launch discriminators ----------------------------------
+  // Bundler / sniper / insider concentration, from GMGN's launch analytics
+  // (manipulation.ts). Each rejects ONLY on a KNOWN rate above a SET ceiling;
+  // an unknown flag — or a whole chain that reports nothing — does nothing here
+  // and never lands in `missingCriticalFields`, so it fires. Evaluated before
+  // the security block, and independent of it, so a bundled token drops even
+  // when the security lookup was unavailable (same shape as the momentum gate).
+  const manip = input.manipulation ?? null;
+  if (cfg.maxBundlerRate != null && manip?.bundlerRate != null && manip.bundlerRate > cfg.maxBundlerRate) {
+    failed.push('bundlerRate');
+  }
+  if (cfg.maxSniperRate != null && manip?.sniperRate != null && manip.sniperRate > cfg.maxSniperRate) {
+    failed.push('sniperRate');
+  }
+  if (cfg.maxInsiderRate != null && manip?.insiderRate != null && manip.insiderRate > cfg.maxInsiderRate) {
+    failed.push('insiderRate');
   }
 
   // --- Security ------------------------------------------------------------
@@ -528,6 +578,9 @@ export function resolveGateConfig(): McapGateConfig {
       DEFAULT_GATE_CONFIG.minPriceChangeH24,
     ),
     maxPoolAgeDays: envNumOrNull('MCAP_CROSS_MAX_POOL_AGE_DAYS', DEFAULT_GATE_CONFIG.maxPoolAgeDays),
+    maxBundlerRate: envNumOrNull('MCAP_CROSS_MAX_BUNDLER_RATE', DEFAULT_GATE_CONFIG.maxBundlerRate),
+    maxSniperRate: envNumOrNull('MCAP_CROSS_MAX_SNIPER_RATE', DEFAULT_GATE_CONFIG.maxSniperRate),
+    maxInsiderRate: envNumOrNull('MCAP_CROSS_MAX_INSIDER_RATE', DEFAULT_GATE_CONFIG.maxInsiderRate),
   };
 }
 

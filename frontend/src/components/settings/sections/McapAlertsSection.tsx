@@ -38,6 +38,10 @@ interface GateConfig {
   minLiquidityToMcapRatio: number;
   maxTop10HolderRate: number;
   maxTaxRate: number;
+  /** Manufactured-launch ceilings, fractions. Null = OFF (see FIELDS). */
+  maxBundlerRate: number | null;
+  maxSniperRate: number | null;
+  maxInsiderRate: number | null;
   /** The first-run-up floor, a fraction. Ships at 0, never null (see FIELDS). */
   minPriceChangeH24: number;
   /** Null = the filter is OFF, not "zero". See the note on FIELDS below. */
@@ -52,6 +56,9 @@ type FilterKey =
   | 'minLiquidityToMcapRatio'
   | 'maxTop10HolderRate'
   | 'maxTaxRate'
+  | 'maxBundlerRate'
+  | 'maxSniperRate'
+  | 'maxInsiderRate'
   | 'minPriceChangeH24'
   | 'minVolume24hUsd'
   | 'minTotalFees';
@@ -104,6 +111,30 @@ const FIELDS: {
     unit: 'percent',
     step: 0.5,
     help: 'Ceiling on transfer tax, each way. BNB and Robinhood only — a transfer-tax honeypot cannot exist on Solana, so this never filters Solana alerts.',
+  },
+  {
+    key: 'maxBundlerRate',
+    label: 'Max bundler concentration',
+    unit: 'percent',
+    step: 1,
+    // The core "fake chart" filter. Help leads with what it catches and states
+    // the coverage honesty (Solana/Robinhood real, BNB none) and the
+    // abstain-to-fire rule, so nobody assumes it is protecting a chain it isn't.
+    help: "Ceiling on the share of supply held by bundler wallets — the launch pattern behind most manufactured pumps. Off unless you set it. Works on Solana and Robinhood; BNB reports nothing here so it is never filtered. A token whose bundler share is unknown is still alerted rather than hidden.",
+  },
+  {
+    key: 'maxSniperRate',
+    label: 'Max sniper concentration',
+    unit: 'percent',
+    step: 1,
+    help: 'Ceiling on the share of supply held by sniper wallets (the top snipers into the launch). Off unless you set it. Solana and Robinhood in practice; BNB reports nothing. Unknown sniper share is alerted, not hidden.',
+  },
+  {
+    key: 'maxInsiderRate',
+    label: 'Max insider concentration',
+    unit: 'percent',
+    step: 1,
+    help: "Ceiling on the share held by insider (rat-trader) wallets — those repeatedly trading the creator's launches. Off unless you set it. Solana and Robinhood in practice; BNB reports nothing. Unknown insider share is alerted, not hidden.",
   },
   {
     key: 'minPriceChangeH24',

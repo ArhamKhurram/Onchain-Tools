@@ -90,6 +90,26 @@ export interface McapCrossFilters {
   /** MAXIMUM buy tax and sell tax, each. EVM only; inert on Solana. */
   maxTaxRate?: number;
   /**
+   * MAXIMUM bundler / sniper / insider concentration, each a FRACTION — GMGN's
+   * manufactured-launch flags (see `manipulation.ts`). These are the
+   * discriminator that separates a bundled/sniped pump from an organic run.
+   *
+   * OFF UNLESS SET, LIKE VOLUME AND FEES. Their inherited value is `null`
+   * (not evaluated), so adding them changed nothing for anyone who does not set
+   * one. Unlike the safety floors above they are user preferences layered on top
+   * of a signal that already fires.
+   *
+   * ABSTAIN-TO-FIRE, AND SOLANA/ROBINHOOD IN PRACTICE. A token whose flag GMGN
+   * did not index — or a whole chain that returns nothing — is let through, not
+   * suppressed: these can only NARROW on a known value, never mute on a missing
+   * one. Coverage is real on Solana and Robinhood and effectively absent on BNB
+   * (GMGN returns zeros there), so setting one filters Solana/Robinhood and
+   * leaves BNB alerts untouched. The settings copy says so.
+   */
+  maxBundlerRate?: number;
+  maxSniperRate?: number;
+  maxInsiderRate?: number;
+  /**
    * MINIMUM traded USD over 24h, summed across the token's pools.
    *
    * THE ONE FILTER WITH NO OPERATOR BASELINE. The other four inherit a shipped
@@ -151,6 +171,9 @@ export const MCAP_CROSS_FILTER_KEYS = [
   'minLiquidityToMcapRatio',
   'maxTop10HolderRate',
   'maxTaxRate',
+  'maxBundlerRate',
+  'maxSniperRate',
+  'maxInsiderRate',
   'minPriceChangeH24',
   'minVolume24hUsd',
   'minTotalFees',
@@ -201,6 +224,33 @@ export const MCAP_CROSS_FILTER_BOUNDS: Record<
     direction: 'max',
     unit: 'fraction',
     label: 'Max buy/sell tax (EVM only)',
+  },
+  // The manufactured-launch ceilings. Fractions, so a user who types "10"
+  // meaning 10% is rejected rather than handed a wide-open gate — the same
+  // reasoning as the tax/concentration ceilings. Zero is ALLOWED here (unlike
+  // those two, in EXCLUSIVE_ZERO): a bundler ceiling of exactly 0 means "no
+  // known bundler wallets at all", which is a legitimate strict setting rather
+  // than a mute switch — plenty of tokens report 0 and still fire.
+  maxBundlerRate: {
+    min: 0,
+    max: 1,
+    direction: 'max',
+    unit: 'fraction',
+    label: 'Max bundler concentration',
+  },
+  maxSniperRate: {
+    min: 0,
+    max: 1,
+    direction: 'max',
+    unit: 'fraction',
+    label: 'Max sniper concentration',
+  },
+  maxInsiderRate: {
+    min: 0,
+    max: 1,
+    direction: 'max',
+    unit: 'fraction',
+    label: 'Max insider (rat-trader) concentration',
   },
   minPriceChangeH24: {
     // A floor on a SIGNED trend, so the lower bound is negative: -1 is "down
@@ -358,6 +408,13 @@ export function resolveUserGateConfig(
     minLiquidityToMcapRatio: clean.minLiquidityToMcapRatio ?? baseline.minLiquidityToMcapRatio,
     maxTop10HolderRate: clean.maxTop10HolderRate ?? baseline.maxTop10HolderRate,
     maxTaxRate: clean.maxTaxRate ?? baseline.maxTaxRate,
+    // Manufactured-launch ceilings. Baseline is `null` unless an operator set
+    // the env var, so an unset override leaves each gate OFF — same null-means-off
+    // inheritance as volume and fees below. A stored 0 is not nullish, so a
+    // user's explicit 0 ("no known bundlers") survives `??`.
+    maxBundlerRate: clean.maxBundlerRate ?? baseline.maxBundlerRate,
+    maxSniperRate: clean.maxSniperRate ?? baseline.maxSniperRate,
+    maxInsiderRate: clean.maxInsiderRate ?? baseline.maxInsiderRate,
     // The baseline is `null` unless an operator set the env var, so an unset
     // override leaves the gate switched OFF rather than at some default floor.
     minVolume24hUsd: clean.minVolume24hUsd ?? baseline.minVolume24hUsd,
