@@ -12,7 +12,9 @@ import FomoHoldersLookup from '../components/fomo/FomoHoldersLookup';
 import FomoThesesLookup from '../components/fomo/FomoThesesLookup';
 import FomoTraderLookup from '../components/fomo/FomoTraderLookup';
 import RobinhoodTape from '../components/robinhood/RobinhoodTape';
+import FomoStreamTape from '../components/fomo/FomoStreamTape';
 import FullPageSpinner from '../components/common/FullPageSpinner';
+import { cn } from '../lib/utils';
 import { routes } from '../lib/routes';
 import type { FomoLeaderboardEntry } from '../types/fomo';
 
@@ -33,6 +35,72 @@ const FOMO_TABS = [
   // Named for the chain rather than "FOMO" so the scope is obvious from the tab.
   { id: 'rhchain' as const, label: 'RH Chain' },
 ];
+
+// ── The Live tab ─────────────────────────────────────────────────────────────
+//
+// Two sources, never merged. "All chains" is 985monitor.xyz's public
+// re-broadcast of fomo.family activity; "Tracked" is OCT's own fomo.family
+// feed, which stays starved while the service account is blocked upstream.
+// They are picked between rather than interleaved, because a row from one
+// rendered next to a row from the other reads as a single OCT feed and that
+// would be a lie about where the data came from ("signals stay independent").
+//
+// The all-chain source is the default: it is the one that has data.
+const LIVE_SOURCE_STORAGE_KEY = 'oct.fomo.liveSource';
+type LiveSource = 'stream' | 'tracked';
+
+const LIVE_SOURCES: { value: LiveSource; label: string; title: string }[] = [
+  { value: 'stream', label: 'ALL CHAINS', title: 'All-chain tape re-broadcast by 985monitor.xyz' },
+  { value: 'tracked', label: 'TRACKED', title: "Your tracked traders, from OCT's own fomo.family feed" },
+];
+
+function loadLiveSource(): LiveSource {
+  try {
+    return localStorage.getItem(LIVE_SOURCE_STORAGE_KEY) === 'tracked' ? 'tracked' : 'stream';
+  } catch {
+    return 'stream';
+  }
+}
+
+function LiveView() {
+  const [source, setSource] = useState<LiveSource>(loadLiveSource);
+
+  const pick = (next: LiveSource) => {
+    setSource(next);
+    try {
+      localStorage.setItem(LIVE_SOURCE_STORAGE_KEY, next);
+    } catch {
+      /* ignore */
+    }
+  };
+
+  return (
+    <div className="h-full min-h-0 flex flex-col">
+      <div className="shrink-0 flex items-center gap-cozy px-comfy py-tight border-b border-oct-border bg-oct-surface">
+        <span className="type-caption uppercase tracking-wide text-oct-muted">Source</span>
+        {LIVE_SOURCES.map((s) => (
+          <button
+            key={s.value}
+            type="button"
+            title={s.title}
+            onClick={() => pick(s.value)}
+            className={cn(
+              'px-cozy py-tight rounded-oct-sm type-caption font-mono font-bold border transition-all duration-fast',
+              source === s.value
+                ? 'bg-oct-accent text-white border-oct-accent/50 shadow-oct-glow-accent'
+                : 'text-oct-muted border-transparent hover:border-oct-border-bright hover:text-oct-text',
+            )}
+          >
+            {s.label}
+          </button>
+        ))}
+      </div>
+      <div className="flex-1 min-h-0">
+        {source === 'stream' ? <FomoStreamTape embedded /> : <FomoTradeFeed />}
+      </div>
+    </div>
+  );
+}
 
 function parseView(raw: string | null): FomoView {
   if (
@@ -108,7 +176,7 @@ export default function FomoPage() {
       <ConsoleSubnav tabs={FOMO_TABS} active={view} onChange={setView} />
       <div className="flex-1 min-h-0">
         {view === 'live' ? (
-          <FomoTradeFeed />
+          <LiveView />
         ) : view === 'leaderboard' ? (
           <FomoLeaderboard
             trackedIds={trackedIds}
