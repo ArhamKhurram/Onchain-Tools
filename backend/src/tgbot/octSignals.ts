@@ -74,71 +74,115 @@ export interface OctSignalView {
 // escaping to the renderer (html.ts). None of them can throw on hostile input.
 
 /** Longest ticker the card will show (a real ticker is a handful of chars). */
-const MAX_TICKER_LEN = 15;
+const MAX_TICKER_LEN = 12;
 /** Longest market-cap numeric run we accept before treating it as garbage. */
 const MAX_MCAP_DIGITS = 20;
 
 /**
- * The token name from the FIRST non-empty line, markdown stripped — the ticker
- * fallback when the body carries no explicit `$SYMBOL`. Returns null when the
- * line reduces to nothing usable.
+ * Normalise and validate a ticker CANDIDATE: strip a leading `$`, upper-case,
+ * and accept it only when it is a single clean symbol — letters/digits/`_`,
+ * length-capped, and carrying at least one letter (a bare number is not a
+ * ticker). Returns null for anything else, so a candidate with a space or a
+ * stray symbol can never become a ticker.
  */
-function extractHeaderName(text: string): string | null {
+function cleanTicker(raw: string): string | null {
+  const s = raw.trim().replace(/^\$+/, '').toUpperCase();
+  if (!new RegExp(`^[A-Z0-9_]{1,${MAX_TICKER_LEN}}$`).test(s)) return null;
+  if (!/[A-Z]/.test(s)) return null;
+  return s;
+}
+
+/**
+ * The name token from the FIRST non-empty line, when that line names a SINGLE
+ * clean symbol — a markdown/bold header or an image-card caption like
+ * `MARLIN • 5.2x`. The token is whatever precedes the first `•`/`(` (or the
+ * whole line when there is none), with markdown links/emphasis and a leading
+ * emoji stripped. Returns null when what remains is empty or MULTI-WORD — a
+ * sentence of prose (`GETTING THE LORD…`) must never become a ticker.
+ */
+function extractNameToken(text: string): string | null {
   const firstLine = text
     .split(/\r?\n/)
     .map((l) => l.trim())
     .find((l) => l !== '');
   if (!firstLine) return null;
 
-  // A real scan puts the token name in a FORMATTED header (a markdown link or
-  // bold run). Remember that before stripping the markup, so we can tell a
-  // genuine name from a line of prose.
-  const wasFormatted = /\[[^\]]+\]\([^)]*\)/.test(firstLine) || /\*\*[^*]+\*\*/.test(firstLine);
+  // Unwrap markdown BEFORE splitting on delimiters, so a `](url)` inside a link
+  // is not cut at its own parenthesis.
+  const unwrapped = firstLine
+    .replace(/\[([^\]]+)\]\([^)]*\)/g, '$1') // [label](url) → label
+    .replace(/https?:\/\/\S+/g, ' ') // bare urls
+    .replace(/[*_`~]+/g, ''); // markdown emphasis markers
 
-  let s = firstLine;
-  s = s.replace(/\[([^\]]+)\]\([^)]*\)/g, '$1'); // [label](url) → label
-  s = s.replace(/https?:\/\/\S+/g, ' '); // bare urls
-  s = s.replace(/[*_`~]+/g, ''); // markdown emphasis markers
-  s = s.replace(/\([^)]*\)\s*$/g, ''); // a trailing ($TICKER) / (…) group
-  s = s.replace(/^[^\p{L}\p{N}$]+/u, ''); // leading emoji / bullet / symbols
-  s = s.trim();
-  if (s === '') return null;
+  // The name is whatever precedes a bullet/paren (a caption's `• 5.2x`, a
+  // header's `($SYM)`); with neither, the whole line.
+  const region = unwrapped
+    .split(/[•(]/)[0]
+    .replace(/^[^\p{L}\p{N}$]+/u, '') // leading emoji / bullet / symbols
+    .trim();
 
-  // Only accept prose as a name when the header was actually formatted like one,
-  // or is short enough to plausibly BE a name — never a whole sentence, which
-  // would render as a nonsense "$THE MARKET IS" ticker.
-  if (!wasFormatted && (s.length > 32 || s.split(/\s+/).length > 4)) return null;
-  return s;
+  // A single clean token only — a space means prose, which is rejected.
+  if (region === '' || /\s/.test(region)) return null;
+  return region;
 }
 
 /**
- * The ticker for the card: the first `$SYMBOL`, else the header name. Stripped
- * of a leading `$`, upper-cased, and length-capped. Null when nothing usable is
- * found — the render then shows a neutral header instead.
+ * The ticker for the card, in priority order:
+ *   1. a `($SYMBOL)` parenthetical — the reliable header form (`… ** ($MARLIN)`);
+ *   2. a standalone `$SYMBOL` that is a single clean token and is NOT running
+ *      into a sentence (a `$` inside prose is not a ticker);
+ *   3. the first-line NAME token, when it is a single clean symbol (a bold
+ *      header, or a `MARLIN • 5.2x` caption).
+ *
+ * Every path yields a single validated token or null; a line of prose (with
+ * spaces) can never become a ticker. Null → the card shows its neutral header.
  */
 export function parseSignalTicker(text: string): string | null {
-  const dollar = text.match(/\$([A-Za-z][A-Za-z0-9_]{0,29})/);
-  const raw = dollar?.[1] ?? extractHeaderName(text);
-  if (!raw) return null;
-  const cleaned = raw.replace(/^\$+/, '').trim().toUpperCase();
-  if (cleaned === '') return null;
-  return cleaned.slice(0, MAX_TICKER_LEN);
+  // 1. ($SYMBOL) — the parenthetical the real header carries.
+  const paren = text.match(/\(\s*\$([A-Za-z0-9_]{1,12})\s*\)/);
+  const fromParen = paren ? cleanTicker(paren[1]) : null;
+  if (fromParen) return fromParen;
+
+  // 2. A standalone $SYMBOL, single clean token, not part of a sentence.
+  const dollar = text.match(/\$([A-Za-z][A-Za-z0-9_]{0,11})(?![A-Za-z0-9_])/);
+  if (dollar && dollar.index != null) {
+    const cand = cleanTicker(dollar[1]);
+    if (cand) {
+      const restOfLine = text.slice(dollar.index + dollar[0].length).split(/\r?\n/)[0];
+      const furtherWords = (restOfLine.match(/\p{L}{2,}/gu) ?? []).length;
+      // 0-1 trailing words is a tag ("$MARLIN", "$MARLIN 5.2x"); 2+ is prose
+      // ("$SOL bullish algorithm") and falls through to the name path.
+      if (furtherWords < 2) return cand;
+    }
+  }
+
+  // 3. The first-line name token, when it is a single clean symbol.
+  const named = extractNameToken(text);
+  return named ? cleanTicker(named) : null;
 }
 
 /**
- * The market cap for the card: a labelled `MC`/`MCAP`/`Market Cap` figure with
- * an optional `$` and `K`/`M`/`B`/`T` suffix (`$17.5K`, `$1.2M`, `750K`),
- * normalised to a `$…` display string. Null when absent or unparseable — never
- * a NaN and never a different number than the one written.
+ * The market cap for the card, from EITHER upstream message form:
+ *   • a labelled figure — `MC`/`MCAP`/`Market Cap` with an optional `$` and
+ *     `K`/`M`/`B`/`T` suffix (`$17.5K`, `750K`, `MC: **$735.02K**`);
+ *   • an `@ <number><K/M/B/T>` "called-at" figure — the image-card caption form
+ *     (`… @ 142.32K (6h)`), where the `@` anchor plays the label's role.
  *
- * The label anchor means ATH/VOL/LIQ figures on adjacent lines cannot be
- * mistaken for the market cap.
+ * Normalised to a `$…` display string. Null when absent or unparseable — never a
+ * NaN and never a different number than the one written. Both forms are
+ * DIGIT-BOUNDED and anchored (a label, or `@` + a magnitude suffix), so an
+ * ATH/VOL/LIQ figure or a bare `@handle` cannot be mistaken for the market cap.
  */
 export function parseSignalMarketCap(text: string): string | null {
-  const m = text.match(
+  const labelled = text.match(
     /\b(?:MCAP|MC|MARKET\s*CAP)\b\s*[:=]?\s*\*{0,2}\s*\$?\s*(\d[\d,]*(?:\.\d+)?)\s*([KMBT])?/i,
   );
+  // The `@ <mcap>` caption form REQUIRES a magnitude suffix — that is what makes
+  // it a market cap rather than a stray "@ 5 min" or an "@handle".
+  const atForm = text.match(/@\s*\$?\s*(\d[\d,]*(?:\.\d+)?)\s*([KMBT])\b/i);
+  const m = labelled ?? atForm;
   if (!m) return null;
+
   const numStr = m[1].replace(/,/g, '');
   if (numStr.length > MAX_MCAP_DIGITS) return null;
   const value = Number(numStr);
@@ -308,6 +352,83 @@ export function readSignalStripTerms(): string[] {
   return readEnvList(STRIP_TERMS_ENV);
 }
 
+// --- EVM chain resolution for an EVM-source signal --------------------------
+//
+// The EVM algorithm topic carries tokens from a REAL EVM chain (Robinhood, and
+// occasionally Base/BSC), not a generic "evm". Resolving it wrong drops the
+// chain label to "EVM" and — because Axiom only has a verified route on
+// Robinhood — silently loses the Axiom quick-buy button. Two ways to resolve it,
+// in order: the chain named by a chart/explorer link in the body, then the
+// per-source configured default (Robinhood), never a bare `evm`.
+
+/** Env names for the EVM-source fallback network, primary first. */
+const EVM_FALLBACK_ENV = [
+  'OCT_SIGNAL_EVM_FALLBACK_NETWORK',
+  'TG_BOT_SIGNAL_EVM_FALLBACK_NETWORK',
+] as const;
+
+/**
+ * The EVM-source fallback network when the body names no chain. The EVM topic is
+ * the Robinhood chain, so a signal that carries no parseable link is Robinhood —
+ * never a bare `evm`, which would lose both the label and the Axiom button.
+ * Operator-overridable per deployment.
+ */
+function readEvmFallbackNetwork(): string {
+  for (const name of EVM_FALLBACK_ENV) {
+    const v = process.env[name]?.trim();
+    if (v) return v.toLowerCase();
+  }
+  return 'robinhood';
+}
+
+/**
+ * Chain aliases seen in an explorer/DEX path segment → the OCT network id the
+ * card, label and quick-buy keyboard use. Generic: it reads the path segment,
+ * never a vendor.
+ */
+const EVM_CHAIN_ALIASES: Record<string, string> = {
+  robinhood: 'robinhood',
+  hood: 'robinhood',
+  base: 'base',
+  bsc: 'bsc',
+  bnb: 'bsc',
+  binance: 'bsc',
+  'binance-smart-chain': 'bsc',
+  eth: 'eth',
+  ethereum: 'eth',
+  arbitrum: 'arb',
+  arb: 'arb',
+  polygon: 'polygon',
+  matic: 'polygon',
+  avalanche: 'avax',
+  avax: 'avax',
+};
+
+/**
+ * The EVM chain named by a chart/explorer link in the body, or null when none is
+ * present. Reads the CHAIN PATH SEGMENT of a link (`dexscreener.com/<chain>/…`,
+ * `geckoterminal.com/<chain>/…`, `dextools.io/app/<locale>/<chain>/…`) and maps
+ * it via EVM_CHAIN_ALIASES — a generic path read, never a vendor match.
+ */
+export function parseEvmChainFromLinks(text: string): string | null {
+  const re = /(?:dexscreener\.com|geckoterminal\.com|dextools\.io\/app\/[a-z]{2,})\/([a-z0-9-]+)/gi;
+  let m: RegExpExecArray | null;
+  while ((m = re.exec(text)) !== null) {
+    const seg = m[1].toLowerCase();
+    if (EVM_CHAIN_ALIASES[seg]) return EVM_CHAIN_ALIASES[seg];
+  }
+  return null;
+}
+
+/**
+ * The network id for an EVM-source signal: the chain a body link names, else the
+ * caller's body-derived hint, else the configured default (Robinhood). Never a
+ * bare `evm`.
+ */
+export function resolveEvmSignalNetwork(text: string, hint?: string | null): string {
+  return parseEvmChainFromLinks(text) ?? (hint?.trim() || null) ?? readEvmFallbackNetwork();
+}
+
 /**
  * A line that reads as an upstream signature/footer rather than scan content:
  * a bare handle, a bare link, or a promotional call-to-action. Contract
@@ -364,7 +485,7 @@ export function buildOctSignalView(input: {
   // A message with neither an address nor any body left is not worth a ping.
   if (addresses.length === 0 && text === '') return null;
 
-  const network = chain === 'sol' ? 'solana' : (input.evmChainHint?.trim() || 'evm');
+  const network = chain === 'sol' ? 'solana' : resolveEvmSignalNetwork(raw, input.evmChainHint);
   // Ticker/MC are parsed from the RAW body (before signature stripping) so a
   // stat line is never lost to an aggressive strip; the CA is likewise
   // extracted independently. Both are omitted, not faked, when absent.

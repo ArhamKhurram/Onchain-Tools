@@ -25,6 +25,7 @@ import { REFERRALS } from '@oct/shared';
 import {
   buildOctSignalView,
   octSignalDedupeKey,
+  parseEvmChainFromLinks,
   parseSignalMarketCap,
   parseSignalTicker,
   resolveOctSignalChain,
@@ -184,9 +185,43 @@ describe('ticker + market cap parsing (untrusted input, defensive)', () => {
     expect(parseSignalMarketCap(MARLIN)).toBe('$735.02K');
   });
 
-  it('falls back to the formatted header name when there is no $SYMBOL', () => {
-    const text = '🔍 **[JT MARLIN](https://t.me/x)**\nMC: $10K';
-    expect(parseSignalTicker(text)).toBe('JT MARLIN');
+  it('uses a SINGLE-WORD formatted header name when there is no $SYMBOL', () => {
+    expect(parseSignalTicker('🔍 **MARLIN**\nMC: $10K')).toBe('MARLIN');
+  });
+
+  it('rejects a MULTI-WORD header name rather than making it a ticker', () => {
+    // The link label "JT MARLIN" is two words — prose, not a symbol. With no
+    // $SYMBOL and no ($SYM) parenthetical, the ticker is dropped (neutral header).
+    expect(parseSignalTicker('🔍 **[JT MARLIN](https://t.me/x)**\nMC: $10K')).toBeNull();
+  });
+
+  it('takes the ($SYMBOL) parenthetical over the prose link label', () => {
+    // The real header shape: the true ticker is the parenthetical, never the
+    // multi-word `[JT MARLIN]` link label.
+    expect(parseSignalTicker(MARLIN)).toBe('MARLIN');
+  });
+
+  it('parses the ticker from an image-card caption (name before the • bullet)', () => {
+    expect(parseSignalTicker('MARLIN • 5.2x')).toBe('MARLIN');
+  });
+
+  it('rejects the confirmed prose false-positives (no spaced/sentence ticker)', () => {
+    // The exact live failures: header/scan-title prose grabbed as a ticker.
+    for (const bad of [
+      '🔍 **Getting the lord of the memes ready**\nMC: $10K',
+      '🔍 **SOL bullish algorithm just triggered**',
+      '$SOL bullish algorithm signal',
+      '$GETTING the lord ready now',
+    ]) {
+      const t = parseSignalTicker(bad);
+      // Never a multi-word / sentence ticker.
+      if (t !== null) expect(t).not.toMatch(/\s/);
+      expect(t).not.toBe('GETTING THE LOR');
+      expect(t).not.toBe('SOL BULLISH ALG');
+    }
+    // The two header-prose cases carry no clean symbol at all → neutral header.
+    expect(parseSignalTicker('🔍 **Getting the lord of the memes ready**\nMC: $10K')).toBeNull();
+    expect(parseSignalTicker('🔍 **SOL bullish algorithm just triggered**')).toBeNull();
   });
 
   it('does not turn a line of prose into a ticker', () => {
@@ -205,10 +240,36 @@ describe('ticker + market cap parsing (untrusted input, defensive)', () => {
     expect(parseSignalMarketCap('mc = $2B')).toBe('$2B');
   });
 
+  it('parses the market cap from the "@ <mcap>" image-card caption form', () => {
+    // The second upstream message per call is an image card; its caption carries
+    // the mcap as "@ 142.32K", never a labelled MC line.
+    expect(parseSignalMarketCap('somescan_bot @ 142.32K (6h)')).toBe('$142.32K');
+    expect(parseSignalMarketCap('MARLIN @ 142.32K [5.2x]')).toBe('$142.32K');
+    expect(parseSignalMarketCap('SOME @ 1.2M')).toBe('$1.2M');
+  });
+
+  it('the "@" form REQUIRES a magnitude suffix — a bare @handle/number is not MC', () => {
+    expect(parseSignalMarketCap('@somescan_bot posted a call')).toBeNull();
+    expect(parseSignalMarketCap('called @ 5 min ago')).toBeNull();
+  });
+
   it('returns null (never NaN) when there is no market cap to parse', () => {
     expect(parseSignalMarketCap('no numbers here')).toBeNull();
     expect(parseSignalMarketCap('ATH: $863.6K')).toBeNull(); // ATH is not MC
     expect(parseSignalMarketCap('MC: soon')).toBeNull(); // labelled but no number
+  });
+
+  it('EITHER upstream message alone yields ticker + mcap (dedupe keeps whichever is first)', () => {
+    configureSources();
+    // Message A — the detailed card: parenthetical ticker + labelled MC.
+    const a = buildOctSignalView({ chatId: EVM_CHANNEL, text: MARLIN, evmChainHint: 'robinhood' });
+    expect(a!.ticker).toBe('MARLIN');
+    expect(a!.mcapDisplay).toBe('$735.02K');
+    // Message B — the image caption: name-before-bullet ticker + "@ <mcap>".
+    const captionB = ['MARLIN • 5.2x', `somescan_bot @ 142.32K (6h)`, RH_ADDR].join('\n');
+    const b = buildOctSignalView({ chatId: EVM_CHANNEL, text: captionB, evmChainHint: 'robinhood' });
+    expect(b!.ticker).toBe('MARLIN');
+    expect(b!.mcapDisplay).toBe('$142.32K');
   });
 
   it('buildOctSignalView carries ticker + mcap + chain for the MARLIN shape', () => {
@@ -255,6 +316,73 @@ describe('buildOctSignalView', () => {
   it('drops a truly empty message', () => {
     configureSources();
     expect(buildOctSignalView({ chatId: SOL_CHANNEL, text: '   ' })).toBeNull();
+  });
+});
+
+describe('EVM chain resolution — real chain, never a bare "evm"', () => {
+  it('reads the chain from a dexscreener link path segment', () => {
+    expect(parseEvmChainFromLinks(`chart: https://dexscreener.com/robinhood/0xpair`)).toBe('robinhood');
+    expect(parseEvmChainFromLinks(`https://dexscreener.com/base/0xpair`)).toBe('base');
+    expect(parseEvmChainFromLinks(`https://dexscreener.com/bsc/0xpair`)).toBe('bsc');
+    expect(parseEvmChainFromLinks('no chart link here')).toBeNull();
+  });
+
+  it('a dexscreener robinhood link → network robinhood, Robinhood label, Axiom button', () => {
+    configureSources();
+    const built = buildOctSignalView({
+      chatId: EVM_CHANNEL,
+      text: `scan ${RH_ADDR}\nhttps://dexscreener.com/robinhood/0xsomepair`,
+    });
+    expect(built!.network).toBe('robinhood');
+    const card = renderOctSignalCard(built!);
+    expect(card).toContain('Chain:');
+    expect(card).toContain('Robinhood');
+    const kb = octSignalQuickBuyKeyboard({ address: RH_ADDR, network: built!.network });
+    expect(kb!.inline_keyboard.flat().map((b) => b.text).sort()).toEqual(['Axiom', 'GMGN']);
+  });
+
+  it('a base/bsc link → that chain, and Axiom is OMITTED (no verified route)', () => {
+    configureSources();
+    const base = buildOctSignalView({
+      chatId: EVM_CHANNEL,
+      text: `scan ${EVM_ADDR}\nhttps://dexscreener.com/base/0xpair`,
+    });
+    expect(base!.network).toBe('base');
+    expect(renderOctSignalCard(base!)).toContain('Base');
+    expect(octSignalQuickBuyKeyboard({ address: EVM_ADDR, network: 'base' })!.inline_keyboard.flat().map((b) => b.text)).toEqual(['GMGN']);
+
+    const bsc = buildOctSignalView({
+      chatId: EVM_CHANNEL,
+      text: `scan ${EVM_ADDR}\nhttps://dexscreener.com/bsc/0xpair`,
+    });
+    expect(bsc!.network).toBe('bsc');
+    expect(octSignalQuickBuyKeyboard({ address: EVM_ADDR, network: 'bsc' })!.inline_keyboard.flat().map((b) => b.text)).not.toContain('Axiom');
+  });
+
+  it('falls back to robinhood (NOT bare evm) when no link and no hint', () => {
+    configureSources();
+    const built = buildOctSignalView({ chatId: EVM_CHANNEL, text: `scan ${EVM_ADDR}` });
+    expect(built!.chain).toBe('evm');
+    expect(built!.network).toBe('robinhood');
+    expect(built!.network).not.toBe('evm');
+    expect(renderOctSignalCard(built!)).toContain('Robinhood');
+  });
+
+  it('the fallback network is operator-configurable via env', () => {
+    configureSources();
+    vi.stubEnv('OCT_SIGNAL_EVM_FALLBACK_NETWORK', 'base');
+    const built = buildOctSignalView({ chatId: EVM_CHANNEL, text: `scan ${EVM_ADDR}` });
+    expect(built!.network).toBe('base');
+  });
+
+  it('a body link overrides the caller hint', () => {
+    configureSources();
+    const built = buildOctSignalView({
+      chatId: EVM_CHANNEL,
+      text: `scan ${EVM_ADDR}\nhttps://dexscreener.com/robinhood/0xpair`,
+      evmChainHint: 'bsc',
+    });
+    expect(built!.network).toBe('robinhood');
   });
 });
 
@@ -305,7 +433,7 @@ describe('the minimal card — ONLY ticker / MCap / chain / CA', () => {
     expect(card).toContain('MCap:');
     expect(card).toContain('$735.02K');
     expect(card).toContain('Chain:');
-    expect(card).toContain('HOOD'); // revivalNetworkLabel('robinhood')
+    expect(card).toContain('Robinhood'); // spelled out on the forwarded card
     expect(card).toContain(`<code>${RH_ADDR}</code>`);
   });
 
