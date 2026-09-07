@@ -43,6 +43,7 @@ import {
   mcapCrossDigestLine,
   mcapCrossQuickBuyKeyboard,
   octSignalDigestLine,
+  octSignalQuickBuyKeyboard,
   renderAlertCard,
   renderDigest,
   renderMcapCrossCard,
@@ -50,7 +51,7 @@ import {
   type ContractAlertView,
   type McapCrossView,
 } from './render.js';
-import type { OctSignalView } from './octSignals.js';
+import { OctSignalDedupe, octSignalDedupeKey, type OctSignalView } from './octSignals.js';
 import type { TgInlineKeyboardMarkup } from './types.js';
 import {
   alertMatchesSource,
@@ -157,6 +158,12 @@ interface RenderedEvent {
 export class TgAlertRouter {
   private readonly guard: ChatOutboundGuard;
   private readonly buffer = new DigestBuffer();
+  /**
+   * OCT Alerts dedupe: upstream posts the same call twice (text + image card),
+   * so this collapses them to one alert per (chain, primary address) inside a
+   * TTL window. In-memory, per-process; see octSignals.ts.
+   */
+  private readonly octSignalDedupe = new OctSignalDedupe();
 
   constructor(private readonly getSender: () => TelegramSender | null) {
     this.guard = new ChatOutboundGuard(readGuardLimits());
@@ -304,21 +311,31 @@ export class TgAlertRouter {
     if (!sender) return;
 
     const type: TgAlertType = 'octSignals';
+    const primary = view.addresses[0];
+
+    // DEDUPE (one call = one alert). Upstream posts the same call twice — a text
+    // card and an image card — within seconds; both carry the same contract, so
+    // both would otherwise fan out. Collapse to one per (chain, primary address)
+    // inside a TTL window, before touching the roster. A signal with NO address
+    // is never address-deduped: nothing to key on, so it always forwards.
+    if (primary && this.octSignalDedupe.isDuplicate(octSignalDedupeKey(view.chain, primary), now)) {
+      return;
+    }
+
     try {
       const chats = await getChatStore().listEnabled();
       const recipients = chats.filter((chat) => chat.settings.alerts[type] !== 'off');
       if (recipients.length === 0) return;
 
-      const primary = view.addresses[0];
       const rendered: RenderedEvent = {
         key: `${type}:${view.network}:${primary ?? view.text.slice(0, 120)}`,
         card: () => renderOctSignalCard(view),
         line: octSignalDigestLine(view),
         // The referral quick-buy venues (chain-correct, owner code embedded by
-        // the shared machinery) ride the primary address. No address → no
-        // keyboard, and the text forwards on its own.
+        // the shared machinery — GMGN + Axiom) ride the primary address. No
+        // address → no keyboard, and the card forwards on its own.
         replyMarkup: primary
-          ? mcapCrossQuickBuyKeyboard({ address: primary, network: view.network })
+          ? octSignalQuickBuyKeyboard({ address: primary, network: view.network })
           : undefined,
       };
 

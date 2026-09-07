@@ -31,9 +31,9 @@
 // directory follows — see source.ts, guard.ts, digest.ts), so the whole
 // recognise-and-shape step is a unit test rather than a running bot.
 
-import { detectContractAddresses } from '../utils/contract.js';
+import { detectContractAddresses, normalizeContractAddress } from '../utils/contract.js';
 
-/** Which source a signal came from. Drives the card's "· SOL"/"· EVM" label. */
+/** Which source a signal came from. Drives the card's chain line + dedupe key. */
 export type OctSignalChain = 'sol' | 'evm';
 
 /**
@@ -41,7 +41,9 @@ export type OctSignalChain = 'sol' | 'evm';
  *
  * `text` is UNTRUSTED third-party content and is escaped at render, never here.
  * `addresses` are extracted by the shared detector, so they are already
- * narrowed to real SOL/EVM shapes.
+ * narrowed to real SOL/EVM shapes. `ticker`/`mcapDisplay` are parsed from the
+ * same untrusted body by the pure helpers below: bounded, validated, and
+ * escaped at render — they are the ONLY scan fields the minimal card shows.
  */
 export interface OctSignalView {
   /** The source channel's role — the label chain, not necessarily the address's. */
@@ -52,6 +54,175 @@ export interface OctSignalView {
   addresses: string[];
   /** The scan body, with any upstream signature stripped. Escaped at render. */
   text: string;
+  /**
+   * Bare ticker parsed from the body (no `$`, upper-cased, length-capped), or
+   * null when none could be found. The render adds exactly one `$`.
+   */
+  ticker: string | null;
+  /**
+   * Normalised market-cap display string parsed from a labelled `MC`/`MCAP`/
+   * `Market Cap` figure (e.g. `$735.02K`), or null when absent/unparseable.
+   * Never a NaN or a wrong number — an unparseable figure omits the line.
+   */
+  mcapDisplay: string | null;
+}
+
+// --- Field extraction from the untrusted scan body --------------------------
+//
+// UNTRUSTED INPUT. Everything below reads third-party text. Each helper is pure,
+// bounds the length of what it returns, rejects non-finite numbers, and leaves
+// escaping to the renderer (html.ts). None of them can throw on hostile input.
+
+/** Longest ticker the card will show (a real ticker is a handful of chars). */
+const MAX_TICKER_LEN = 15;
+/** Longest market-cap numeric run we accept before treating it as garbage. */
+const MAX_MCAP_DIGITS = 20;
+
+/**
+ * The token name from the FIRST non-empty line, markdown stripped — the ticker
+ * fallback when the body carries no explicit `$SYMBOL`. Returns null when the
+ * line reduces to nothing usable.
+ */
+function extractHeaderName(text: string): string | null {
+  const firstLine = text
+    .split(/\r?\n/)
+    .map((l) => l.trim())
+    .find((l) => l !== '');
+  if (!firstLine) return null;
+
+  // A real scan puts the token name in a FORMATTED header (a markdown link or
+  // bold run). Remember that before stripping the markup, so we can tell a
+  // genuine name from a line of prose.
+  const wasFormatted = /\[[^\]]+\]\([^)]*\)/.test(firstLine) || /\*\*[^*]+\*\*/.test(firstLine);
+
+  let s = firstLine;
+  s = s.replace(/\[([^\]]+)\]\([^)]*\)/g, '$1'); // [label](url) → label
+  s = s.replace(/https?:\/\/\S+/g, ' '); // bare urls
+  s = s.replace(/[*_`~]+/g, ''); // markdown emphasis markers
+  s = s.replace(/\([^)]*\)\s*$/g, ''); // a trailing ($TICKER) / (…) group
+  s = s.replace(/^[^\p{L}\p{N}$]+/u, ''); // leading emoji / bullet / symbols
+  s = s.trim();
+  if (s === '') return null;
+
+  // Only accept prose as a name when the header was actually formatted like one,
+  // or is short enough to plausibly BE a name — never a whole sentence, which
+  // would render as a nonsense "$THE MARKET IS" ticker.
+  if (!wasFormatted && (s.length > 32 || s.split(/\s+/).length > 4)) return null;
+  return s;
+}
+
+/**
+ * The ticker for the card: the first `$SYMBOL`, else the header name. Stripped
+ * of a leading `$`, upper-cased, and length-capped. Null when nothing usable is
+ * found — the render then shows a neutral header instead.
+ */
+export function parseSignalTicker(text: string): string | null {
+  const dollar = text.match(/\$([A-Za-z][A-Za-z0-9_]{0,29})/);
+  const raw = dollar?.[1] ?? extractHeaderName(text);
+  if (!raw) return null;
+  const cleaned = raw.replace(/^\$+/, '').trim().toUpperCase();
+  if (cleaned === '') return null;
+  return cleaned.slice(0, MAX_TICKER_LEN);
+}
+
+/**
+ * The market cap for the card: a labelled `MC`/`MCAP`/`Market Cap` figure with
+ * an optional `$` and `K`/`M`/`B`/`T` suffix (`$17.5K`, `$1.2M`, `750K`),
+ * normalised to a `$…` display string. Null when absent or unparseable — never
+ * a NaN and never a different number than the one written.
+ *
+ * The label anchor means ATH/VOL/LIQ figures on adjacent lines cannot be
+ * mistaken for the market cap.
+ */
+export function parseSignalMarketCap(text: string): string | null {
+  const m = text.match(
+    /\b(?:MCAP|MC|MARKET\s*CAP)\b\s*[:=]?\s*\*{0,2}\s*\$?\s*(\d[\d,]*(?:\.\d+)?)\s*([KMBT])?/i,
+  );
+  if (!m) return null;
+  const numStr = m[1].replace(/,/g, '');
+  if (numStr.length > MAX_MCAP_DIGITS) return null;
+  const value = Number(numStr);
+  if (!Number.isFinite(value) || value <= 0) return null;
+  const suffix = (m[2] ?? '').toUpperCase();
+  return `$${numStr}${suffix}`;
+}
+
+// --- Dedupe (one call = one alert) ------------------------------------------
+//
+// Upstream posts the SAME call twice within seconds — a text card and an image
+// card — each carrying the same contract. Left alone that is two alerts. This
+// collapses them to one per (chain, primary address) inside a TTL window,
+// first-wins. In-memory only: no persistence, no Supabase, nothing to restore.
+
+/** Env names for the dedupe window, primary first. */
+const DEDUPE_TTL_ENV = ['OCT_SIGNAL_DEDUPE_TTL_MS', 'TG_BOT_SIGNAL_DEDUPE_TTL_MS'] as const;
+/** Default window: two near-simultaneous posts of one call collapse. */
+const DEFAULT_DEDUPE_TTL_MS = 10 * 60 * 1000;
+/** Hard ceiling on the map so a long-running process cannot grow it unbounded. */
+const DEDUPE_MAX_ENTRIES = 5000;
+
+function readDedupeTtlMs(): number {
+  for (const name of DEDUPE_TTL_ENV) {
+    const raw = process.env[name]?.trim();
+    if (raw) {
+      const n = Number(raw);
+      if (Number.isFinite(n) && n > 0) return n;
+    }
+  }
+  return DEFAULT_DEDUPE_TTL_MS;
+}
+
+/**
+ * The dedupe key for a signal: chain + case-normalised primary address. Chain
+ * is part of the key on purpose — the same CA on SOL and on EVM are two real,
+ * distinct tokens and both must alert. EVM addresses fold to lowercase (the same
+ * mint arrives in mixed casings); SOL is base58 and case-SENSITIVE, so it is
+ * left untouched — exactly `normalizeContractAddress`'s contract.
+ */
+export function octSignalDedupeKey(chain: OctSignalChain, address: string): string {
+  return `${chain}:${normalizeContractAddress(address)}`;
+}
+
+/**
+ * A tiny in-memory TTL set of recently-seen signal keys. One instance lives on
+ * the alert router (a sibling of its guard/buffer). Expired keys are swept on
+ * every check, and the map is capped so it cannot leak.
+ */
+export class OctSignalDedupe {
+  /** key → epoch-ms at which the key expires. */
+  private readonly seen = new Map<string, number>();
+
+  /**
+   * True when `key` was seen inside the TTL window (drop this signal); false the
+   * FIRST time (record it and deliver). First-wins: a later duplicate never
+   * refreshes the window, so a genuine re-call after the TTL alerts again.
+   */
+  isDuplicate(key: string, now: number = Date.now()): boolean {
+    this.evict(now);
+    const expiresAt = this.seen.get(key);
+    if (expiresAt !== undefined && expiresAt > now) return true;
+    this.seen.set(key, now + readDedupeTtlMs());
+    if (this.seen.size > DEDUPE_MAX_ENTRIES) this.trim();
+    return false;
+  }
+
+  /** Drop every expired key. */
+  private evict(now: number): void {
+    for (const [key, expiresAt] of this.seen) {
+      if (expiresAt <= now) this.seen.delete(key);
+    }
+  }
+
+  /** Last-resort cap: drop the oldest-inserted keys (Map preserves order). */
+  private trim(): void {
+    const overflow = this.seen.size - DEDUPE_MAX_ENTRIES;
+    if (overflow <= 0) return;
+    let dropped = 0;
+    for (const key of this.seen.keys()) {
+      this.seen.delete(key);
+      if (++dropped >= overflow) break;
+    }
+  }
 }
 
 /** Env names for the SOL source channel id list, primary first. */
@@ -194,5 +365,10 @@ export function buildOctSignalView(input: {
   if (addresses.length === 0 && text === '') return null;
 
   const network = chain === 'sol' ? 'solana' : (input.evmChainHint?.trim() || 'evm');
-  return { chain, network, addresses, text };
+  // Ticker/MC are parsed from the RAW body (before signature stripping) so a
+  // stat line is never lost to an aggressive strip; the CA is likewise
+  // extracted independently. Both are omitted, not faked, when absent.
+  const ticker = parseSignalTicker(raw);
+  const mcapDisplay = parseSignalMarketCap(raw);
+  return { chain, network, addresses, text, ticker, mcapDisplay };
 }
