@@ -23,6 +23,7 @@ import { createMcapCrossRoutes } from './routes/mcapCross.js';
 import { createCallersRoutes } from './routes/callers.js';
 import { createAdminRoutes } from './routes/admin.js';
 import { createPushoverRoutes } from './routes/pushover.js';
+import { createTgBotRoutes } from './routes/tgbot.js';
 
 // Thin composition root for the /api surface. Each domain lives in its own
 // sub-router under ./routes/; the shared gateway/telegram/storage context is
@@ -47,6 +48,7 @@ export function createRouter(wsServer: WsServer): Router {
   router.use(createJournalRoutes(ctx));    // /journal/*
   router.use(createPriceAlertsRoutes(ctx)); // /price-alerts*
   router.use(createMcapCrossRoutes(ctx));  // /mcap-cross/filters
+  router.use(createTgBotRoutes());         // /tgbot/link-code
   router.use(createCallersRoutes(ctx));    // /callers/scores
   router.use(createAdminRoutes(wsServer)); // /admin/stats (operator only)
   router.use(createPushoverRoutes(ctx));   // /pushover/signal-convergence

@@ -26,6 +26,8 @@ import FullPageSpinner from './common/FullPageSpinner';
 const CallerQualitySection = lazy(() => import('./settings/sections/CallerQualitySection'));
 // Owns its own state and its own validating endpoint — it takes no `form`.
 const McapAlertsSection = lazy(() => import('./settings/sections/McapAlertsSection'));
+// Same shape as McapAlertsSection: its own state, its own endpoint, no `form`.
+const TelegramBotSection = lazy(() => import('./settings/sections/TelegramBotSection'));
 const HelpSection = lazy(() => import('./settings/sections/HelpSection'));
 
 export default function GlobalSettings() {
@@ -154,10 +156,14 @@ export default function GlobalSettings() {
                 {section === 'mentions' && <MentionsSection form={form} />}
                 {section === 'users' && <UsersSection form={form} />}
                 {section === 'guilds' && <GuildsSection form={form} />}
-                {(section === 'callerquality' || section === 'mcapalerts' || section === 'help') && (
+                {(section === 'callerquality' ||
+                  section === 'mcapalerts' ||
+                  section === 'telegrambot' ||
+                  section === 'help') && (
                   <Suspense fallback={<FullPageSpinner className="w-full py-gutter" />}>
                     {section === 'callerquality' && <CallerQualitySection form={form} />}
                     {section === 'mcapalerts' && <McapAlertsSection />}
+                    {section === 'telegrambot' && <TelegramBotSection />}
                     {section === 'help' && <HelpSection form={form} />}
                   </Suspense>
                 )}

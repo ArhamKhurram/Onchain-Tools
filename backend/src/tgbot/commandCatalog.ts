@@ -104,6 +104,38 @@ const unmute: CommandSpec = {
   adminOnly: true,
 };
 
+/**
+ * Binding a chat to an OCT account.
+ *
+ * `adminOnly` is TRUE because in a group it is the largest write the bot has:
+ * it decides whose private alert feed the whole room reads, and it hands the
+ * room's admins the linked account's filter controls. The enforcement is
+ * `decideChatWrite`, like every other write.
+ */
+const link: CommandSpec = {
+  name: 'link',
+  description: 'Link this chat to an OCT account with a console code',
+  usage: '/link <code>',
+  blurb: 'bind this chat to your OCT account using a code from the console',
+  adminOnly: true,
+};
+
+const unlink: CommandSpec = {
+  name: 'unlink',
+  description: 'Unbind this chat from its OCT account',
+  usage: '/unlink [confirm]',
+  blurb: 'undo the link; the chat falls back to the instance default',
+  adminOnly: true,
+};
+
+const filters: CommandSpec = {
+  name: 'filters',
+  description: 'See and change the market-cap alert thresholds',
+  usage: '/filters [<name> <value>|reset]',
+  blurb: 'the linked account’s market-cap filters, the same ones the console shows',
+  adminOnly: true,
+};
+
 const token: CommandSpec = {
   name: 'token',
   description: 'Market snapshot for a token address',
@@ -154,6 +186,11 @@ const fees: CommandSpec = {
 export const COMMAND_GROUPS: readonly CommandGroup[] = [
   { title: 'Set up', note: null, commands: [start, status, help] },
   {
+    title: 'Your OCT account',
+    note: 'Linking decides whose alerts arrive here. In a group, only an admin can.',
+    commands: [link, unlink, filters],
+  },
+  {
     title: 'Alerts',
     note: 'In a group, only an admin can change these.',
     commands: [alerts, mute, unmute],
@@ -186,6 +223,9 @@ export const SPEC = {
   mcap,
   queued,
   fees,
+  link,
+  unlink,
+  filters,
 } as const;
 
 // --- Telegram's `/` menu -----------------------------------------------------

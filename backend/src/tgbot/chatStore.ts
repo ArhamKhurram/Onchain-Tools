@@ -345,6 +345,53 @@ class TgChatStore {
     return true;
   }
 
+  /**
+   * Bind this chat to an OCT account, or clear the binding.
+   *
+   * THE WRITE `source_user_id` NEVER HAD. The column shipped with the roster
+   * table and its own migration called it "the seam a future 'link this chat to
+   * my OCT account' flow fills in"; this is that write, and it is the only one.
+   * Everything that decides WHETHER it may happen — a single-use code minted
+   * from an authenticated console session, plus `decideChatWrite` on the chat —
+   * lives in linkCodes.ts and commands/link.ts. This method does not
+   * re-litigate it; it also cannot be reached from anywhere that skipped it,
+   * because nothing else calls it.
+   *
+   * `null` restores the pre-linking behaviour exactly: `resolveAlertSource`
+   * falls back to the instance default, or to nothing. Unlinking is therefore a
+   * true undo rather than a third state.
+   *
+   * Invalidates the enabled-chat cache for the same reason `updateSettings`
+   * does — the fan-out reads `sourceUserId` off those cached rows, so without
+   * it a just-unlinked chat would keep receiving one more minute of somebody's
+   * private feed.
+   */
+  async setSourceUser(chatId: number, userId: string | null): Promise<boolean> {
+    if (!this.hosted()) {
+      const map = this.loadLocal();
+      const record = map.get(chatId);
+      if (!record) return false;
+      map.set(chatId, { ...record, sourceUserId: userId });
+      this.saveLocal();
+      this.invalidate();
+      return true;
+    }
+
+    const db = this.client();
+    if (!db) return false;
+
+    const { error } = await db
+      .from('tg_bot_chats')
+      .update({ source_user_id: userId })
+      .eq('chat_id', chatId);
+    if (error) {
+      console.error('[TgBot] Could not set the chat alert source:', error.message);
+      return false;
+    }
+    this.invalidate();
+    return true;
+  }
+
   /** Test seam — drops cached state so a fresh env/backend takes effect. */
   reset(): void {
     this.db = null;
