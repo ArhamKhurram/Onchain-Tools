@@ -28,6 +28,14 @@ import {
   type Monitor985Window,
 } from './monitor985.js';
 import { fetchWorkerHealth, isFomoProxyMode } from './proxy-client.js';
+import { getRecentStreamTrades, getStreamFeedSize } from './streamFeed.js';
+import { getFomoStreamStatus } from './streamListener.js';
+import {
+  FOMO_STREAM_SCOPE_NOTE,
+  FOMO_STREAM_SOURCE,
+  FOMO_STREAM_SOURCE_LABEL,
+  FOMO_STREAM_SOURCE_URL,
+} from './streamNormalize.js';
 import {
   getFomoServiceClient,
   extractLeaderboardEntries,
@@ -655,6 +663,48 @@ export function createFomoRouter(wsServer: WsServer): Router {
     } catch (err: any) {
       res.status(500).json({ error: safeError(err, 'Failed to untrack FOMO user') });
     }
+  });
+
+  // --- 985monitor live stream -----------------------------------------------
+  //
+  // A distinct third-party source, deliberately NOT merged into the fomo.family
+  // trade routes above. Every response carries the same scope envelope the
+  // Robinhood routes use, so the console cannot render one as the other.
+  //
+  // Read-only, keyless, in-memory only: no persistence and no Supabase reads,
+  // so this costs nothing in egress no matter how often the console seeds.
+
+  const STREAM_ENVELOPE = {
+    source: FOMO_STREAM_SOURCE,
+    sourceLabel: FOMO_STREAM_SOURCE_LABEL,
+    sourceUrl: FOMO_STREAM_SOURCE_URL,
+    scope: FOMO_STREAM_SCOPE_NOTE,
+  } as const;
+
+  // GET /api/fomo/stream/status — listener health. Always 200: a third-party
+  // source being down is a degraded panel, never an OCT error.
+  router.get('/stream/status', (_req, res) => {
+    const listener = getFomoStreamStatus();
+    res.json({
+      ...STREAM_ENVELOPE,
+      available: listener.connected || getStreamFeedSize() > 0,
+      listener,
+      bufferedTrades: getStreamFeedSize(),
+    });
+  });
+
+  // GET /api/fomo/stream/tape?limit=150 — the seed for the console's tape.
+  // Live rows continue from here over the existing WS (`fomo_stream_trade`).
+  router.get('/stream/tape', (req, res) => {
+    const raw = Number.parseInt(String(req.query.limit ?? ''), 10);
+    const limit = Number.isFinite(raw) ? Math.min(Math.max(raw, 1), 300) : 150;
+    const listener = getFomoStreamStatus();
+    res.json({
+      ...STREAM_ENVELOPE,
+      available: listener.connected || getStreamFeedSize() > 0,
+      listenerEnabled: listener.enabled,
+      trades: getRecentStreamTrades(limit),
+    });
   });
 
   return router;

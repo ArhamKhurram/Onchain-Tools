@@ -50,6 +50,7 @@ import { startPumpCalloutPoller } from './pumpfun/calloutPoller.js';
 import { startJ7Consumer } from './j7/index.js';
 import { startWalletMovementPoller } from './wallets/movementPoller.js';
 import { startFomoRetentionSweeper } from './fomo/retention.js';
+import { startFomoStreamListener } from './fomo/streamListener.js';
 import { startMissedRunnerPoller } from './alerts/missedRunnerPoller.js';
 import { startRevivalPoller } from './revival/poller.js';
 import { startJournalPoller } from './journal/poller.js';
@@ -840,6 +841,11 @@ httpServer.listen(PORT, HOST, async () => {
   // OCT_ROBINHOOD_ENABLED; broadcasts `robinhood_fill` on the existing WS.
   // Self-gates and never throws — a third-party outage parks the interval.
   startRobinhoodPoller(wsServer);
+  // All-chain FOMO tape re-broadcast by 985monitor.xyz (public SSE, keyless).
+  // Opt-in via OCT_FOMO_STREAM_ENABLED; broadcasts `fomo_stream_trade` on the
+  // existing WS. Its own labelled signal — never fused with the fomo.family
+  // feed above or with OCT convergence.
+  startFomoStreamListener(wsServer);
   // Keeps the FOMO trade log from growing without bound; the console only ever
   // replays the last day of it.
   startFomoRetentionSweeper();
