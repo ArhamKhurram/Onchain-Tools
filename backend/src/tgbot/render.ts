@@ -14,6 +14,7 @@
 // alert rather than a visible bug.
 
 import {
+  buildAxiomEvmUrl,
   buildContractUrl,
   buildRevivalContractUrl,
   compactUsd,
@@ -551,37 +552,95 @@ export function renderMcapCrossCard(view: McapCrossView): string {
 
 // --- OCT Alerts (forwarded algorithm-scan signals) --------------------------
 
-/** SOL/EVM display label for a signal's SOURCE chain. */
+/** SOL/EVM display label for a signal's SOURCE chain (digest line only). */
 const OCT_SIGNAL_CHAIN_LABEL: Record<'sol' | 'evm', string> = { sol: 'SOL', evm: 'EVM' };
 
 /**
- * A forwarded "OCT Alerts" signal, as a Telegram card.
+ * The quick-buy keyboard for an OCT Alerts card.
  *
- * WHITE-LABEL. Attributed as "OCT Alerts · SOL"/"OCT Alerts · EVM" — the chain
- * it came from, never the upstream that produced it. The scan body is UNTRUSTED
- * third-party text and is escaped (and signature-stripped before it arrives
- * here); a `<` that slipped through raw would be a 400 and a silently dropped
- * signal.
+ * DELIBERATELY NOT `mcapCrossQuickBuyKeyboard`. The operator wants a different
+ * venue set here — Axiom in place of Bloom — and the crossing card must keep its
+ * own (GMGN/Axiom/Padre/Bloom). Both build their URLs from the SAME shared
+ * machinery (buildRevivalContractUrl / buildAxiomEvmUrl → getPresetTemplate),
+ * so the owner's referral is embedded by the shared code, never a literal here.
  *
- * The contract address(es) render as tap-to-copy `<code>` with a referral chart
- * link, and the multi-venue referral quick-buy keyboard rides the message as a
- * reply_markup (built by the delivery path via the same shared machinery the
- * crossing card uses). A message with no address forwards its text without
- * buttons rather than being dropped.
+ * The set, per chain:
+ *   • Solana  → GMGN + Axiom. (Bloom and Padre are dropped from this card.)
+ *   • EVM     → GMGN always; Axiom ONLY on the Robinhood chain, whose Axiom URL
+ *               is verified. On every other EVM chain Axiom is omitted rather
+ *               than pointed at a chain it may not serve — a wrong-chain link is
+ *               worse than one fewer button.
+ *
+ * URL buttons carry a RAW url (a JSON field of reply_markup — never escapeHtml'd,
+ * which would corrupt it with `&amp;`). The address is untrusted, so any url
+ * that does not build to http(s) is dropped, the same guard `link()` applies.
+ * Returns undefined when nothing applies so the caller omits reply_markup.
+ */
+export function octSignalQuickBuyKeyboard(view: {
+  address: string;
+  network: string;
+}): TgInlineKeyboardMarkup | undefined {
+  // buildContractUrl keys sol-vs-evm off the address, so decide the venue set
+  // the same way — a base58 mint is Solana, an 0x address is EVM.
+  const isSol = !view.address.startsWith('0x');
+  const buttons: TgInlineKeyboardButton[] = [];
+
+  const push = (text: string, url: string | null): void => {
+    if (url && /^https?:\/\//i.test(url.trim())) buttons.push({ text, url });
+  };
+
+  // GMGN spans both chains (referral embedded by the shared machinery).
+  push('GMGN', buildRevivalContractUrl(view.address, view.network, venueConfig('gmgn', isSol)));
+
+  // Axiom: native on Solana; on EVM only the Robinhood chain has a verified
+  // referral URL, so buildAxiomEvmUrl returns null (→ no button) elsewhere.
+  push(
+    'Axiom',
+    isSol
+      ? buildRevivalContractUrl(view.address, view.network, venueConfig('axiom', true))
+      : buildAxiomEvmUrl(view.address, view.network),
+  );
+
+  if (buttons.length === 0) return undefined;
+
+  const rows: TgInlineKeyboardButton[][] = [];
+  for (let i = 0; i < buttons.length; i += 2) rows.push(buttons.slice(i, i + 2));
+  return { inline_keyboard: rows };
+}
+
+/**
+ * A forwarded "OCT Alerts" signal, as a MINIMAL Telegram card.
+ *
+ * WHAT IT SHOWS AND WHY. The upstream scan body carries a vendor-linked name,
+ * ATH/USD/LIQ/VOL rows, socials, holder %, link-farm rows and promo — none of
+ * which the operator wants forwarded. So this card is built from EXTRACTED
+ * FIELDS (octSignals.ts), not the body: a `$TICKER` header, the market cap when
+ * we could parse it, the chain, and the tap-to-copy contract address. Nothing
+ * else. Every field is escaped (html.ts): a `<` that slipped through raw would
+ * be a 400 and a silently dropped signal.
+ *
+ * WHITE-LABEL. No vendor name, no vendor chart link — the OCT signature in the
+ * footer is the only attribution, and the neutral header fallback is the alert
+ * type's own label ("OCT Alerts"). The referral quick-buy keyboard rides the
+ * message as reply_markup (octSignalQuickBuyKeyboard), attached by the delivery
+ * path; the CA stays as `<code>` so it survives a client that renders no buttons.
+ * A message with no address renders its header/chain without a CA or buttons
+ * rather than being dropped.
  */
 export function renderOctSignalCard(view: OctSignalView): string {
-  const addresses = view.addresses.slice(0, 3);
-  const overflow = view.addresses.length - addresses.length;
-  const body = view.text.trim();
+  const ticker = clampName(view.ticker ?? '', '');
+  const heading = ticker !== '' ? `💠 $${ticker}` : `💠 ${ALERT_CATALOG.octSignals.label}`;
+  // Chain line: SOL reads "Solana"; every EVM/Robinhood signal uses the same
+  // network label the crossing card uses (revivalNetworkLabel).
+  const chainLabel = view.chain === 'sol' ? 'Solana' : revivalNetworkLabel(view.network);
+  const primary = view.addresses[0];
 
   return joinLines([
-    bold(`💠 OCT Alerts · ${OCT_SIGNAL_CHAIN_LABEL[view.chain]}`),
-    body ? `<blockquote>${escapeHtml(truncate(body, MAX_QUOTE_CHARS))}</blockquote>` : null,
-    addresses.length > 0 ? '' : null,
-    ...addresses.map(
-      (addr) => `${code(addr)}\n${link('Chart ↗', buildRevivalContractUrl(addr, view.network, LINK_TEMPLATES))}`,
-    ),
-    overflow > 0 ? italic(`+${overflow} more in the same message`) : null,
+    bold(heading),
+    view.mcapDisplay ? `${bold('MCap:')} ${escapeHtml(view.mcapDisplay)}` : null,
+    `${bold('Chain:')} ${escapeHtml(chainLabel)}`,
+    '',
+    primary ? code(primary) : null,
     footer(),
   ]);
 }

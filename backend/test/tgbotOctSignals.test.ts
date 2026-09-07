@@ -3,14 +3,17 @@
 // The hard requirements this suite pins:
 //   • recognise a message ONLY from a configured source channel (by id, per
 //     chain), never a non-configured one, and never by title;
-//   • the card is white-labelled "OCT Alerts · SOL/EVM", carries the CA as
-//     tap-to-copy code, and gets the owner referral quick-buy buttons from the
-//     SHARED machinery (REFERRALS), never a hardcoded code;
-//   • the scan text is untrusted and is escaped, and any upstream signature is
-//     stripped (the vendor string lives only in operator env, never in code);
-//   • delivery is default-on for fresh AND existing chats, respects the hourly
-//     ceiling and an existing mute, but CANNOT trip the circuit breaker and mute
-//     a chat's other subscriptions;
+//   • the card is MINIMAL — ticker, market cap, chain, contract address, and the
+//     referral buttons, nothing else (no ATH/USD/LIQ/VOL/socials/promo/vendor
+//     link), built from EXTRACTED fields rather than the forwarded body;
+//   • ticker + market cap parse defensively from untrusted text, and each is
+//     OMITTED (never faked as NaN/wrong) when it cannot be found;
+//   • one call = one alert: two near-simultaneous posts of the same contract
+//     collapse (dedupe on chain + primary address, TTL-bounded, first-wins);
+//   • the buttons are GMGN + Axiom, chain-correct, with the owner referral from
+//     the SHARED REFERRALS constant (never a hardcoded code);
+//   • delivery is default-on, uncapped, respects an existing mute, but CANNOT
+//     trip the circuit breaker and mute a chat's other subscriptions;
 //   • the vendor word appears NOWHERE in the new code or rendered output.
 
 import { readFileSync } from 'fs';
@@ -21,11 +24,15 @@ import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { REFERRALS } from '@oct/shared';
 import {
   buildOctSignalView,
+  octSignalDedupeKey,
+  parseSignalMarketCap,
+  parseSignalTicker,
   resolveOctSignalChain,
   stripUpstreamSignature,
   hasSignalSources,
+  type OctSignalView,
 } from '../src/tgbot/octSignals';
-import { renderOctSignalCard } from '../src/tgbot/render';
+import { octSignalQuickBuyKeyboard, renderOctSignalCard } from '../src/tgbot/render';
 import { ALERT_CATALOG, DEFAULT_CHAT_SETTINGS, readSettings } from '../src/tgbot/alertPolicy';
 import type { TgChatRecord } from '../src/tgbot/chatStore';
 import type { TgChatSettings } from '../src/tgbot/alertPolicy';
@@ -36,10 +43,26 @@ const __dirname = dirname(fileURLToPath(import.meta.url));
 // A base58 Solana mint and a canonical 0x EVM address.
 const SOL_ADDR = 'So11111111111111111111111111111111111111112';
 const EVM_ADDR = '0x1234567890123456789012345678901234567890';
+// The Robinhood-chain 0x address shape Axiom's verified route uses.
+const RH_ADDR = '0xab35d04e1ee39c789c4a65d522417b3c7f2e4723';
 
 // The two source channels, by id, per chain — never by title.
 const SOL_CHANNEL = '-1001111111111';
 const EVM_CHANNEL = '-1002222222222';
+
+// A view builder for the render/keyboard/delivery tests. Mirrors what
+// buildOctSignalView produces, with the extracted fields defaulted.
+function view(overrides: Partial<OctSignalView> = {}): OctSignalView {
+  return {
+    chain: 'sol',
+    network: 'solana',
+    addresses: [SOL_ADDR],
+    text: 'scan',
+    ticker: null,
+    mcapDisplay: null,
+    ...overrides,
+  };
+}
 
 function configureSources(): void {
   vi.stubEnv('OCT_SIGNAL_SOURCE_CHANNEL_IDS_SOL', SOL_CHANNEL);
@@ -139,22 +162,81 @@ describe('forum-topic sources — two topics of ONE supergroup, matched by topic
   });
 });
 
+// ---------------------------------------------------------------------------
+// Field extraction — the minimal card is built from THESE, not the body.
+
+describe('ticker + market cap parsing (untrusted input, defensive)', () => {
+  // The real upstream shape the operator wants reduced to $TICKER / MC / CA.
+  const MARLIN = [
+    '🔍 **[JT MARLIN](https://t.me/tokenscan?start=scan-0xab35...)** ($MARLIN)',
+    '📊 **Token Stats**',
+    '├ MC:  **$735.02K**',
+    '├ ATH: **$863.6K** (-14.89% / 3m)',
+    '└ VOL: **$719.4K** (24h)',
+    RH_ADDR,
+  ].join('\n');
+
+  it('parses the ticker from the $SYMBOL', () => {
+    expect(parseSignalTicker(MARLIN)).toBe('MARLIN');
+  });
+
+  it('parses the market cap from the MC line — not the ATH or VOL figure', () => {
+    expect(parseSignalMarketCap(MARLIN)).toBe('$735.02K');
+  });
+
+  it('falls back to the formatted header name when there is no $SYMBOL', () => {
+    const text = '🔍 **[JT MARLIN](https://t.me/x)**\nMC: $10K';
+    expect(parseSignalTicker(text)).toBe('JT MARLIN');
+  });
+
+  it('does not turn a line of prose into a ticker', () => {
+    expect(parseSignalTicker('market is heating up, watch this one closely today')).toBeNull();
+  });
+
+  it('returns null for a ticker when nothing usable is present', () => {
+    expect(parseSignalTicker('🔥🔥🔥')).toBeNull();
+    expect(parseSignalTicker('https://t.me/x')).toBeNull();
+  });
+
+  it('accepts labelled MC / MCAP / Market Cap with $ and K/M/B suffixes', () => {
+    expect(parseSignalMarketCap('MC: $17.5K')).toBe('$17.5K');
+    expect(parseSignalMarketCap('MCAP $1.2M')).toBe('$1.2M');
+    expect(parseSignalMarketCap('Market Cap: 750K')).toBe('$750K');
+    expect(parseSignalMarketCap('mc = $2B')).toBe('$2B');
+  });
+
+  it('returns null (never NaN) when there is no market cap to parse', () => {
+    expect(parseSignalMarketCap('no numbers here')).toBeNull();
+    expect(parseSignalMarketCap('ATH: $863.6K')).toBeNull(); // ATH is not MC
+    expect(parseSignalMarketCap('MC: soon')).toBeNull(); // labelled but no number
+  });
+
+  it('buildOctSignalView carries ticker + mcap + chain for the MARLIN shape', () => {
+    configureSources();
+    const built = buildOctSignalView({ chatId: EVM_CHANNEL, text: MARLIN, evmChainHint: 'robinhood' });
+    expect(built!.ticker).toBe('MARLIN');
+    expect(built!.mcapDisplay).toBe('$735.02K');
+    expect(built!.network).toBe('robinhood');
+    expect(built!.addresses).toContain(RH_ADDR);
+  });
+});
+
 describe('buildOctSignalView', () => {
   it('shapes a SOL-source message: chain sol, network solana, CA extracted', () => {
     configureSources();
-    const view = buildOctSignalView({ chatId: SOL_CHANNEL, text: `fresh scan ${SOL_ADDR} sending` });
-    expect(view).not.toBeNull();
-    expect(view!.chain).toBe('sol');
-    expect(view!.network).toBe('solana');
-    expect(view!.addresses).toContain(SOL_ADDR);
+    const built = buildOctSignalView({ chatId: SOL_CHANNEL, text: `fresh scan ${SOL_ADDR} sending` });
+    expect(built).not.toBeNull();
+    expect(built!.chain).toBe('sol');
+    expect(built!.network).toBe('solana');
+    expect(built!.addresses).toContain(SOL_ADDR);
   });
 
   it('shapes an EVM-source message: chain evm, evm network from the hint', () => {
     configureSources();
-    const view = buildOctSignalView({ chatId: EVM_CHANNEL, text: `scan ${EVM_ADDR}`, evmChainHint: 'bsc' });
-    expect(view!.chain).toBe('evm');
-    expect(view!.network).toBe('bsc');
-    expect(view!.addresses).toContain(EVM_ADDR);
+    const built = buildOctSignalView({ chatId: EVM_CHANNEL, text: `scan ${EVM_ADDR}`, evmChainHint: 'bsc' });
+    expect(built!.chain).toBe('evm');
+    expect(built!.network).toBe('bsc');
+    expect(built!.addresses).toContain(EVM_ADDR);
   });
 
   it('a non-configured channel yields nothing', () => {
@@ -164,10 +246,10 @@ describe('buildOctSignalView', () => {
 
   it('forwards a message with NO contract address rather than dropping it', () => {
     configureSources();
-    const view = buildOctSignalView({ chatId: SOL_CHANNEL, text: 'market is heating up, watch closely' });
-    expect(view).not.toBeNull();
-    expect(view!.addresses).toEqual([]);
-    expect(view!.text).toContain('market is heating up');
+    const built = buildOctSignalView({ chatId: SOL_CHANNEL, text: 'market is heating up, watch closely' });
+    expect(built).not.toBeNull();
+    expect(built!.addresses).toEqual([]);
+    expect(built!.text).toContain('market is heating up');
   });
 
   it('drops a truly empty message', () => {
@@ -194,53 +276,138 @@ describe('signature stripping — the vendor string lives only in operator env',
   it('applies the env strip term through buildOctSignalView, keeping the CA', () => {
     configureSources();
     vi.stubEnv('OCT_SIGNAL_STRIP_TERMS', 'ACMESCAN');
-    const view = buildOctSignalView({
+    const built = buildOctSignalView({
       chatId: SOL_CHANNEL,
       text: `scan hit ${SOL_ADDR}\n— powered by ACMESCAN`,
     });
-    expect(view!.text).not.toContain('ACMESCAN');
+    expect(built!.text).not.toContain('ACMESCAN');
     // The CA is extracted independently, so stripping text never loses it.
-    expect(view!.addresses).toContain(SOL_ADDR);
+    expect(built!.addresses).toContain(SOL_ADDR);
   });
 });
 
-describe('the card — white-labelled, CA-bearing, referral-linked, escaped', () => {
-  it('is attributed "OCT Alerts · SOL" and keeps the CA as tap-to-copy code', () => {
-    const card = renderOctSignalCard({ chain: 'sol', network: 'solana', addresses: [SOL_ADDR], text: 'buy' });
-    expect(card).toContain('OCT Alerts · SOL');
-    expect(card).toContain(`<code>${SOL_ADDR}</code>`);
+// ---------------------------------------------------------------------------
+// The minimal card.
+
+describe('the minimal card — ONLY ticker / MCap / chain / CA', () => {
+  const MARLIN_VIEW = view({
+    chain: 'evm',
+    network: 'robinhood',
+    addresses: [RH_ADDR],
+    text: 'the whole scan body with ATH $863.6K, VOL $719.4K, socials and t.me/tokenscan promo',
+    ticker: 'MARLIN',
+    mcapDisplay: '$735.02K',
   });
 
-  it('labels an EVM signal "OCT Alerts · EVM"', () => {
-    const card = renderOctSignalCard({ chain: 'evm', network: 'bsc', addresses: [EVM_ADDR], text: '' });
-    expect(card).toContain('OCT Alerts · EVM');
+  it('renders $TICKER, the MCap, the chain, and the tap-to-copy CA', () => {
+    const card = renderOctSignalCard(MARLIN_VIEW);
+    expect(card).toContain('$MARLIN');
+    expect(card).toContain('MCap:');
+    expect(card).toContain('$735.02K');
+    expect(card).toContain('Chain:');
+    expect(card).toContain('HOOD'); // revivalNetworkLabel('robinhood')
+    expect(card).toContain(`<code>${RH_ADDR}</code>`);
   });
 
-  it('embeds the owner referral (from REFERRALS) in the chart link, not a literal', () => {
-    const sol = renderOctSignalCard({ chain: 'sol', network: 'solana', addresses: [SOL_ADDR], text: 'x' });
-    // The card's inline chart link uses OCT's shipped defaults: Solana → Axiom
-    // (axiom.trade/t/<addr>/@<ref>), so the owner's Axiom referral rides it.
-    expect(sol).toContain(`@${REFERRALS.axiom}`);
-    // EVM default is GMGN (gmgn.ai/<chain>/token/<ref>_<addr>).
-    const evm = renderOctSignalCard({ chain: 'evm', network: 'bsc', addresses: [EVM_ADDR], text: 'x' });
-    expect(evm).toContain(`${REFERRALS.gmgn}_`);
+  it('drops EVERYTHING else — no ATH/VOL/socials/vendor-link/promo/token-stats', () => {
+    const card = renderOctSignalCard(MARLIN_VIEW);
+    for (const forbidden of ['ATH', 'VOL', '863.6', '719.4', 'tokenscan', 'Token Stats', 'socials', 'Chart']) {
+      expect(card, `card must not contain "${forbidden}"`).not.toContain(forbidden);
+    }
   });
 
-  it('escapes untrusted scan text — an unescaped < is a 400 and a dropped signal', () => {
-    const card = renderOctSignalCard({
-      chain: 'sol',
-      network: 'solana',
-      addresses: [SOL_ADDR],
-      text: '<script>alert(1)</script>',
-    });
-    expect(card).toContain('&lt;script&gt;');
-    expect(card).not.toContain('<script>');
+  it('SOL signals read "Chain: Solana"', () => {
+    const card = renderOctSignalCard(view({ chain: 'sol', network: 'solana', ticker: 'FOO', mcapDisplay: '$1M' }));
+    expect(card).toContain('Chain:');
+    expect(card).toContain('Solana');
+    expect(card).toContain('$FOO');
   });
 
-  it('the type label is "OCT Alerts" and the keyword is "signals" (not "alerts")', () => {
-    expect(ALERT_CATALOG.octSignals.label).toBe('OCT Alerts');
-    expect(ALERT_CATALOG.octSignals.keyword).toBe('signals');
-    expect(ALERT_CATALOG.octSignals.instantAllowed).toBe(true);
+  it('OMITS the MCap line when the market cap is unknown (never NaN)', () => {
+    const card = renderOctSignalCard(view({ ticker: 'FOO', mcapDisplay: null }));
+    expect(card).not.toContain('MCap:');
+    expect(card).not.toContain('NaN');
+  });
+
+  it('uses a neutral header when there is no ticker (no dangling $)', () => {
+    const card = renderOctSignalCard(view({ ticker: null }));
+    expect(card).toContain('OCT Alerts');
+    expect(card).not.toMatch(/💠 \$\b/);
+  });
+
+  it('renders without a CA line when the signal carried no address', () => {
+    const card = renderOctSignalCard(view({ addresses: [], ticker: 'FOO' }));
+    expect(card).not.toContain('<code>');
+    expect(card).toContain('$FOO');
+  });
+
+  it('escapes untrusted ticker text — an unescaped < is a 400 and a dropped signal', () => {
+    const card = renderOctSignalCard(view({ ticker: '<SCRIPT' }));
+    expect(card).toContain('&lt;SCRIPT');
+    expect(card).not.toContain('<SCRIPT');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// The referral buttons — GMGN + Axiom, chain-correct, referral from REFERRALS.
+
+describe('quick-buy buttons — GMGN + Axiom, chain-correct, no literal code', () => {
+  function texts(kb: TgInlineKeyboardMarkup | undefined): string[] {
+    return (kb?.inline_keyboard.flat() ?? []).map((b) => b.text);
+  }
+  function urlFor(kb: TgInlineKeyboardMarkup | undefined, label: string): string | undefined {
+    return kb?.inline_keyboard.flat().find((b) => b.text === label)?.url;
+  }
+
+  it('Solana → GMGN + Axiom (Bloom and Padre dropped), referral embedded', () => {
+    const kb = octSignalQuickBuyKeyboard({ address: SOL_ADDR, network: 'solana' });
+    expect(texts(kb).sort()).toEqual(['Axiom', 'GMGN']);
+    expect(urlFor(kb, 'GMGN')).toContain(`${REFERRALS.gmgn}_`);
+    expect(urlFor(kb, 'Axiom')).toContain(`@${REFERRALS.axiom}`);
+    expect(urlFor(kb, 'Axiom')).toContain('chain=sol');
+    // No Bloom, no Padre.
+    expect(texts(kb)).not.toContain('Bloom');
+    expect(texts(kb)).not.toContain('Padre');
+  });
+
+  it('EVM Robinhood → GMGN + Axiom, the Axiom URL is the verified robinhood route', () => {
+    const kb = octSignalQuickBuyKeyboard({ address: RH_ADDR, network: 'robinhood' });
+    expect(texts(kb).sort()).toEqual(['Axiom', 'GMGN']);
+    const axiom = urlFor(kb, 'Axiom')!;
+    expect(axiom).toContain('axiom.trade/t/');
+    expect(axiom).toContain(`@${REFERRALS.axiom}`);
+    expect(axiom).toContain('chain=robinhood');
+    expect(axiom).toContain(RH_ADDR);
+    expect(axiom).not.toContain('chain=sol');
+  });
+
+  it('EVM non-Robinhood (e.g. BSC) → GMGN only, NO wrong-chain Axiom link', () => {
+    const kb = octSignalQuickBuyKeyboard({ address: EVM_ADDR, network: 'bsc' });
+    expect(texts(kb)).toEqual(['GMGN']);
+    expect(urlFor(kb, 'GMGN')).toContain(`${REFERRALS.gmgn}_`);
+    expect(texts(kb)).not.toContain('Axiom');
+  });
+
+  it('no referral code is hardcoded — every code comes from REFERRALS', () => {
+    const src = readFileSync(join(__dirname, '../src/tgbot/render.ts'), 'utf-8');
+    for (const code of Object.values(REFERRALS)) {
+      expect(src, `render.ts must not hardcode the referral code "${code}"`).not.toContain(code);
+    }
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Dedupe — one call = one alert.
+
+describe('octSignalDedupeKey', () => {
+  it('keys on chain + address so the SAME address on sol vs evm stays distinct', () => {
+    expect(octSignalDedupeKey('sol', SOL_ADDR)).not.toBe(octSignalDedupeKey('evm', SOL_ADDR));
+  });
+
+  it('folds EVM address casing (same mint, different casings, one key)', () => {
+    const upper = '0xABCDEF1234567890123456789012345678901234';
+    const lower = '0xabcdef1234567890123456789012345678901234';
+    expect(octSignalDedupeKey('evm', upper)).toBe(octSignalDedupeKey('evm', lower));
   });
 });
 
@@ -300,7 +467,7 @@ function seed(settings: TgChatSettings): void {
   });
 }
 
-const solView = (addr = SOL_ADDR) => ({ chain: 'sol' as const, network: 'solana', addresses: [addr], text: 'scan' });
+const solView = (addr = SOL_ADDR) => view({ addresses: [addr], ticker: 'TICK', mcapDisplay: '$1M' });
 const runner = (symbol: string) => ({
   type: 'missed_runner',
   reason: `Missed runner: ${symbol}`,
@@ -322,12 +489,13 @@ describe('delivery', () => {
     await router.handleOctSignal(solView(), 1000);
 
     expect(sender.sent).toHaveLength(1);
-    expect(sender.sent[0]!.text).toContain('OCT Alerts · SOL');
+    expect(sender.sent[0]!.text).toContain('$TICK');
     expect(sender.sent[0]!.text).toContain(`<code>${SOL_ADDR}</code>`);
     // Referral quick-buy buttons, code from the shared REFERRALS constant.
     const buttons = sender.sent[0]!.replyMarkup!.inline_keyboard.flat();
-    expect(buttons.length).toBeGreaterThan(0);
+    expect(buttons.map((b) => b.text).sort()).toEqual(['Axiom', 'GMGN']);
     expect(buttons.find((b) => b.text === 'GMGN')!.url).toContain(`${REFERRALS.gmgn}_`);
+    expect(buttons.find((b) => b.text === 'Axiom')!.url).toContain(`@${REFERRALS.axiom}`);
   });
 
   it('an existing chat keeps its other settings and gains OCT Alerts on (no regression)', () => {
@@ -351,9 +519,7 @@ describe('delivery', () => {
   it('is UNCAPPED — a burst is fully delivered, bypassing the hourly ceiling', async () => {
     // Operator decision: OCT Alerts are the point of the bot for its users, so
     // this class is exempt from the per-chat hourly ceiling that bounds the
-    // incident classes. A tight ceiling that would drop the other classes must
-    // not drop these. (sender.ts's global pacing, not this ceiling, is what
-    // keeps Telegram from flood-banning the bot; it still applies.)
+    // incident classes. Distinct addresses so the dedupe never collapses them.
     vi.stubEnv('TG_BOT_MAX_MESSAGES_PER_HOUR', '2');
     seed({ ...DEFAULT_CHAT_SETTINGS, alerts: { ...DEFAULT_CHAT_SETTINGS.alerts } });
     const sender = fakeSender();
@@ -361,7 +527,7 @@ describe('delivery', () => {
 
     for (let i = 0; i < 6; i += 1) {
       await router.handleOctSignal(
-        { chain: 'sol', network: 'solana', addresses: [`So1111111111111111111111111111111111111${String(i).padStart(3, '1')}`], text: 'x' },
+        solView(`So1111111111111111111111111111111111111${String(i).padStart(3, '1')}`),
         1000 + i,
       );
     }
@@ -403,10 +569,10 @@ describe('delivery', () => {
     const sender = fakeSender();
     const router = new TgAlertRouter(() => sender as never);
 
-    // A burst well past the breaker threshold.
+    // A burst well past the breaker threshold (distinct addresses → not deduped).
     for (let i = 0; i < 20; i += 1) {
       await router.handleOctSignal(
-        { chain: 'sol', network: 'solana', addresses: [`So111111111111111111111111111111111111${String(i).padStart(4, '1')}`], text: 'x' },
+        solView(`So111111111111111111111111111111111111${String(i).padStart(4, '1')}`),
         1000 + i,
       );
     }
@@ -419,6 +585,53 @@ describe('delivery', () => {
     await router.handle(runner('TOK'), undefined, 1100);
     expect(sender.sent.length).toBe(before + 1);
     expect(sender.sent.at(-1)!.text).toContain('TOK');
+  });
+});
+
+describe('dedupe — one call = one alert (chain + primary address, TTL-bounded)', () => {
+  it('collapses the same contract posted twice within the TTL to ONE alert', async () => {
+    seed({ ...DEFAULT_CHAT_SETTINGS, alerts: { ...DEFAULT_CHAT_SETTINGS.alerts } });
+    const sender = fakeSender();
+    const router = new TgAlertRouter(() => sender as never);
+
+    // The text card and the image card of the same call, seconds apart.
+    await router.handleOctSignal(solView(), 1_000);
+    await router.handleOctSignal(solView(), 3_000);
+    expect(sender.sent).toHaveLength(1);
+  });
+
+  it('re-alerts the same contract after the TTL has elapsed', async () => {
+    vi.stubEnv('OCT_SIGNAL_DEDUPE_TTL_MS', '600000');
+    seed({ ...DEFAULT_CHAT_SETTINGS, alerts: { ...DEFAULT_CHAT_SETTINGS.alerts } });
+    const sender = fakeSender();
+    const router = new TgAlertRouter(() => sender as never);
+
+    await router.handleOctSignal(solView(), 1_000);
+    await router.handleOctSignal(solView(), 1_000 + 600_001);
+    expect(sender.sent).toHaveLength(2);
+  });
+
+  it('the SAME address on sol vs evm both alert (distinct tokens)', async () => {
+    // Use one bare 0x string reachable as an EVM address and a distinct SOL mint;
+    // the key includes the chain, so even a shared string would not collide.
+    seed({ ...DEFAULT_CHAT_SETTINGS, alerts: { ...DEFAULT_CHAT_SETTINGS.alerts } });
+    const sender = fakeSender();
+    const router = new TgAlertRouter(() => sender as never);
+
+    await router.handleOctSignal(view({ chain: 'sol', network: 'solana', addresses: [SOL_ADDR] }), 1_000);
+    await router.handleOctSignal(view({ chain: 'evm', network: 'bsc', addresses: [EVM_ADDR] }), 1_000);
+    expect(sender.sent).toHaveLength(2);
+  });
+
+  it('a no-address signal is NEVER address-deduped — every one forwards', async () => {
+    seed({ ...DEFAULT_CHAT_SETTINGS, alerts: { ...DEFAULT_CHAT_SETTINGS.alerts } });
+    const sender = fakeSender();
+    const router = new TgAlertRouter(() => sender as never);
+
+    const noAddr = view({ addresses: [], text: 'watch the tape', ticker: null });
+    await router.handleOctSignal(noAddr, 1_000);
+    await router.handleOctSignal(noAddr, 1_001);
+    expect(sender.sent).toHaveLength(2);
   });
 });
 
@@ -435,8 +648,8 @@ describe('the vendor word appears NOWHERE in the new code or output', () => {
   });
 
   it('is absent from a fully rendered card', () => {
-    const card = renderOctSignalCard({ chain: 'evm', network: 'bsc', addresses: [EVM_ADDR], text: 'strong buy signal' });
+    const card = renderOctSignalCard(view({ chain: 'evm', network: 'bsc', addresses: [EVM_ADDR], ticker: null, mcapDisplay: '$2M' }));
     expect(VENDOR.test(card)).toBe(false);
-    expect(card).toContain('OCT Alerts');
+    expect(card).toContain('OCT Alerts'); // neutral fallback branding path
   });
 });
