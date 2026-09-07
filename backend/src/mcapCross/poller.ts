@@ -136,6 +136,12 @@ export interface McapCrossAlertData {
   /** The target it crossed. Carried so a changed threshold is legible later. */
   targetUsd: number;
   liquidityUsd: number | null;
+  /**
+   * Traded USD over 24h, summed across the token's pools. Null = DexScreener
+   * did not report one; it is never rendered as zero, because a token nobody
+   * has a volume figure for and a token nobody traded are different claims.
+   */
+  volume24hUsd: number | null;
   /** liquidity / mcap at the crossing. Null when liquidity was unknown. */
   liquidityRatio: number | null;
   /** Previous observation, i.e. where it crossed FROM. */
@@ -426,6 +432,11 @@ class McapCrossPoller {
         network: token.network,
         mcapUsd: observed,
         liquidityUsd: usable?.liquidityUsd ?? token.liquidityUsd,
+        // Straight from the batch read that already happened. There is no
+        // fallback to the universe row: `UniverseToken` carries liquidity but
+        // not volume, and inventing one would be exactly the "silence read as
+        // zero" the gate abstains to avoid.
+        volume24hUsd: usable?.volume24hUsd ?? null,
         security,
       };
       const gates = evaluateMcapGates(gateInput, baselineCfg);
@@ -488,6 +499,7 @@ class McapCrossPoller {
           mcapUsd: observed,
           targetUsd: target,
           liquidityUsd: usable?.liquidityUsd ?? null,
+          volume24hUsd: usable?.volume24hUsd ?? null,
           liquidityRatio: gates.liquidityRatio,
           caveats: gates.caveats,
           previousMcapUsd: prior?.lastSeenMcap ?? null,

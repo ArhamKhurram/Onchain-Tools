@@ -69,6 +69,22 @@ export interface McapGateConfig {
   maxTop10HolderRate: number;
   /** EVM: each of buy tax and sell tax must be strictly below this. */
   maxTaxRate: number;
+  /**
+   * MINIMUM traded USD over 24h, summed across the token's pools.
+   *
+   * `null` — NOT 0 — means the filter is switched off, and null is the shipped
+   * default. This is the only threshold in the set that has no baseline value,
+   * and the distinction is load-bearing in two directions:
+   *
+   *   - 0 is a real threshold that every listed token clears, so it cannot also
+   *     mean "off". A user who types 0 has said "I do not care about volume",
+   *     which reads identically to off but is reached by a different route.
+   *   - Off must mean the gate is NOT EVALUATED AT ALL, not "evaluated and
+   *     passed". A token whose volume is unknown abstains when the filter is
+   *     set and is untouched when it is not — which is what makes shipping this
+   *     a no-op for every existing user. See `missingCriticalFields`.
+   */
+  minVolume24hUsd: number | null;
   /** Require LP burned or locked. Off makes the LP gate abstain-only. */
   requireLpSecured: boolean;
 }
@@ -102,6 +118,13 @@ export const DEFAULT_GATE_CONFIG: McapGateConfig = {
   maxTop10HolderRate: 0.6,
   maxTaxRate: 0.1,
   requireLpSecured: true,
+  // OFF by shipped default, and there is no defensible number to put here.
+  // What counts as "enough volume" at a 750K market cap depends entirely on
+  // what the reader is looking for — a floor that filters a quiet launch out of
+  // one person's feed is the exact alert another person wanted. Every other
+  // default in this table is a safety floor with a stated sample behind it;
+  // this one is a preference, so it ships unset and the user names it.
+  minVolume24hUsd: null,
 };
 
 export interface McapGateInput {
@@ -110,6 +133,12 @@ export interface McapGateInput {
   mcapUsd: number | null;
   /** Deepest-pair USD liquidity at the crossing. */
   liquidityUsd: number | null;
+  /**
+   * Traded USD over 24h, summed across pools. Null means UNKNOWN — the token
+   * is unlisted, the batch read failed, or no pool reported a figure. It never
+   * means zero, and the gate below never treats it as one.
+   */
+  volume24hUsd: number | null;
   /** Normalised security facts, or null when the provider could not answer. */
   security: TokenSecurity | null;
 }
@@ -184,6 +213,19 @@ export function evaluateMcapGates(
   if (liquidityUsd < cfg.minLiquidityUsd) failed.push('liquidity');
   if (ratio != null && ratio < cfg.minLiquidityToMcapRatio) failed.push('liquidityRatio');
 
+  // 24h volume. Rejects only on a KNOWN figure below a SET threshold; an
+  // unknown figure is handled in `missingCriticalFields`, and an unset
+  // threshold is not evaluated at all. Those three cases are the whole gate.
+  const volume = input.volume24hUsd;
+  if (
+    cfg.minVolume24hUsd != null &&
+    volume != null &&
+    Number.isFinite(volume) &&
+    volume < cfg.minVolume24hUsd
+  ) {
+    failed.push('volume24h');
+  }
+
   // --- Security ------------------------------------------------------------
   const sec = input.security;
   if (!sec) {
@@ -223,6 +265,22 @@ export function evaluateMcapGates(
 
   // --- Nothing failed. Is that because everything passed, or because we
   //     could not see? -----------------------------------------------------
+  // A SET volume floor that could not be measured is an open question, not a
+  // pass — the same rule the security fields follow, applied to market data.
+  // It sits here rather than in `missingCriticalFields` because that helper is
+  // about the SECURITY payload; this is about the DexScreener read.
+  //
+  // CHAIN COVERAGE IS WHY THIS IS THE ONLY SAFE SHAPE. `volume24hUsd` comes
+  // from the same DexScreener batch that already supplies market cap and
+  // liquidity, so it covers Solana, BNB and Robinhood identically — there is no
+  // chain on which this metric is structurally absent, the way `buyTax` is
+  // absent on Solana. But a token DexScreener happens not to report volume for
+  // must still abstain rather than fail, because a floor that treats silence as
+  // zero rejects exactly the tokens the data is thinnest about.
+  if (cfg.minVolume24hUsd != null && (input.volume24hUsd == null || !Number.isFinite(input.volume24hUsd))) {
+    return verdict('abstain', [], '24h volume unknown', ratio);
+  }
+
   const unknown = missingCriticalFields(sec, network, cfg);
   if (unknown) return verdict('abstain', [], unknown, ratio);
 
@@ -263,6 +321,18 @@ function envNum(name: string, fallback: number): number {
   return Number.isFinite(raw) && raw >= 0 ? raw : fallback;
 }
 
+/**
+ * An OPTIONAL numeric threshold: unset (or unparseable) stays `null`, which
+ * means the gate is not evaluated. Distinct from `envNum`, whose fallback is a
+ * real number, because for this one field "no value" is a meaningful state.
+ */
+function envNumOrNull(name: string, fallback: number | null): number | null {
+  const raw = envFlag(name)?.trim();
+  if (raw == null || raw === '') return fallback;
+  const parsed = Number(raw);
+  return Number.isFinite(parsed) && parsed >= 0 ? parsed : fallback;
+}
+
 function envBool(name: string, fallback: boolean): boolean {
   const raw = envFlag(name)?.trim().toLowerCase();
   if (raw == null || raw === '') return fallback;
@@ -288,6 +358,10 @@ export function resolveGateConfig(): McapGateConfig {
       DEFAULT_GATE_CONFIG.maxTop10HolderRate,
     ),
     maxTaxRate: envNum('MCAP_CROSS_MAX_TAX_RATE', DEFAULT_GATE_CONFIG.maxTaxRate),
+    minVolume24hUsd: envNumOrNull(
+      'MCAP_CROSS_MIN_VOLUME_24H_USD',
+      DEFAULT_GATE_CONFIG.minVolume24hUsd,
+    ),
     requireLpSecured: envBool(
       'MCAP_CROSS_REQUIRE_LP_SECURED',
       DEFAULT_GATE_CONFIG.requireLpSecured,

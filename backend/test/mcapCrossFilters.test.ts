@@ -77,6 +77,7 @@ const solInput = (over: Partial<McapGateInput> = {}): McapGateInput => ({
   network: 'solana',
   mcapUsd: 800_000,
   liquidityUsd: 60_000,
+  volume24hUsd: null,
   security: normalizeSecurity(SOL_HEALTHY, 'solana'),
   ...over,
 });
@@ -85,6 +86,7 @@ const bscInput = (over: Partial<McapGateInput> = {}): McapGateInput => ({
   network: 'bsc',
   mcapUsd: 800_000,
   liquidityUsd: 60_000,
+  volume24hUsd: null,
   security: normalizeSecurity(BSC_TAXED, 'bsc'),
   ...over,
 });
@@ -98,6 +100,7 @@ const ENV_KEYS = [
   'OCT_MCAP_CROSS_MAX_TOP10_RATE',
   'OCT_MCAP_CROSS_MAX_TAX_RATE',
   'OCT_MCAP_CROSS_REQUIRE_LP_SECURED',
+  'OCT_MCAP_CROSS_MIN_VOLUME_24H_USD',
 ];
 let saved: Record<string, string | undefined> = {};
 
@@ -369,5 +372,101 @@ describe('no user threshold can turn an abstain into a pass', () => {
       expect(verdict.decision).toBe('pass');
       expect(verdict.caveats).toContain('honeypotUnknown');
     }
+  });
+});
+
+
+// --- 5. The volume floor, as a per-user filter -------------------------------
+
+/**
+ * `minVolume24hUsd` is the first editable threshold whose INHERITED value is
+ * "not evaluated" rather than a number, so it needs its own precedence tests:
+ * the existing ones all assume a baseline exists to fall back to.
+ */
+describe('the 24h volume floor inherits OFF, not a number', () => {
+  it('a user who sets nothing still has no volume gate at all', () => {
+    expect(resolveUserGateConfig({}).minVolume24hUsd).toBeNull();
+    expect(resolveUserGateConfig(null).minVolume24hUsd).toBeNull();
+  });
+
+  it('adding this filter did not change what an existing user receives', () => {
+    // The compatibility promise, restated for the field most likely to break
+    // it: a token with NO volume figure, and a user with NO filters, must still
+    // reach exactly the verdict it reached before this filter existed.
+    const noFigure = solInput({ volume24hUsd: null });
+    expect(evaluateMcapGates(noFigure, resolveUserGateConfig({})).decision).toBe('pass');
+    // …and so must one whose volume is known but tiny.
+    expect(
+      evaluateMcapGates(solInput({ volume24hUsd: 3 }), resolveUserGateConfig({})).decision,
+    ).toBe('pass');
+  });
+
+  it('an operator env floor becomes the value a user inherits', () => {
+    process.env.OCT_MCAP_CROSS_MIN_VOLUME_24H_USD = '250000';
+    expect(resolveUserGateConfig({}).minVolume24hUsd).toBe(250_000);
+    // …and the user still outranks it, in both directions.
+    expect(resolveUserGateConfig({ minVolume24hUsd: 10 }).minVolume24hUsd).toBe(10);
+    expect(resolveUserGateConfig({ minVolume24hUsd: 9e8 }).minVolume24hUsd).toBe(9e8);
+  });
+
+  it('a garbage env value leaves the gate off rather than open', () => {
+    process.env.OCT_MCAP_CROSS_MIN_VOLUME_24H_USD = 'lots';
+    expect(resolveUserGateConfig({}).minVolume24hUsd).toBeNull();
+  });
+
+  it("one user's floor narrows only that user's feed", () => {
+    const quiet = solInput({ volume24hUsd: 4_000 });
+    expect(evaluateMcapGates(quiet, resolveUserGateConfig({})).decision).toBe('pass');
+    expect(
+      evaluateMcapGates(quiet, resolveUserGateConfig({ minVolume24hUsd: 100_000 })).decision,
+    ).toBe('reject');
+  });
+
+  it('narrows Solana and EVM alike — it is not a chain-shaped filter like tax', () => {
+    // `maxTaxRate` is inert on Solana by construction. This one is not, and the
+    // reason is that its input comes from the same DexScreener batch on every
+    // chain rather than from a chain-specific security field.
+    const floor = resolveUserGateConfig({ minVolume24hUsd: 100_000 });
+    for (const thin of [solInput({ volume24hUsd: 900 }), bscInput({ volume24hUsd: 900 })]) {
+      expect(evaluateMcapGates(thin, floor).failed).toContain('volume24h');
+    }
+  });
+
+  it('a set floor turns an unmeasured token into an abstain, never a rejection', () => {
+    // The single most dangerous failure this feature could ship: a Solana-only
+    // metric quietly rejecting every token on the other chains. Whatever the
+    // reason a figure is missing, the answer is "we could not tell".
+    const floor = resolveUserGateConfig({ minVolume24hUsd: 100_000 });
+    for (const blind of [solInput({ volume24hUsd: null }), bscInput({ volume24hUsd: null })]) {
+      const verdict = evaluateMcapGates(blind, floor);
+      expect(verdict.decision).toBe('abstain');
+      expect(verdict.failed).toEqual([]);
+    }
+  });
+
+  it('is validated and bounded like every other threshold', () => {
+    expect(validateFilterPatch({ minVolume24hUsd: 50_000 })).toEqual({
+      ok: true,
+      value: { minVolume24hUsd: 50_000 },
+    });
+    // A floor of zero is legal here (unlike a ceiling of zero): it is a real
+    // threshold every listed token clears, not a mute switch.
+    expect(validateFilterPatch({ minVolume24hUsd: 0 }).ok).toBe(true);
+    expect(validateFilterPatch({ minVolume24hUsd: -1 }).ok).toBe(false);
+    expect(validateFilterPatch({ minVolume24hUsd: 1e15 }).ok).toBe(false);
+    expect(validateFilterPatch({ minVolume24hUsd: Number.NaN }).ok).toBe(false);
+    expect(validateFilterPatch({ minVolume24hUsd: '50000' }).ok).toBe(false);
+  });
+
+  it('a malformed stored value drops back to OFF rather than to some number', () => {
+    expect(sanitizeStoredFilters({ minVolume24hUsd: -5 })).toEqual({});
+    expect(resolveUserGateConfig({ minVolume24hUsd: -5 } as never).minVolume24hUsd).toBeNull();
+  });
+
+  it('can be cleared back to inheriting', () => {
+    const stored = { minVolume24hUsd: 50_000 };
+    expect(
+      applyFilterPatch(stored, { minVolume24hUsd: null }, {}).minVolume24hUsd,
+    ).toBeUndefined();
   });
 });

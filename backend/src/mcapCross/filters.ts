@@ -41,6 +41,15 @@
  * silently mute a chain where the metric is meaningless. The unit tests pin
  * that.
  *
+ * VOLUME IS THE FIRST FILTER THAT IS OFF UNLESS SOMEBODY TURNS IT ON.
+ * `minVolume24hUsd` has no shipped baseline — its inherited value is `null`,
+ * meaning the gate is not evaluated — so adding it changed nothing for anyone
+ * who does not set it. That is deliberate and worth preserving: the other four
+ * are SAFETY floors an operator can defend from a sample, while "enough volume"
+ * is a preference, and a preference applied to everybody by default is just an
+ * undocumented policy. `evaluateMcapGates` treats an unset threshold as absent
+ * rather than as zero, which is why the distinction survives into the gate.
+ *
  * A BAD STORED VALUE MUST NEVER DISABLE A GATE. `sanitizeStoredFilters` runs on
  * every READ, not just on write: a value that arrived by some other route (a
  * hand-edited local JSON file, an imported config, a future bug) is DROPPED and
@@ -52,7 +61,7 @@
 import { DEFAULT_GATE_CONFIG, resolveGateConfig, type McapGateConfig } from './gates.js';
 
 /**
- * The four user-editable thresholds. Every key is optional; ABSENT means
+ * The user-editable thresholds. Every key is optional; ABSENT means
  * "inherit", which is not the same as any particular number. Rates are
  * fractions, never percents — 0.05 is 5%. The direction is baked into the
  * name: `min*` is a floor, `max*` is a ceiling.
@@ -71,6 +80,22 @@ export interface McapCrossFilters {
   maxTop10HolderRate?: number;
   /** MAXIMUM buy tax and sell tax, each. EVM only; inert on Solana. */
   maxTaxRate?: number;
+  /**
+   * MINIMUM traded USD over 24h, summed across the token's pools.
+   *
+   * THE ONE FILTER WITH NO OPERATOR BASELINE. The other four inherit a shipped
+   * number when unset; this one inherits `null`, i.e. "not evaluated". So for
+   * this key alone, "absent" and "off" coincide — which is what makes adding it
+   * a no-op for every existing user rather than a new floor applied to
+   * everybody at once.
+   *
+   * AND IT COVERS EVERY CHAIN, unlike `maxTaxRate`. The figure comes from the
+   * same DexScreener batch that already supplies market cap and liquidity, so
+   * Solana, BNB and Robinhood are measured the same way. Where a token's volume
+   * is simply not reported, the gate ABSTAINS rather than failing — see
+   * `evaluateMcapGates`.
+   */
+  minVolume24hUsd?: number;
 }
 
 /** The editable keys, in display order. Exhaustive by construction. */
@@ -79,6 +104,7 @@ export const MCAP_CROSS_FILTER_KEYS = [
   'minLiquidityToMcapRatio',
   'maxTop10HolderRate',
   'maxTaxRate',
+  'minVolume24hUsd',
 ] as const;
 
 export type McapCrossFilterKey = (typeof MCAP_CROSS_FILTER_KEYS)[number];
@@ -126,6 +152,16 @@ export const MCAP_CROSS_FILTER_BOUNDS: Record<
     direction: 'max',
     unit: 'fraction',
     label: 'Max buy/sell tax (EVM only)',
+  },
+  minVolume24hUsd: {
+    min: 0,
+    // 1e12 rather than the 1e9 used for liquidity: volume is a FLOW over a day
+    // and liquidity is a STOCK, so they do not share a plausible ceiling. The
+    // bound exists to catch a typo, not to express an opinion about markets.
+    max: 1e12,
+    direction: 'min',
+    unit: 'usd',
+    label: 'Min 24h volume',
   },
 };
 
@@ -248,6 +284,9 @@ export function resolveUserGateConfig(
     minLiquidityToMcapRatio: clean.minLiquidityToMcapRatio ?? baseline.minLiquidityToMcapRatio,
     maxTop10HolderRate: clean.maxTop10HolderRate ?? baseline.maxTop10HolderRate,
     maxTaxRate: clean.maxTaxRate ?? baseline.maxTaxRate,
+    // The baseline is `null` unless an operator set the env var, so an unset
+    // override leaves the gate switched OFF rather than at some default floor.
+    minVolume24hUsd: clean.minVolume24hUsd ?? baseline.minVolume24hUsd,
     requireLpSecured: baseline.requireLpSecured,
   };
 }
