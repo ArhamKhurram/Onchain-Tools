@@ -106,6 +106,47 @@ export interface McapGateConfig {
   minTotalFees: number | null;
   /** Require LP burned or locked. Off makes the LP gate abstain-only. */
   requireLpSecured: boolean;
+  /**
+   * THE FIRST-RUN-UP DISCRIMINATOR. Minimum 24h price change, as a FRACTION
+   * (0 = flat, 0.5 = +50%, -0.2 = -20%), that a crossing must show to be read
+   * as a token climbing THROUGH the target rather than falling back through it.
+   *
+   * WHY IT SHIPS AT 0 AND IS NOT NULL. The owner reported the signal firing on
+   * tokens that had already run and were oscillating DOWN through 750K — a
+   * dead-cat bounce, not a first run. The strongest cheap signal for that is
+   * the trend at the cross: a genuine first run-up is strongly positive over
+   * 24h, while a fall-back is negative or weak even as price ticks up for a
+   * moment (LOOM: chart ATH 2.14M, 24h -20.52%, and it "crossed" 750K upward).
+   * So unlike the volume/fee PREFERENCES this ships ON, at 0 — "do not alert me
+   * on a token that is net DOWN over the day" — which is the fix, applied to
+   * everyone who has not tuned it. It is a floor like liquidity, not an
+   * off-by-default preference.
+   *
+   * REJECTS ONLY ON A KNOWN VALUE. An UNKNOWN 24h change (DexScreener quiet) is
+   * abstain-to-FIRE, never abstain-to-suppress: this gate is deliberately NOT
+   * in `missingCriticalFields`, because a discriminator that muted every
+   * crossing whose momentum it could not read would quietly kill the whole
+   * signal the first time the upstream went quiet. Missing momentum fires
+   * (subject to every other gate); only measured downward momentum drops.
+   */
+  minPriceChangeH24: number;
+  /**
+   * CORROBORATING, AND OFF BY DEFAULT. Maximum pool age in DAYS, or null (not
+   * evaluated). A first run-up is typically a young pool; a 46-day-old pool
+   * crossing "for the first time" as far as our state knows is almost always a
+   * re-cross. But age is a CORROBORATING signal, never a sole gate — a genuine
+   * slow-burn exists — so this ships null (off) and no crossing is ever dropped
+   * on age alone in the shipped config. An operator who wants to additionally
+   * require young pools sets OCT_MCAP_CROSS_MAX_POOL_AGE_DAYS; even then it
+   * rejects only on a KNOWN age, and an unknown age fires.
+   *
+   * OPERATOR-ONLY, not a per-user filter, for a concrete reason: the per-user
+   * filter surfaces (console + the Telegram ladder) format every threshold as
+   * either USD or a percentage, and "days" is neither. Adding a third unit
+   * would mean editing the shared bot panel, which this change must not touch.
+   * Age therefore stays an env knob; the per-user discriminator is momentum.
+   */
+  maxPoolAgeDays: number | null;
 }
 
 /**
@@ -148,7 +189,22 @@ export const DEFAULT_GATE_CONFIG: McapGateConfig = {
   // a tax rate exists, so a shipped default would silently narrow EVM alerts
   // while leaving Solana abstaining. Off unless somebody asks for it.
   minTotalFees: null,
+  // The one NEW floor that ships ON, because it is the fix (see the field doc):
+  // 0 means "must not be net-down over 24h". Every chain reports this figure,
+  // and an unknown reading fires rather than muting.
+  minPriceChangeH24: 0,
+  // Corroborating, off by default — never a sole reason to drop a crossing.
+  maxPoolAgeDays: null,
 };
+
+/**
+ * How far above the target a token must have been SEEN before, for a later
+ * crossing to be read as a re-cross rather than a first run. Used by
+ * `isWatermarkReCross` from the poller's per-token high-watermark. 1.3 = "we
+ * watched it 30% above the target already"; the 24h cooldown catches the tight
+ * oscillation, this catches the one that returns days later. Env-tunable.
+ */
+export const DEFAULT_RECROSS_WATERMARK_FACTOR = 1.3;
 
 export interface McapGateInput {
   network: RevivalNetwork;
@@ -162,6 +218,19 @@ export interface McapGateInput {
    * means zero, and the gate below never treats it as one.
    */
   volume24hUsd: number | null;
+  /**
+   * 24h price change at the crossing, as a FRACTION. Null means UNKNOWN (no
+   * pool reported one, or the batch read failed) — never zero, and the momentum
+   * gate below abstains-to-fire on it rather than dropping. Optional so callers
+   * and tests written before the discriminator existed are unaffected.
+   */
+  priceChangeH24?: number | null;
+  /**
+   * Pool age in ms at the crossing, computed by the poller (which holds the
+   * clock; this module stays clockless). Null means UNKNOWN. Optional for the
+   * same back-compat reason as `priceChangeH24`.
+   */
+  poolAgeMs?: number | null;
   /** Normalised security facts, or null when the provider could not answer. */
   security: TokenSecurity | null;
 }
@@ -256,6 +325,29 @@ export function evaluateMcapGates(
     volume < cfg.minVolume24hUsd
   ) {
     failed.push('volume24h');
+  }
+
+  // --- First run-up discriminator ------------------------------------------
+  // MOMENTUM is the primary signal separating a token climbing THROUGH the
+  // target from one falling back through it. Reject ONLY on a known 24h change
+  // below the floor; an unknown change is not evaluated here and never lands in
+  // `missingCriticalFields`, so it fires rather than muting. This sits with the
+  // market-data gates (not the security ones) because it comes from the same
+  // DexScreener read and can reject a token before any security lookup — a
+  // fall-back through 750K should not even cost a security call.
+  const chg = input.priceChangeH24;
+  if (chg != null && Number.isFinite(chg) && chg < cfg.minPriceChangeH24) {
+    failed.push('momentum');
+  }
+
+  // POOL AGE corroborates, and only when an operator has opted in. Off (null)
+  // it does nothing; set, it rejects only a KNOWN age above the ceiling, so a
+  // token whose age we cannot read still fires. Never a sole gate in the
+  // shipped config — see the field doc and requirement that a slow-burn survive.
+  if (cfg.maxPoolAgeDays != null) {
+    const ageMs = input.poolAgeMs;
+    const ceilingMs = cfg.maxPoolAgeDays * 86_400_000;
+    if (ageMs != null && Number.isFinite(ageMs) && ageMs > ceilingMs) failed.push('poolAge');
   }
 
   // --- Security ------------------------------------------------------------
@@ -373,6 +465,16 @@ function envNum(name: string, fallback: number): number {
 }
 
 /**
+ * Like `envNum` but SIGNED — momentum floors are legitimately negative (an
+ * operator loosening the discriminator to "allow a mild dip"), so the `>= 0`
+ * guard of `envNum` would wrongly reject them back to the default.
+ */
+function envSignedNum(name: string, fallback: number): number {
+  const raw = Number(envFlag(name));
+  return Number.isFinite(raw) ? raw : fallback;
+}
+
+/**
  * An OPTIONAL numeric threshold: unset (or unparseable) stays `null`, which
  * means the gate is not evaluated. Distinct from `envNum`, whose fallback is a
  * real number, because for this one field "no value" is a meaningful state.
@@ -421,5 +523,39 @@ export function resolveGateConfig(): McapGateConfig {
       'MCAP_CROSS_REQUIRE_LP_SECURED',
       DEFAULT_GATE_CONFIG.requireLpSecured,
     ),
+    minPriceChangeH24: envSignedNum(
+      'MCAP_CROSS_MIN_PRICE_CHANGE_H24',
+      DEFAULT_GATE_CONFIG.minPriceChangeH24,
+    ),
+    maxPoolAgeDays: envNumOrNull('MCAP_CROSS_MAX_POOL_AGE_DAYS', DEFAULT_GATE_CONFIG.maxPoolAgeDays),
   };
+}
+
+/** The re-cross watermark factor, env-tunable and floored at 1 (below 1 is meaningless). */
+export function resolveReCrossWatermarkFactor(): number {
+  const value = envNum('MCAP_CROSS_RECROSS_WATERMARK_FACTOR', DEFAULT_RECROSS_WATERMARK_FACTOR);
+  return value >= 1 ? value : DEFAULT_RECROSS_WATERMARK_FACTOR;
+}
+
+/**
+ * Was this token already seen WELL above the target before this crossing? If
+ * so the crossing is a re-cross, not a first run, and the poller suppresses it
+ * (like the cooldown, and before any security call).
+ *
+ * THE HONEST LIMIT, STATED. This only knows what OUR state watched. A token
+ * discovered on the way DOWN — already past its peak when it entered our
+ * universe (LOOM: ATH 2.14M, found near 765K) — has a watermark that never saw
+ * the peak, so this returns false for it and momentum has to carry that case.
+ * Watermark catches the tokens we witnessed run and fall; momentum catches the
+ * ones we met too late. Neither alone is sufficient, which is why both exist.
+ */
+export function isWatermarkReCross(
+  priorWatermarkMcap: number | null | undefined,
+  targetUsd: number,
+  factor: number = DEFAULT_RECROSS_WATERMARK_FACTOR,
+): boolean {
+  if (priorWatermarkMcap == null || !Number.isFinite(priorWatermarkMcap)) return false;
+  if (!Number.isFinite(targetUsd) || targetUsd <= 0) return false;
+  if (!Number.isFinite(factor) || factor < 1) return false;
+  return priorWatermarkMcap >= targetUsd * factor;
 }

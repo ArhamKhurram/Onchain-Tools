@@ -106,6 +106,24 @@ export interface McapCrossFilters {
    */
   minVolume24hUsd?: number;
   /**
+   * MINIMUM 24h price change, as a FRACTION (0.1 = +10%, -0.2 = -20%). THE
+   * FIRST-RUN-UP DISCRIMINATOR: a floor on trend at the crossing, so a token
+   * falling back through the target (negative 24h change) is dropped while a
+   * token climbing through it fires.
+   *
+   * UNLIKE THE OTHER FILTERS, IT INHERITS A NON-NULL DEFAULT (0). That is
+   * deliberate — it is the fix, not a preference. An unset user inherits "must
+   * not be net-down over 24h". A user can tighten it (require stronger
+   * momentum) or, via the typed Telegram command / env, loosen it below 0. It
+   * is stored as a fraction so it reuses the same percent display the rate
+   * filters use; the console and bot show it as a percentage.
+   *
+   * IT NEVER TURNS AN UNKNOWN INTO A DROP. `evaluateMcapGates` rejects only a
+   * KNOWN 24h change below the floor; an unknown change fires. So this can
+   * narrow the feed but can never silently mute it when DexScreener goes quiet.
+   */
+  minPriceChangeH24?: number;
+  /**
    * MINIMUM estimated USD paid in trading fees/tax over the last 24h — the
    * operator's "Total Fees" metric (Axiom's Prio & Tip & Trading Fees column),
    * approximated as `24h volume x (buyTax + sellTax) / 2`. The model, its
@@ -133,6 +151,7 @@ export const MCAP_CROSS_FILTER_KEYS = [
   'minLiquidityToMcapRatio',
   'maxTop10HolderRate',
   'maxTaxRate',
+  'minPriceChangeH24',
   'minVolume24hUsd',
   'minTotalFees',
 ] as const;
@@ -182,6 +201,18 @@ export const MCAP_CROSS_FILTER_BOUNDS: Record<
     direction: 'max',
     unit: 'fraction',
     label: 'Max buy/sell tax (EVM only)',
+  },
+  minPriceChangeH24: {
+    // A floor on a SIGNED trend, so the lower bound is negative: -1 is "down
+    // 100%", the worst a price can do, and a user loosening the discriminator
+    // sets a value in [-1, 0). The default (0) and any positive value tighten
+    // it. 10 (i.e. +1000%) is a generous ceiling to catch a typo without
+    // second-guessing a fresh runner's real number.
+    min: -1,
+    max: 10,
+    direction: 'min',
+    unit: 'fraction',
+    label: 'Min 24h price change',
   },
   minVolume24hUsd: {
     min: 0,
@@ -332,7 +363,13 @@ export function resolveUserGateConfig(
     minVolume24hUsd: clean.minVolume24hUsd ?? baseline.minVolume24hUsd,
     // Same null-means-off inheritance as volume above.
     minTotalFees: clean.minTotalFees ?? baseline.minTotalFees,
+    // Inherits a NON-null baseline (0 shipped), so an unset user still gets the
+    // first-run-up floor. `?? ` is safe because a stored 0 is not nullish.
+    minPriceChangeH24: clean.minPriceChangeH24 ?? baseline.minPriceChangeH24,
     requireLpSecured: baseline.requireLpSecured,
+    // Operator-only, like requireLpSecured — copied straight through, never a
+    // per-user override (see the field doc in gates.ts on why age has no knob).
+    maxPoolAgeDays: baseline.maxPoolAgeDays,
   };
 }
 

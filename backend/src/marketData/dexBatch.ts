@@ -37,6 +37,8 @@
  * backend/test/priceAlertCrossing.test.ts and backend/test/dexBatch.test.ts.
  */
 
+import { num } from '../utils/untrusted.js';
+
 /** The subset of a DexScreener pair these subsystems read. */
 export interface DexPair {
   baseToken?: { address?: string; symbol?: string };
@@ -50,6 +52,14 @@ export interface DexPair {
    * it is ADDITIVE across a token's pools — see `snapshotsFromPairs`.
    */
   volume?: { h24?: number };
+  /**
+   * PER-PAIR price change by window, in PERCENT (DexScreener's own unit, e.g.
+   * -20.52 for a 20.52% drop). A property of the pool's own tape, so it is read
+   * off the deepest pair like price and liquidity — never summed.
+   */
+  priceChange?: { h1?: number | string; h6?: number | string; h24?: number | string };
+  /** Pool creation time, ms epoch. Best-effort; the basis for pool age. */
+  pairCreatedAt?: number | string;
   /** DexScreener's own chain slug ("solana", "bsc", …). Best-effort. */
   chainId?: string;
 }
@@ -68,8 +78,30 @@ export interface MintSnapshot {
    * evidence. See `snapshotsFromPairs`.
    */
   volume24hUsd: number | null;
+  /**
+   * 24h price change as a FRACTION (DexScreener's percent ÷ 100, so -0.2052 for
+   * a 20.52% drop), read from the deepest pair. Null — never zero — when no
+   * figure was reported, so a data gap can never read as "flat". The market-cap
+   * crossing signal uses the SIGN of this to tell a first run-up from a
+   * fall-back through the target (mcapCross/gates.ts).
+   */
+  priceChangeH24: number | null;
+  /** 6h price change as a fraction, deepest pair. Carried for context; the gate uses h24. */
+  priceChangeH6: number | null;
+  /**
+   * Pool creation time (ms epoch) of the OLDEST reporting pool — i.e. how long
+   * the token has been tradeable at all. Null when no pool reported one. Used
+   * as the basis for pool age, a corroborating first-run-up signal.
+   */
+  pairCreatedAtMs: number | null;
   /** DexScreener chain slug from the deepest pair, when it reported one. */
   chainId: string | null;
+}
+
+/** DexScreener prints price change in percent; the snapshot stores a fraction. */
+function pctToFraction(value: unknown): number | null {
+  const pct = num(value);
+  return pct == null ? null : pct / 100;
 }
 
 /** See the module header: the RESPONSE cap, not the address cap. */
@@ -166,6 +198,18 @@ export function snapshotsFromPairs(
       }
     }
 
+    // Pool age comes from the OLDEST pool (the min creation time), because the
+    // honest "how long has this been tradeable" is the first pool, not the
+    // deepest one — a mature token that opened a fresh deep pool is still
+    // mature. Silence stays null rather than collapsing to "brand new".
+    let oldestCreatedAt: number | null = null;
+    for (const p of sorted) {
+      const created = num(p.pairCreatedAt);
+      if (created != null && created > 0) {
+        oldestCreatedAt = oldestCreatedAt == null ? created : Math.min(oldestCreatedAt, created);
+      }
+    }
+
     snapshots.set(mint, {
       mint,
       symbol: best.baseToken?.symbol ?? null,
@@ -173,6 +217,9 @@ export function snapshotsFromPairs(
       mcapUsd: typeof mcapRaw === 'number' && Number.isFinite(mcapRaw) && mcapRaw > 0 ? mcapRaw : null,
       liquidityUsd: typeof liq === 'number' && Number.isFinite(liq) && liq >= 0 ? liq : null,
       volume24hUsd: seen ? volume : null,
+      priceChangeH24: pctToFraction(best.priceChange?.h24),
+      priceChangeH6: pctToFraction(best.priceChange?.h6),
+      pairCreatedAtMs: oldestCreatedAt,
       chainId: typeof best.chainId === 'string' && best.chainId !== '' ? best.chainId : null,
     });
   }

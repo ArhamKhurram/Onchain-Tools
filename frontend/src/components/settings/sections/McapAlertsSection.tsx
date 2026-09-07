@@ -38,6 +38,8 @@ interface GateConfig {
   minLiquidityToMcapRatio: number;
   maxTop10HolderRate: number;
   maxTaxRate: number;
+  /** The first-run-up floor, a fraction. Ships at 0, never null (see FIELDS). */
+  minPriceChangeH24: number;
   /** Null = the filter is OFF, not "zero". See the note on FIELDS below. */
   minVolume24hUsd: number | null;
   /** Null = OFF, same as volume. USD, never the ETH/SOL Axiom shows. */
@@ -50,6 +52,7 @@ type FilterKey =
   | 'minLiquidityToMcapRatio'
   | 'maxTop10HolderRate'
   | 'maxTaxRate'
+  | 'minPriceChangeH24'
   | 'minVolume24hUsd'
   | 'minTotalFees';
 
@@ -101,6 +104,16 @@ const FIELDS: {
     unit: 'percent',
     step: 0.5,
     help: 'Ceiling on transfer tax, each way. BNB and Robinhood only — a transfer-tax honeypot cannot exist on Solana, so this never filters Solana alerts.',
+  },
+  {
+    key: 'minPriceChangeH24',
+    label: 'Min 24h price change',
+    unit: 'percent',
+    step: 5,
+    // The one filter that is ON by default, because it is the fix. The help
+    // leads with what it does and what the default means, so a reader is not
+    // surprised that a blank box is still filtering.
+    help: 'The first-run-up filter. Only alert when the token is up at least this much over 24h, so a coin falling back through the target (a dead-cat bounce) is skipped while one genuinely climbing through fires. Defaults to 0% — no alerts on a coin that is net down on the day. Raise it to demand a stronger run; a coin whose 24h change is unknown is still alerted rather than hidden.',
   },
   {
     key: 'minVolume24hUsd',

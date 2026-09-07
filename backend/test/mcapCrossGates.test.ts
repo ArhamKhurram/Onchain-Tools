@@ -1,9 +1,12 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import {
   DEFAULT_GATE_CONFIG,
+  DEFAULT_RECROSS_WATERMARK_FACTOR,
   DEFAULT_TARGET_MCAP_USD,
   evaluateMcapGates,
+  isWatermarkReCross,
   resolveGateConfig,
+  resolveReCrossWatermarkFactor,
   resolveTargetMcapUsd,
   type McapGateInput,
 } from '../src/mcapCross/gates.js';
@@ -285,6 +288,9 @@ const ENV_KEYS = [
   'TRENCHCORD_MCAP_CROSS_TARGET_USD',
   'OCT_MCAP_CROSS_MIN_LIQUIDITY_USD',
   'OCT_MCAP_CROSS_REQUIRE_LP_SECURED',
+  'OCT_MCAP_CROSS_MIN_PRICE_CHANGE_H24',
+  'OCT_MCAP_CROSS_MAX_POOL_AGE_DAYS',
+  'OCT_MCAP_CROSS_RECROSS_WATERMARK_FACTOR',
 ];
 let saved: Record<string, string | undefined> = {};
 
@@ -529,5 +535,145 @@ describe('evaluateMcapGates — 24h volume floor', () => {
     );
     expect(verdict.decision).toBe('pass');
     expect(verdict.caveats).toContain('honeypotUnknown');
+  });
+});
+
+// --- The first-run-up discriminator ------------------------------------------
+//
+// The owner reported the 750K signal firing on tokens that had ALREADY run and
+// were falling back DOWN through the threshold (a dead-cat bounce) rather than
+// climbing through it for the first time. The concrete case was $LOOM: chart
+// ATH 2.14M, now ~765K, 24h -20.52%, a 46-day-old pool — it "crossed" 750K
+// upward as a bounce inside a larger downtrend. These pin the three signals
+// that separate a first run-up from a fall-back.
+
+describe('evaluateMcapGates — first-run-up momentum gate', () => {
+  it('ships ON: the default floor is 0, not null (it IS the fix)', () => {
+    expect(DEFAULT_GATE_CONFIG.minPriceChangeH24).toBe(0);
+    expect(resolveGateConfig().minPriceChangeH24).toBe(0);
+  });
+
+  it('SUPPRESSES the LOOM case — negative 24h change, old pool, upward tick', () => {
+    // Under the SHIPPED config: no operator age ceiling, momentum floor 0. The
+    // momentum gate alone rejects it; the age is real but not what drops it.
+    const verdict = evaluateMcapGates(
+      input({ mcapUsd: 765_000, priceChangeH24: -0.2052, poolAgeMs: 46 * 86_400_000 }),
+    );
+    expect(verdict.decision).toBe('reject');
+    expect(verdict.failed).toContain('momentum');
+  });
+
+  it('FIRES a genuine young fast-climber — strong positive momentum', () => {
+    const verdict = evaluateMcapGates(
+      input({ mcapUsd: 780_000, priceChangeH24: 3.2, poolAgeMs: 4 * 3_600_000 }),
+    );
+    expect(verdict.decision).toBe('pass');
+  });
+
+  it('abstain-to-FIRE: an UNKNOWN 24h change is never a drop (does not mute the signal)', () => {
+    expect(evaluateMcapGates(input({ priceChangeH24: null })).decision).toBe('pass');
+    expect(evaluateMcapGates(input({ priceChangeH24: undefined })).decision).toBe('pass');
+    expect(evaluateMcapGates(input({ priceChangeH24: Number.NaN })).decision).toBe('pass');
+  });
+
+  it('is user-tunable: a higher floor rejects a weak climber the default passes', () => {
+    const weak = input({ priceChangeH24: 0.05 }); // +5%
+    expect(evaluateMcapGates(weak).decision).toBe('pass'); // default floor 0
+    const cfg = { ...DEFAULT_GATE_CONFIG, minPriceChangeH24: 0.5 }; // require +50%
+    const verdict = evaluateMcapGates(weak, cfg);
+    expect(verdict.decision).toBe('reject');
+    expect(verdict.failed).toContain('momentum');
+  });
+
+  it('no regression when loosened below zero — a downtrend fires again', () => {
+    const cfg = { ...DEFAULT_GATE_CONFIG, minPriceChangeH24: -1 };
+    expect(evaluateMcapGates(input({ priceChangeH24: -0.2052 }), cfg).decision).toBe('pass');
+  });
+
+  it('rejects on momentum even when the security lookup is unavailable', () => {
+    // Momentum is a market-data gate, so a fall-back drops without paying for a
+    // security call; security:null must not turn that reject into an abstain.
+    const verdict = evaluateMcapGates(input({ priceChangeH24: -0.3, security: null }));
+    expect(verdict.decision).toBe('reject');
+    expect(verdict.failed).toContain('momentum');
+  });
+
+  it('reads the floor from env, signed (an operator may loosen below 0)', () => {
+    process.env.OCT_MCAP_CROSS_MIN_PRICE_CHANGE_H24 = '-0.5';
+    expect(resolveGateConfig().minPriceChangeH24).toBe(-0.5);
+  });
+});
+
+describe('evaluateMcapGates — pool-age corroboration', () => {
+  it('is OFF by default — a 46-day pool is never dropped on age alone', () => {
+    expect(DEFAULT_GATE_CONFIG.maxPoolAgeDays).toBeNull();
+    const old = input({ poolAgeMs: 46 * 86_400_000, priceChangeH24: 1.0 });
+    expect(evaluateMcapGates(old).decision).toBe('pass');
+  });
+
+  it('an operator ceiling rejects a KNOWN old pool', () => {
+    const cfg = { ...DEFAULT_GATE_CONFIG, maxPoolAgeDays: 7 };
+    const verdict = evaluateMcapGates(
+      input({ poolAgeMs: 46 * 86_400_000, priceChangeH24: 1.0 }),
+      cfg,
+    );
+    expect(verdict.decision).toBe('reject');
+    expect(verdict.failed).toContain('poolAge');
+  });
+
+  it('passes a young pool under the ceiling', () => {
+    const cfg = { ...DEFAULT_GATE_CONFIG, maxPoolAgeDays: 7 };
+    expect(
+      evaluateMcapGates(input({ poolAgeMs: 2 * 86_400_000, priceChangeH24: 1.0 }), cfg).decision,
+    ).toBe('pass');
+  });
+
+  it('abstain-to-FIRE: an unknown age fires even with a ceiling set', () => {
+    const cfg = { ...DEFAULT_GATE_CONFIG, maxPoolAgeDays: 7 };
+    expect(evaluateMcapGates(input({ poolAgeMs: null, priceChangeH24: 1.0 }), cfg).decision).toBe(
+      'pass',
+    );
+  });
+
+  it('reads the ceiling from env (null when unset)', () => {
+    expect(resolveGateConfig().maxPoolAgeDays).toBeNull();
+    process.env.OCT_MCAP_CROSS_MAX_POOL_AGE_DAYS = '30';
+    expect(resolveGateConfig().maxPoolAgeDays).toBe(30);
+  });
+});
+
+describe('isWatermarkReCross — re-cross suppression via the high-watermark', () => {
+  const target = 750_000;
+  const factor = DEFAULT_RECROSS_WATERMARK_FACTOR; // 1.3
+
+  it('suppresses a re-cross of a token seen WELL above the target before', () => {
+    expect(isWatermarkReCross(2_100_000, target, factor)).toBe(true);
+    expect(isWatermarkReCross(target * 1.3, target, factor)).toBe(true);
+  });
+
+  it('does NOT suppress a genuine first cross (watermark climbed from below)', () => {
+    expect(isWatermarkReCross(740_000, target, factor)).toBe(false);
+    // Above the target but not yet "well above" — cooldown, not watermark, owns
+    // the tight oscillation here.
+    expect(isWatermarkReCross(target * 1.1, target, factor)).toBe(false);
+  });
+
+  it('the honest limit: a null/unseen watermark never suppresses (LOOM found late)', () => {
+    expect(isWatermarkReCross(null, target, factor)).toBe(false);
+    expect(isWatermarkReCross(undefined, target, factor)).toBe(false);
+    expect(isWatermarkReCross(Number.NaN, target, factor)).toBe(false);
+  });
+
+  it('guards a nonsense target or factor', () => {
+    expect(isWatermarkReCross(5_000_000, 0, factor)).toBe(false);
+    expect(isWatermarkReCross(5_000_000, target, 0.5)).toBe(false);
+  });
+
+  it('reads the factor from env, floored at 1', () => {
+    expect(resolveReCrossWatermarkFactor()).toBe(DEFAULT_RECROSS_WATERMARK_FACTOR);
+    process.env.OCT_MCAP_CROSS_RECROSS_WATERMARK_FACTOR = '2';
+    expect(resolveReCrossWatermarkFactor()).toBe(2);
+    process.env.OCT_MCAP_CROSS_RECROSS_WATERMARK_FACTOR = '0.5';
+    expect(resolveReCrossWatermarkFactor()).toBe(DEFAULT_RECROSS_WATERMARK_FACTOR);
   });
 });
