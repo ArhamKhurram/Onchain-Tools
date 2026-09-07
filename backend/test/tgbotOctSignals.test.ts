@@ -68,16 +68,74 @@ describe('source recognition — by id, per chain, never by title', () => {
     expect(resolveOctSignalChain('-1001111111119')).toBeNull();
   });
 
-  it('tolerates the bare id and a :topic suffix, still exact', () => {
+  it('tolerates the bare vs -100 id form for a topic-less source, still exact', () => {
     configureSources();
+    // A bare-group source matches a bare-group (topic-less) message whichever
+    // -100/bare form each side uses...
     expect(resolveOctSignalChain('1111111111')).toBe('sol');
-    expect(resolveOctSignalChain(`${SOL_CHANNEL}:42`)).toBe('sol');
+    // ...but a topic-less source does NOT match a message from a topic inside
+    // that group — the topic makes it a different channel.
+    expect(resolveOctSignalChain(`${SOL_CHANNEL}:42`)).toBeNull();
   });
 
   it('is inert when nothing is configured', () => {
     expect(hasSignalSources()).toBe(false);
     expect(resolveOctSignalChain(SOL_CHANNEL)).toBeNull();
     expect(buildOctSignalView({ chatId: SOL_CHANNEL, text: `buy ${SOL_ADDR}` })).toBeNull();
+  });
+});
+
+describe('forum-topic sources — two topics of ONE supergroup, matched by topic', () => {
+  // The real deployment shape: SOL and EVM are two forum TOPICS of the same
+  // supergroup, so the peer id is identical and only the topic tells them apart.
+  const SUPERGROUP = '-1003705845819';
+  const SOL_TOPIC = `${SUPERGROUP}:3`;
+  const EVM_TOPIC = `${SUPERGROUP}:4`;
+
+  function configureTopicSources(): void {
+    vi.stubEnv('OCT_SIGNAL_SOURCE_CHANNEL_IDS_SOL', SOL_TOPIC);
+    vi.stubEnv('OCT_SIGNAL_SOURCE_CHANNEL_IDS_EVM', EVM_TOPIC);
+  }
+
+  it('topic 3 → sol, topic 4 → evm (the two feeds stay distinct)', () => {
+    configureTopicSources();
+    expect(resolveOctSignalChain(SOL_TOPIC)).toBe('sol');
+    expect(resolveOctSignalChain(EVM_TOPIC)).toBe('evm');
+  });
+
+  it('any OTHER topic in the same supergroup → null (not force-forwarded)', () => {
+    configureTopicSources();
+    expect(resolveOctSignalChain(`${SUPERGROUP}:1`)).toBeNull();
+    expect(resolveOctSignalChain(`${SUPERGROUP}:7`)).toBeNull();
+  });
+
+  it('the bare group (no topic) → null', () => {
+    configureTopicSources();
+    expect(resolveOctSignalChain(SUPERGROUP)).toBeNull();
+  });
+
+  it('does not mislabel EVM as SOL — the pre-fix collision is gone', () => {
+    configureTopicSources();
+    // Before the fix both topics canonicalised to the bare supergroup id, so
+    // the SOL and EVM sets were identical and every EVM message resolved 'sol'.
+    expect(resolveOctSignalChain(EVM_TOPIC)).not.toBe('sol');
+    const evm = buildOctSignalView({ chatId: EVM_TOPIC, text: `scan ${EVM_ADDR}`, evmChainHint: 'bsc' });
+    expect(evm!.chain).toBe('evm');
+    const sol = buildOctSignalView({ chatId: SOL_TOPIC, text: `scan ${SOL_ADDR}` });
+    expect(sol!.chain).toBe('sol');
+  });
+
+  it('tolerates the -100 / bare peer form while keeping the topic exact', () => {
+    configureTopicSources();
+    // Bare peer form of the SAME topic still matches (peer prefix is normalised).
+    expect(resolveOctSignalChain('3705845819:3')).toBe('sol');
+    // A different supergroup on the same topic number does not.
+    expect(resolveOctSignalChain('-1009999999999:3')).toBeNull();
+  });
+
+  it('normalises a zero-padded topic so :03 equals :3', () => {
+    configureTopicSources();
+    expect(resolveOctSignalChain(`${SUPERGROUP}:03`)).toBe('sol');
   });
 });
 

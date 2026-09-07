@@ -16,7 +16,7 @@ import { GatewayManager } from './discord/gatewayManager.js';
 import { createProxyBundle } from './discord/proxy.js';
 import { configStore } from './config/store.js';
 import { TelegramClientManager } from './telegram/clientManager.js';
-import { processTelegramMessage, roomsForTelegramMessage } from './telegram/messageProcessor.js';
+import { processTelegramMessage, roomsForTelegramMessage, telegramChannelId } from './telegram/messageProcessor.js';
 import type { TelegramRawMessage } from './telegram/types.js';
 import type { TelegramMessageProcessorContext } from './telegram/messageProcessor.js';
 import { WsServer } from './ws/server.js';
@@ -27,6 +27,12 @@ import { requireBotAuth } from './auth/botAuth.js';
 import { startBot } from './bot/index.js';
 import { startTelegramBot, tgDeliverMcapCross, tgDeliverOctSignal, tgSubscriberCount } from './tgbot/index.js';
 import { buildOctSignalView } from './tgbot/octSignals.js';
+import {
+  resolveSignalIngestUserId,
+  planSignalIngest,
+  signalIngestKeepAlive,
+  redactUserId,
+} from './tgbot/signalIngest.js';
 import { startDailyDigestScheduler } from './bot/dailyDigest.js';
 import { getStorageProvider, isHostedMode } from './storage/index.js';
 import { authMiddleware } from './auth/middleware.js';
@@ -531,7 +537,12 @@ function wireTelegramEvents(tg: TelegramClientManager, wsServer: WsServer, userI
     // the bot's subscribers in realtime. Rides the message that already arrived;
     // no added poll, no delay. White-labelled and independent of the rest of the
     // pipeline — it does not depend on room routing or contract persistence.
-    const octSignal = buildOctSignalView({ chatId: raw.chatId, text: raw.text, evmChainHint });
+    //
+    // The source is a forum TOPIC of a supergroup, so the recogniser needs the
+    // full `chatId:topicId` composite (the same id routing computes), not the
+    // bare chat id — otherwise the two algorithm topics are indistinguishable.
+    const octSignalChannelId = telegramChannelId(raw.chatId, raw.topicId);
+    const octSignal = buildOctSignalView({ chatId: octSignalChannelId, text: raw.text, evmChainHint });
     if (octSignal) tgDeliverOctSignal(octSignal);
 
     checkPushover(config.pushover, frontendMsg, evmChainHint, config.contractLinkTemplates);
@@ -655,6 +666,100 @@ export function getUserTelegram(userId: string): TelegramClientManager | null {
     return telegramManagers.get(userId) ?? null;
   }
   return localTelegramManager;
+}
+
+// --- OCT Alerts hosted ingest ---
+//
+// Hosted mode connects gateways per-user on demand, so nothing reads the
+// algorithm forum-topics until a console session is open. That is why a scan
+// posted after a deploy forwarded nothing. Bring up ONE designated operator
+// Telegram session at boot and keep it alive independent of any console
+// session, routed through the same `connectTelegram` → `wireTelegramEvents`
+// path as every other session, so the octSignal hook is wired identically.
+//
+// How is it kept alive? Transient drops self-heal inside the client wrapper
+// (telegram/client.ts runs an indefinite health-check + backoff reconnect).
+// Nothing idle-evicts a hosted Telegram manager (unlike the Discord
+// UserGatewayPool), so the session is not on a teardown timer. The watchdog
+// below is the belt-and-suspenders: it re-establishes an ingest session that is
+// gone ENTIRELY — never connected because no session was stored at boot, or
+// explicitly disconnected — without touching healthy or self-reconnecting ones.
+
+/** How often the ingest watchdog checks that keep-alive sessions still exist. */
+const SIGNAL_INGEST_WATCHDOG_MS = 5 * 60_000;
+let signalIngestWatchdog: ReturnType<typeof setInterval> | null = null;
+
+/**
+ * Connect the designated operator ingest session at boot and register it as
+ * keep-alive. Fails safe: a missing user id or an unusable session logs one
+ * clear line and returns — it never throws into startup. Never logs the
+ * session string, api hash, or api id.
+ */
+export async function startHostedSignalIngest(wsServer: WsServer): Promise<void> {
+  const userId = resolveSignalIngestUserId();
+  if (!userId) {
+    console.log('[App] OCT Alerts ingest: no ingest user configured (set OCT_SIGNAL_INGEST_USER_ID or TG_BOT_ALERT_SOURCE_USER_ID); hosted signal ingest disabled.');
+    return;
+  }
+
+  // Mark keep-alive BEFORE the connect attempt so the watchdog owns this user
+  // even if the boot read finds no session yet.
+  signalIngestKeepAlive.mark(userId);
+
+  let config;
+  try {
+    config = await getStorageProvider().getConfig(userId);
+  } catch (err) {
+    console.error(`[App] OCT Alerts ingest: could not read config for user ${redactUserId(userId)}: ${(err as Error).message}`);
+    startSignalIngestWatchdog(wsServer);
+    return;
+  }
+
+  const plan = planSignalIngest(userId, config);
+  if (plan.action === 'missing-session') {
+    console.log(`[App] OCT Alerts ingest: user ${redactUserId(userId)} has no usable Telegram session/apiId/apiHash stored; cannot ingest yet. Store that account's Telegram session and it will connect without a restart.`);
+    startSignalIngestWatchdog(wsServer);
+    return;
+  }
+  if (plan.action === 'connect') {
+    console.log(`[App] OCT Alerts ingest: connecting Telegram for user ${redactUserId(userId)} (${plan.sessions.length} session(s))...`);
+    connectTelegram(plan.apiId, plan.apiHash, plan.sessions, wsServer, userId)
+      .then(() => console.log(`[App] OCT Alerts ingest: Telegram connected for user ${redactUserId(userId)}.`))
+      .catch((err) => console.error(`[App] OCT Alerts ingest: Telegram connection failed for user ${redactUserId(userId)}: ${(err as Error).message}`));
+  }
+
+  startSignalIngestWatchdog(wsServer);
+}
+
+function startSignalIngestWatchdog(wsServer: WsServer): void {
+  if (signalIngestWatchdog) return;
+  signalIngestWatchdog = setInterval(() => {
+    void ensureSignalIngestConnected(wsServer);
+  }, SIGNAL_INGEST_WATCHDOG_MS);
+  signalIngestWatchdog.unref?.();
+}
+
+/**
+ * Re-establish any keep-alive ingest session that has gone missing. Reads
+ * config ONLY when a session is absent (a rare, non-steady-state event), so it
+ * adds no per-message or steady-state storage egress.
+ */
+async function ensureSignalIngestConnected(wsServer: WsServer): Promise<void> {
+  const storage = getStorageProvider();
+  for (const userId of signalIngestKeepAlive.list()) {
+    // A manager that exists — connected, or mid-reconnect inside the client
+    // wrapper — is left alone. Only a genuinely absent session is restored.
+    if (getUserTelegram(userId)) continue;
+    try {
+      const plan = planSignalIngest(userId, await storage.getConfig(userId));
+      if (plan.action === 'connect') {
+        console.log(`[App] OCT Alerts ingest: watchdog reconnecting Telegram for user ${redactUserId(userId)}...`);
+        await connectTelegram(plan.apiId, plan.apiHash, plan.sessions, wsServer, userId);
+      }
+    } catch (err) {
+      console.error(`[App] OCT Alerts ingest: watchdog reconnect failed for user ${redactUserId(userId)}: ${(err as Error).message}`);
+    }
+  }
 }
 
 const app = express();
@@ -983,5 +1088,8 @@ httpServer.listen(PORT, HOST, async () => {
     }
   } else {
     console.log('[App] Hosted mode: gateways will connect per-user on demand.');
+    // OCT Alerts is the exception: its MTProto source is infrastructure, not an
+    // on-demand user session, so it must be up regardless of any open console.
+    await startHostedSignalIngest(wsServer);
   }
 });

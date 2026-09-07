@@ -13,8 +13,19 @@
 // WHY BY ID, NOT BY TITLE. The two source channels' titles are user-editable
 // and share a prefix, so a title match is both fragile and would have to encode
 // the vendor word. Channel IDs are stable and exact. The operator lists them,
-// per chain, in env — the same `-100…` ids the existing Telegram source config
-// shows for those channels.
+// per chain, in env — the same ids the existing Telegram source config shows.
+//
+// WHY THE TOPIC IS PART OF THE ID. The two algorithm feeds are two forum-TOPICS
+// of ONE supergroup, addressed `-100…:topicId` (e.g. `-1003705845819:3` for SOL,
+// `:4` for EVM — the `telegramChannelId` shape from telegram/messageProcessor).
+// The supergroup's peer id is identical for both; only the topic tells them
+// apart. So the match is on the FULL composite id INCLUDING the topic. Dropping
+// the topic (as an earlier version did) collapsed `:3` and `:4` onto the same
+// key: the SOL and EVM sets became identical, every EVM signal was mislabelled
+// SOL, and any OTHER topic in that supergroup — general chat, a service post,
+// the bare group — matched too and got force-forwarded. A configured source
+// therefore matches ONLY its own topic; a bare-group source matches only a
+// bare-group (topic-less) message.
 //
 // PURE. No I/O beyond reading process.env (the convention every sibling in this
 // directory follows — see source.ts, guard.ts, digest.ts), so the whole
@@ -63,17 +74,34 @@ function readEnvList(names: readonly string[]): string[] {
 }
 
 /**
- * Canonical digit-core of a Telegram chat id, so `-1001234567890`, its bare
- * `1234567890`, and a `-100…:topicId` form all compare equal — while two
- * DIFFERENT channels that merely share a prefix stay distinct (this is an exact
- * comparison of the full id's digits, never a prefix test).
+ * Canonical form of a Telegram source id for exact comparison.
+ *
+ * Only the PEER-prefix noise is normalised: `-1001234567890`, its bare
+ * `1234567890`, and (for a basic group) a single leading `-` all reduce to the
+ * same digit-core, so the env value and the ingested id compare equal whichever
+ * `-100`/bare form each happens to use. Two channels that merely share a prefix
+ * still stay distinct — this compares the whole digit-core, never a prefix.
+ *
+ * The `:topicId` segment is PRESERVED and REQUIRED: a forum-topic source is
+ * `<digit-core>:<topic>`, and `:3` never compares equal to `:4` or to the bare
+ * group. The topic is normalised to its integer form so `:03` and `:3` agree; a
+ * malformed/empty topic segment is treated as "no topic" (bare group).
  */
 function canonicalChannelId(id: string): string {
-  return id
+  const trimmed = id.trim();
+  const colon = trimmed.indexOf(':');
+  const chatPart = colon === -1 ? trimmed : trimmed.slice(0, colon);
+  const topicPart = colon === -1 ? '' : trimmed.slice(colon + 1).trim();
+
+  const core = chatPart
     .trim()
-    .replace(/:.*/, '') // drop any :topicId suffix
     .replace(/^-100/, '') // supergroup/channel peer prefix
     .replace(/^-/, ''); // basic-group prefix
+
+  const topicNum = Number(topicPart);
+  const topic = topicPart !== '' && Number.isInteger(topicNum) && topicNum > 0 ? String(topicNum) : '';
+
+  return topic !== '' ? `${core}:${topic}` : core;
 }
 
 /** The configured id sets, per chain, canonicalised for exact comparison. */
