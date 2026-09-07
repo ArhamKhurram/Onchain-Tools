@@ -25,7 +25,8 @@ import { createBotRouter } from './api/routes/bot.js';
 import { createSniperRouter } from './api/sniper/router.js';
 import { requireBotAuth } from './auth/botAuth.js';
 import { startBot } from './bot/index.js';
-import { startTelegramBot, tgDeliverMcapCross, tgSubscriberCount } from './tgbot/index.js';
+import { startTelegramBot, tgDeliverMcapCross, tgDeliverOctSignal, tgSubscriberCount } from './tgbot/index.js';
+import { buildOctSignalView } from './tgbot/octSignals.js';
 import { startDailyDigestScheduler } from './bot/dailyDigest.js';
 import { getStorageProvider, isHostedMode } from './storage/index.js';
 import { authMiddleware } from './auth/middleware.js';
@@ -524,6 +525,14 @@ function wireTelegramEvents(tg: TelegramClientManager, wsServer: WsServer, userI
     const roomKeywords = rooms.flatMap((r) => r.keywordPatterns ?? []);
     const frontendMsg = processTelegramMessage(raw, roomKeywords, ctx);
     const evmChainHint = detectEvmChainFromContent(raw.text, []);
+
+    // OCT Alerts: if this message came from an operator-configured algorithm
+    // source channel (by id, per chain — see tgbot/octSignals.ts), forward it to
+    // the bot's subscribers in realtime. Rides the message that already arrived;
+    // no added poll, no delay. White-labelled and independent of the rest of the
+    // pipeline — it does not depend on room routing or contract persistence.
+    const octSignal = buildOctSignalView({ chatId: raw.chatId, text: raw.text, evmChainHint });
+    if (octSignal) tgDeliverOctSignal(octSignal);
 
     checkPushover(config.pushover, frontendMsg, evmChainHint, config.contractLinkTemplates);
 

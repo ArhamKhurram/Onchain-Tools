@@ -204,8 +204,12 @@ describe('renderStatus', () => {
   });
 
   it('tells a chat subscribed to nothing that it is, rather than looking healthy', () => {
+    // OCT Alerts is on by default, so a genuinely-empty chat has turned it off.
     const out = renderStatus(
-      { ...record, settings: DEFAULT_CHAT_SETTINGS },
+      {
+        ...record,
+        settings: { ...DEFAULT_CHAT_SETTINGS, alerts: { ...DEFAULT_CHAT_SETTINGS.alerts, octSignals: 'off' } },
+      },
       { alertsRouted: true, allowlisted: false, now },
     );
     expect(out).toContain('subscribed to nothing');

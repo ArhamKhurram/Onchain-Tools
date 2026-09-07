@@ -38,6 +38,7 @@ import {
   type TgChatSettings,
 } from './alertPolicy.js';
 import type { PendingDigest } from './digest.js';
+import type { OctSignalView } from './octSignals.js';
 import type { TgInlineKeyboardButton, TgInlineKeyboardMarkup } from './types.js';
 import { COMMAND_GROUPS } from './commandCatalog.js';
 import { groupMentionNote } from './identity.js';
@@ -546,6 +547,53 @@ export function renderMcapCrossCard(view: McapCrossView): string {
     code(view.address),
     footer(caveated ? 'Scam-filtered · honeypot status unknown' : 'Scam-filtered'),
   ]);
+}
+
+// --- OCT Alerts (forwarded algorithm-scan signals) --------------------------
+
+/** SOL/EVM display label for a signal's SOURCE chain. */
+const OCT_SIGNAL_CHAIN_LABEL: Record<'sol' | 'evm', string> = { sol: 'SOL', evm: 'EVM' };
+
+/**
+ * A forwarded "OCT Alerts" signal, as a Telegram card.
+ *
+ * WHITE-LABEL. Attributed as "OCT Alerts · SOL"/"OCT Alerts · EVM" — the chain
+ * it came from, never the upstream that produced it. The scan body is UNTRUSTED
+ * third-party text and is escaped (and signature-stripped before it arrives
+ * here); a `<` that slipped through raw would be a 400 and a silently dropped
+ * signal.
+ *
+ * The contract address(es) render as tap-to-copy `<code>` with a referral chart
+ * link, and the multi-venue referral quick-buy keyboard rides the message as a
+ * reply_markup (built by the delivery path via the same shared machinery the
+ * crossing card uses). A message with no address forwards its text without
+ * buttons rather than being dropped.
+ */
+export function renderOctSignalCard(view: OctSignalView): string {
+  const addresses = view.addresses.slice(0, 3);
+  const overflow = view.addresses.length - addresses.length;
+  const body = view.text.trim();
+
+  return joinLines([
+    bold(`💠 OCT Alerts · ${OCT_SIGNAL_CHAIN_LABEL[view.chain]}`),
+    body ? `<blockquote>${escapeHtml(truncate(body, MAX_QUOTE_CHARS))}</blockquote>` : null,
+    addresses.length > 0 ? '' : null,
+    ...addresses.map(
+      (addr) => `${code(addr)}\n${link('Chart ↗', buildRevivalContractUrl(addr, view.network, LINK_TEMPLATES))}`,
+    ),
+    overflow > 0 ? italic(`+${overflow} more in the same message`) : null,
+    footer(),
+  ]);
+}
+
+/** One digest line for a forwarded signal. Terse; keeps the address. */
+export function octSignalDigestLine(view: OctSignalView): string {
+  const address = view.addresses[0];
+  const head = address ? code(address) : escapeHtml(truncate(view.text.trim(), 90));
+  return (
+    `${escapeHtml(ALERT_CATALOG.octSignals.label)} — ${head} ` +
+    escapeHtml(`· ${OCT_SIGNAL_CHAIN_LABEL[view.chain]}`)
+  );
 }
 
 /** One line of a digest for a market-cap crossing. Terse; keeps the address. */

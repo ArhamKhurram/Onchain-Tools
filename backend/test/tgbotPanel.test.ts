@@ -126,14 +126,22 @@ describe('fail closed: opening the panel subscribes nothing', () => {
   // THE test, restated for the button surface. /start hands the panel
   // DEFAULT_CHAT_SETTINGS and writes no settings at all, so this is what a chat
   // that has only opened the panel is subscribed to.
-  it('the panel default is the same object the fan-out reads, and it is empty', () => {
+  it('the panel default is the same object the fan-out reads', () => {
     expect(panelHomeSettings()).toBe(DEFAULT_CHAT_SETTINGS);
-    expect(subscribedTypes(panelHomeSettings())).toEqual([]);
+    // Every INCIDENT class is off; octSignals ("OCT Alerts") is the one
+    // deliberate default-on exception — a curated operator stream, on the
+    // operator's explicit instruction (see DEFAULT_CHAT_SETTINGS).
+    expect(subscribedTypes(panelHomeSettings())).toEqual(['octSignals']);
+    for (const type of ['missedRunner', 'mcapCross', 'keyword', 'highlighted', 'contract'] as const) {
+      expect(panelHomeSettings().alerts[type]).toBe('off');
+    }
   });
 
-  it('the home card of a fresh chat says "none"', () => {
+  it('the home card of a fresh chat shows OCT Alerts on and no loud class', () => {
     const card = renderPanelHome(state({ settings: panelHomeSettings() }), null);
-    expect(card).toContain('none — nothing is turned on');
+    expect(card).toContain('OCT Alerts');
+    // The class that flooded a live group is still off for a fresh chat.
+    expect(card).not.toContain('Contract detections');
   });
 
   it('no keyboard a fresh chat can see carries a subscribe token', () => {
@@ -409,7 +417,9 @@ describe('the Queued card reads the digest buffer without draining it', () => {
   });
 
   it('says nothing is queued because nothing is subscribed, when that is why', () => {
-    expect(renderPanelRecent(state({ settings: panelHomeSettings() }))).toContain(
+    // A genuinely-unsubscribed chat: OCT Alerts is on by default, so this test
+    // turns it off to reach the "subscribed to nothing" branch.
+    expect(renderPanelRecent(state({ settings: settings({ octSignals: 'off' }) }))).toContain(
       'subscribed to nothing',
     );
     expect(renderPanelRecent(state({ settings: settings({ missedRunner: 'digest' }) }))).toContain(

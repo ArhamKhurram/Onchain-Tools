@@ -53,7 +53,7 @@ export interface AlertLike {
  * Keyed by intent rather than by the wire `type` string, because one class
  * ('contract') deliberately spans two wire types — see isContractDetection.
  */
-export type TgAlertType = 'missedRunner' | 'mcapCross' | 'keyword' | 'highlighted' | 'contract';
+export type TgAlertType = 'octSignals' | 'missedRunner' | 'mcapCross' | 'keyword' | 'highlighted' | 'contract';
 
 /**
  * How a subscribed class is delivered.
@@ -66,6 +66,7 @@ export type TgAlertType = 'missedRunner' | 'mcapCross' | 'keyword' | 'highlighte
 export type TgAlertDelivery = 'off' | 'digest' | 'instant';
 
 export const ALERT_TYPES: readonly TgAlertType[] = [
+  'octSignals',
   'missedRunner',
   'mcapCross',
   'keyword',
@@ -116,6 +117,23 @@ export interface TgAlertTypeSpec {
  * user is the last, under a warning.
  */
 export const ALERT_CATALOG: Readonly<Record<TgAlertType, TgAlertTypeSpec>> = {
+  octSignals: {
+    type: 'octSignals',
+    keyword: 'signals',
+    // NOT 'alerts' — that collides with the /alerts command itself.
+    aliases: ['signal', 'octsignals', 'oct_signals', 'scans', 'scan'],
+    label: 'OCT Alerts',
+    volume: 'medium',
+    volumeNote:
+      'Realtime algorithm-scan signals across SOL and EVM — bursty, and can be several within a minute when the market is moving.',
+    // Earns per-event delivery because the class is a curated, operator-controlled
+    // stream, not the raw feed: it is bounded upstream by whatever the source
+    // channels post, and the hourly ceiling still clamps it to maxPerHour a chat.
+    // It deliberately does NOT feed the circuit breaker (see alerts.ts route) so a
+    // burst cannot auto-mute a chat's OTHER subscriptions.
+    instantAllowed: true,
+    requiresConfirmation: false,
+  },
   missedRunner: {
     type: 'missedRunner',
     keyword: 'runners',
@@ -244,9 +262,24 @@ export interface TgChatSettings {
   mutedReason: string | null;
 }
 
-/** Every class off, not muted. The state a brand-new chat is in. */
+/**
+ * The state a brand-new chat is in, and the default every ABSENT key reads as
+ * (see readSettings). Every incident class is OFF — the fail-closed guarantee
+ * that stopped the flood.
+ *
+ * `octSignals` is the ONE deliberate exception: it is ON (instant) by default,
+ * on the operator's explicit instruction, because it is a curated,
+ * operator-controlled stream rather than the raw feed. It defaults on for
+ * EXISTING chats too — their stored blobs predate the key, so readSettings
+ * supplies this value — which is how every current subscriber starts receiving
+ * it without a migration. It stays a normal toggle: `/alerts off signals`
+ * silences it, and turning it off round-trips like any other class. The hourly
+ * ceiling still binds it, and it cannot trip the circuit breaker (alerts.ts), so
+ * a default-on bursty class cannot mute a chat's other subscriptions.
+ */
 export const DEFAULT_CHAT_SETTINGS: TgChatSettings = {
   alerts: {
+    octSignals: 'instant',
     missedRunner: 'off',
     mcapCross: 'off',
     keyword: 'off',
