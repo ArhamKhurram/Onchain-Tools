@@ -150,3 +150,57 @@ describe('snapshotsFromPairs — 24h volume', () => {
     expect(snapshots.get('A')?.volume24hUsd).toBe(400);
   });
 });
+
+/**
+ * Price change and pool age — the first-run-up signals.
+ *
+ * Both feed mcapCross/gates.ts's discriminator between a token climbing THROUGH
+ * the target and one falling back through it. Price change is a POOL property
+ * (deepest pair, like price) and stored as a fraction; pool age comes from the
+ * OLDEST pool because "how long has this been tradeable" is the first pool, not
+ * the deepest one.
+ */
+describe('snapshotsFromPairs — price change and pool age', () => {
+  it('reads 24h/6h price change from the DEEPEST pair, as a fraction', () => {
+    const { snapshots } = snapshotsFromPairs(
+      [
+        pair({ address: 'A', liquidity: { usd: 1_000 }, priceChange: { h24: 999, h6: 999 } }),
+        pair({ address: 'A', liquidity: { usd: 90_000 }, priceChange: { h24: -20.52, h6: 5.1 } }),
+      ],
+      ['A'],
+    );
+    const s = snapshots.get('A');
+    expect(s?.priceChangeH24).toBeCloseTo(-0.2052);
+    expect(s?.priceChangeH6).toBeCloseTo(0.051);
+  });
+
+  it('reports NULL price change when the deepest pair reported none', () => {
+    const { snapshots } = snapshotsFromPairs([pair({ address: 'A', liquidity: { usd: 5 } })], ['A']);
+    expect(snapshots.get('A')?.priceChangeH24).toBeNull();
+    expect(snapshots.get('A')?.priceChangeH6).toBeNull();
+  });
+
+  it('accepts a numeric string price change (untrusted narrowing)', () => {
+    const { snapshots } = snapshotsFromPairs(
+      [pair({ address: 'A', priceChange: { h24: '-20.52' } })],
+      ['A'],
+    );
+    expect(snapshots.get('A')?.priceChangeH24).toBeCloseTo(-0.2052);
+  });
+
+  it('takes pool age from the OLDEST pool — max age, not the deepest pool', () => {
+    const { snapshots } = snapshotsFromPairs(
+      [
+        pair({ address: 'A', liquidity: { usd: 90_000 }, pairCreatedAt: 2_000 }),
+        pair({ address: 'A', liquidity: { usd: 1_000 }, pairCreatedAt: 1_000 }),
+      ],
+      ['A'],
+    );
+    expect(snapshots.get('A')?.pairCreatedAtMs).toBe(1_000);
+  });
+
+  it('reports NULL pool age when no pool reported a creation time', () => {
+    const { snapshots } = snapshotsFromPairs([pair({ address: 'A' })], ['A']);
+    expect(snapshots.get('A')?.pairCreatedAtMs).toBeNull();
+  });
+});

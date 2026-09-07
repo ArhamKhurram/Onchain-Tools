@@ -91,7 +91,9 @@ import { fetchUniverse, type UniverseToken } from './universe.js';
 import { fetchTokenSecurity } from './security.js';
 import {
   evaluateMcapGates,
+  isWatermarkReCross,
   resolveGateConfig,
+  resolveReCrossWatermarkFactor,
   resolveTargetMcapUsd,
   type McapGateConfig,
 } from './gates.js';
@@ -384,6 +386,7 @@ class McapCrossPoller {
     const target = resolveTargetMcapUsd();
     const baselineCfg = resolveGateConfig();
     const cooldownMs = resolveCooldownMs();
+    const reCrossFactor = resolveReCrossWatermarkFactor();
     const now = Date.now();
     const nowIso = new Date(now).toISOString();
     const writes: McapCrossRow[] = [];
@@ -411,12 +414,16 @@ class McapCrossPoller {
       if (verdict.action === 'abstain' || verdict.observedUsd == null) continue;
 
       const observed = verdict.observedUsd;
+      const priorWatermark = prior?.highWatermarkMcap ?? null;
       const row: McapCrossRow = {
         address: token.address,
         network: token.network,
         lastSeenMcap: observed,
         lastSeenAt: nowIso,
         firedAt: prior?.firedAt ?? 0,
+        // A strict running max, so a token that pulled back is still known to
+        // have run. Written on EVERY observation, fired or not.
+        highWatermarkMcap: Math.max(priorWatermark ?? 0, observed),
       };
 
       if (verdict.action !== 'fire') {
@@ -433,6 +440,25 @@ class McapCrossPoller {
         continue;
       }
 
+      // A RE-CROSS of a token we already watched run well above the target — a
+      // token that ran to 3x, fell back, and is crossing up again days later
+      // (past the 24h cooldown). Suppressed for the same reason as the
+      // cooldown, and BEFORE the security call, because a re-cross should not
+      // cost one. Global, not per-user: an already-pumped token oscillating
+      // back through the line is noise for everyone. The honest limit — a token
+      // discovered after its peak, whose watermark never saw it — is carried by
+      // the momentum gate instead (see isWatermarkReCross).
+      if (isWatermarkReCross(priorWatermark, target, reCrossFactor)) {
+        this.ledger.clear(key);
+        writes.push(row);
+        console.log(
+          `${LOG} RE-CROSS ${usable?.symbol ? `$${usable.symbol}` : token.address.slice(0, 8)} ` +
+            `(${token.network}) at ${formatUsd(observed)} — watermark ${formatUsd(priorWatermark ?? 0)} ` +
+            `≥ ${formatUsd(target * reCrossFactor)}; suppressed.`,
+        );
+        continue;
+      }
+
       // --- The only expensive call in the whole feature, and only here ----
       const security = await fetchTokenSecurity(token.network, token.address);
       const gateInput = {
@@ -444,6 +470,11 @@ class McapCrossPoller {
         // not volume, and inventing one would be exactly the "silence read as
         // zero" the gate abstains to avoid.
         volume24hUsd: usable?.volume24hUsd ?? null,
+        // The first-run-up discriminator's inputs, both from the same batch.
+        // Null (unknown) fires rather than mutes — the gate handles that.
+        priceChangeH24: usable?.priceChangeH24 ?? null,
+        poolAgeMs:
+          usable?.pairCreatedAtMs != null ? Math.max(0, now - usable.pairCreatedAtMs) : null,
         security,
       };
       const gates = evaluateMcapGates(gateInput, baselineCfg);
