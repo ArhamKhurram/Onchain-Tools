@@ -291,6 +291,9 @@ const ENV_KEYS = [
   'OCT_MCAP_CROSS_MIN_PRICE_CHANGE_H24',
   'OCT_MCAP_CROSS_MAX_POOL_AGE_DAYS',
   'OCT_MCAP_CROSS_RECROSS_WATERMARK_FACTOR',
+  'OCT_MCAP_CROSS_MAX_BUNDLER_RATE',
+  'OCT_MCAP_CROSS_MAX_SNIPER_RATE',
+  'OCT_MCAP_CROSS_MAX_INSIDER_RATE',
 ];
 let saved: Record<string, string | undefined> = {};
 
@@ -639,6 +642,53 @@ describe('evaluateMcapGates — pool-age corroboration', () => {
     expect(resolveGateConfig().maxPoolAgeDays).toBeNull();
     process.env.OCT_MCAP_CROSS_MAX_POOL_AGE_DAYS = '30';
     expect(resolveGateConfig().maxPoolAgeDays).toBe(30);
+  });
+});
+
+describe('evaluateMcapGates — manufactured-launch discriminators', () => {
+  // Recorded live 2026-09-07: a bundled pump.fun launch vs organic BONK.
+  const BUNDLED = { bundlerRate: 0.2273, sniperRate: 0.127, insiderRate: 0 };
+  const ORGANIC = { bundlerRate: 0.0017, sniperRate: 0.0000003, insiderRate: 0.0006 };
+
+  it('are OFF by default — a bundled token still fires when no ceiling is set', () => {
+    expect(DEFAULT_GATE_CONFIG.maxBundlerRate).toBeNull();
+    expect(DEFAULT_GATE_CONFIG.maxSniperRate).toBeNull();
+    expect(DEFAULT_GATE_CONFIG.maxInsiderRate).toBeNull();
+    expect(evaluateMcapGates(input({ manipulation: BUNDLED })).decision).toBe('pass');
+  });
+
+  it('reject a bundled token and pass an organic one once a ceiling is set', () => {
+    const cfg = { ...DEFAULT_GATE_CONFIG, maxBundlerRate: 0.1 };
+    const rejected = evaluateMcapGates(input({ manipulation: BUNDLED }), cfg);
+    expect(rejected.decision).toBe('reject');
+    expect(rejected.failed).toContain('bundlerRate');
+    expect(evaluateMcapGates(input({ manipulation: ORGANIC }), cfg).decision).toBe('pass');
+  });
+
+  it('abstain-to-FIRE: an unknown flag (or whole payload) fires even with a ceiling set', () => {
+    const cfg = { ...DEFAULT_GATE_CONFIG, maxBundlerRate: 0.05, maxSniperRate: 0.05, maxInsiderRate: 0.05 };
+    // Whole payload missing — GMGN unindexed, rate-limited, or a chain (BNB) that
+    // reports nothing. Deliberately NOT in missingCriticalFields, so it fires.
+    expect(evaluateMcapGates(input({ manipulation: null }), cfg).decision).toBe('pass');
+    expect(evaluateMcapGates(input({ manipulation: undefined }), cfg).decision).toBe('pass');
+    // A single unknown field among known-good ones is ignored, not failed.
+    const partial = input({ manipulation: { bundlerRate: null, sniperRate: 0.01, insiderRate: null } });
+    expect(evaluateMcapGates(partial, cfg).decision).toBe('pass');
+  });
+
+  it('rejects on a bundled token even when the security lookup is unavailable', () => {
+    // Evaluated before the security block, like momentum: a null security payload
+    // does not rescue a token whose bundler share is known-bad.
+    const cfg = { ...DEFAULT_GATE_CONFIG, maxBundlerRate: 0.1 };
+    const verdict = evaluateMcapGates(input({ security: null, manipulation: BUNDLED }), cfg);
+    expect(verdict.decision).toBe('reject');
+    expect(verdict.failed).toContain('bundlerRate');
+  });
+
+  it('reads the ceilings from env (null when unset)', () => {
+    expect(resolveGateConfig().maxBundlerRate).toBeNull();
+    process.env.OCT_MCAP_CROSS_MAX_SNIPER_RATE = '0.2';
+    expect(resolveGateConfig().maxSniperRate).toBe(0.2);
   });
 });
 

@@ -89,6 +89,7 @@ import { evaluateCrossing } from '../priceAlerts/crossing.js';
 import { readDexSnapshots, type MintSnapshot } from '../marketData/dexBatch.js';
 import { fetchUniverse, type UniverseToken } from './universe.js';
 import { fetchTokenSecurity } from './security.js';
+import { fetchTokenManipulation } from './manipulation.js';
 import {
   evaluateMcapGates,
   isWatermarkReCross,
@@ -459,8 +460,15 @@ class McapCrossPoller {
         continue;
       }
 
-      // --- The only expensive call in the whole feature, and only here ----
+      // --- The two GMGN calls in the whole feature, and only here ----
+      // Security (renounce/honeypot/LP/top-10) and manufactured-launch analytics
+      // (bundler/sniper/insider) live on DIFFERENT GMGN endpoints —
+      // `/v1/token/security` and `/v1/token/info` — so this is two calls, not
+      // one. Both run ONLY at fire (~30-80/day), never per universe token, and
+      // both share `gmgnLimiter`. The manipulation lookup abstains-to-FIRE on
+      // any failure (see manipulation.ts), so it can never suppress an alert.
       const security = await fetchTokenSecurity(token.network, token.address);
+      const manipulation = await fetchTokenManipulation(token.network, token.address);
       const gateInput = {
         network: token.network,
         mcapUsd: observed,
@@ -476,6 +484,7 @@ class McapCrossPoller {
         poolAgeMs:
           usable?.pairCreatedAtMs != null ? Math.max(0, now - usable.pairCreatedAtMs) : null,
         security,
+        manipulation,
       };
       const gates = evaluateMcapGates(gateInput, baselineCfg);
 
