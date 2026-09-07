@@ -382,6 +382,8 @@ export interface McapCrossView {
   targetUsd: number;
   liquidityUsd: number | null;
   liquidityRatio: number | null;
+  /** Traded USD over 24h across all pools. Null/absent = not reported. */
+  volume24hUsd?: number | null;
   /** Non-blocking gate caveats, e.g. `honeypotUnknown`. Absent = clean pass. */
   caveats?: string[];
 }
@@ -419,6 +421,13 @@ export function renderMcapCrossCard(view: McapCrossView): string {
     bold(heading),
     `${bold('MCap:')} ${escapeHtml(compactUsd(view.mcapUsd))}`,
     `${bold('Liquidity:')} ${escapeHtml(depth)}`,
+    // Volume earns a line only when it is KNOWN. Printing "unknown" beside a
+    // number the reader can act on adds a row of noise to every card for the
+    // minority of tokens DexScreener is quiet about; liquidity says "unknown"
+    // because a gate depends on it, and volume's gate is off unless asked for.
+    ...(view.volume24hUsd != null
+      ? [`${bold('Vol 24h:')} ${escapeHtml(compactUsd(view.volume24hUsd))}`]
+      : []),
     `${bold('Chain:')} ${escapeHtml(revivalNetworkLabel(view.network))}`,
     ...(caveated ? [`${bold('⚠ Honeypot:')} ${escapeHtml('not evaluated — verify before buying')}`] : []),
     '',

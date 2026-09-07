@@ -38,6 +38,8 @@ interface GateConfig {
   minLiquidityToMcapRatio: number;
   maxTop10HolderRate: number;
   maxTaxRate: number;
+  /** Null = the filter is OFF, not "zero". See the note on FIELDS below. */
+  minVolume24hUsd: number | null;
   requireLpSecured: boolean;
 }
 
@@ -45,7 +47,8 @@ type FilterKey =
   | 'minLiquidityUsd'
   | 'minLiquidityToMcapRatio'
   | 'maxTop10HolderRate'
-  | 'maxTaxRate';
+  | 'maxTaxRate'
+  | 'minVolume24hUsd';
 
 interface FilterView {
   filters: Partial<Record<FilterKey, number>>;
@@ -96,6 +99,13 @@ const FIELDS: {
     step: 0.5,
     help: 'Ceiling on transfer tax, each way. BNB and Robinhood only — a transfer-tax honeypot cannot exist on Solana, so this never filters Solana alerts.',
   },
+  {
+    key: 'minVolume24hUsd',
+    label: 'Min 24h volume',
+    unit: 'usd',
+    step: 10000,
+    help: 'Traded USD in the last day, added up across every pool. Off unless you set it. Works on all three chains — and where no volume figure is reported the alert is skipped rather than let through, so this can never pass a token it could not measure.',
+  },
 ];
 
 const toDisplay = (unit: 'usd' | 'percent', value: number): string =>
@@ -106,10 +116,17 @@ const toWire = (unit: 'usd' | 'percent', raw: string): number => {
   return unit === 'percent' ? n / 100 : n;
 };
 
-const formatInherited = (unit: 'usd' | 'percent', value: number): string =>
-  unit === 'percent'
+/**
+ * What a blank box inherits. `null` is not zero — it is "this gate is not
+ * evaluated at all", which only `minVolume24hUsd` can be, and calling it "off"
+ * is the only wording that does not imply a threshold of some value.
+ */
+const formatInherited = (unit: 'usd' | 'percent', value: number | null): string => {
+  if (value == null) return 'off';
+  return unit === 'percent'
     ? `${Number((value * 100).toFixed(4))}%`
     : `$${value.toLocaleString('en-US')}`;
+};
 
 export default function McapAlertsSection() {
   const [view, setView] = useState<FilterView | null>(null);
@@ -272,7 +289,7 @@ export default function McapAlertsSection() {
                     min={0}
                     disabled={busy}
                     className={INPUT_CLASS}
-                    placeholder={toDisplay(field.unit, inherited)}
+                    placeholder={inherited == null ? 'off' : toDisplay(field.unit, inherited)}
                     value={drafts[field.key] ?? ''}
                     onChange={(e) =>
                       setDrafts((d) => ({ ...d, [field.key]: e.target.value }))
@@ -318,8 +335,9 @@ export default function McapAlertsSection() {
         <ul className="space-y-snug type-body text-oct-muted list-disc pl-5">
           <li>
             They never turn an unknown into a pass. If the security provider could
-            not answer for a token, it is skipped for everyone regardless of what
-            you set here.
+            not answer for a token — or, with a volume floor set, if no volume
+            figure was reported — it is skipped rather than let through,
+            regardless of what you set here.
           </li>
           <li>
             A honeypot check that was never run is still shown as unevaluated on

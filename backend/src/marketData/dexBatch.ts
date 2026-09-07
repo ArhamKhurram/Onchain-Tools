@@ -45,6 +45,11 @@ export interface DexPair {
   /** Token-level; `fdv` is the fallback when `marketCap` is absent. */
   marketCap?: number;
   fdv?: number;
+  /**
+   * PER-PAIR traded USD by window. Unlike every other field on this interface
+   * it is ADDITIVE across a token's pools — see `snapshotsFromPairs`.
+   */
+  volume?: { h24?: number };
   /** DexScreener's own chain slug ("solana", "bsc", …). Best-effort. */
   chainId?: string;
 }
@@ -56,6 +61,13 @@ export interface MintSnapshot {
   mcapUsd: number | null;
   /** Deepest pair's USD liquidity. Null when no pair reported one. */
   liquidityUsd: number | null;
+  /**
+   * Traded USD over 24h, SUMMED across every pool for this mint. Null — never
+   * zero — when no pool reported a figure, because "DexScreener did not say"
+   * and "nobody traded it" are different facts and only one of them is
+   * evidence. See `snapshotsFromPairs`.
+   */
+  volume24hUsd: number | null;
   /** DexScreener chain slug from the deepest pair, when it reported one. */
   chainId: string | null;
 }
@@ -89,6 +101,22 @@ export function chunkMints(mints: string[], size: number = DEFAULT_BATCH_SIZE): 
  * journal/volumeDeath.ts:extractTokenVolumeSnapshot). Market cap is a
  * token-level figure so any pair reporting one is acceptable as a fallback,
  * which matters for tokens whose deepest pool omits it.
+ *
+ * VOLUME IS THE ONE ADDITIVE FIELD, and it is deliberately not read off the
+ * deepest pair. Liquidity, price and chain are PROPERTIES of a pool, so the
+ * deepest pool is the honest representative. 24h volume is a FLOW, and a token
+ * that trades across a PumpSwap pool and four Meteora pools traded all of it —
+ * measured 2026-09-07 on one live mint, the deepest pool carried $9.14M of a
+ * $10.7M token total, so reading the deepest pool alone under-reports by ~15%.
+ * Under-reporting a floor filter is the direction that silently drops real
+ * alerts, so the sum is the only defensible reading.
+ *
+ * THE SUM IS STILL A FLOOR, NOT A TOTAL, and the 30-pair cap is why. A token
+ * whose pools were truncated out of this response contributes only the pools
+ * that came back. That biases the figure DOWNWARD, which for a `min` threshold
+ * costs a false negative (a missed alert) rather than a false positive (an
+ * alert on a token that does not trade) — the same direction every other
+ * uncertainty in this pipeline is resolved in.
  *
  * `missing` lists requested mints with no matching pair — either unlisted or
  * lost to the 30-pair cap. The caller disambiguates via `wasTruncated`.
@@ -124,12 +152,27 @@ export function snapshotsFromPairs(
       }
     }
     const liq = best.liquidity?.usd;
+
+    // Additive across pools, and null-unless-somebody-said. `seen` is what
+    // separates "every pool reported 0" (a real zero — the token is listed and
+    // dead) from "no pool reported anything" (unknown, which must abstain).
+    let volume = 0;
+    let seen = false;
+    for (const p of sorted) {
+      const v = p.volume?.h24;
+      if (typeof v === 'number' && Number.isFinite(v) && v >= 0) {
+        volume += v;
+        seen = true;
+      }
+    }
+
     snapshots.set(mint, {
       mint,
       symbol: best.baseToken?.symbol ?? null,
       priceUsd: Number.isFinite(price) && price > 0 ? price : null,
       mcapUsd: typeof mcapRaw === 'number' && Number.isFinite(mcapRaw) && mcapRaw > 0 ? mcapRaw : null,
       liquidityUsd: typeof liq === 'number' && Number.isFinite(liq) && liq >= 0 ? liq : null,
+      volume24hUsd: seen ? volume : null,
       chainId: typeof best.chainId === 'string' && best.chainId !== '' ? best.chainId : null,
     });
   }

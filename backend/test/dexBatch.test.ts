@@ -87,3 +87,66 @@ describe('the 30-pair cap', () => {
     expect(chunkMints(new Array(40).fill('a'), 999)).toHaveLength(2);
   });
 });
+
+/**
+ * 24h volume — the one additive field.
+ *
+ * Every other field on a snapshot is a PROPERTY of the deepest pool. Volume is
+ * a FLOW, and a token that trades across six pools traded all of it. Measured
+ * on one live mint on 2026-09-07: the deepest pool carried $9.14M of a $10.7M
+ * token total, so reading the deepest pool alone under-reports by ~15%. Against
+ * a `min` threshold that under-report costs real alerts.
+ */
+describe('snapshotsFromPairs — 24h volume', () => {
+  it('SUMS volume across every pool, unlike liquidity', () => {
+    const { snapshots } = snapshotsFromPairs(
+      [
+        pair({ address: 'A', liquidity: { usd: 130_000 }, volume: { h24: 9_141_324 } }),
+        pair({ address: 'A', liquidity: { usd: 68_000 }, volume: { h24: 1_125_928 } }),
+        pair({ address: 'A', liquidity: { usd: 7_000 }, volume: { h24: 208_317 } }),
+      ],
+      ['A'],
+    );
+    const snap = snapshots.get('A');
+    // Liquidity still comes from the deepest pool alone…
+    expect(snap?.liquidityUsd).toBe(130_000);
+    // …while volume is the whole token's day.
+    expect(snap?.volume24hUsd).toBe(9_141_324 + 1_125_928 + 208_317);
+  });
+
+  it('reports NULL, not zero, when no pool offered a figure', () => {
+    // The difference the whole abstain path rests on: "DexScreener did not say"
+    // is not "nobody traded it", and only one of those is evidence.
+    const { snapshots } = snapshotsFromPairs([pair({ address: 'A' })], ['A']);
+    expect(snapshots.get('A')?.volume24hUsd).toBeNull();
+  });
+
+  it('reports a genuine zero as zero — a listed, dead token is a real reading', () => {
+    const { snapshots } = snapshotsFromPairs([pair({ address: 'A', volume: { h24: 0 } })], ['A']);
+    expect(snapshots.get('A')?.volume24hUsd).toBe(0);
+  });
+
+  it('counts the pools that reported and ignores the ones that did not', () => {
+    const { snapshots } = snapshotsFromPairs(
+      [
+        pair({ address: 'A', volume: { h24: 500 } }),
+        pair({ address: 'A' }),
+        pair({ address: 'A', volume: { h24: 250 } }),
+      ],
+      ['A'],
+    );
+    expect(snapshots.get('A')?.volume24hUsd).toBe(750);
+  });
+
+  it('drops a non-numeric or negative figure rather than poisoning the sum', () => {
+    const { snapshots } = snapshotsFromPairs(
+      [
+        pair({ address: 'A', volume: { h24: 400 } }),
+        pair({ address: 'A', volume: { h24: Number.NaN } }),
+        pair({ address: 'A', volume: { h24: -10 } }),
+      ],
+      ['A'],
+    );
+    expect(snapshots.get('A')?.volume24hUsd).toBe(400);
+  });
+});

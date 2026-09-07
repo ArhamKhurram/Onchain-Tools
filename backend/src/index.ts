@@ -881,6 +881,7 @@ httpServer.listen(PORT, HOST, async () => {
           targetUsd: data.targetUsd,
           liquidityUsd: data.liquidityUsd,
           liquidityRatio: data.liquidityRatio,
+          volume24hUsd: data.volume24hUsd,
           caveats: data.caveats,
         },
         verdict,

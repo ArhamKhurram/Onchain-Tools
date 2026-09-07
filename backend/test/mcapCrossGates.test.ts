@@ -140,6 +140,11 @@ function input(partial: Partial<McapGateInput>): McapGateInput {
     network: 'solana',
     mcapUsd: 800_000,
     liquidityUsd: 60_000,
+    // UNKNOWN by default, deliberately. Most of the suite below is about a
+    // world where no volume filter is set, and in that world an unknown volume
+    // must be invisible — so the default input is the awkward case, not the
+    // convenient one.
+    volume24hUsd: null,
     security: normalizeSecurity(SOL_HEALTHY, 'solana'),
     ...partial,
   };
@@ -356,7 +361,15 @@ describe('AbstainLedger', () => {
 // --- Cross-chain address collisions ------------------------------------------
 
 function snap(chainId: string | null): MintSnapshot {
-  return { mint: '0xabc', symbol: null, priceUsd: 1, mcapUsd: 1, liquidityUsd: 1, chainId };
+  return {
+    mint: '0xabc',
+    symbol: null,
+    priceUsd: 1,
+    mcapUsd: 1,
+    liquidityUsd: 1,
+    volume24hUsd: null,
+    chainId,
+  };
 }
 
 describe('snapshotMatchesNetwork', () => {
@@ -370,5 +383,151 @@ describe('snapshotMatchesNetwork', () => {
   it('accepts a slug it has no opinion about — a wrong guess must cost a miss, not a wrong alert', () => {
     expect(snapshotMatchesNetwork(snap('base'), 'bsc')).toBe(true);
     expect(snapshotMatchesNetwork(snap(null), 'bsc')).toBe(true);
+  });
+});
+
+
+/**
+ * The 24h volume floor — the one gate that is OFF unless somebody turns it on.
+ *
+ * WHY THIS BLOCK IS LONGER THAN THE GATE IT TESTS. Three separate ways to get
+ * this wrong, and only one of them would be noticed by anybody:
+ *
+ *   1. Shipping it ON. Every existing user's alerts change silently.
+ *   2. Reading an unknown volume as zero. A floor then REJECTS exactly the
+ *      tokens the upstream is quietest about, and the failure looks like a
+ *      quiet market rather than a bug — the same shape pinaxCandles.ts's
+ *      calibration guard exists to prevent.
+ *   3. Reading an unknown volume as a PASS. That is the abstain rule inverted,
+ *      and it would let a filter manufacture confidence out of a null, which
+ *      is precisely why `requireLpSecured` is not user-editable.
+ *
+ * Only (1) is visible in production; (2) and (3) are silent. Hence the
+ * coverage.
+ */
+describe('evaluateMcapGates — 24h volume floor', () => {
+  const withFloor = (min: number | null) => ({ ...DEFAULT_GATE_CONFIG, minVolume24hUsd: min });
+
+  // --- (1) No filter set: today's behaviour, exactly ------------------------
+
+  it('ships OFF, so a user who sets nothing is unaffected', () => {
+    expect(DEFAULT_GATE_CONFIG.minVolume24hUsd).toBeNull();
+    expect(resolveGateConfig().minVolume24hUsd).toBeNull();
+  });
+
+  it('ignores volume entirely when no floor is set — known, unknown or zero', () => {
+    for (const volume24hUsd of [null, 0, 12, 50_000_000]) {
+      expect(evaluateMcapGates(input({ volume24hUsd })).decision).toBe('pass');
+    }
+  });
+
+  it('is not evaluated at all when off, so it cannot appear among the failures', () => {
+    const verdict = evaluateMcapGates(input({ volume24hUsd: 0 }), withFloor(null));
+    expect(verdict.decision).toBe('pass');
+    expect(verdict.failed).toEqual([]);
+  });
+
+  // --- (2) Set + known: an ordinary comparison ------------------------------
+
+  it('rejects a token below a set floor', () => {
+    const verdict = evaluateMcapGates(input({ volume24hUsd: 5_000 }), withFloor(50_000));
+    expect(verdict.decision).toBe('reject');
+    expect(verdict.failed).toContain('volume24h');
+  });
+
+  it('passes a token above a set floor', () => {
+    expect(evaluateMcapGates(input({ volume24hUsd: 500_000 }), withFloor(50_000)).decision).toBe(
+      'pass',
+    );
+  });
+
+  it('treats a genuine reported zero as a real reading, not as a gap', () => {
+    // "Listed, and nobody traded it" is data. Only "nobody reported" is a gap.
+    const verdict = evaluateMcapGates(input({ volume24hUsd: 0 }), withFloor(1));
+    expect(verdict.decision).toBe('reject');
+    expect(verdict.failed).toContain('volume24h');
+  });
+
+  it('accepts a floor of zero as a real threshold every listed token clears', () => {
+    expect(evaluateMcapGates(input({ volume24hUsd: 0 }), withFloor(0)).decision).toBe('pass');
+  });
+
+  // --- (3) Set + unknown: ABSTAIN. The whole point. -------------------------
+
+  it('ABSTAINS on an unknown volume rather than failing it', () => {
+    const verdict = evaluateMcapGates(input({ volume24hUsd: null }), withFloor(50_000));
+    expect(verdict.decision).toBe('abstain');
+    expect(verdict.abstainReason).toBe('24h volume unknown');
+    expect(verdict.failed).toEqual([]);
+  });
+
+  it('abstains on an unknown volume for EVERY watched chain, not just Solana', () => {
+    // The metric comes from the same DexScreener batch on all three chains, so
+    // there is no chain where it is structurally absent — but a per-token gap
+    // must abstain identically wherever it happens. A filter that silently
+    // rejected every BNB and Robinhood token would look exactly like a quiet
+    // week on those chains.
+    const cases: McapGateInput[] = [
+      input({ network: 'solana', volume24hUsd: null }),
+      input({
+        network: 'bsc',
+        volume24hUsd: null,
+        security: normalizeSecurity(BSC_HEALTHY, 'bsc'),
+      }),
+      input({
+        network: 'robinhood',
+        volume24hUsd: null,
+        security: normalizeSecurity(BSC_HEALTHY, 'robinhood'),
+      }),
+    ];
+    for (const c of cases) {
+      const verdict = evaluateMcapGates(c, withFloor(50_000));
+      expect(verdict.decision).toBe('abstain');
+      expect(verdict.failed).toEqual([]);
+    }
+  });
+
+  it('abstains on a NaN volume too — a non-finite number is not a reading', () => {
+    expect(evaluateMcapGates(input({ volume24hUsd: NaN }), withFloor(1)).decision).toBe('abstain');
+  });
+
+  it('never lets the floor turn an abstain into a pass', () => {
+    // Unknown volume AND unknown Solana authorities. Whatever the floor says,
+    // the answer is still "we could not tell".
+    const blind = input({ volume24hUsd: null, security: normalizeSecurity(
+        { ...SOL_HEALTHY, renounced_mint: null, renounced_freeze_account: null },
+        'solana',
+      ) });
+    for (const floor of [null, 0, 1_000_000]) {
+      expect(evaluateMcapGates(blind, withFloor(floor)).decision).toBe('abstain');
+    }
+  });
+
+  it('keeps reject ahead of abstain — a thin pool answers the question anyway', () => {
+    // Consistent with the existing rule: a token that fails a gate it CAN be
+    // measured against is not an open question just because something else was
+    // missing. Otherwise every unindexable token buys a free security lookup
+    // every cycle, forever.
+    const verdict = evaluateMcapGates(
+      input({ volume24hUsd: null, liquidityUsd: 100 }),
+      withFloor(50_000),
+    );
+    expect(verdict.decision).toBe('reject');
+    expect(verdict.failed).toContain('liquidity');
+  });
+
+  it('does not disturb the honeypot caveat', () => {
+    // #369: an unevaluated check is surfaced, never hidden. A volume threshold
+    // is a comparison over market data and must not touch that.
+    const verdict = evaluateMcapGates(
+      input({
+        network: 'bsc',
+        volume24hUsd: 500_000,
+        security: normalizeSecurity({ ...BSC_HEALTHY, is_honeypot: null }, 'bsc'),
+      }),
+      withFloor(50_000),
+    );
+    expect(verdict.decision).toBe('pass');
+    expect(verdict.caveats).toContain('honeypotUnknown');
   });
 });
