@@ -88,6 +88,37 @@ export function isValidFeeComponent(v: unknown): v is number {
 }
 
 /**
+ * Parse ONE fee component arriving from an untrusted surface — an HTTP body, a
+ * Telegram command argument — into a storable number, or `null` for "refuse".
+ *
+ * ONE PARSER, EVERY SURFACE. `/sniper/v1/fees` had these rules inline; the
+ * Telegram `/fees` command needs exactly the same ones, and a second copy is
+ * how two surfaces drift until one accepts what the other refuses. The bounds
+ * live in `isValidFeeComponent` and are never restated by a caller.
+ *
+ *   • `undefined` → `fallback`. Absent means "leave this component alone", so
+ *     one field can be patched without resending the other.
+ *   • a number → accepted only if `isValidFeeComponent`; otherwise REFUSED,
+ *     never coerced. A negative or a NaN does not tighten a cap, it disables
+ *     cap accounting (`NaN > cap` is false), and silently storing a coerced 0
+ *     would tell the operator their tip landed when it was discarded.
+ *   • a string → a form field or a chat message; parsed, then held to the same
+ *     test. A blank string is not a zero.
+ *   • anything else (null, boolean, object) → REFUSED. `null` in particular is
+ *     what JSON.stringify makes of Infinity, so reading it as zero would write
+ *     0 for an operator who typed something enormous.
+ */
+export function parseFeeComponent(v: unknown, fallback: number): number | null {
+  if (v === undefined) return fallback;
+  if (typeof v === 'number') return isValidFeeComponent(v) ? v : null;
+  if (typeof v === 'string' && v.trim() !== '') {
+    const n = Number(v);
+    return isValidFeeComponent(n) ? n : null;
+  }
+  return null;
+}
+
+/**
  * Last line of defence, applied at every read. Anything that is not a valid
  * component becomes 0 rather than propagating — a NaN in `amountWithFees` makes
  * EVERY cap comparison false, which disables cap accounting outright.

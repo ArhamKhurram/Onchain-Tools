@@ -47,7 +47,13 @@ import {
   type ContractAlertView,
   type McapCrossView,
 } from './render.js';
-import { alertMatchesSource, readDefaultAlertSource, resolveAlertSource } from './source.js';
+import {
+  alertMatchesSource,
+  chatsPassingSignalFilters,
+  readDefaultAlertSource,
+  resolveAlertSource,
+  type SignalFilterGate,
+} from './source.js';
 import type { TelegramSender } from './sender.js';
 import type { TgChatRecord } from './chatStore.js';
 
@@ -211,15 +217,35 @@ export class TgAlertRouter {
    * could travel as an AlertLike — would put a chat message that never existed
    * into every downstream consumer of that seam. Widening the seam honestly is
    * the cheaper lie to not tell.
+   *
+   * `gate` IS THE PER-USER FILTER LAYER, applied at DELIVERY. The poller has
+   * already decided (once, globally) what crossed and what it cost; this asks,
+   * per chat, whether the OCT user that chat is sourced from wants it. See
+   * `chatsPassingSignalFilters` — including what happens when a chat resolves
+   * to nobody, which is "exactly what it got yesterday". Omitting the gate
+   * keeps the pre-filter behaviour, which is what every existing caller and
+   * test expects.
    */
-  async handleSignal(view: McapCrossView, now: number = Date.now()): Promise<void> {
+  async handleSignal(
+    view: McapCrossView,
+    gate?: SignalFilterGate,
+    now: number = Date.now(),
+  ): Promise<void> {
     const sender = this.getSender();
     if (!sender) return;
 
     const type: TgAlertType = 'mcapCross';
     try {
       const chats = await getChatStore().listEnabled();
-      const recipients = chats.filter((chat) => chat.settings.alerts[type] !== 'off');
+      const subscribed = chats.filter((chat) => chat.settings.alerts[type] !== 'off');
+      if (subscribed.length === 0) return;
+
+      // Subscription first, filters second. A chat that never opted into the
+      // class must not cost a filter read, and the ordering also means a filter
+      // failure can only ever REMOVE a recipient the subscription allowed.
+      const recipients = gate
+        ? await chatsPassingSignalFilters(subscribed, readDefaultAlertSource(), gate)
+        : subscribed;
       if (recipients.length === 0) return;
 
       // One address is one crossing; two chains cannot collide because the key

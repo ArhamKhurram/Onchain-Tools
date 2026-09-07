@@ -150,6 +150,37 @@ export interface McapCrossAlertData {
 }
 
 /**
+ * Everything a transport needs to decide WHO gets one crossing, without being
+ * able to make the sweep spend anything.
+ *
+ * The Telegram roster is a set of CHATS, not OCT users — but every chat row
+ * carries `source_user_id`, "whose alerts this chat receives", so a chat that
+ * has been linked resolves to exactly one OCT user (tgbot/source.ts). That user
+ * has filters. This is how the transport asks about them.
+ *
+ * `passesFor` is a CLOSURE over the gate input and the security payload the
+ * poller already paid for: N users cost N pure comparisons and zero requests,
+ * and the filter read behind it is cached per user for a minute. Handing the
+ * transport the raw `TokenSecurity` instead would let a future caller re-run
+ * detection on its own terms; a boolean cannot.
+ */
+export interface McapCrossDeliveryVerdict {
+  /**
+   * Did the OPERATOR baseline pass? This is what a chat that resolves to NO
+   * user gets — i.e. exactly what every chat got before per-user filters
+   * existed. Preserving it is the difference between a new feature and a silent
+   * regression in chats nobody has linked.
+   */
+  baselinePass: boolean;
+  /**
+   * Would this OCT user's own thresholds pass it? Only a `pass` is true: an
+   * abstain is never a yes, so a threshold can narrow or widen a comparison but
+   * can never turn "we could not tell" into "clear".
+   */
+  passesFor(userId: string): Promise<boolean>;
+}
+
+/**
  * How a fired crossing gets out of this module.
  *
  * Injected rather than imported so `mcapCross/` never reaches into `tgbot/`.
@@ -158,7 +189,7 @@ export interface McapCrossAlertData {
  */
 export interface McapCrossDelivery {
   hasSubscribers(): Promise<boolean>;
-  deliver(data: McapCrossAlertData): void;
+  deliver(data: McapCrossAlertData, verdict: McapCrossDeliveryVerdict): void;
 }
 
 function envFlag(name: string): string | undefined {
@@ -243,9 +274,19 @@ class FilterCache {
     return cfg;
   }
 
-  /** Drop entries for users who are no longer connected, so this cannot grow. */
-  prune(live: Set<string>): void {
-    for (const key of this.entries.keys()) if (!live.has(key)) this.entries.delete(key);
+  /**
+   * Drop entries that are neither live nor fresh, so this cannot grow.
+   *
+   * "Live" is the set of connected console users. TTL is the second condition
+   * because the Telegram side asks about users who may hold no socket at all —
+   * a linked chat's owner reading alerts on their phone. Evicting those on
+   * every cycle would turn a burst of crossings into one storage read per
+   * crossing, which is precisely the per-item egress the cache exists to stop.
+   */
+  prune(live: Set<string>, now: number = Date.now()): void {
+    for (const [key, entry] of this.entries) {
+      if (!live.has(key) && now - entry.at >= FILTER_CACHE_MS) this.entries.delete(key);
+    }
   }
 }
 
@@ -453,11 +494,14 @@ class McapCrossPoller {
           triggeredAt: nowIso,
         },
         wsRecipients,
-        toTelegram,
+        {
+          baselinePass: toTelegram,
+          passesFor: (userId) => this.passesFor(userId, gateInput, baselineCfg, now),
+        },
       );
     }
 
-    this.filters.prune(new Set(this.consoleUserIds()));
+    this.filters.prune(new Set(this.consoleUserIds()), now);
 
     await recordObservations(writes);
 
@@ -497,10 +541,26 @@ class McapCrossPoller {
   ): Promise<string[]> {
     const out: string[] = [];
     for (const userId of this.consoleUserIds()) {
-      const cfg = await this.filters.get(userId, baseline, now);
-      if (evaluateMcapGates(gateInput, cfg).decision === 'pass') out.push(userId);
+      if (await this.passesFor(userId, gateInput, baseline, now)) out.push(userId);
     }
     return out;
+  }
+
+  /**
+   * One user, one crossing: does it clear THEIR thresholds?
+   *
+   * The single place a per-user verdict is produced, so the console fan-out and
+   * the Telegram fan-out cannot disagree about what a filter means. Only `pass`
+   * is true — `abstain` is not a yes, here or anywhere.
+   */
+  private async passesFor(
+    userId: string,
+    gateInput: Parameters<typeof evaluateMcapGates>[0],
+    baseline: McapGateConfig,
+    now: number,
+  ): Promise<boolean> {
+    const cfg = await this.filters.get(userId, baseline, now);
+    return evaluateMcapGates(gateInput, cfg).decision === 'pass';
   }
 
   /**
@@ -516,33 +576,50 @@ class McapCrossPoller {
    * reaches Telegram through an explicit signal seam on the alert router rather
    * than through alert classification.
    *
-   * THE CONSOLE FRAME IS NOW ADDRESSED, NOT BROADCAST. It used to go to
+   * THE CONSOLE FRAME IS ADDRESSED, NOT BROADCAST. It used to go to
    * everyone (`broadcastRaw` with no id, like `token_peak`) because the payload
    * is a global market fact carrying no user data. It still carries no user
    * data — but WHO SHOULD SEE IT is now a per-user question, so it is sent per
    * recipient. In local mode `broadcastRaw` ignores the id and this collapses
    * back to one send to the single client.
    *
-   * TELEGRAM IS STILL THE OPERATOR'S SURFACE. The bot's roster is a set of
-   * CHATS (tgbot/alertPolicy.ts), not OCT user ids — a group chat has no single
-   * owner whose filters would apply — so it keeps receiving exactly what the
-   * operator's baseline passes. Giving the bot its own per-chat filter set is a
-   * separate piece of work, deliberately not folded in here.
+   * TELEGRAM IS ALSO PER-USER NOW, VIA THE CHAT'S OWNER. The bot's roster is a
+   * set of CHATS, not OCT users — but each chat row carries `source_user_id`,
+   * "whose alerts this chat receives" (tgbot/source.ts), so a linked chat DOES
+   * have an owner and that owner has filters. So this hands the transport a
+   * verdict rather than a boolean: `baselinePass` for a chat that resolves to
+   * nobody (unchanged behaviour), `passesFor(owner)` for one that does. The
+   * decision of which to consult belongs to the transport, because only it
+   * knows its own roster; the decision of what a filter MEANS stays here.
+   *
+   * ONE ASYMMETRY, STATED. A crossing the baseline REJECTED only reaches this
+   * point when some connected console user's own filters passed it. So a
+   * Telegram owner who loosened their filters but holds no console socket does
+   * not get the widening — they get everything the baseline passes, narrowed by
+   * their own thresholds. Narrowing (the feature) is complete; widening is
+   * best-effort, and closing the gap would mean reading the chat roster inside
+   * the sweep, which is the coupling `McapCrossDelivery` exists to avoid.
    */
-  private emit(data: McapCrossAlertData, wsRecipients: string[], toTelegram: boolean): void {
+  private emit(
+    data: McapCrossAlertData,
+    wsRecipients: string[],
+    verdict: McapCrossDeliveryVerdict,
+  ): void {
     const label = data.symbol ? `$${data.symbol}` : `${data.address.slice(0, 8)}…`;
     console.log(
       `${LOG} CROSSED ${label} (${data.network}) ${formatUsd(data.mcapUsd)} mcap ` +
         `— liquidity ${data.liquidityUsd != null ? formatUsd(data.liquidityUsd) : '?'}` +
         `${data.liquidityRatio != null ? ` (${(data.liquidityRatio * 100).toFixed(1)}% of mcap)` : ''}` +
-        ` → ${wsRecipients.length} console, telegram ${toTelegram ? 'yes' : 'no'}`,
+        ` → ${wsRecipients.length} console, telegram baseline ${verdict.baselinePass ? 'yes' : 'no'}`,
     );
     for (const userId of wsRecipients) {
       this.wsServer.broadcastRaw({ type: 'mcap_cross_alert', data }, userId);
     }
-    if (!toTelegram) return;
     try {
-      this.delivery.deliver(data);
+      // Handed over WHATEVER the baseline said: a chat linked to a user with
+      // looser thresholds may still want it, and only the transport can tell.
+      // A chat that resolves to nobody sees `baselinePass` and nothing else.
+      this.delivery.deliver(data, verdict);
     } catch (err) {
       // Delivery is best-effort: a Telegram problem must not stop the sweep or
       // lose the console frame that already went out.

@@ -21,7 +21,18 @@
 // so out loud rather than looking healthy while delivering nothing.
 
 import { isHostedMode } from '../storage/index.js';
-import type { TgChatRecord } from './chatStore.js';
+
+/**
+ * The only field of a chat record this module reads.
+ *
+ * Narrower than `TgChatRecord` on purpose: it keeps the resolution rule
+ * testable without a whole roster row, and it means nothing here can start
+ * depending on a chat's settings or entitlements by accident.
+ */
+export interface SourcedChat {
+  /** Whose OCT alerts this chat receives; null = the instance default. */
+  sourceUserId: string | null;
+}
 
 /** The implicit single user of local mode. Declared per module across the backend. */
 const LOCAL_USER_ID = 'local';
@@ -43,7 +54,7 @@ export function readDefaultAlertSource(): string | null {
  * Pure apart from the env/mode read, and exported so the fan-out and /status
  * can never disagree about which chats are actually wired up.
  */
-export function resolveAlertSource(record: TgChatRecord, fallback: string | null): string | null {
+export function resolveAlertSource(record: SourcedChat, fallback: string | null): string | null {
   return record.sourceUserId ?? fallback;
 }
 
@@ -56,4 +67,69 @@ export function resolveAlertSource(record: TgChatRecord, fallback: string | null
 export function alertMatchesSource(alertUserId: string | undefined, source: string | null): boolean {
   if (source === null) return false;
   return (alertUserId ?? LOCAL_USER_ID) === source;
+}
+
+// --- Per-user signal filters -------------------------------------------------
+
+/**
+ * The question a poller-raised signal asks about one OCT user.
+ *
+ * Structurally identical to `mcapCross/poller.ts`'s `McapCrossDeliveryVerdict`
+ * and deliberately NOT imported from it: `mcapCross/` is injected into rather
+ * than importing `tgbot/`, and duplicating four lines of shape is cheaper than
+ * reversing that. index.ts, the composition root, satisfies both.
+ */
+export interface SignalFilterGate {
+  /** What a chat that resolves to NO user gets — the operator/env baseline. */
+  baselinePass: boolean;
+  /** Would this user's own thresholds pass it? Never true for an abstain. */
+  passesFor(userId: string): Promise<boolean>;
+}
+
+/**
+ * Narrow a subscribed-chat list to the chats whose OWNER wants this signal.
+ *
+ * WHY THIS IS THE WHOLE ANSWER TO "the roster is chats, not users". It is —
+ * and every chat row still carries `source_user_id`, the column whose entire
+ * documented purpose is naming whose alerts the chat receives. So the mapping
+ * already exists; this just uses it. Three cases, and only the third is new:
+ *
+ *   • an explicit `source_user_id`  → that user's filters decide
+ *   • the instance default (env, or 'local' in local mode) → that user's
+ *     filters decide, because that IS the account driving the chat's feed
+ *   • nothing resolves              → `baselinePass`, i.e. byte-for-byte what
+ *     the chat received before this function existed
+ *
+ * The third case is load-bearing. A chat nobody has linked, on an instance with
+ * no `TG_BOT_ALERT_SOURCE_USER_ID`, must keep getting exactly the operator
+ * baseline; starting to drop its alerts because "no filters resolved" would be
+ * a silent regression, which is strictly worse than a missing feature.
+ *
+ * ONE READ PER USER, NOT PER CHAT. Twenty chats sharing one instance default
+ * ask `passesFor` once. The gate caches on its own side too; this memo only
+ * guarantees the fan-out cannot be the thing that multiplies it.
+ */
+export async function chatsPassingSignalFilters<T extends SourcedChat>(
+  chats: readonly T[],
+  fallback: string | null,
+  gate: SignalFilterGate,
+): Promise<T[]> {
+  const memo = new Map<string, Promise<boolean>>();
+  const out: T[] = [];
+
+  for (const chat of chats) {
+    const source = resolveAlertSource(chat, fallback);
+    if (source === null) {
+      if (gate.baselinePass) out.push(chat);
+      continue;
+    }
+    let pending = memo.get(source);
+    if (!pending) {
+      pending = gate.passesFor(source);
+      memo.set(source, pending);
+    }
+    if (await pending) out.push(chat);
+  }
+
+  return out;
 }

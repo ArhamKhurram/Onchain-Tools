@@ -129,6 +129,21 @@ const queued: CommandSpec = {
 };
 
 /**
+ * `adminOnly` is FALSE and that is not an oversight. The marking describes the
+ * group-admin rule, and this command has no group form at all: it is refused
+ * outright outside a private chat, and inside one it needs a named operator
+ * (sniperAccess.ts). "Admin can run it" would be a more permissive claim than
+ * the truth, so the caveat goes on the group's note instead.
+ */
+const fees: CommandSpec = {
+  name: 'fees',
+  description: 'Show or set the sniper tip and priority fee',
+  usage: '/fees [tip|priority <amount>]',
+  blurb: 'the account tip and priority fee every rule inherits',
+  adminOnly: false,
+};
+
+/**
  * The help card, in reading order.
  *
  * "Set up" first because a chat that has just added the bot is the common
@@ -144,6 +159,11 @@ export const COMMAND_GROUPS: readonly CommandGroup[] = [
     commands: [alerts, mute, unmute],
   },
   { title: 'Look up', note: null, commands: [token, mcap, queued] },
+  {
+    title: 'Sniper',
+    note: 'Private chat only, and only for an authorized operator.',
+    commands: [fees],
+  },
 ];
 
 /** Every spec, in help order. The menu and the boot-time coverage check read this. */
@@ -155,7 +175,18 @@ export const COMMAND_SPECS: readonly CommandSpec[] = COMMAND_GROUPS.flatMap((g) 
  * A frozen record rather than a lookup call so a typo is a compile error in the
  * handler rather than a null at boot.
  */
-export const SPEC = { start, help, status, alerts, mute, unmute, token, mcap, queued } as const;
+export const SPEC = {
+  start,
+  help,
+  status,
+  alerts,
+  mute,
+  unmute,
+  token,
+  mcap,
+  queued,
+  fees,
+} as const;
 
 // --- Telegram's `/` menu -----------------------------------------------------
 

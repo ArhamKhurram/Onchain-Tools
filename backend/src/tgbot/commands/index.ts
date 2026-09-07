@@ -1,4 +1,5 @@
 import { alerts } from './alerts.js';
+import { fees } from './fees.js';
 import { help } from './help.js';
 import { mcap } from './mcap.js';
 import { mute, unmute } from './mute.js';
@@ -33,6 +34,7 @@ export const commands: TgCommand[] = [
   token,
   mcap,
   queued,
+  fees,
 ];
 
 export const commandMap = new Map<string, TgCommand>(commands.map((c) => [c.name, c]));
