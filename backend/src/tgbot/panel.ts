@@ -58,6 +58,16 @@ import {
 } from './alertPolicy.js';
 import type { TgChatRecord } from './chatStore.js';
 import { COMMAND_GROUPS } from './commandCatalog.js';
+import {
+  asFilterKey,
+  filterLadder,
+  filterLabel,
+  formatFilterValue,
+  parseFilterValue,
+  MCAP_CROSS_FILTER_KEYS,
+  type FilterLine,
+  type McapCrossFilterKey,
+} from './filtersView.js';
 import { bold, code, escapeHtml, italic, joinLines, link, truncate } from './html.js';
 import { groupMentionNote } from './identity.js';
 import { decideChatWrite } from './permissions.js';
@@ -104,9 +114,17 @@ const TOKEN_SEPARATOR = ':';
 export const MAX_CALLBACK_DATA_BYTES = 64;
 
 /** The sub-cards the panel can show. `home` is what /start opens on. */
-export type PanelView = 'home' | 'alerts' | 'digest' | 'recent' | 'status' | 'help';
+export type PanelView = 'home' | 'alerts' | 'digest' | 'recent' | 'status' | 'help' | 'filters';
 
-const PANEL_VIEWS: readonly PanelView[] = ['home', 'alerts', 'digest', 'recent', 'status', 'help'];
+const PANEL_VIEWS: readonly PanelView[] = [
+  'home',
+  'alerts',
+  'digest',
+  'recent',
+  'status',
+  'help',
+  'filters',
+];
 
 function isPanelView(value: string): value is PanelView {
   return (PANEL_VIEWS as readonly string[]).includes(value);
@@ -133,9 +151,24 @@ export type PanelAction =
   | { kind: 'confirm'; type: TgAlertType }
   | { kind: 'set'; type: TgAlertType; delivery: TgAlertDelivery }
   | { kind: 'unmute' }
-  | { kind: 'close' };
+  | { kind: 'close' }
+  /** Open one filter's editor card. Read-only; the write is `filterSet`. */
+  | { kind: 'filter'; key: McapCrossFilterKey }
+  /** Store a threshold, or `null` to clear the override back to inherited. */
+  | { kind: 'filterSet'; key: McapCrossFilterKey; value: number | null }
+  /** Show the unlink warning. Read-only — same split as `confirm`/`set`. */
+  | { kind: 'unlink' }
+  | { kind: 'unlinkConfirm' };
 
-/** Serialize one action into `callback_data`. */
+/**
+ * Serialize one action into `callback_data`.
+ *
+ * THE VERSION IS NOT BUMPED FOR THE FOUR NEW VERBS. Bumping invalidates every
+ * panel anyone has open, and this change is purely ADDITIVE: no existing verb
+ * changed arity or meaning, so a `p1` token minted before this deploy parses
+ * today to exactly what it parsed to yesterday. The prefix earns its keep when
+ * a grammar changes, not when it grows.
+ */
 export function encodePanelAction(action: PanelAction): string {
   const parts: string[] = [TOKEN_VERSION];
   switch (action.kind) {
@@ -156,6 +189,20 @@ export function encodePanelAction(action: PanelAction): string {
       break;
     case 'close':
       parts.push('x');
+      break;
+    case 'filter':
+      parts.push('fk', action.key);
+      break;
+    case 'filterSet':
+      // 'i' rather than an empty field, so a truncated token cannot decode as
+      // "clear this filter" — the one filter write that is not a number.
+      parts.push('fv', action.key, action.value === null ? 'i' : String(action.value));
+      break;
+    case 'unlink':
+      parts.push('ul');
+      break;
+    case 'unlinkConfirm':
+      parts.push('ulc');
       break;
   }
   return parts.join(TOKEN_SEPARATOR);
@@ -212,6 +259,30 @@ export function parsePanelAction(raw: string | undefined | null): PanelAction | 
       return parts.length === 2 ? { kind: 'unmute' } : null;
     case 'x':
       return parts.length === 2 ? { kind: 'close' } : null;
+    case 'fk': {
+      if (parts.length !== 3) return null;
+      const key = asFilterKey(arg1);
+      return key ? { kind: 'filter', key } : null;
+    }
+    case 'fv': {
+      if (parts.length !== 4 || arg2 === undefined) return null;
+      const key = asFilterKey(arg1);
+      if (!key) return null;
+      if (arg2 === 'i') return { kind: 'filterSet', key, value: null };
+      // THE THRESHOLD IS NOT TRUSTED BECAUSE WE DREW THE BUTTON. A callback
+      // query is a byte string from the network, so the number goes through
+      // the SAME validator the HTTP boundary uses (parseFilterValue →
+      // validateFilterPatch). A crafted press asking for a tax ceiling of 40
+      // is refused here, exactly as `PUT /api/mcap-cross/filters` would refuse
+      // it — which is the whole point of not restating a bound in this file.
+      const parsed = parseFilterValue(key, arg2);
+      if (!parsed.ok || parsed.value === null) return null;
+      return { kind: 'filterSet', key, value: parsed.value };
+    }
+    case 'ul':
+      return parts.length === 2 ? { kind: 'unlink' } : null;
+    case 'ulc':
+      return parts.length === 2 ? { kind: 'unlinkConfirm' } : null;
     default:
       return null;
   }
@@ -252,7 +323,19 @@ export type PanelPressVerdict =
  * The subscribe is the `set` on that card, and that one is gated.
  */
 export function isPanelWrite(action: PanelAction): boolean {
-  return action.kind === 'set' || action.kind === 'unmute' || action.kind === 'close';
+  return (
+    action.kind === 'set' ||
+    action.kind === 'unmute' ||
+    action.kind === 'close' ||
+    // Stores a threshold on the BOUND OCT ACCOUNT, which is a larger act than
+    // retuning this chat's subscriptions: it changes what that account is
+    // alerted about everywhere, including the console. Same gate, and the
+    // reason linking a group is itself admin-gated.
+    action.kind === 'filterSet' ||
+    // Cuts this chat off from its account's feed. `unlink` (the warning card)
+    // is on the read side for the same reason `confirm` is.
+    action.kind === 'unlinkConfirm'
+  );
 }
 
 /** The complement — the actions whose only cost is a render and a store read. */
@@ -359,6 +442,22 @@ function button(text: string, action: PanelAction): TgInlineKeyboardButton {
   return { text, callback_data: encodePanelAction(action) };
 }
 
+/**
+ * What the panel knows about this chat's filter settings.
+ *
+ * Gathered only for the filter views — every other card costs no extra read.
+ * `lines` is `filterLines(...)`, which is built by walking
+ * `MCAP_CROSS_FILTER_KEYS`, so a filter the definition table gains appears here
+ * without an edit to this file.
+ */
+export interface PanelFilterState {
+  /** True when the account's stored overrides could not be read. */
+  unavailable: boolean;
+  lines: FilterLine[];
+  /** How many of them the bound account has actually set. */
+  overrideCount: number;
+}
+
 /** The state a keyboard needs to lay itself out. No I/O; the caller gathers it. */
 export interface PanelState {
   view: PanelView;
@@ -367,6 +466,14 @@ export interface PanelState {
   settings: TgChatSettings;
   /** Is an OCT alert source bound to this chat? Null when unknown. */
   alertsRouted: boolean | null;
+  /**
+   * The linked account's fingerprint (identity.ts), or null when this chat has
+   * no binding of its own — either nothing is wired up, or it is riding the
+   * instance default, which is NOT a link and cannot be unlinked or edited.
+   */
+  boundAccount: string | null;
+  /** Filter state, gathered only for the filter views. Null otherwise. */
+  filters: PanelFilterState | null;
   digestMinutes: number;
   maxPerHour: number;
   /** Messages the outbound guard has counted against this chat's hour. */
@@ -410,9 +517,10 @@ export function buildPanelKeyboard(state: PanelState): TgInlineKeyboardMarkup {
       button('🕘 Queued', { kind: 'view', view: 'recent' }),
     ]);
     rows.push([
+      button('🎚 Filters', { kind: 'view', view: 'filters' }),
       button('❓ Help', { kind: 'view', view: 'help' }),
-      button('↻ Refresh', { kind: 'refresh', view: 'home' }),
     ]);
+    rows.push([button('↻ Refresh', { kind: 'refresh', view: 'home' })]);
     // Only offered when there is a mute to lift — a button that would answer
     // "this chat is not muted" is a button that should not be on the card.
     if (isMuted(state.settings, state.now)) {
@@ -435,6 +543,25 @@ export function buildPanelKeyboard(state: PanelState): TgInlineKeyboardMarkup {
     }
   }
 
+  // The filters card. Only a chat with its OWN binding gets buttons: without
+  // one there is no account whose thresholds these would be, and offering the
+  // controls anyway would be the "a button with nothing behind it is a promise"
+  // failure this file opens with. The card says so in words instead.
+  if (state.view === 'filters' && state.boundAccount && state.filters) {
+    for (const line of state.filters.lines) {
+      rows.push([
+        button(
+          `${line.overridden ? '◆' : '◇'} ${line.label} — ${line.value}`,
+          { kind: 'filter', key: line.key },
+        ),
+      ]);
+    }
+  }
+
+  if (state.view === 'status' && state.boundAccount) {
+    rows.push([button('🔗 Unlink this chat', { kind: 'unlink' })]);
+  }
+
   rows.push([
     button('↩ Back', { kind: 'view', view: 'home' }),
     button('↻ Refresh', { kind: 'refresh', view: state.view }),
@@ -453,6 +580,64 @@ export function buildConfirmKeyboard(type: TgAlertType): TgInlineKeyboardMarkup 
     inline_keyboard: [
       [button('⚠️ Subscribe anyway (digest)', { kind: 'set', type, delivery: 'digest' })],
       [button('↩ Back', { kind: 'view', view: 'alerts' })],
+    ],
+  };
+}
+
+/** Would this action's token survive Telegram's 64-byte cap? */
+export function fitsCallbackData(action: PanelAction): boolean {
+  return Buffer.byteLength(encodePanelAction(action), 'utf8') <= MAX_CALLBACK_DATA_BYTES;
+}
+
+/**
+ * One filter's editor: a ladder of preset values plus "inherit".
+ *
+ * BOTH THE RUNGS AND THE LABELS COME FROM THE DEFINITION TABLE — `filterLadder`
+ * generates candidates from the key's unit and then keeps only the ones the
+ * shared validator accepts, and `formatFilterValue` renders them by the same
+ * table's unit. So a key with a stricter range offers fewer rungs on its own,
+ * and a key added to the table gets a working editor with no edit here.
+ *
+ * An over-long token is DROPPED rather than sent: an inline keyboard with one
+ * button over 64 bytes is a 400 on the whole edit, which would cost the entire
+ * card. A future key with a very long name therefore loses a rung, not a panel.
+ */
+export function buildFilterKeyboard(key: McapCrossFilterKey): TgInlineKeyboardMarkup {
+  const rows: TgInlineKeyboardButton[][] = [];
+  let row: TgInlineKeyboardButton[] = [];
+
+  for (const value of filterLadder(key)) {
+    const action: PanelAction = { kind: 'filterSet', key, value };
+    if (!fitsCallbackData(action)) continue;
+    row.push(button(formatFilterValue(key, value), action));
+    if (row.length === 3) {
+      rows.push(row);
+      row = [];
+    }
+  }
+  if (row.length > 0) rows.push(row);
+
+  const inherit: PanelAction = { kind: 'filterSet', key, value: null };
+  if (fitsCallbackData(inherit)) rows.push([button('↺ Use the default', inherit)]);
+  rows.push([
+    button('↩ Back', { kind: 'view', view: 'filters' }),
+    button('✕ Close', { kind: 'close' }),
+  ]);
+  return { inline_keyboard: rows };
+}
+
+/**
+ * The unlink confirmation.
+ *
+ * A second, deliberate press for the same reason subscribing to the loud class
+ * needs one: there is no callback token that unbinds a chat in a single tap,
+ * which is a property of the encoding rather than of what we chose to draw.
+ */
+export function buildUnlinkKeyboard(): TgInlineKeyboardMarkup {
+  return {
+    inline_keyboard: [
+      [button('⚠️ Unlink this chat', { kind: 'unlinkConfirm' })],
+      [button('↩ Back', { kind: 'view', view: 'status' })],
     ],
   };
 }
@@ -491,6 +676,31 @@ function muteLines(state: PanelState): (string | null)[] {
   ];
 }
 
+/**
+ * The one sentence that answers "is anything actually wired up, and to whom".
+ *
+ * FOUR STATES, NOT TWO. Before the linking flow existed this line could only
+ * say "connected to an OCT account" or "no alert source bound yet", and in
+ * practice it always said the second, because nothing ever wrote
+ * `source_user_id`. Now:
+ *
+ *   • unknown        — no roster row; a storage outage must not read as "no".
+ *   • linked         — this chat has its OWN binding, and the fingerprint says
+ *                      which account, in a form that is safe to print into a
+ *                      room full of strangers (see identity.ts).
+ *   • instance default — alerts flow, but from the operator's configured
+ *                      account rather than from a link. Distinguishing this
+ *                      matters: it is the state where /unlink does nothing and
+ *                      the filter view has no account to edit.
+ *   • nothing        — the honest "you will receive no alerts", with the fix.
+ */
+export function feedLine(state: PanelState): string {
+  if (state.alertsRouted === null) return 'unknown';
+  if (state.boundAccount) return `linked to OCT account ${state.boundAccount}`;
+  if (state.alertsRouted) return 'the instance default OCT account (no link on this chat)';
+  return 'no alert source bound yet — run /link to connect an OCT account';
+}
+
 /** The Resources block. Omitted entirely when no valid console URL is set. */
 function resourceLines(consoleUrl: string | null): (string | null)[] {
   if (!consoleUrl) return [];
@@ -520,13 +730,7 @@ export function renderPanelHome(state: PanelState, consoleUrl: string | null): s
     subscriptionLine(state),
     `${bold('Delivery:')} ${escapeHtml(`digest every ${state.digestMinutes} min`)}`,
     `${bold('Ceiling:')} ${escapeHtml(`${state.usedThisHour} / ${state.maxPerHour} messages this hour`)}`,
-    `${bold('Feed:')} ${escapeHtml(
-      state.alertsRouted === null
-        ? 'unknown'
-        : state.alertsRouted
-          ? 'connected to an OCT account'
-          : 'no alert source bound yet',
-    )}`,
+    `${bold('Feed:')} ${escapeHtml(feedLine(state))}`,
     state.record ? `${bold('Plan:')} ${escapeHtml(state.record.plan)}` : null,
     ...resourceLines(consoleUrl),
     '',
@@ -656,8 +860,12 @@ export function renderPanelStatus(state: PanelState): string {
     `${bold('Chat:')} ${escapeHtml(truncate(record.title ?? record.chatType, 48))} (${escapeHtml(record.chatType)})`,
     `${bold('Active:')} ${record.enabled ? 'yes' : 'no'}`,
     subscriptionLine(state),
+    `${bold('Alert source:')} ${escapeHtml(feedLine(state))}`,
     subscribed.length > 0 && state.alertsRouted === false
       ? italic('No alert source is bound to this chat, so nothing will actually arrive.')
+      : null,
+    state.boundAccount === null && state.alertsRouted !== null
+      ? italic('Run /link with a code from the OCT console to bind this chat to your account.')
       : null,
     `${bold('Plan:')} ${escapeHtml(record.plan)}`,
     `${bold('Registered:')} ${escapeHtml(record.createdAt.slice(0, 10))}`,
@@ -695,6 +903,113 @@ export function renderPanelHelp(botUsername: string): string {
     mention ? italic(mention) : null,
     '',
     italic('No Telegram or Discord account of yours is connected, and none is needed.'),
+    footer(),
+  ]);
+}
+
+/**
+ * The filters card: the bound account's market-cap thresholds.
+ *
+ * WHAT IT SAYS WHEN THERE IS NO ACCOUNT. "Your settings" is meaningless without
+ * one, and silently rendering the operator's baseline as though it were the
+ * chat's own would be a lie a person would act on. So an unlinked chat gets the
+ * reason and the fix, and no buttons — the alternative (offering controls that
+ * refuse on press) is strictly worse.
+ *
+ * THE ROWS ARE `filterLines(...)`, i.e. a walk of `MCAP_CROSS_FILTER_KEYS`.
+ * Nothing in this function names a threshold, a bound or a unit.
+ */
+export function renderPanelFilters(state: PanelState): string {
+  if (!state.boundAccount) {
+    return joinLines([
+      bold('🎚 Alert filters'),
+      '',
+      escapeHtml(
+        'These are one OCT account’s own thresholds, so this chat has to be linked to an account before there is anything to edit.',
+      ),
+      '',
+      `Open the OCT console, generate a link code, then run ${code('/link <code>')} here.`,
+      state.alertsRouted
+        ? italic(
+            'This chat currently receives the instance default account’s alerts. That is not a link, and its filters are the operator’s to change.',
+          )
+        : null,
+      '',
+      footer(),
+    ]);
+  }
+
+  const filters = state.filters;
+  if (!filters || filters.unavailable) {
+    return joinLines([
+      bold('🎚 Alert filters'),
+      '',
+      escapeHtml('OCT storage is unavailable, so these cannot be read right now.'),
+      italic('Nothing has changed; try again in a minute.'),
+      '',
+      footer(),
+    ]);
+  }
+
+  return joinLines([
+    bold('🎚 Alert filters'),
+    italic(`For OCT account ${state.boundAccount}. The console shows the same values.`),
+    '',
+    ...filters.lines.map((line) =>
+      joinLines([
+        `${bold(`${line.label}:`)} ${escapeHtml(line.value)}`,
+        italic(line.overridden ? 'set by you' : `inherited (${line.inherited})`),
+      ]),
+    ),
+    '',
+    italic(
+      filters.overrideCount === 0
+        ? 'Nothing is overridden — every threshold is the shipped default.'
+        : `${filters.overrideCount} threshold${filters.overrideCount === 1 ? '' : 's'} overridden.`,
+    ),
+    // `italic` escapes, so the angle brackets in the usage cannot reach
+    // Telegram as markup — the one rule html.ts exists to make automatic.
+    italic('Tap one to change it, or type /filters <name> <value> for a value off the ladder.'),
+    '',
+    italic(`Last updated ${stampUtc(state.now)}`),
+    footer(),
+  ]);
+}
+
+/** One filter's editor card. The rungs are on the keyboard, not in the prose. */
+export function renderPanelFilterKey(state: PanelState, key: McapCrossFilterKey): string {
+  const line = state.filters?.lines.find((l) => l.key === key);
+  return joinLines([
+    bold(`🎚 ${escapeHtml(filterLabel(key))}`),
+    '',
+    line
+      ? `${bold('Now:')} ${escapeHtml(line.value)} ${escapeHtml(line.overridden ? '(set by you)' : `(inherited — ${line.inherited})`)}`
+      : italic('Current value unavailable.'),
+    '',
+    italic(
+      'Pick a value below, or use the default to stop overriding it. This changes the account’s alerts everywhere, not just in this chat.',
+    ),
+    '',
+    italic('For a value not on the list, type /filters with the name and the number.'),
+    footer(),
+  ]);
+}
+
+/** The unlink warning. The undo is one more /link, and it says so. */
+export function renderPanelUnlink(state: PanelState): string {
+  return joinLines([
+    bold('🔗 Unlink this chat'),
+    '',
+    escapeHtml(
+      `This chat is bound to OCT account ${state.boundAccount ?? 'unknown'}. Unlinking stops that account’s alerts arriving here and gives up access to its filters.`,
+    ),
+    '',
+    italic(
+      'Subscriptions, mutes and the digest settings are untouched — the chat simply falls back to whatever the instance default is, which for most chats is nothing.',
+    ),
+    '',
+    escapeHtml('You can link it again at any time with a fresh code.'),
+    '',
     footer(),
   ]);
 }
@@ -756,12 +1071,24 @@ export function renderPanelView(
       return renderPanelStatus(state);
     case 'help':
       return renderPanelHelp(botUsername);
+    case 'filters':
+      return renderPanelFilters(state);
   }
 }
 
 /** Every button the panel can ever emit. Exported so a test can bound them all. */
 export function allPanelActions(): PanelAction[] {
-  const actions: PanelAction[] = [{ kind: 'unmute' }, { kind: 'close' }];
+  const actions: PanelAction[] = [
+    { kind: 'unmute' },
+    { kind: 'close' },
+    { kind: 'unlink' },
+    { kind: 'unlinkConfirm' },
+  ];
+  for (const key of MCAP_CROSS_FILTER_KEYS) {
+    actions.push({ kind: 'filter', key });
+    actions.push({ kind: 'filterSet', key, value: null });
+    for (const value of filterLadder(key)) actions.push({ kind: 'filterSet', key, value });
+  }
   for (const view of PANEL_VIEWS) {
     actions.push({ kind: 'view', view });
     actions.push({ kind: 'refresh', view });

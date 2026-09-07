@@ -3,6 +3,7 @@ import { SPEC } from '../commandCatalog.js';
 import { getChatStore } from '../chatStore.js';
 import { readDigestIntervalMs } from '../digest.js';
 import { readGuardLimits } from '../guard.js';
+import { accountFingerprint } from '../identity.js';
 import {
   buildPanelKeyboard,
   panelHomeSettings,
@@ -64,6 +65,11 @@ export const start: TgCommand = {
       record,
       settings: record?.settings ?? panelHomeSettings(),
       alertsRouted: record ? resolveAlertSource(record, readDefaultAlertSource()) !== null : null,
+      boundAccount: accountFingerprint(record?.sourceUserId),
+      // The home card shows no filters, so /start costs no filter read — the
+      // same reason it reads the guard's counters from memory rather than
+      // asking storage anything it does not render.
+      filters: null,
       digestMinutes: Math.round(readDigestIntervalMs() / 60_000),
       maxPerHour: readGuardLimits().maxPerHour,
       usedThisHour: delivery.usedThisHour,

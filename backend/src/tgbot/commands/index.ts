@@ -1,6 +1,8 @@
 import { alerts } from './alerts.js';
 import { fees } from './fees.js';
+import { filters } from './filters.js';
 import { help } from './help.js';
+import { link, unlink as unlinkChat } from './link.js';
 import { mcap } from './mcap.js';
 import { mute, unmute } from './mute.js';
 import { queued } from './queued.js';
@@ -35,6 +37,9 @@ export const commands: TgCommand[] = [
   mcap,
   queued,
   fees,
+  link,
+  unlinkChat,
+  filters,
 ];
 
 export const commandMap = new Map<string, TgCommand>(commands.map((c) => [c.name, c]));

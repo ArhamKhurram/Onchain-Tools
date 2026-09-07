@@ -53,3 +53,31 @@ export function groupMentionNote(raw: string | null | undefined): string | null 
     ? null
     : `In a group, add ${mention} to any command if other bots are present.`;
 }
+
+// --- naming an OCT account inside a chat -------------------------------------
+
+/**
+ * A short, stable label for the OCT account a chat is bound to.
+ *
+ * WHY NOT THE EMAIL. The panel is a SHARED message: in a group every member
+ * reads whatever it says, and a card that answers "bound to whom?" with the
+ * owner's email address publishes it to a room they may not control. The same
+ * argument rules out a display name pulled from the auth profile. A person can
+ * be in many groups; a group can contain anybody.
+ *
+ * SO IT IS A FINGERPRINT, NOT AN IDENTITY. The first eight characters of the
+ * account's own id, which is a UUID: enough for the owner to recognise their
+ * own account (the console prints the SAME fingerprint beside the code it
+ * mints, so the two can be compared by eye), useless for working out who
+ * somebody is, and not a credential — knowing it grants nothing, because
+ * binding requires a code minted from an authenticated session.
+ *
+ * Local mode's implicit user has no UUID; it is named plainly, because there is
+ * exactly one account and hiding it behind a fingerprint would be theatre.
+ */
+export function accountFingerprint(userId: string | null | undefined): string | null {
+  const trimmed = (userId ?? '').trim();
+  if (trimmed === '') return null;
+  if (trimmed === 'local') return 'this desktop install';
+  return `#${trimmed.replace(/-/g, '').slice(0, 8).toLowerCase()}`;
+}

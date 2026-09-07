@@ -74,6 +74,8 @@ const state = (over: Partial<PanelState> = {}): PanelState => ({
   record: record(),
   settings: settings(),
   alertsRouted: true,
+  boundAccount: null,
+  filters: null,
   digestMinutes: 10,
   maxPerHour: 10,
   usedThisHour: 0,

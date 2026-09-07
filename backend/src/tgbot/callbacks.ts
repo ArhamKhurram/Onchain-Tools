@@ -61,10 +61,15 @@ import {
 import { isNotModified, type TelegramBotApi } from './api.js';
 import { getChatStore, type TgChatRecord } from './chatStore.js';
 import { readDigestIntervalMs } from './digest.js';
+import { readAccountFilters, writeAccountFilter } from './filterAccess.js';
+import { filterLabel, formatFilterValue, type McapCrossFilterKey } from './filtersView.js';
 import { readGuardLimits } from './guard.js';
+import { accountFingerprint } from './identity.js';
 import {
   buildConfirmKeyboard,
+  buildFilterKeyboard,
   buildPanelKeyboard,
+  buildUnlinkKeyboard,
   decidePanelPress,
   isPanelWrite,
   needsConfirmation,
@@ -74,8 +79,11 @@ import {
   readConsoleUrl,
   renderPanelClosed,
   renderPanelConfirm,
+  renderPanelFilterKey,
+  renderPanelUnlink,
   renderPanelView,
   type PanelAction,
+  type PanelFilterState,
   type PanelState,
   type PanelView,
 } from './panel.js';
@@ -296,6 +304,49 @@ export class PanelCallbackHandler {
       return this.applySet(action.type, action.delivery, chatId, now);
     }
 
+    if (action.kind === 'unlink') {
+      const state = await this.state('status', chatId, now, false);
+      if (!state.boundAccount) {
+        return this.render('status', chatId, now, 'This chat is not linked to an OCT account.');
+      }
+      return {
+        text: renderPanelUnlink(state),
+        keyboard: buildUnlinkKeyboard(),
+        answer: 'This cuts the chat off from that account.',
+      };
+    }
+
+    if (action.kind === 'unlinkConfirm') {
+      // Re-read rather than trust the card: the binding may have gone since it
+      // was drawn, and "unlinked" must never be reported for a write that did
+      // not happen.
+      const record = await this.record(chatId, now, true);
+      if (!record?.sourceUserId) {
+        return this.render('status', chatId, now, 'This chat is not linked to an OCT account.');
+      }
+      const cleared = await getChatStore().setSourceUser(chatId, null);
+      this.records.delete(chatId);
+      return this.render(
+        'status',
+        chatId,
+        now,
+        cleared ? 'Unlinked.' : 'Could not unlink — OCT storage is unavailable.',
+        true,
+      );
+    }
+
+    if (action.kind === 'filter') {
+      const state = await this.state('filters', chatId, now, false);
+      if (!state.boundAccount) {
+        return this.render('filters', chatId, now, 'This chat is not linked to an OCT account.');
+      }
+      return { text: renderPanelFilterKey(state, action.key), keyboard: buildFilterKeyboard(action.key) };
+    }
+
+    if (action.kind === 'filterSet') {
+      return this.applyFilter(action.key, action.value, chatId, now);
+    }
+
     // view / refresh — the read paths. `fresh` is what makes Refresh mean
     // something rather than re-rendering the cache.
     return this.render(action.view, chatId, now, undefined, fresh);
@@ -354,6 +405,43 @@ export class PanelCallbackHandler {
     );
   }
 
+  /**
+   * Store one threshold on the chat's BOUND account.
+   *
+   * THE BINDING IS RE-READ, NOT INHERITED FROM THE CARD. `decidePanelPress` has
+   * already established that the presser may write to this CHAT; it says
+   * nothing about which account the write lands on. That account comes from the
+   * roster row, read fresh — a press on a panel drawn before an /unlink must
+   * not still reach the account that used to be bound.
+   *
+   * The value itself was already validated by `parsePanelAction`, and
+   * `writeAccountFilter` validates it again at the storage boundary. Neither
+   * this file nor the panel restates a bound.
+   */
+  private async applyFilter(
+    key: McapCrossFilterKey,
+    value: number | null,
+    chatId: number,
+    now: number,
+  ): Promise<{ text: string; keyboard: TgInlineKeyboardMarkup | undefined; answer?: string }> {
+    const record = await this.record(chatId, now, true);
+    const userId = record?.sourceUserId ?? null;
+    if (!userId) {
+      return this.render('filters', chatId, now, 'This chat is not linked to an OCT account.', true);
+    }
+
+    const result = await writeAccountFilter(userId, key, value, now);
+    return this.render(
+      'filters',
+      chatId,
+      now,
+      result.ok
+        ? `${filterLabel(key)}: ${value === null ? 'back to the default' : formatFilterValue(key, value)}`
+        : result.errors.join('; '),
+      true,
+    );
+  }
+
   /** Build one view's card and keyboard from the current state. */
   private async render(
     view: PanelView,
@@ -384,12 +472,26 @@ export class PanelCallbackHandler {
   private async state(view: PanelView, chatId: number, now: number, fresh: boolean): Promise<PanelState> {
     const record = await this.record(chatId, now, fresh);
     const delivery = this.deps.delivery(chatId, now);
+    const boundAccount = accountFingerprint(record?.sourceUserId);
+
+    // The filter read happens ONLY for the views that show filters, and only
+    // when there is an account to read them for. Every other card stays at the
+    // one roster read it has always cost.
+    let filters: PanelFilterState | null = null;
+    if (view === 'filters' && record?.sourceUserId) {
+      const account = await readAccountFilters(record.sourceUserId, now, fresh);
+      filters = account
+        ? { unavailable: false, lines: account.lines, overrideCount: account.overrideCount }
+        : { unavailable: true, lines: [], overrideCount: 0 };
+    }
 
     return {
       view,
       record,
       settings: record?.settings ?? panelHomeSettings(),
       alertsRouted: record ? resolveAlertSource(record, readDefaultAlertSource()) !== null : null,
+      boundAccount,
+      filters,
       digestMinutes: Math.round(readDigestIntervalMs() / 60_000),
       maxPerHour: readGuardLimits().maxPerHour,
       usedThisHour: delivery.usedThisHour,
