@@ -42,12 +42,15 @@ import {
   digestLineFor,
   mcapCrossDigestLine,
   mcapCrossQuickBuyKeyboard,
+  octSignalDigestLine,
   renderAlertCard,
   renderDigest,
   renderMcapCrossCard,
+  renderOctSignalCard,
   type ContractAlertView,
   type McapCrossView,
 } from './render.js';
+import type { OctSignalView } from './octSignals.js';
 import type { TgInlineKeyboardMarkup } from './types.js';
 import {
   alertMatchesSource,
@@ -274,6 +277,60 @@ export class TgAlertRouter {
   }
 
   /**
+   * Deliver one forwarded "OCT Alerts" signal to every subscribed chat.
+   *
+   * WHY IT LOOKS LIKE handleSignal BUT SKIPS THE BREAKER. Like the crossing, an
+   * octSignals event is class-named at the door, so it enters here rather than
+   * through `handle`'s classification step. Unlike every other class, it passes
+   * `countTowardBreaker: false` to `route`. That is deliberate and it does NOT
+   * weaken the two protections the incident was about:
+   *
+   *   • the hourly CEILING still binds it — a chat receives at most maxPerHour
+   *     messages whatever the source channels do, instant or digest, so a burst
+   *     cannot flood;
+   *   • an existing MUTE is still honoured — a muted chat is dropped before
+   *     anything is sent.
+   *
+   * What it must not do is TRIGGER the circuit breaker. The breaker mutes the
+   * WHOLE chat — every class — and this one is ON by default and bursty by
+   * nature. Letting a normal scan burst trip it would silence a chat's missed
+   * runners and crossings too, which is precisely the "do not auto-mute in a way
+   * that kills other alerts" hazard a default-on class introduces. The ceiling,
+   * not the breaker, is the right bound for a stream the operator opted everyone
+   * into.
+   */
+  async handleOctSignal(view: OctSignalView, now: number = Date.now()): Promise<void> {
+    const sender = this.getSender();
+    if (!sender) return;
+
+    const type: TgAlertType = 'octSignals';
+    try {
+      const chats = await getChatStore().listEnabled();
+      const recipients = chats.filter((chat) => chat.settings.alerts[type] !== 'off');
+      if (recipients.length === 0) return;
+
+      const primary = view.addresses[0];
+      const rendered: RenderedEvent = {
+        key: `${type}:${view.network}:${primary ?? view.text.slice(0, 120)}`,
+        card: () => renderOctSignalCard(view),
+        line: octSignalDigestLine(view),
+        // The referral quick-buy venues (chain-correct, owner code embedded by
+        // the shared machinery) ride the primary address. No address → no
+        // keyboard, and the text forwards on its own.
+        replyMarkup: primary
+          ? mcapCrossQuickBuyKeyboard({ address: primary, network: view.network })
+          : undefined,
+      };
+
+      for (const chat of recipients) {
+        await this.route(chat, type, rendered, now, { countTowardBreaker: false });
+      }
+    } catch (err) {
+      console.error('[TgBot] Signal delivery failed:', (err as Error)?.message ?? err);
+    }
+  }
+
+  /**
    * How many chats are subscribed to one class right now.
    *
    * Read by the market-cap crossing poller BEFORE it sweeps anything: a
@@ -311,12 +368,20 @@ export class TgAlertRouter {
     };
   }
 
-  /** One event, one chat. Split out so `handle` reads as the policy it is. */
+  /**
+   * One event, one chat. Split out so `handle` reads as the policy it is.
+   *
+   * `countTowardBreaker` defaults true — every class the incident was about
+   * feeds the circuit breaker. octSignals passes false: see handleOctSignal for
+   * why a default-on, operator-curated class must be bounded by the ceiling
+   * without being able to auto-mute the chat's other subscriptions.
+   */
   private async route(
     chat: TgChatRecord,
     type: TgAlertType,
     rendered: RenderedEvent,
     now: number,
+    opts: { countTowardBreaker?: boolean } = {},
   ): Promise<void> {
     const sender = this.getSender();
     if (!sender) return;
@@ -331,10 +396,12 @@ export class TgAlertRouter {
 
     // Counted whatever the delivery mode: the breaker watches UPSTREAM volume,
     // and a digest entry is exactly as much evidence of a flood as a send.
-    const event = this.guard.noteEvent(chat.chatId, now);
-    if (event.tripped) {
-      await this.trip(chat, event.events, event.muteUntil);
-      return;
+    if (opts.countTowardBreaker !== false) {
+      const event = this.guard.noteEvent(chat.chatId, now);
+      if (event.tripped) {
+        await this.trip(chat, event.events, event.muteUntil);
+        return;
+      }
     }
 
     if (chat.settings.alerts[type] === 'instant') {

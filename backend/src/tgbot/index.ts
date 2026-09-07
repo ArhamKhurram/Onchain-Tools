@@ -41,6 +41,7 @@ import { readDigestIntervalMs } from './digest.js';
 import type { TgAlertType } from './alertPolicy.js';
 import type { McapCrossView } from './render.js';
 import type { SignalFilterGate } from './source.js';
+import type { OctSignalView } from './octSignals.js';
 
 /** Seconds Telegram holds an empty getUpdates open before answering. */
 const POLL_SECONDS = 30;
@@ -136,6 +137,17 @@ export async function tgSubscriberCount(type: TgAlertType): Promise<number> {
 export function tgDeliverMcapCross(view: McapCrossView, gate?: SignalFilterGate): void {
   void alertRouter?.handleSignal(view, gate).catch((err) => {
     console.error('[TgBot] Crossing delivery failed:', (err as Error)?.message ?? err);
+  });
+}
+
+/**
+ * Deliver one forwarded "OCT Alerts" signal. No-ops when the bot is not
+ * running. Called straight off the ingest message flow (index.ts) — realtime,
+ * no poll: the signal rides the Telegram message that already arrived.
+ */
+export function tgDeliverOctSignal(view: OctSignalView): void {
+  void alertRouter?.handleOctSignal(view).catch((err) => {
+    console.error('[TgBot] Signal delivery failed:', (err as Error)?.message ?? err);
   });
 }
 
