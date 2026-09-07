@@ -1,4 +1,5 @@
-import { Plus, RefreshCw, Trophy } from 'lucide-react';
+import { useState } from 'react';
+import { AlertTriangle, CheckCircle2, Plus, RefreshCw, Trophy } from 'lucide-react';
 import { useFomoLeaderboard } from '../../hooks/useFomoTracking';
 import { cn } from '../../lib/utils';
 import type { FomoLeaderboardEntry, FomoLeaderboardSource } from '../../types/fomo';
@@ -48,7 +49,13 @@ function SourceNote({ meta }: { meta: FomoLeaderboardSource }) {
             ) : (
               <span className="font-bold text-oct-text">{meta.sourceLabel}</span>
             )}{' '}
-            — updated {formatAge(meta.updatedAt)}. Third-party data, not OCT's live feed.
+            — updated {formatAge(meta.updatedAt)}. Third-party data, not OCT's live feed.{' '}
+            {/* The button works again, but the poller behind it does not: saying so
+                here is the honest version. A TRACK that silently succeeds and then
+                shows nothing forever is worse than one that errors. */}
+            <span className="text-oct-text">
+              Tracking is saved, but live trades stay unavailable while fomo.family blocks us.
+            </span>
           </>
         )}
       </p>
@@ -78,7 +85,13 @@ function pnlTone(value: number | null | undefined): string {
 interface FomoLeaderboardProps {
   trackedIds: Set<string>;
   trackedHandles: Set<string>;
-  onTrack: (query: string, fomoUserId: string) => Promise<{ ok: boolean; status?: number; error?: string }>;
+  /**
+   * Takes the whole row, not a search string: the row already carries the
+   * resolved identity (uid / handle / name) from whichever source served the
+   * board, and passing it through means TRACK never needs the blocked
+   * fomo.family service account to resolve anything.
+   */
+  onTrack: (entry: FomoLeaderboardEntry) => Promise<{ ok: boolean; status?: number; error?: string }>;
   trackingId: string | null;
   embedded?: boolean;
 }
@@ -96,9 +109,27 @@ export default function FomoLeaderboard({
     trackedIds.has(entry.fomoUserId) ||
     (entry.fomoHandle ? trackedHandles.has(entry.fomoHandle.toLowerCase()) : false);
 
+  const [feedback, setFeedback] = useState<{ tone: 'success' | 'error'; text: string } | null>(null);
+
   const handleTrack = async (entry: FomoLeaderboardEntry) => {
-    const query = entry.fomoHandle ?? entry.displayName ?? entry.fomoUserId;
-    await onTrack(query, entry.fomoUserId);
+    setFeedback(null);
+    const result = await onTrack(entry);
+    if (result.ok) {
+      setFeedback({
+        tone: 'success',
+        text: meta && !meta.live
+          ? `Now tracking ${entryLabel(entry)}. Their trades will appear under Live once fomo.family access is restored — the feed is down at the source right now.`
+          : `Now tracking ${entryLabel(entry)}.`,
+      });
+      return;
+    }
+    setFeedback({
+      tone: result.status === 409 ? 'success' : 'error',
+      text:
+        result.status === 409
+          ? 'You are already tracking this trader.'
+          : result.error || 'Failed to track trader.',
+    });
   };
 
   return (
@@ -145,6 +176,25 @@ export default function FomoLeaderboard({
       </div>
 
       {meta && <SourceNote meta={meta} />}
+
+      {feedback && (
+        <div
+          role="status"
+          className={cn(
+            'shrink-0 flex items-start gap-tight px-comfy py-tight border-b type-caption',
+            feedback.tone === 'success'
+              ? 'border-oct-border bg-oct-surface-2 text-oct-text'
+              : 'border-oct-critical/40 bg-oct-critical-dim text-oct-critical',
+          )}
+        >
+          {feedback.tone === 'success' ? (
+            <CheckCircle2 size={14} className="shrink-0 mt-px" />
+          ) : (
+            <AlertTriangle size={14} className="shrink-0 mt-px" />
+          )}
+          <span>{feedback.text}</span>
+        </div>
+      )}
 
       <div className="flex-1 min-h-0 overflow-auto">
         {error && (
