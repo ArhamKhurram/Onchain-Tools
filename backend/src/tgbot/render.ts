@@ -412,7 +412,16 @@ export interface McapCrossView {
  */
 export function renderMcapCrossCard(view: McapCrossView): string {
   const ticker = clampName((view.symbol ?? '').toUpperCase().replace(/^\$/, ''), '');
-  const heading = ticker !== '' ? `📈 $${ticker} crossed ${compactUsd(view.targetUsd)}` : `📈 Crossed ${compactUsd(view.targetUsd)}`;
+  // A mint fragment rides in the heading because a ticker is NOT unique: two
+  // different mints can share `$CNPY` and each legitimately cross, and with only
+  // the symbol in bold the two cards read as one duplicate glitch. The full
+  // address is already below, but the eye catches the heading — so the first
+  // four chars of the mint go here to distinguish real collisions at a glance.
+  const mintTag = view.address ? ` · ${view.address.slice(0, 4)}` : '';
+  const heading =
+    ticker !== ''
+      ? `📈 $${ticker}${mintTag} crossed ${compactUsd(view.targetUsd)}`
+      : `📈 Crossed ${compactUsd(view.targetUsd)}`;
   const depth =
     view.liquidityUsd != null
       ? `${compactUsd(view.liquidityUsd)}${view.liquidityRatio != null ? ` (${(view.liquidityRatio * 100).toFixed(1)}% of mcap)` : ''}`
