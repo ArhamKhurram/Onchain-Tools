@@ -8,7 +8,9 @@ import { BaseRepo, throwIfError } from './client.js';
  * WHY NO NEW TABLE. Four optional numbers per user, read a handful of times an
  * hour, written by hand. A dedicated table would need a migration, an RLS
  * policy and a second round-trip on a Free-plan project whose binding
- * constraint is egress — for a payload smaller than the row overhead. The blob
+ * constraint is egress — for a payload smaller than the row overhead. It also
+ * means a NEW filter key costs no migration at all: the blob's shape is
+ * enforced by `sanitizeStoredFilters`, not by Postgres. The blob
  * already exists, is already per-user, and is already RLS-scoped by
  * `user_id`.
  *
