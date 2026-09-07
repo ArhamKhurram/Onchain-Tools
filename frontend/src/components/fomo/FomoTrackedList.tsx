@@ -29,9 +29,16 @@ interface FomoTrackedListProps {
   tracking: Tracking;
   /** From useFomoServiceStatus — false shows the "configure FOMO" banner. */
   configured: boolean;
+  /**
+   * From useFomoServiceStatus.pollerActive. False means tracked traders produce
+   * no trades at all — fomo.family has blocked OCT's service account, so the
+   * poller cannot run. Tracking still saves; the feed is what is dead. Saying
+   * so beats a Live tab that stays empty with no explanation.
+   */
+  feedLive?: boolean;
 }
 
-export default function FomoTrackedList({ tracking, configured }: FomoTrackedListProps) {
+export default function FomoTrackedList({ tracking, configured, feedLive = true }: FomoTrackedListProps) {
   const { tracked, loading, error, refresh, track, untrack, updateNotifyPushover } = tracking;
   const [query, setQuery] = useState('');
   const [submitting, setSubmitting] = useState(false);
@@ -58,7 +65,7 @@ export default function FomoTrackedList({ tracking, configured }: FomoTrackedLis
     } else if (result.status === 503) {
       setFeedback({
         tone: 'error',
-        text: 'FOMO integration not configured on the server. Add FOMO_REFRESH_TOKEN to backend/.env (see .env.example).',
+        text: 'Username search needs the fomo.family service account, which is unavailable. Track from the Leaderboard tab instead — those rows carry their own identity.',
       });
     } else {
       setFeedback({ tone: 'error', text: result.error || 'Failed to track user.' });
@@ -115,6 +122,17 @@ export default function FomoTrackedList({ tracking, configured }: FomoTrackedLis
               FOMO service account is not configured. Set <code className="font-mono text-xs">FOMO_REFRESH_TOKEN</code> in{' '}
               <code className="font-mono text-xs">backend/.env</code> or seed{' '}
               <code className="font-mono text-xs">fomo_poll_state.refresh_token</code> in Supabase.
+            </span>
+          </div>
+        )}
+
+        {configured && !feedLive && (
+          <div className="mb-3 flex items-start gap-2 px-3 py-2.5 rounded-oct border border-oct-border-bright bg-oct-surface-2 text-sm text-oct-text">
+            <AlertTriangle size={16} className="shrink-0 mt-0.5 text-oct-muted" />
+            <span>
+              Trade delivery is paused: fomo.family is not serving OCT's account, so the poller is
+              stopped. Tracking is saved and takes effect the moment access returns, but no trades
+              will arrive under Live until then.
             </span>
           </div>
         )}

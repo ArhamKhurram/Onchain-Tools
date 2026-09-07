@@ -14,6 +14,7 @@ import FomoTraderLookup from '../components/fomo/FomoTraderLookup';
 import RobinhoodTape from '../components/robinhood/RobinhoodTape';
 import FullPageSpinner from '../components/common/FullPageSpinner';
 import { routes } from '../lib/routes';
+import type { FomoLeaderboardEntry } from '../types/fomo';
 
 // One home for everything fomo.family. Each tab is a distinct surface; the
 // Tracking and Leaderboard tabs share a single useFomoTracking instance (owned
@@ -68,9 +69,16 @@ export default function FomoPage() {
     setSearchParams(next === 'live' ? {} : { view: next }, { replace: true });
   };
 
-  const onTrackFromLeaderboard = async (query: string, fomoUserId: string) => {
-    setTrackingLeaderId(fomoUserId);
-    const result = await tracking.track(query);
+  // The board row is already a resolved identity, so this never goes through
+  // the (blocked) fomo.family lookup — it hands the identity to the backend.
+  const onTrackFromLeaderboard = async (entry: FomoLeaderboardEntry) => {
+    setTrackingLeaderId(entry.fomoUserId);
+    const label = entry.fomoHandle ?? entry.displayName ?? entry.fomoUserId;
+    const result = await tracking.track(label, {
+      fomoUserId: entry.fomoUserId,
+      fomoHandle: entry.fomoHandle,
+      displayName: entry.displayName,
+    });
     setTrackingLeaderId(null);
     if (result.ok) return { ok: true as const };
     return { ok: false as const, status: result.status, error: result.error };
@@ -109,7 +117,11 @@ export default function FomoPage() {
             trackingId={trackingLeaderId}
           />
         ) : view === 'tracking' ? (
-          <FomoTrackedList tracking={tracking} configured={serviceStatus?.configured ?? true} />
+          <FomoTrackedList
+            tracking={tracking}
+            configured={serviceStatus?.configured ?? true}
+            feedLive={serviceStatus ? serviceStatus.pollerActive : true}
+          />
         ) : view === 'holders' ? (
           <FomoHoldersLookup />
         ) : view === 'theses' ? (

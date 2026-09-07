@@ -47,6 +47,11 @@ import { sendServiceError } from '../bot/errors.js';
 import type { FomoClientLike } from './types.js';
 import type { WsServer } from '../ws/server.js';
 import { deliverRecentTradesToUser, loadDeliveredTrades, MAX_TRADE_HISTORY } from './dispatch.js';
+import {
+  parseSuppliedFomoIdentity,
+  sanitizeForEcho,
+  type SuppliedFomoIdentity,
+} from './trackedIdentity.js';
 
 function getUserId(req: any): string {
   return req.userId ?? 'local';
@@ -469,7 +474,7 @@ export function createFomoRouter(wsServer: WsServer): Router {
     try {
       const resolved = await resolveFomoUser(client, query);
       if (!resolved) {
-        return res.status(404).json({ error: `No FOMO user found for "${query}".` });
+        return res.status(404).json({ error: `No FOMO user found for "${sanitizeForEcho(query)}".` });
       }
       res.json(resolved);
     } catch (err: any) {
@@ -521,28 +526,61 @@ export function createFomoRouter(wsServer: WsServer): Router {
     }
   });
 
-  // POST /api/fomo/tracked — body { query } → resolve + track.
+  // POST /api/fomo/tracked — track a FOMO user. Two ways in:
+  //
+  //   1. body { fomoUserId, fomoHandle?, displayName? } — an identity the
+  //      caller already holds. The leaderboard has one for every row (live or
+  //      985monitor snapshot), so it never needs a lookup. This path does not
+  //      touch the FOMO service account at all, which is the point: that
+  //      account has been Forbidden upstream since 2026-08-26, and requiring it
+  //      here made the leaderboard's TRACK button a permanent 503.
+  //
+  //   2. body { query } — free text. Still needs the live client to resolve a
+  //      handle, so it still 503s while the account is blocked. That 503 is now
+  //      scoped to the one path that genuinely cannot work without it.
+  //
+  // A supplied identity is untrusted input on its way into the database — see
+  // parseSuppliedFomoIdentity for the narrowing. Note what is NOT read from the
+  // body: `user_id`. The row's owner is always getUserId(req).
   router.post('/tracked', async (req, res) => {
     const userId = getUserId(req);
+
+    const supplied = parseSuppliedFomoIdentity(req.body);
+    if (supplied.kind === 'invalid') {
+      return res.status(400).json({ error: supplied.error });
+    }
+
     const query = typeof req.body?.query === 'string' ? req.body.query.trim() : '';
-    if (!query) return res.status(400).json({ error: 'A search query is required.' });
+    if (supplied.kind === 'none' && !query) {
+      return res.status(400).json({ error: 'A search query is required.' });
+    }
 
     const db = getFomoServiceClient();
     if (!db) return res.status(503).json({ error: 'FOMO tracking is not available (storage not configured).' });
 
-    const client = await ensureSharedFomoClientReady();
-    if (!client) {
-      return res.status(503).json({
-        error: 'FOMO service account is not configured. Seed fomo_poll_state.refresh_token or set FOMO_REFRESH_TOKEN.',
-      });
+    let resolved: SuppliedFomoIdentity;
+    if (supplied.kind === 'ok') {
+      resolved = supplied.identity;
+    } else {
+      const client = await ensureSharedFomoClientReady();
+      if (!client) {
+        return res.status(503).json({
+          error:
+            'FOMO service account is not configured, so free-text search is unavailable. Track from the leaderboard instead.',
+        });
+      }
+      try {
+        const found = await resolveFomoUser(client, query);
+        if (!found) {
+          return res.status(404).json({ error: `No FOMO user found for "${sanitizeForEcho(query)}".` });
+        }
+        resolved = found;
+      } catch (err: any) {
+        return res.status(500).json({ error: safeError(err, 'Failed to resolve FOMO user') });
+      }
     }
 
     try {
-      const resolved = await resolveFomoUser(client, query);
-      if (!resolved) {
-        return res.status(404).json({ error: `No FOMO user found for "${query}".` });
-      }
-
       const { data, error } = await db
         .from('fomo_tracked_users')
         .insert({
