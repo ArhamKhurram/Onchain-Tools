@@ -323,7 +323,10 @@ export class TgAlertRouter {
       };
 
       for (const chat of recipients) {
-        await this.route(chat, type, rendered, now, { countTowardBreaker: false });
+        await this.route(chat, type, rendered, now, {
+          countTowardBreaker: false,
+          bypassHourlyCeiling: true,
+        });
       }
     } catch (err) {
       console.error('[TgBot] Signal delivery failed:', (err as Error)?.message ?? err);
@@ -372,16 +375,26 @@ export class TgAlertRouter {
    * One event, one chat. Split out so `handle` reads as the policy it is.
    *
    * `countTowardBreaker` defaults true — every class the incident was about
-   * feeds the circuit breaker. octSignals passes false: see handleOctSignal for
-   * why a default-on, operator-curated class must be bounded by the ceiling
-   * without being able to auto-mute the chat's other subscriptions.
+   * feeds the circuit breaker. octSignals passes false: it is a default-on,
+   * operator-curated firehose, so it must not auto-mute the chat's OTHER
+   * subscriptions.
+   *
+   * `bypassHourlyCeiling` defaults false. octSignals passes true by explicit
+   * operator decision: these forwarded scans are the point of the bot for its
+   * users, so the per-chat hourly ceiling is lifted for this class alone —
+   * every scan is delivered. It does NOT touch the other classes' ceiling
+   * (octSignals sends are simply not admitted through the guard, so they never
+   * consume or exhaust the count the incident classes rely on), the per-chat
+   * mute is still honoured, and `sender.ts`'s global send pacing still stands —
+   * that pacing, not this ceiling, is what keeps Telegram from flood-banning
+   * the bot, and removing the ceiling does not remove it.
    */
   private async route(
     chat: TgChatRecord,
     type: TgAlertType,
     rendered: RenderedEvent,
     now: number,
-    opts: { countTowardBreaker?: boolean } = {},
+    opts: { countTowardBreaker?: boolean; bypassHourlyCeiling?: boolean } = {},
   ): Promise<void> {
     const sender = this.getSender();
     if (!sender) return;
@@ -405,13 +418,15 @@ export class TgAlertRouter {
     }
 
     if (chat.settings.alerts[type] === 'instant') {
-      const decision = this.guard.admitSend(chat.chatId, now, chat.settings.mutedUntil);
-      if (!decision.allow) {
-        console.warn(
-          `[TgBot] Chat ${chat.chatId} is at its hourly ceiling (${decision.used}/${decision.limit}); ` +
-            `dropped an instant ${type} alert.`,
-        );
-        return;
+      if (!opts.bypassHourlyCeiling) {
+        const decision = this.guard.admitSend(chat.chatId, now, chat.settings.mutedUntil);
+        if (!decision.allow) {
+          console.warn(
+            `[TgBot] Chat ${chat.chatId} is at its hourly ceiling (${decision.used}/${decision.limit}); ` +
+              `dropped an instant ${type} alert.`,
+          );
+          return;
+        }
       }
       void sender.send(chat.chatId, rendered.card(), { replyMarkup: rendered.replyMarkup }).catch(() => {
         /* sender never rejects; belt-and-braces */

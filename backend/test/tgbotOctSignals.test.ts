@@ -290,7 +290,12 @@ describe('delivery', () => {
     expect(sender.sent).toHaveLength(0);
   });
 
-  it('respects the hourly ceiling — a burst cannot flood', async () => {
+  it('is UNCAPPED — a burst is fully delivered, bypassing the hourly ceiling', async () => {
+    // Operator decision: OCT Alerts are the point of the bot for its users, so
+    // this class is exempt from the per-chat hourly ceiling that bounds the
+    // incident classes. A tight ceiling that would drop the other classes must
+    // not drop these. (sender.ts's global pacing, not this ceiling, is what
+    // keeps Telegram from flood-banning the bot; it still applies.)
     vi.stubEnv('TG_BOT_MAX_MESSAGES_PER_HOUR', '2');
     seed({ ...DEFAULT_CHAT_SETTINGS, alerts: { ...DEFAULT_CHAT_SETTINGS.alerts } });
     const sender = fakeSender();
@@ -302,7 +307,17 @@ describe('delivery', () => {
         1000 + i,
       );
     }
-    expect(sender.sent).toHaveLength(2);
+    expect(sender.sent).toHaveLength(6);
+  });
+
+  it('still honours an explicit mute even while uncapped', async () => {
+    // "No cap" is not "cannot opt out": a chat that muted still gets nothing.
+    seed({ ...DEFAULT_CHAT_SETTINGS, alerts: { ...DEFAULT_CHAT_SETTINGS.alerts }, mutedUntil: 10_000 });
+    const sender = fakeSender();
+    const router = new TgAlertRouter(() => sender as never);
+
+    await router.handleOctSignal(solView(), 1000);
+    expect(sender.sent).toHaveLength(0);
   });
 
   it('respects an existing mute — a muted chat gets no OCT Alerts', async () => {
