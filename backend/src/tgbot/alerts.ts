@@ -40,15 +40,19 @@ import { DigestBuffer, type DigestEntry } from './digest.js';
 import { ChatOutboundGuard, readGuardLimits } from './guard.js';
 import {
   digestLineFor,
+  flapStockDigestLine,
+  flapStockQuickBuyKeyboard,
   mcapCrossDigestLine,
   mcapCrossQuickBuyKeyboard,
   octSignalDigestLine,
   octSignalQuickBuyKeyboard,
   renderAlertCard,
   renderDigest,
+  renderFlapStockCard,
   renderMcapCrossCard,
   renderOctSignalCard,
   type ContractAlertView,
+  type FlapStockView,
   type McapCrossView,
 } from './render.js';
 import { OctSignalDedupe, octSignalDedupeKey, type OctSignalView } from './octSignals.js';
@@ -280,6 +284,47 @@ export class TgAlertRouter {
       }
     } catch (err) {
       console.error('[TgBot] Crossing delivery failed:', (err as Error)?.message ?? err);
+    }
+  }
+
+  /**
+   * Deliver one Flap NEW-STOCK listing to every subscribed chat.
+   *
+   * Class-named at the door like `handleSignal` (the flap poller already knows
+   * what it raised), so it enters here rather than through `handle`'s
+   * classification step and then takes the IDENTICAL path — the same
+   * subscription check, circuit breaker, hourly ceiling and digest-by-default.
+   *
+   * NO per-user filter gate: a brand-new stock listing is a rare global fact
+   * with no threshold to narrow it by, unlike a market-cap crossing. Every
+   * subscribed chat that clears the shared flood protections gets it.
+   */
+  async handleFlapStock(view: FlapStockView, now: number = Date.now()): Promise<void> {
+    const sender = this.getSender();
+    if (!sender) return;
+
+    const type: TgAlertType = 'flapStock';
+    try {
+      const chats = await getChatStore().listEnabled();
+      const recipients = chats.filter((chat) => chat.settings.alerts[type] !== 'off');
+      if (recipients.length === 0) return;
+
+      const rendered: RenderedEvent = {
+        // One listing = one asset first-seen; the first token disambiguates.
+        key: `${type}:${view.network}:${view.firstTokenAddress}`,
+        card: () => renderFlapStockCard(view),
+        line: flapStockDigestLine(view),
+        replyMarkup: flapStockQuickBuyKeyboard({
+          address: view.firstTokenAddress,
+          network: view.network,
+        }),
+      };
+
+      for (const chat of recipients) {
+        await this.route(chat, type, rendered, now);
+      }
+    } catch (err) {
+      console.error('[TgBot] Flap listing delivery failed:', (err as Error)?.message ?? err);
     }
   }
 
