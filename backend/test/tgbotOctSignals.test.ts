@@ -305,12 +305,15 @@ describe('buildOctSignalView', () => {
     expect(buildOctSignalView({ chatId: '-1008888888888', text: `buy ${SOL_ADDR}` })).toBeNull();
   });
 
-  it('forwards a message with NO contract address rather than dropping it', () => {
+  it('DROPS a message with no contract address — the CA is the alert', () => {
+    // The source topics carry non-scan chatter and status lines with no CA;
+    // forwarding those rendered empty "OCT Alerts · <chain>" cards. A scan
+    // without a contract address is not actionable, so it is not forwarded.
     configureSources();
-    const built = buildOctSignalView({ chatId: SOL_CHANNEL, text: 'market is heating up, watch closely' });
-    expect(built).not.toBeNull();
-    expect(built!.addresses).toEqual([]);
-    expect(built!.text).toContain('market is heating up');
+    expect(
+      buildOctSignalView({ chatId: SOL_CHANNEL, text: 'market is heating up, watch closely' }),
+    ).toBeNull();
+    expect(buildOctSignalView({ chatId: SOL_CHANNEL, text: 'Scanning…' })).toBeNull();
   });
 
   it('drops a truly empty message', () => {

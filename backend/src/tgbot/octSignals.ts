@@ -482,8 +482,12 @@ export function buildOctSignalView(input: {
   const addresses = detectContractAddresses(raw).addresses;
   const text = stripUpstreamSignature(raw, readSignalStripTerms());
 
-  // A message with neither an address nor any body left is not worth a ping.
-  if (addresses.length === 0 && text === '') return null;
+  // A scan is only worth forwarding if it carries a contract address: the CA
+  // and its buy buttons ARE the alert. The source topics also carry non-scan
+  // chatter, status lines and split messages with no CA — forwarding those
+  // produced a burst of empty "OCT Alerts · <chain>" cards, which is noise, not
+  // signal. No address → drop.
+  if (addresses.length === 0) return null;
 
   const network = chain === 'sol' ? 'solana' : resolveEvmSignalNetwork(raw, input.evmChainHint);
   // Ticker/MC are parsed from the RAW body (before signature stripping) so a
