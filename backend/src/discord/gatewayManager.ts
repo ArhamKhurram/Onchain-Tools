@@ -96,10 +96,14 @@ export class GatewayManager extends EventEmitter {
     return Array.from(this.invalidTokenIndices);
   }
 
-  getGuilds(): GuildInfo[] {
+  // Async because each gateway resolves its own account's channel visibility
+  // before answering. When several tokens are in the same guild the widest list
+  // wins — that is per-account access, not a union of everyone's.
+  async getGuilds(): Promise<GuildInfo[]> {
     const merged = new Map<string, GuildInfo>();
-    for (const gw of this.gateways) {
-      for (const guild of gw.getGuilds()) {
+    const perGateway = await Promise.all(this.gateways.map((gw) => gw.getGuilds()));
+    for (const guilds of perGateway) {
+      for (const guild of guilds) {
         const existing = merged.get(guild.id);
         if (!existing || guild.channels.length > existing.channels.length) {
           merged.set(guild.id, guild);

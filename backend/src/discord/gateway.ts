@@ -10,16 +10,40 @@ import type {
 import { GatewayOpcodes } from './types.js';
 import { fetch as undiciFetch } from 'undici';
 import type { ProxyBundle } from './proxy.js';
+import {
+  buildGuildPermissionContext,
+  filterPickableChannels,
+  mergedMembersAt,
+  readGuildChannels,
+  readGuildPermissionSnapshot,
+  type RawGuildChannel,
+} from '@oct/shared';
 
 const GATEWAY_URL = 'wss://gateway.discord.gg/?v=10&encoding=json';
 const REST_BASE = 'https://discord.com/api/v10';
 
-// Channel types that support text messages
-const TEXT_CHANNEL_TYPES = new Set([0, 2, 5, 10, 11, 12, 13, 15, 16]);
-
-function isTextChannel(type: number): boolean {
-  return TEXT_CHANNEL_TYPES.has(type);
+// Everything the channel picker needs about a guild. The channel list here is
+// the RAW one — every channel the gateway sent, overwrites included — because
+// visibility is resolved later, in getGuilds(), once the signed-in user's roles
+// are known. Name/guild lookup maps stay unfiltered too: a message that does
+// arrive must still resolve its channel name.
+interface GuildRecord {
+  id: string;
+  name: string;
+  icon: string | null;
+  ownerId: string | null;
+  rolePermissions: Map<string, bigint>;
+  // null = the frame did not carry the signed-in user's member object; REST
+  // fills it in on demand. Never treat null as "holds no roles".
+  memberRoleIds: Set<string> | null;
+  channels: RawGuildChannel[];
 }
+
+// How many /users/@me/guilds/{id}/member lookups run at once when the gateway
+// frames did not include the member object. Someone in a hundred guilds would
+// otherwise fire a hundred parallel requests the first time they open Room
+// Settings and collect a 429 for it.
+const MEMBER_FETCH_CONCURRENCY = 5;
 
 export interface GatewayAuthFailure {
   tokenIndex: number;
@@ -40,15 +64,17 @@ export class DiscordGateway extends EventEmitter {
   private lastSequence: number | null = null;
   private sessionId: string | null = null;
   private resumeGatewayUrl: string | null = null;
-  private guilds: Map<string, GuildInfo> = new Map();
+  private guilds: Map<string, GuildRecord> = new Map();
   private dmChannels: Map<string, DMChannel> = new Map();
   private channelGuildMap: Map<string, string> = new Map();
   private channelNameMap: Map<string, string> = new Map();
   private roleNameMap: Map<string, string> = new Map();
   private roleDataMap: Map<string, { name: string; color: number; position: number }> = new Map();
   private selfUserId: string | null = null;
-  // guildId -> { roleIds, fetchedAt }. Lazily fetched via REST, refreshed periodically.
-  private selfGuildRoles: Map<string, { roleIds: Set<string>; fetchedAt: number }> = new Map();
+  // guildId -> { roleIds, fetchedAt }. Lazily fetched via REST, refreshed
+  // periodically. `roleIds: null` records a FAILED lookup, which is not the same
+  // as "no roles" — the visibility filter must fail open on it.
+  private selfGuildRoles: Map<string, { roleIds: Set<string> | null; fetchedAt: number }> = new Map();
   private static readonly SELF_ROLES_TTL_MS = 10 * 60 * 1000;
   private reconnectAttempts = 0;
   private maxReconnectAttempts = 30;
@@ -177,30 +203,29 @@ export class DiscordGateway extends EventEmitter {
         this.selfUserId = data.user?.id ?? null;
         console.log(`[Gateway] Ready as ${data.user.username}#${data.user.discriminator}`);
 
-        for (const guild of data.guilds ?? []) {
+        const readyGuilds: any[] = data.guilds ?? [];
+        for (let gi = 0; gi < readyGuilds.length; gi++) {
+          const guild = readyGuilds[gi];
           const guildName = guild.properties?.name ?? guild.name ?? 'Unknown';
           const guildIcon = guild.properties?.icon ?? guild.icon ?? null;
           const guildId = guild.id;
 
-          // User tokens get channel data directly in READY (not via GUILD_CREATE)
-          const rawChannels: any[] = guild.channels ?? [];
-          const channels = rawChannels
-            .filter((c: any) => isTextChannel(c.type ?? c[3]))
-            .map((c: any) => {
-              // Channels can arrive as objects {id, name, type, ...} or as arrays [id, type, ...]
-              if (Array.isArray(c)) {
-                return { id: String(c[0]), name: String(c[1] ?? ''), type: Number(c[3] ?? 0) };
-              }
-              return { id: c.id, name: c.name ?? '', type: c.type ?? 0 };
-            });
+          // User tokens get channel data directly in READY (not via GUILD_CREATE),
+          // and they get ALL of it — including channels this user cannot view.
+          const snapshot = readGuildPermissionSnapshot(guild, this.selfUserId, mergedMembersAt(data, gi));
+          this.guilds.set(guildId, {
+            id: guildId,
+            name: guildName,
+            icon: guildIcon,
+            ownerId: snapshot.ownerId,
+            rolePermissions: snapshot.rolePermissions,
+            memberRoleIds: snapshot.memberRoleIds,
+            channels: snapshot.channels,
+          });
 
-          this.guilds.set(guildId, { id: guildId, name: guildName, icon: guildIcon, channels });
-
-          for (const ch of rawChannels) {
-            const chId = Array.isArray(ch) ? String(ch[0]) : ch.id;
-            const chName = Array.isArray(ch) ? String(ch[1] ?? '') : (ch.name ?? '');
-            this.channelGuildMap.set(chId, guildId);
-            if (chName) this.channelNameMap.set(chId, chName);
+          for (const ch of snapshot.channels) {
+            this.channelGuildMap.set(ch.id, guildId);
+            if (ch.name) this.channelNameMap.set(ch.id, ch.name);
           }
 
           for (const role of guild.roles ?? []) {
@@ -216,7 +241,7 @@ export class DiscordGateway extends EventEmitter {
             }
           }
 
-          console.log(`[Gateway] Guild "${guildName}" - ${channels.length} text channels`);
+          console.log(`[Gateway] Guild "${guildName}" - ${snapshot.channels.length} channels`);
         }
 
         // Build user lookup from the top-level users array (user tokens send full
@@ -262,11 +287,7 @@ export class DiscordGateway extends EventEmitter {
         break;
 
       case 'GUILD_CREATE': {
-        const rawChannels: any[] = data.channels ?? [];
-        const channels = rawChannels
-          .filter((c: any) => isTextChannel(c.type))
-          .map((c: any) => ({ id: c.id, name: c.name ?? '', type: c.type }));
-
+        const snapshot = readGuildPermissionSnapshot(data, this.selfUserId);
         const guildName = data.properties?.name ?? data.name ?? 'Unknown';
         const existing = this.guilds.get(data.id);
 
@@ -274,10 +295,15 @@ export class DiscordGateway extends EventEmitter {
           id: data.id,
           name: guildName,
           icon: data.properties?.icon ?? data.icon ?? null,
-          channels: channels.length > 0 ? channels : (existing?.channels ?? []),
+          ownerId: snapshot.ownerId ?? existing?.ownerId ?? null,
+          rolePermissions: snapshot.rolePermissions.size > 0
+            ? snapshot.rolePermissions
+            : (existing?.rolePermissions ?? new Map()),
+          memberRoleIds: snapshot.memberRoleIds ?? existing?.memberRoleIds ?? null,
+          channels: snapshot.channels.length > 0 ? snapshot.channels : (existing?.channels ?? []),
         });
 
-        for (const ch of rawChannels) {
+        for (const ch of snapshot.channels) {
           this.channelGuildMap.set(ch.id, data.id);
           if (ch.name) this.channelNameMap.set(ch.id, ch.name);
         }
@@ -293,7 +319,7 @@ export class DiscordGateway extends EventEmitter {
           }
         }
 
-        console.log(`[Gateway] GUILD_CREATE "${guildName}" - ${channels.length} text channels`);
+        console.log(`[Gateway] GUILD_CREATE "${guildName}" - ${snapshot.channels.length} channels`);
         break;
       }
 
@@ -377,11 +403,17 @@ export class DiscordGateway extends EventEmitter {
           this.channelGuildMap.set(data.id, data.guild_id);
           if (data.name) this.channelNameMap.set(data.id, data.name);
           const guild = this.guilds.get(data.guild_id);
-          if (guild && isTextChannel(data.type)) {
+          if (guild) {
+            // Store the raw channel (overwrites and all) whatever its type —
+            // getGuilds() applies the type and visibility filters. CHANNEL_UPDATE
+            // is how a channel's overwrites change, so this keeps the picker
+            // honest when someone is granted or denied access mid-session.
             const idx = guild.channels.findIndex((c) => c.id === data.id);
-            const entry = { id: data.id, name: data.name ?? '', type: data.type };
-            if (idx >= 0) guild.channels[idx] = entry;
-            else guild.channels.push(entry);
+            const entry = readGuildChannels([data])[0];
+            if (entry) {
+              if (idx >= 0) guild.channels[idx] = entry;
+              else guild.channels.push(entry);
+            }
           }
         } else if (data.type === 1 || data.type === 3) {
           const recipients = (data.recipients ?? []).map((r: any) => ({
@@ -526,8 +558,72 @@ export class DiscordGateway extends EventEmitter {
     setTimeout(() => this.connect(), delay);
   }
 
-  getGuilds(): GuildInfo[] {
-    return Array.from(this.guilds.values());
+  /**
+   * Guilds with their channel lists narrowed to what the signed-in user may
+   * actually pick: a text-capable type, and VIEW_CHANNEL granted.
+   *
+   * Async because resolving "what roles does this user hold here" can need a
+   * REST call — the gateway frames carry the member object only under some
+   * client-capability flags. When it cannot be resolved the guild's channels
+   * are returned type-filtered but unfiltered by permission: an empty picker is
+   * a worse outcome than an over-full one.
+   */
+  async getGuilds(): Promise<GuildInfo[]> {
+    const records = Array.from(this.guilds.values());
+    const roleSets = await this.resolveMemberRoleIds(records);
+
+    return records.map((guild, i) => {
+      const ctx = buildGuildPermissionContext({
+        guildId: guild.id,
+        userId: this.selfUserId,
+        ownerId: guild.ownerId,
+        rolePermissions: guild.rolePermissions,
+        memberRoleIds: roleSets[i],
+      });
+      return {
+        id: guild.id,
+        name: guild.name,
+        icon: guild.icon,
+        channels: filterPickableChannels(guild.channels, ctx).map((c) => ({
+          id: c.id,
+          name: c.name,
+          type: c.type,
+        })),
+      };
+    });
+  }
+
+  // Role ids per guild, from the gateway frame where it had them and REST where
+  // it did not. Batched so a large account does not open one request per guild
+  // simultaneously.
+  private async resolveMemberRoleIds(records: GuildRecord[]): Promise<(Set<string> | null)[]> {
+    const out: (Set<string> | null)[] = new Array(records.length).fill(null);
+    const pending: number[] = [];
+
+    for (let i = 0; i < records.length; i++) {
+      const record = records[i];
+      if (record.memberRoleIds) {
+        out[i] = record.memberRoleIds;
+        continue;
+      }
+      // The owner sees everything, so their role list is irrelevant.
+      if (record.ownerId && record.ownerId === this.selfUserId) {
+        out[i] = new Set();
+        continue;
+      }
+      pending.push(i);
+    }
+
+    for (let i = 0; i < pending.length; i += MEMBER_FETCH_CONCURRENCY) {
+      const batch = pending.slice(i, i + MEMBER_FETCH_CONCURRENCY);
+      await Promise.all(
+        batch.map(async (idx) => {
+          out[idx] = await this.fetchSelfRoleIds(records[idx].id);
+        }),
+      );
+    }
+
+    return out;
   }
 
   getDMChannels(): DMChannel[] {
@@ -579,8 +675,10 @@ export class DiscordGateway extends EventEmitter {
     return fetch(url, init);
   }
 
-  // Returns the logged-in user's role IDs for a guild, lazily fetched via REST and cached.
-  async getSelfRoleIds(guildId: string): Promise<Set<string>> {
+  // Returns the logged-in user's role IDs for a guild, lazily fetched via REST
+  // and cached. `null` means the lookup failed — callers that act on the answer
+  // must treat that differently from "holds no roles".
+  private async fetchSelfRoleIds(guildId: string): Promise<Set<string> | null> {
     const cached = this.selfGuildRoles.get(guildId);
     if (cached && Date.now() - cached.fetchedAt < DiscordGateway.SELF_ROLES_TTL_MS) {
       return cached.roleIds;
@@ -590,20 +688,28 @@ export class DiscordGateway extends EventEmitter {
         headers: { Authorization: this.token },
       });
       if (!res.ok) {
-        // Cache an empty set to avoid hammering the API on repeated failures.
-        const empty = cached?.roleIds ?? new Set<string>();
-        this.selfGuildRoles.set(guildId, { roleIds: empty, fetchedAt: Date.now() });
-        return empty;
+        // Cache the failure to avoid hammering the API on repeated failures.
+        const fallback = cached?.roleIds ?? null;
+        this.selfGuildRoles.set(guildId, { roleIds: fallback, fetchedAt: Date.now() });
+        return fallback;
       }
       const member = await res.json();
       const roleIds = new Set<string>(Array.isArray(member.roles) ? member.roles : []);
       this.selfGuildRoles.set(guildId, { roleIds, fetchedAt: Date.now() });
       return roleIds;
     } catch {
-      const empty = cached?.roleIds ?? new Set<string>();
-      this.selfGuildRoles.set(guildId, { roleIds: empty, fetchedAt: Date.now() });
-      return empty;
+      const fallback = cached?.roleIds ?? null;
+      this.selfGuildRoles.set(guildId, { roleIds: fallback, fetchedAt: Date.now() });
+      return fallback;
     }
+  }
+
+  // Mention matching only asks "is one of these role ids mine", so an
+  // unresolved lookup is indistinguishable from an empty answer there.
+  async getSelfRoleIds(guildId: string): Promise<Set<string>> {
+    const record = this.guilds.get(guildId);
+    if (record?.memberRoleIds) return record.memberRoleIds;
+    return (await this.fetchSelfRoleIds(guildId)) ?? new Set<string>();
   }
 
   async sendChannelMessage(channelId: string, content: string, attachments?: { filename: string; data: Buffer; contentType: string }[]): Promise<any> {
