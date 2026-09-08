@@ -14,7 +14,15 @@
 //     `redactToken` is the backstop for anything that slips through — Telegram
 //     itself echoes the URL in some error bodies.
 
-import type { TgApiResponse, TgCallResult, TgMessage, TgUpdate, TgUser } from './types.js';
+import type {
+  TgApiResponse,
+  TgCallResult,
+  TgChatMember,
+  TgInlineKeyboardMarkup,
+  TgMessage,
+  TgUpdate,
+  TgUser,
+} from './types.js';
 
 const API_ROOT = 'https://api.telegram.org';
 
@@ -119,15 +127,65 @@ export class TelegramBotApi {
   }
 
   /**
+   * Publish the `/` autocomplete menu.
+   *
+   * THE COMMANDS ARE INVISIBLE WITHOUT THIS. Telegram has no command registry
+   * the way Discord does — a bot's commands exist only as strings it recognises
+   * — so until setMyCommands lands, typing `/` in the chat offers nothing and
+   * every command has to be learned from /help. It was never called: the
+   * command list was a block of text somebody was expected to paste into
+   * @BotFather by hand, once, and re-paste after every change. Calling it at
+   * boot makes the menu a property of the deployed build instead.
+   *
+   * IT REPLACES THE WHOLE LIST, and it is scoped to `default` (the scope
+   * parameter is omitted), which is what a menu for a bot with no per-chat
+   * command differences wants. One malformed entry is a 400 that rejects the
+   * ENTIRE payload, which is why telegramCommandMenu drops bad entries rather
+   * than passing them through — see commandCatalog.ts.
+   */
+  async setMyCommands(
+    commands: { command: string; description: string }[],
+    signal?: AbortSignal,
+  ): Promise<TgCallResult<boolean>> {
+    return this.call<boolean>('setMyCommands', { commands }, { signal });
+  }
+
+  /**
+   * What Telegram currently believes about this token's webhook.
+   *
+   * A webhook and getUpdates are mutually exclusive: with one set, EVERY poll
+   * comes back 409 and the bot never receives anything. Checked at boot so that
+   * cause is named rather than hidden inside a generic conflict message.
+   */
+  async getWebhookInfo(signal?: AbortSignal): Promise<TgCallResult<{ url?: string }>> {
+    return this.call<{ url?: string }>('getWebhookInfo', {}, { signal });
+  }
+
+  /**
+   * Remove a webhook so long polling can proceed.
+   *
+   * `drop_pending_updates` is deliberately NOT set: updates queued while the
+   * webhook was live are still real user commands, and the poll loop will
+   * deliver them on its first pass.
+   */
+  async deleteWebhook(signal?: AbortSignal): Promise<TgCallResult<boolean>> {
+    return this.call<boolean>('deleteWebhook', { drop_pending_updates: false }, { signal });
+  }
+
+  /**
    * Long-poll for updates.
    *
    * `offset` is the confirmation mechanism, not a cursor into history: sending
    * `lastUpdateId + 1` is what tells Telegram the previous batch was processed
    * and may be dropped. Skip it and every restart replays the same updates.
    *
-   * `allowed_updates` is narrowed to messages — the bot has no callback
-   * buttons, no inline mode and no reactions, so anything else is bandwidth
-   * spent to be ignored.
+   * `allowed_updates` is narrowed to the two kinds the bot acts on: messages,
+   * and the inline-keyboard presses the /start panel produces. It is an
+   * explicit list rather than an omission because omitting it makes Telegram
+   * apply whatever the last-set default was — including one set by a previous
+   * deploy — and a panel whose buttons silently do nothing is indistinguishable
+   * from a bug in the handler. Inline mode, reactions, edits, chat-member
+   * updates and polls stay unsubscribed: bandwidth spent to be ignored.
    */
   async getUpdates(
     offset: number,
@@ -140,7 +198,7 @@ export class TelegramBotApi {
         offset,
         timeout: pollSeconds,
         limit: 100,
-        allowed_updates: ['message'],
+        allowed_updates: ['message', 'callback_query'],
       },
       { timeoutMs: pollSeconds * 1000 + POLL_TIMEOUT_SLACK_MS, signal },
     );
@@ -156,7 +214,11 @@ export class TelegramBotApi {
   async sendMessage(
     chatId: number,
     text: string,
-    opts?: { disableNotification?: boolean; signal?: AbortSignal },
+    opts?: {
+      disableNotification?: boolean;
+      replyMarkup?: TgInlineKeyboardMarkup;
+      signal?: AbortSignal;
+    },
   ): Promise<TgCallResult<TgMessage>> {
     return this.call<TgMessage>(
       'sendMessage',
@@ -166,10 +228,100 @@ export class TelegramBotApi {
         parse_mode: 'HTML',
         link_preview_options: { is_disabled: true },
         disable_notification: opts?.disableNotification ?? false,
+        ...(opts?.replyMarkup ? { reply_markup: opts.replyMarkup } : {}),
       },
       { signal: opts?.signal },
     );
   }
+
+  /**
+   * Replace the text and keyboard of a message the bot already sent.
+   *
+   * THE PANEL EDITS, IT DOES NOT POST. Every button press rewrites the one card
+   * in place, so a chat that has pressed twenty buttons still holds exactly one
+   * OCT message — the alternative is a bot that answers a tap with a new
+   * message and buries the conversation it is sitting in.
+   *
+   * Callers must treat `isNotModified` as success; see the note there.
+   */
+  async editMessageText(
+    chatId: number,
+    messageId: number,
+    text: string,
+    opts?: { replyMarkup?: TgInlineKeyboardMarkup; signal?: AbortSignal },
+  ): Promise<TgCallResult<TgMessage | boolean>> {
+    return this.call<TgMessage | boolean>(
+      'editMessageText',
+      {
+        chat_id: chatId,
+        message_id: messageId,
+        text,
+        parse_mode: 'HTML',
+        link_preview_options: { is_disabled: true },
+        // An absent reply_markup CLEARS the keyboard, which is what closing the
+        // panel wants and what every other edit must avoid — so it is always
+        // passed explicitly by the caller, never defaulted here.
+        ...(opts?.replyMarkup ? { reply_markup: opts.replyMarkup } : {}),
+      },
+      { signal: opts?.signal },
+    );
+  }
+
+  /**
+   * Acknowledge one callback query.
+   *
+   * MANDATORY ON EVERY PATH. Until this call lands, the pressing client shows a
+   * spinner on the button — for up to a minute — so a handler that returns
+   * early on an error leaves a visibly hung UI. `showAlert` turns the ephemeral
+   * toast into a modal, which is what a refusal wants: a permission denial that
+   * flashes for a second and vanishes reads as the button being broken.
+   *
+   * `text` is capped at 200 characters by Telegram and is PLAIN text — no
+   * parse_mode exists for it — so nothing HTML-escaped may be passed here.
+   */
+  async answerCallbackQuery(
+    callbackQueryId: string,
+    opts?: { text?: string; showAlert?: boolean; signal?: AbortSignal },
+  ): Promise<TgCallResult<boolean>> {
+    return this.call<boolean>(
+      'answerCallbackQuery',
+      {
+        callback_query_id: callbackQueryId,
+        ...(opts?.text ? { text: opts.text.slice(0, 200) } : {}),
+        show_alert: opts?.showAlert ?? false,
+      },
+      { signal: opts?.signal },
+    );
+  }
+
+  /**
+   * One member's status in a chat — the panel's admin check.
+   *
+   * A failure here is NOT an admin: see the fail-closed note on
+   * PanelActor.isAdmin. Called at most once per user per minute thanks to the
+   * cache in callbacks.ts, because it is a network round trip in the middle of
+   * a button press.
+   */
+  async getChatMember(
+    chatId: number,
+    userId: number,
+    signal?: AbortSignal,
+  ): Promise<TgCallResult<TgChatMember>> {
+    return this.call<TgChatMember>('getChatMember', { chat_id: chatId, user_id: userId }, { signal });
+  }
+}
+
+/**
+ * Did this edit fail only because the new content is identical to the old?
+ *
+ * Telegram rejects a no-op edit with a 400 whose description contains "message
+ * is not modified". Pressing Refresh twice inside one digest window produces
+ * exactly that, so it is an EXPECTED condition of a panel with a refresh
+ * button, not a failure — logging it as an error would train the operator to
+ * ignore the log line that matters.
+ */
+export function isNotModified(result: TgCallResult<unknown>): boolean {
+  return result.errorCode === 400 && /message is not modified/i.test(result.description ?? '');
 }
 
 /** Human-readable one-liner for a failed call, safe to log. */

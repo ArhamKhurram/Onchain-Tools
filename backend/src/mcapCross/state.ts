@@ -54,6 +54,19 @@ export interface McapCrossRow {
   lastSeenAt: string;
   /** Epoch ms of the last alert for this token; 0 when it has never fired. */
   firedAt: number;
+  /**
+   * The HIGHEST market cap this poller has ever observed for the token. Used to
+   * suppress a re-cross of a token we already watched run well above the target
+   * (see isWatermarkReCross). It is a strict running max, so it survives a
+   * pullback the way `lastSeenMcap` does not.
+   *
+   * THE COLUMN MAY NOT EXIST YET. Its migration (20260908..._mcap_cross_watermark)
+   * is applied by hand, so between the deploy and the apply this reads back as
+   * the last-seen value (the safe floor: a token is at least as high as we last
+   * saw it) and watermark suppression simply does nothing until the column is
+   * there. See loadState/recordObservations for the column-absent handling.
+   */
+  highWatermarkMcap: number;
 }
 
 export type McapCrossState = Map<string, McapCrossRow>;
@@ -95,11 +108,30 @@ function saveLocal(): void {
  * five minutes trains everyone to ignore its logs.
  */
 let hostedTableMissing = false;
+/**
+ * Set once the high_watermark_mcap COLUMN (not the table) has been found
+ * missing, so reads/writes drop it and the rest of the feature keeps working
+ * until the migration is applied. Distinct from `hostedTableMissing`, which is
+ * about the whole table.
+ */
+let watermarkColumnMissing = false;
 /** In-memory fallback used when the table is absent (see the module header). */
 const memoryFallback: Record<string, McapCrossRow> = {};
 
+const COLS_WITH_WM = 'address, network, last_seen_mcap, last_seen_at, fired_at, high_watermark_mcap';
+const COLS_NO_WM = 'address, network, last_seen_mcap, last_seen_at, fired_at';
+
 function isMissingTable(message: string | undefined): boolean {
   return /does not exist|Could not find the table|schema cache/i.test(message ?? '');
+}
+
+/**
+ * A missing-COLUMN error names the column. Checked BEFORE `isMissingTable`,
+ * whose broad regex ("does not exist", "schema cache") would otherwise swallow
+ * a missing-column error and wrongly disable the whole feature into memory.
+ */
+function mentionsWatermarkColumn(message: string | undefined): boolean {
+  return /high_watermark_mcap/i.test(message ?? '');
 }
 
 function db(): SupabaseClient | null {
@@ -112,12 +144,17 @@ function rowFrom(raw: any): McapCrossRow | null {
   if (typeof address !== 'string' || typeof network !== 'string') return null;
   const mcap = Number(raw?.last_seen_mcap);
   if (!Number.isFinite(mcap)) return null;
+  // Absent column (migration not yet applied) or null → fall back to the last
+  // seen value: a token is at least as high as we last saw it, which makes
+  // watermark suppression a no-op rather than a wrong answer.
+  const watermark = Number(raw?.high_watermark_mcap);
   return {
     address,
     network: network as RevivalNetwork,
     lastSeenMcap: mcap,
     lastSeenAt: raw?.last_seen_at ?? new Date().toISOString(),
     firedAt: raw?.fired_at ? Date.parse(raw.fired_at) || 0 : 0,
+    highWatermarkMcap: Number.isFinite(watermark) && watermark > 0 ? Math.max(watermark, mcap) : mcap,
   };
 }
 
@@ -155,10 +192,31 @@ export async function loadState(
   const addresses = [...new Set(keys.map((k) => k.address))];
   const { data, error } = await client
     .from(TABLE)
-    .select('address, network, last_seen_mcap, last_seen_at, fired_at')
+    .select(watermarkColumnMissing ? COLS_NO_WM : COLS_WITH_WM)
     .in('address', addresses);
 
   if (error) {
+    // The COLUMN is absent (migration not yet applied) but the table exists:
+    // note it, retry without the column, and keep the feature running. Checked
+    // first because isMissingTable's regex would otherwise claim it.
+    if (!watermarkColumnMissing && mentionsWatermarkColumn(error.message)) {
+      watermarkColumnMissing = true;
+      console.warn(
+        `[McapCross] Column ${TABLE}.high_watermark_mcap is absent — apply ` +
+          'supabase/migrations/20260908120000_mcap_cross_watermark.sql. Watermark re-cross ' +
+          'suppression is disabled until then; the rest of the feature is unaffected.',
+      );
+      const retry = await client.from(TABLE).select(COLS_NO_WM).in('address', addresses);
+      if (!retry.error) {
+        for (const raw of (retry.data ?? []) as any[]) {
+          const row = rowFrom(raw);
+          if (row) out.set(stateKey(row.network, row.address), row);
+        }
+      } else {
+        console.warn('[McapCross] State load retry failed:', retry.error.message);
+      }
+      return out;
+    }
     if (isMissingTable(error.message)) {
       hostedTableMissing = true;
       console.warn(
@@ -209,18 +267,41 @@ export async function recordObservations(rows: McapCrossRow[]): Promise<void> {
     return;
   }
 
-  const { error } = await client.from(TABLE).upsert(
-    rows.map((row) => ({
-      address: row.address,
-      network: row.network,
-      last_seen_mcap: row.lastSeenMcap,
-      last_seen_at: row.lastSeenAt,
-      fired_at: row.firedAt > 0 ? new Date(row.firedAt).toISOString() : null,
-    })),
-    { onConflict: 'address,network' },
-  );
+  const payload = (includeWatermark: boolean) =>
+    rows.map((row) => {
+      const base: Record<string, unknown> = {
+        address: row.address,
+        network: row.network,
+        last_seen_mcap: row.lastSeenMcap,
+        last_seen_at: row.lastSeenAt,
+        fired_at: row.firedAt > 0 ? new Date(row.firedAt).toISOString() : null,
+      };
+      if (includeWatermark) base.high_watermark_mcap = row.highWatermarkMcap;
+      return base;
+    });
+
+  const { error } = await client
+    .from(TABLE)
+    .upsert(payload(!watermarkColumnMissing), { onConflict: 'address,network' });
 
   if (error) {
+    // COLUMN absent but table present: drop the column and retry once. Checked
+    // before isMissingTable, whose regex would otherwise route us to memory.
+    if (!watermarkColumnMissing && mentionsWatermarkColumn(error.message)) {
+      watermarkColumnMissing = true;
+      const retry = await client
+        .from(TABLE)
+        .upsert(payload(false), { onConflict: 'address,network' });
+      if (retry.error) {
+        if (isMissingTable(retry.error.message)) {
+          hostedTableMissing = true;
+          for (const row of rows) memoryFallback[stateKey(row.network, row.address)] = row;
+        } else {
+          console.warn('[McapCross] State write retry failed:', retry.error.message);
+        }
+      }
+      return;
+    }
     if (isMissingTable(error.message)) {
       hostedTableMissing = true;
       for (const row of rows) memoryFallback[stateKey(row.network, row.address)] = row;
@@ -230,9 +311,69 @@ export async function recordObservations(rows: McapCrossRow[]): Promise<void> {
   }
 }
 
+/**
+ * The tokens that most recently ALERTED, newest first.
+ *
+ * WHY THIS BELONGS HERE AND NOT IN A NEW TABLE. `fired_at` already records
+ * exactly one fact — "this token produced a crossing alert at this moment" —
+ * and the migration already carries `mcap_cross_state_fired_at_idx (fired_at
+ * desc nulls last)` for the poller's own cooldown sweep. Reading the same
+ * column the other way round is a history of crossings for free; a second table
+ * to hold what one indexed column already holds would be two writes per alert
+ * where there is currently one.
+ *
+ * IT IS NOT A DELIVERY LOG. It says what crossed, not what any particular chat
+ * was sent — a chat that subscribed an hour ago will see entries older than its
+ * subscription. That is the honest shape of the data, and the card that renders
+ * it says "crossed", never "you missed".
+ *
+ * NO user_id, so there is nothing personal to leak: an address, a chain, a
+ * number and a timestamp, identical for every reader (see the migration's
+ * header). Column-scoped and `limit`ed for the reason every read in this file
+ * is — prod is on Supabase's free plan where egress is the binding constraint.
+ *
+ * Best-effort like the rest of the module: any failure is an empty list, which
+ * the caller renders as "nothing recorded yet" rather than as an error.
+ */
+export async function recentCrossings(limit: number): Promise<McapCrossRow[]> {
+  const capped = Math.max(1, Math.min(Math.trunc(limit), 25));
+
+  const fromMemory = (source: Record<string, McapCrossRow>): McapCrossRow[] =>
+    Object.values(source)
+      .filter((row) => row.firedAt > 0)
+      .sort((a, b) => b.firedAt - a.firedAt)
+      .slice(0, capped);
+
+  if (!isHostedMode()) return fromMemory(loadLocal());
+
+  const client = db();
+  if (!client || hostedTableMissing) return fromMemory(memoryFallback);
+
+  const { data, error } = await client
+    .from(TABLE)
+    .select('address, network, last_seen_mcap, last_seen_at, fired_at')
+    .not('fired_at', 'is', null)
+    .order('fired_at', { ascending: false })
+    .limit(capped);
+
+  if (error) {
+    if (isMissingTable(error.message)) hostedTableMissing = true;
+    else console.warn('[McapCross] Recent crossings read failed:', error.message);
+    return fromMemory(memoryFallback);
+  }
+
+  const rows: McapCrossRow[] = [];
+  for (const raw of (data ?? []) as any[]) {
+    const row = rowFrom(raw);
+    if (row && row.firedAt > 0) rows.push(row);
+  }
+  return rows;
+}
+
 /** Test seam: forget the local file cache and the hosted fallback. */
 export function _resetStateForTest(): void {
   localCache = null;
   hostedTableMissing = false;
+  watermarkColumnMissing = false;
   for (const key of Object.keys(memoryFallback)) delete memoryFallback[key];
 }

@@ -12,6 +12,7 @@
 // (wallet_id, chain, day, unit) for the same reason the signature below does.
 
 import { randomUUID } from 'crypto';
+import { DEFAULT_FEE_SETTINGS, normalizeFeeSettings } from './fees.js';
 import type {
   SniperStore,
   ClampCapsParams,
@@ -27,6 +28,7 @@ import type {
   ReservationResult,
   RuleState,
   SnipeRule,
+  SniperFeeSettings,
   WalletConfig,
 } from './types.js';
 
@@ -54,6 +56,7 @@ interface UserState {
   killSwitch: boolean;
   trippedAt: number | null;
   trippedReason: string | null;
+  fees: SniperFeeSettings;
 }
 
 export class InMemorySniperStore implements SniperStore {
@@ -112,10 +115,30 @@ export class InMemorySniperStore implements SniperStore {
     return { on: s?.killSwitch ?? false, reason: s?.trippedReason ?? null, trippedAt: s?.trippedAt ?? null };
   }
   async setKillSwitch(userId: string, on: boolean, reason: string | null): Promise<void> {
+    const prev = this.state.get(userId);
     this.state.set(userId, {
       killSwitch: on,
       trippedAt: on ? Date.now() : null,
       trippedReason: on ? reason : null,
+      // Carried forward explicitly: the kill switch and the fee settings share
+      // one row here and one row hosted, and clobbering the fees on every kill
+      // would silently reset the operator's tip to zero.
+      fees: prev?.fees ?? { ...DEFAULT_FEE_SETTINGS },
+    });
+  }
+
+  // --- fee settings (account-level; see fees.ts) ---
+  async getFeeSettings(userId: string): Promise<SniperFeeSettings> {
+    return normalizeFeeSettings(this.state.get(userId)?.fees);
+  }
+
+  async setFeeSettings(userId: string, settings: SniperFeeSettings): Promise<void> {
+    const prev = this.state.get(userId);
+    this.state.set(userId, {
+      killSwitch: prev?.killSwitch ?? false,
+      trippedAt: prev?.trippedAt ?? null,
+      trippedReason: prev?.trippedReason ?? null,
+      fees: normalizeFeeSettings(settings),
     });
   }
 

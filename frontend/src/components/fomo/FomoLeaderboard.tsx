@@ -1,7 +1,67 @@
-import { Plus, RefreshCw, Trophy } from 'lucide-react';
+import { useState } from 'react';
+import { AlertTriangle, CheckCircle2, Plus, RefreshCw, Trophy } from 'lucide-react';
 import { useFomoLeaderboard } from '../../hooks/useFomoTracking';
 import { cn } from '../../lib/utils';
-import type { FomoLeaderboardEntry } from '../../types/fomo';
+import type { FomoLeaderboardEntry, FomoLeaderboardSource } from '../../types/fomo';
+
+// Windows offered. 24h/all can be served live by fomo.family; 7d and 30d exist
+// only on the 985monitor snapshot, and the backend routes accordingly.
+const WINDOWS = [
+  { value: '24h' as const, label: '24H' },
+  { value: '7d' as const, label: '7D' },
+  { value: '30d' as const, label: '30D' },
+  { value: 'all' as const, label: 'ALL' },
+];
+
+function formatAge(updatedAt: number | null): string {
+  if (!updatedAt) return 'age unknown';
+  const minutes = Math.max(0, Math.round((Date.now() - updatedAt) / 60_000));
+  if (minutes < 1) return 'just now';
+  if (minutes < 60) return `${minutes}m ago`;
+  const hours = Math.round(minutes / 60);
+  return hours < 24 ? `${hours}h ago` : `${Math.round(hours / 24)}d ago`;
+}
+
+/**
+ * Names the source under the board. This is load-bearing, not decoration: the
+ * fomo.family service account has been Forbidden upstream since 2026-08-26, so
+ * in practice these rows come from a third-party snapshot, and presenting them
+ * as OCT's own live feed would be misleading.
+ */
+function SourceNote({ meta }: { meta: FomoLeaderboardSource }) {
+  return (
+    <div className="shrink-0 px-comfy py-tight border-b border-oct-border bg-oct-surface-2">
+      <p className="type-caption text-oct-muted">
+        {meta.live ? (
+          <>Live from <span className="font-bold text-oct-text">{meta.sourceLabel}</span>.</>
+        ) : (
+          <>
+            Snapshot from{' '}
+            {meta.sourceUrl ? (
+              <a
+                href={meta.sourceUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="font-bold text-oct-text underline decoration-dotted"
+              >
+                {meta.sourceLabel}
+              </a>
+            ) : (
+              <span className="font-bold text-oct-text">{meta.sourceLabel}</span>
+            )}{' '}
+            — updated {formatAge(meta.updatedAt)}. Third-party data, not OCT's live feed.{' '}
+            {/* The button works again, but the poller behind it does not: saying so
+                here is the honest version. A TRACK that silently succeeds and then
+                shows nothing forever is worse than one that errors. */}
+            <span className="text-oct-text">
+              Tracking is saved, but live trades stay unavailable while fomo.family blocks us.
+            </span>
+          </>
+        )}
+      </p>
+    </div>
+  );
+}
 
 function entryLabel(entry: FomoLeaderboardEntry): string {
   return entry.displayName || (entry.fomoHandle ? `@${entry.fomoHandle}` : entry.fomoUserId);
@@ -25,7 +85,13 @@ function pnlTone(value: number | null | undefined): string {
 interface FomoLeaderboardProps {
   trackedIds: Set<string>;
   trackedHandles: Set<string>;
-  onTrack: (query: string, fomoUserId: string) => Promise<{ ok: boolean; status?: number; error?: string }>;
+  /**
+   * Takes the whole row, not a search string: the row already carries the
+   * resolved identity (uid / handle / name) from whichever source served the
+   * board, and passing it through means TRACK never needs the blocked
+   * fomo.family service account to resolve anything.
+   */
+  onTrack: (entry: FomoLeaderboardEntry) => Promise<{ ok: boolean; status?: number; error?: string }>;
   trackingId: string | null;
   embedded?: boolean;
 }
@@ -37,15 +103,33 @@ export default function FomoLeaderboard({
   trackingId,
   embedded = false,
 }: FomoLeaderboardProps) {
-  const { window, setWindow, entries, loading, error, refresh } = useFomoLeaderboard();
+  const { window, setWindow, entries, meta, loading, error, refresh } = useFomoLeaderboard();
 
   const isTracked = (entry: FomoLeaderboardEntry) =>
     trackedIds.has(entry.fomoUserId) ||
     (entry.fomoHandle ? trackedHandles.has(entry.fomoHandle.toLowerCase()) : false);
 
+  const [feedback, setFeedback] = useState<{ tone: 'success' | 'error'; text: string } | null>(null);
+
   const handleTrack = async (entry: FomoLeaderboardEntry) => {
-    const query = entry.fomoHandle ?? entry.displayName ?? entry.fomoUserId;
-    await onTrack(query, entry.fomoUserId);
+    setFeedback(null);
+    const result = await onTrack(entry);
+    if (result.ok) {
+      setFeedback({
+        tone: 'success',
+        text: meta && !meta.live
+          ? `Now tracking ${entryLabel(entry)}. Their trades will appear under Live once fomo.family access is restored — the feed is down at the source right now.`
+          : `Now tracking ${entryLabel(entry)}.`,
+      });
+      return;
+    }
+    setFeedback({
+      tone: result.status === 409 ? 'success' : 'error',
+      text:
+        result.status === 409
+          ? 'You are already tracking this trader.'
+          : result.error || 'Failed to track trader.',
+    });
   };
 
   return (
@@ -63,19 +147,19 @@ export default function FomoLeaderboard({
           </>
         )}
         <div className="flex gap-tight">
-          {(['24h', 'all'] as const).map((w) => (
+          {WINDOWS.map((w) => (
             <button
-              key={w}
+              key={w.value}
               type="button"
-              onClick={() => setWindow(w)}
+              onClick={() => setWindow(w.value)}
               className={cn(
                 'px-cozy py-tight rounded-oct-sm type-caption font-mono font-bold border transition-all duration-fast',
-                window === w
+                window === w.value
                   ? 'bg-oct-accent text-white border-oct-accent/50 shadow-oct-glow-accent'
                   : 'text-oct-muted border-transparent hover:border-oct-border-bright hover:text-oct-text',
               )}
             >
-              {w === '24h' ? '24H' : 'ALL'}
+              {w.label}
             </button>
           ))}
         </div>
@@ -90,6 +174,27 @@ export default function FomoLeaderboard({
           <RefreshCw size={14} className={loading ? 'animate-spin' : ''} />
         </button>
       </div>
+
+      {meta && <SourceNote meta={meta} />}
+
+      {feedback && (
+        <div
+          role="status"
+          className={cn(
+            'shrink-0 flex items-start gap-tight px-comfy py-tight border-b type-caption',
+            feedback.tone === 'success'
+              ? 'border-oct-border bg-oct-surface-2 text-oct-text'
+              : 'border-oct-critical/40 bg-oct-critical-dim text-oct-critical',
+          )}
+        >
+          {feedback.tone === 'success' ? (
+            <CheckCircle2 size={14} className="shrink-0 mt-px" />
+          ) : (
+            <AlertTriangle size={14} className="shrink-0 mt-px" />
+          )}
+          <span>{feedback.text}</span>
+        </div>
+      )}
 
       <div className="flex-1 min-h-0 overflow-auto">
         {error && (

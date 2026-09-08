@@ -16,7 +16,7 @@ import { GatewayManager } from './discord/gatewayManager.js';
 import { createProxyBundle } from './discord/proxy.js';
 import { configStore } from './config/store.js';
 import { TelegramClientManager } from './telegram/clientManager.js';
-import { processTelegramMessage, telegramChannelId } from './telegram/messageProcessor.js';
+import { processTelegramMessage, roomsForTelegramMessage, telegramChannelId } from './telegram/messageProcessor.js';
 import type { TelegramRawMessage } from './telegram/types.js';
 import type { TelegramMessageProcessorContext } from './telegram/messageProcessor.js';
 import { WsServer } from './ws/server.js';
@@ -25,7 +25,14 @@ import { createBotRouter } from './api/routes/bot.js';
 import { createSniperRouter } from './api/sniper/router.js';
 import { requireBotAuth } from './auth/botAuth.js';
 import { startBot } from './bot/index.js';
-import { startTelegramBot, tgDeliverMcapCross, tgSubscriberCount } from './tgbot/index.js';
+import { startTelegramBot, tgDeliverMcapCross, tgDeliverOctSignal, tgSubscriberCount } from './tgbot/index.js';
+import { buildOctSignalView } from './tgbot/octSignals.js';
+import {
+  resolveSignalIngestUserId,
+  planSignalIngest,
+  signalIngestKeepAlive,
+  redactUserId,
+} from './tgbot/signalIngest.js';
 import { startDailyDigestScheduler } from './bot/dailyDigest.js';
 import { getStorageProvider, isHostedMode } from './storage/index.js';
 import { authMiddleware } from './auth/middleware.js';
@@ -44,11 +51,13 @@ import type { MessageProcessorContext } from './utils/messageProcessor.js';
 import { sendPushover } from './utils/pushover.js';
 import { broadcastFrontendAlerts } from './utils/frontendAlerts.js';
 import { startFomoPoller } from './fomo/poller.js';
+import { startRobinhoodPoller } from './robinhood/poller.js';
 import { startFomoJoinWatcher } from './fomo/joinWatcher.js';
 import { startPumpCalloutPoller } from './pumpfun/calloutPoller.js';
 import { startJ7Consumer } from './j7/index.js';
 import { startWalletMovementPoller } from './wallets/movementPoller.js';
 import { startFomoRetentionSweeper } from './fomo/retention.js';
+import { startFomoStreamListener } from './fomo/streamListener.js';
 import { startMissedRunnerPoller } from './alerts/missedRunnerPoller.js';
 import { startRevivalPoller } from './revival/poller.js';
 import { startJournalPoller } from './journal/poller.js';
@@ -489,22 +498,12 @@ export function getUserGateway(userId: string): GatewayManager | null {
 function wireTelegramEvents(tg: TelegramClientManager, wsServer: WsServer, userId: string): void {
   const storage = getStorageProvider();
 
-  // Rooms a Telegram message routes to. A topic message reaches rooms subscribed to EITHER its
-  // topic-channel OR the parent group — so a "whole group" subscription still receives every topic
-  // (backward-compatible), while a per-topic subscription gets just that topic. Non-topic messages
-  // resolve exactly as before. Deduped by room id in case a room subscribes to both.
-  const resolveTelegramRooms = async (raw: TelegramRawMessage) => {
-    if (raw.topicId == null) {
-      return storage.getRoomsForChannel(userId, raw.chatId);
-    }
-    const [topicRooms, groupRooms] = await Promise.all([
-      storage.getRoomsForChannel(userId, telegramChannelId(raw.chatId, raw.topicId)),
-      storage.getRoomsForChannel(userId, raw.chatId),
-    ]);
-    const byId = new Map(groupRooms.map((r) => [r.id, r]));
-    for (const r of topicRooms) byId.set(r.id, r);
-    return [...byId.values()];
-  };
+  // Rooms a Telegram message routes to — see roomsForTelegramMessage for the topic/group
+  // routing rules. One `getRooms` load feeds both predicates; this used to be two parallel
+  // `getRoomsForChannel` calls, i.e. two loads of the same room set per topic message on the
+  // hottest path in the process.
+  const resolveTelegramRooms = async (raw: TelegramRawMessage) =>
+    roomsForTelegramMessage(await storage.getRooms(userId), raw.chatId, raw.topicId);
 
   tg.on('ready', (user: { id: string; username: string | null; firstName: string }) => {
     console.log(`[App] Telegram logged in as ${user.firstName} (@${user.username ?? 'no-username'})`);
@@ -532,6 +531,19 @@ function wireTelegramEvents(tg: TelegramClientManager, wsServer: WsServer, userI
     const roomKeywords = rooms.flatMap((r) => r.keywordPatterns ?? []);
     const frontendMsg = processTelegramMessage(raw, roomKeywords, ctx);
     const evmChainHint = detectEvmChainFromContent(raw.text, []);
+
+    // OCT Alerts: if this message came from an operator-configured algorithm
+    // source channel (by id, per chain — see tgbot/octSignals.ts), forward it to
+    // the bot's subscribers in realtime. Rides the message that already arrived;
+    // no added poll, no delay. White-labelled and independent of the rest of the
+    // pipeline — it does not depend on room routing or contract persistence.
+    //
+    // The source is a forum TOPIC of a supergroup, so the recogniser needs the
+    // full `chatId:topicId` composite (the same id routing computes), not the
+    // bare chat id — otherwise the two algorithm topics are indistinguishable.
+    const octSignalChannelId = telegramChannelId(raw.chatId, raw.topicId);
+    const octSignal = buildOctSignalView({ chatId: octSignalChannelId, text: raw.text, evmChainHint });
+    if (octSignal) tgDeliverOctSignal(octSignal);
 
     checkPushover(config.pushover, frontendMsg, evmChainHint, config.contractLinkTemplates);
 
@@ -654,6 +666,100 @@ export function getUserTelegram(userId: string): TelegramClientManager | null {
     return telegramManagers.get(userId) ?? null;
   }
   return localTelegramManager;
+}
+
+// --- OCT Alerts hosted ingest ---
+//
+// Hosted mode connects gateways per-user on demand, so nothing reads the
+// algorithm forum-topics until a console session is open. That is why a scan
+// posted after a deploy forwarded nothing. Bring up ONE designated operator
+// Telegram session at boot and keep it alive independent of any console
+// session, routed through the same `connectTelegram` → `wireTelegramEvents`
+// path as every other session, so the octSignal hook is wired identically.
+//
+// How is it kept alive? Transient drops self-heal inside the client wrapper
+// (telegram/client.ts runs an indefinite health-check + backoff reconnect).
+// Nothing idle-evicts a hosted Telegram manager (unlike the Discord
+// UserGatewayPool), so the session is not on a teardown timer. The watchdog
+// below is the belt-and-suspenders: it re-establishes an ingest session that is
+// gone ENTIRELY — never connected because no session was stored at boot, or
+// explicitly disconnected — without touching healthy or self-reconnecting ones.
+
+/** How often the ingest watchdog checks that keep-alive sessions still exist. */
+const SIGNAL_INGEST_WATCHDOG_MS = 5 * 60_000;
+let signalIngestWatchdog: ReturnType<typeof setInterval> | null = null;
+
+/**
+ * Connect the designated operator ingest session at boot and register it as
+ * keep-alive. Fails safe: a missing user id or an unusable session logs one
+ * clear line and returns — it never throws into startup. Never logs the
+ * session string, api hash, or api id.
+ */
+export async function startHostedSignalIngest(wsServer: WsServer): Promise<void> {
+  const userId = resolveSignalIngestUserId();
+  if (!userId) {
+    console.log('[App] OCT Alerts ingest: no ingest user configured (set OCT_SIGNAL_INGEST_USER_ID or TG_BOT_ALERT_SOURCE_USER_ID); hosted signal ingest disabled.');
+    return;
+  }
+
+  // Mark keep-alive BEFORE the connect attempt so the watchdog owns this user
+  // even if the boot read finds no session yet.
+  signalIngestKeepAlive.mark(userId);
+
+  let config;
+  try {
+    config = await getStorageProvider().getConfig(userId);
+  } catch (err) {
+    console.error(`[App] OCT Alerts ingest: could not read config for user ${redactUserId(userId)}: ${(err as Error).message}`);
+    startSignalIngestWatchdog(wsServer);
+    return;
+  }
+
+  const plan = planSignalIngest(userId, config);
+  if (plan.action === 'missing-session') {
+    console.log(`[App] OCT Alerts ingest: user ${redactUserId(userId)} has no usable Telegram session/apiId/apiHash stored; cannot ingest yet. Store that account's Telegram session and it will connect without a restart.`);
+    startSignalIngestWatchdog(wsServer);
+    return;
+  }
+  if (plan.action === 'connect') {
+    console.log(`[App] OCT Alerts ingest: connecting Telegram for user ${redactUserId(userId)} (${plan.sessions.length} session(s))...`);
+    connectTelegram(plan.apiId, plan.apiHash, plan.sessions, wsServer, userId)
+      .then(() => console.log(`[App] OCT Alerts ingest: Telegram connected for user ${redactUserId(userId)}.`))
+      .catch((err) => console.error(`[App] OCT Alerts ingest: Telegram connection failed for user ${redactUserId(userId)}: ${(err as Error).message}`));
+  }
+
+  startSignalIngestWatchdog(wsServer);
+}
+
+function startSignalIngestWatchdog(wsServer: WsServer): void {
+  if (signalIngestWatchdog) return;
+  signalIngestWatchdog = setInterval(() => {
+    void ensureSignalIngestConnected(wsServer);
+  }, SIGNAL_INGEST_WATCHDOG_MS);
+  signalIngestWatchdog.unref?.();
+}
+
+/**
+ * Re-establish any keep-alive ingest session that has gone missing. Reads
+ * config ONLY when a session is absent (a rare, non-steady-state event), so it
+ * adds no per-message or steady-state storage egress.
+ */
+async function ensureSignalIngestConnected(wsServer: WsServer): Promise<void> {
+  const storage = getStorageProvider();
+  for (const userId of signalIngestKeepAlive.list()) {
+    // A manager that exists — connected, or mid-reconnect inside the client
+    // wrapper — is left alone. Only a genuinely absent session is restored.
+    if (getUserTelegram(userId)) continue;
+    try {
+      const plan = planSignalIngest(userId, await storage.getConfig(userId));
+      if (plan.action === 'connect') {
+        console.log(`[App] OCT Alerts ingest: watchdog reconnecting Telegram for user ${redactUserId(userId)}...`);
+        await connectTelegram(plan.apiId, plan.apiHash, plan.sessions, wsServer, userId);
+      }
+    } catch (err) {
+      console.error(`[App] OCT Alerts ingest: watchdog reconnect failed for user ${redactUserId(userId)}: ${(err as Error).message}`);
+    }
+  }
 }
 
 const app = express();
@@ -845,6 +951,15 @@ httpServer.listen(PORT, HOST, async () => {
   // signal). Self-gates exactly like the poller above: idle without Supabase
   // or the shared FOMO refresh token.
   startFomoJoinWatcher(wsServer);
+  // Robinhood Chain live tape (robinhoodtrenches, keyless). Opt-in via
+  // OCT_ROBINHOOD_ENABLED; broadcasts `robinhood_fill` on the existing WS.
+  // Self-gates and never throws — a third-party outage parks the interval.
+  startRobinhoodPoller(wsServer);
+  // All-chain FOMO tape re-broadcast by 985monitor.xyz (public SSE, keyless).
+  // Opt-in via OCT_FOMO_STREAM_ENABLED; broadcasts `fomo_stream_trade` on the
+  // existing WS. Its own labelled signal — never fused with the fomo.family
+  // feed above or with OCT convergence.
+  startFomoStreamListener(wsServer);
   // Keeps the FOMO trade log from growing without bound; the console only ever
   // replays the last day of it.
   startFomoRetentionSweeper();
@@ -872,16 +987,26 @@ httpServer.listen(PORT, HOST, async () => {
   // than imported so mcapCross/ never reaches into tgbot/.
   startMcapCrossPoller(wsServer, {
     hasSubscribers: async () => (await tgSubscriberCount('mcapCross')) > 0,
-    deliver: (data) =>
-      tgDeliverMcapCross({
-        address: data.address,
-        network: data.network,
-        symbol: data.symbol,
-        mcapUsd: data.mcapUsd,
-        targetUsd: data.targetUsd,
-        liquidityUsd: data.liquidityUsd,
-        liquidityRatio: data.liquidityRatio,
-      }),
+    // The verdict travels with the payload so the bot can apply the OWNER's
+    // per-user filters per chat (tg_bot_chats.source_user_id → an OCT user).
+    // A chat that resolves to nobody falls back to `baselinePass`, i.e. exactly
+    // what it received before per-user filters existed.
+    deliver: (data, verdict) =>
+      tgDeliverMcapCross(
+        {
+          address: data.address,
+          network: data.network,
+          symbol: data.symbol,
+          mcapUsd: data.mcapUsd,
+          targetUsd: data.targetUsd,
+          liquidityUsd: data.liquidityUsd,
+          liquidityRatio: data.liquidityRatio,
+          volume24hUsd: data.volume24hUsd,
+          totalFeesUsd: data.totalFeesUsd,
+          caveats: data.caveats,
+        },
+        verdict,
+      ),
   });
   // Global pump.fun KOL-callout fan-out poller. Self-gates on Supabase (idle in
   // local mode), keyless upstream, so it never crashes the server.
@@ -963,5 +1088,8 @@ httpServer.listen(PORT, HOST, async () => {
     }
   } else {
     console.log('[App] Hosted mode: gateways will connect per-user on demand.');
+    // OCT Alerts is the exception: its MTProto source is infrastructure, not an
+    // on-demand user session, so it must be up regardless of any open console.
+    await startHostedSignalIngest(wsServer);
   }
 });

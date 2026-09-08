@@ -41,13 +41,25 @@ import { ChatOutboundGuard, readGuardLimits } from './guard.js';
 import {
   digestLineFor,
   mcapCrossDigestLine,
+  mcapCrossQuickBuyKeyboard,
+  octSignalDigestLine,
+  octSignalQuickBuyKeyboard,
   renderAlertCard,
   renderDigest,
   renderMcapCrossCard,
+  renderOctSignalCard,
   type ContractAlertView,
   type McapCrossView,
 } from './render.js';
-import { alertMatchesSource, readDefaultAlertSource, resolveAlertSource } from './source.js';
+import { OctSignalDedupe, octSignalDedupeKey, type OctSignalView } from './octSignals.js';
+import type { TgInlineKeyboardMarkup } from './types.js';
+import {
+  alertMatchesSource,
+  chatsPassingSignalFilters,
+  readDefaultAlertSource,
+  resolveAlertSource,
+  type SignalFilterGate,
+} from './source.js';
 import type { TelegramSender } from './sender.js';
 import type { TgChatRecord } from './chatStore.js';
 
@@ -55,6 +67,37 @@ export type { AlertLike };
 // Re-exported from alertPolicy so the classification rule has one home while
 // the historic import path keeps working.
 export { isContractDetection };
+
+/** The in-memory delivery figures the /start panel renders. */
+export interface PanelDelivery {
+  usedThisHour: number;
+  pending: { line: string; count: number }[];
+  pendingDropped: number;
+}
+
+/** What the panel shows when no fan-out exists: nothing sent, nothing queued. */
+const NO_DELIVERY: PanelDelivery = { usedThisHour: 0, pending: [], pendingDropped: 0 };
+
+/**
+ * The live fan-out, for the two callers that need to READ its counters without
+ * owning it: the panel's home card and its Queued card.
+ *
+ * index.ts owns the router's lifecycle (one per process, never torn down — see
+ * the note there), and both panel entry points sit downstream of it, so a
+ * direct import would be a cycle. This is the narrow door instead: a setter
+ * index.ts calls once, and a getter that answers honestly when the bot has
+ * never started rather than constructing a fan-out as a side effect of
+ * rendering a card.
+ */
+let panelSource: TgAlertRouter | null = null;
+
+export function setPanelDeliverySource(router: TgAlertRouter): void {
+  panelSource = router;
+}
+
+export function panelDeliveryFor(chatId: number, now: number = Date.now()): PanelDelivery {
+  return panelSource ? panelSource.panelDelivery(chatId, now) : NO_DELIVERY;
+}
 
 /** Flatten an alert into the fields a card renders. Pure; exported for tests. */
 export function buildContractAlertView(alert: AlertLike): ContractAlertView {
@@ -96,6 +139,12 @@ interface RenderedEvent {
   key: string;
   card: () => string;
   line: string;
+  /**
+   * The inline keyboard for the INSTANT card, when this event has one (today:
+   * the crossing card's quick-buy venues). Digest delivery is line-based and
+   * ignores it — a keyboard per row would turn a digest into a link farm.
+   */
+  replyMarkup?: TgInlineKeyboardMarkup;
 }
 
 /**
@@ -109,6 +158,12 @@ interface RenderedEvent {
 export class TgAlertRouter {
   private readonly guard: ChatOutboundGuard;
   private readonly buffer = new DigestBuffer();
+  /**
+   * OCT Alerts dedupe: upstream posts the same call twice (text + image card),
+   * so this collapses them to one alert per (chain, primary address) inside a
+   * TTL window. In-memory, per-process; see octSignals.ts.
+   */
+  private readonly octSignalDedupe = new OctSignalDedupe();
 
   constructor(private readonly getSender: () => TelegramSender | null) {
     this.guard = new ChatOutboundGuard(readGuardLimits());
@@ -180,15 +235,35 @@ export class TgAlertRouter {
    * could travel as an AlertLike — would put a chat message that never existed
    * into every downstream consumer of that seam. Widening the seam honestly is
    * the cheaper lie to not tell.
+   *
+   * `gate` IS THE PER-USER FILTER LAYER, applied at DELIVERY. The poller has
+   * already decided (once, globally) what crossed and what it cost; this asks,
+   * per chat, whether the OCT user that chat is sourced from wants it. See
+   * `chatsPassingSignalFilters` — including what happens when a chat resolves
+   * to nobody, which is "exactly what it got yesterday". Omitting the gate
+   * keeps the pre-filter behaviour, which is what every existing caller and
+   * test expects.
    */
-  async handleSignal(view: McapCrossView, now: number = Date.now()): Promise<void> {
+  async handleSignal(
+    view: McapCrossView,
+    gate?: SignalFilterGate,
+    now: number = Date.now(),
+  ): Promise<void> {
     const sender = this.getSender();
     if (!sender) return;
 
     const type: TgAlertType = 'mcapCross';
     try {
       const chats = await getChatStore().listEnabled();
-      const recipients = chats.filter((chat) => chat.settings.alerts[type] !== 'off');
+      const subscribed = chats.filter((chat) => chat.settings.alerts[type] !== 'off');
+      if (subscribed.length === 0) return;
+
+      // Subscription first, filters second. A chat that never opted into the
+      // class must not cost a filter read, and the ordering also means a filter
+      // failure can only ever REMOVE a recipient the subscription allowed.
+      const recipients = gate
+        ? await chatsPassingSignalFilters(subscribed, readDefaultAlertSource(), gate)
+        : subscribed;
       if (recipients.length === 0) return;
 
       // One address is one crossing; two chains cannot collide because the key
@@ -197,6 +272,7 @@ export class TgAlertRouter {
         key: `${type}:${view.network}:${view.address}`,
         card: () => renderMcapCrossCard(view),
         line: mcapCrossDigestLine(view),
+        replyMarkup: mcapCrossQuickBuyKeyboard(view),
       };
 
       for (const chat of recipients) {
@@ -204,6 +280,73 @@ export class TgAlertRouter {
       }
     } catch (err) {
       console.error('[TgBot] Crossing delivery failed:', (err as Error)?.message ?? err);
+    }
+  }
+
+  /**
+   * Deliver one forwarded "OCT Alerts" signal to every subscribed chat.
+   *
+   * WHY IT LOOKS LIKE handleSignal BUT SKIPS THE BREAKER. Like the crossing, an
+   * octSignals event is class-named at the door, so it enters here rather than
+   * through `handle`'s classification step. Unlike every other class, it passes
+   * `countTowardBreaker: false` to `route`. That is deliberate and it does NOT
+   * weaken the two protections the incident was about:
+   *
+   *   • the hourly CEILING still binds it — a chat receives at most maxPerHour
+   *     messages whatever the source channels do, instant or digest, so a burst
+   *     cannot flood;
+   *   • an existing MUTE is still honoured — a muted chat is dropped before
+   *     anything is sent.
+   *
+   * What it must not do is TRIGGER the circuit breaker. The breaker mutes the
+   * WHOLE chat — every class — and this one is ON by default and bursty by
+   * nature. Letting a normal scan burst trip it would silence a chat's missed
+   * runners and crossings too, which is precisely the "do not auto-mute in a way
+   * that kills other alerts" hazard a default-on class introduces. The ceiling,
+   * not the breaker, is the right bound for a stream the operator opted everyone
+   * into.
+   */
+  async handleOctSignal(view: OctSignalView, now: number = Date.now()): Promise<void> {
+    const sender = this.getSender();
+    if (!sender) return;
+
+    const type: TgAlertType = 'octSignals';
+    const primary = view.addresses[0];
+
+    // DEDUPE (one call = one alert). Upstream posts the same call twice — a text
+    // card and an image card — within seconds; both carry the same contract, so
+    // both would otherwise fan out. Collapse to one per (chain, primary address)
+    // inside a TTL window, before touching the roster. A signal with NO address
+    // is never address-deduped: nothing to key on, so it always forwards.
+    if (primary && this.octSignalDedupe.isDuplicate(octSignalDedupeKey(view.chain, primary), now)) {
+      return;
+    }
+
+    try {
+      const chats = await getChatStore().listEnabled();
+      const recipients = chats.filter((chat) => chat.settings.alerts[type] !== 'off');
+      if (recipients.length === 0) return;
+
+      const rendered: RenderedEvent = {
+        key: `${type}:${view.network}:${primary ?? view.text.slice(0, 120)}`,
+        card: () => renderOctSignalCard(view),
+        line: octSignalDigestLine(view),
+        // The referral quick-buy venues (chain-correct, owner code embedded by
+        // the shared machinery — GMGN + Axiom) ride the primary address. No
+        // address → no keyboard, and the card forwards on its own.
+        replyMarkup: primary
+          ? octSignalQuickBuyKeyboard({ address: primary, network: view.network })
+          : undefined,
+      };
+
+      for (const chat of recipients) {
+        await this.route(chat, type, rendered, now, {
+          countTowardBreaker: false,
+          bypassHourlyCeiling: true,
+        });
+      }
+    } catch (err) {
+      console.error('[TgBot] Signal delivery failed:', (err as Error)?.message ?? err);
     }
   }
 
@@ -225,12 +368,50 @@ export class TgAlertRouter {
     }
   }
 
-  /** One event, one chat. Split out so `handle` reads as the policy it is. */
+  /**
+   * What the /start panel needs to describe this chat's delivery, read
+   * entirely from PROCESS MEMORY.
+   *
+   * Deliberately zero I/O. The panel has a Refresh button anyone in a group can
+   * press, and production is already running its Supabase connection pool hot —
+   * so every field the panel can answer without a query is one it must. The
+   * hourly figure comes from the same guard the fan-out consults, and the
+   * queued lines from the same buffer the digest flushes, so the card cannot
+   * report a state the delivery path disagrees with.
+   */
+  panelDelivery(chatId: number, now: number = Date.now()): PanelDelivery {
+    const { lines, dropped } = this.buffer.peek(chatId);
+    return {
+      usedThisHour: this.guard.usedThisHour(chatId, now),
+      pending: lines.map((l) => ({ line: l.line, count: l.count })),
+      pendingDropped: dropped,
+    };
+  }
+
+  /**
+   * One event, one chat. Split out so `handle` reads as the policy it is.
+   *
+   * `countTowardBreaker` defaults true — every class the incident was about
+   * feeds the circuit breaker. octSignals passes false: it is a default-on,
+   * operator-curated firehose, so it must not auto-mute the chat's OTHER
+   * subscriptions.
+   *
+   * `bypassHourlyCeiling` defaults false. octSignals passes true by explicit
+   * operator decision: these forwarded scans are the point of the bot for its
+   * users, so the per-chat hourly ceiling is lifted for this class alone —
+   * every scan is delivered. It does NOT touch the other classes' ceiling
+   * (octSignals sends are simply not admitted through the guard, so they never
+   * consume or exhaust the count the incident classes rely on), the per-chat
+   * mute is still honoured, and `sender.ts`'s global send pacing still stands —
+   * that pacing, not this ceiling, is what keeps Telegram from flood-banning
+   * the bot, and removing the ceiling does not remove it.
+   */
   private async route(
     chat: TgChatRecord,
     type: TgAlertType,
     rendered: RenderedEvent,
     now: number,
+    opts: { countTowardBreaker?: boolean; bypassHourlyCeiling?: boolean } = {},
   ): Promise<void> {
     const sender = this.getSender();
     if (!sender) return;
@@ -245,22 +426,26 @@ export class TgAlertRouter {
 
     // Counted whatever the delivery mode: the breaker watches UPSTREAM volume,
     // and a digest entry is exactly as much evidence of a flood as a send.
-    const event = this.guard.noteEvent(chat.chatId, now);
-    if (event.tripped) {
-      await this.trip(chat, event.events, event.muteUntil);
-      return;
+    if (opts.countTowardBreaker !== false) {
+      const event = this.guard.noteEvent(chat.chatId, now);
+      if (event.tripped) {
+        await this.trip(chat, event.events, event.muteUntil);
+        return;
+      }
     }
 
     if (chat.settings.alerts[type] === 'instant') {
-      const decision = this.guard.admitSend(chat.chatId, now, chat.settings.mutedUntil);
-      if (!decision.allow) {
-        console.warn(
-          `[TgBot] Chat ${chat.chatId} is at its hourly ceiling (${decision.used}/${decision.limit}); ` +
-            `dropped an instant ${type} alert.`,
-        );
-        return;
+      if (!opts.bypassHourlyCeiling) {
+        const decision = this.guard.admitSend(chat.chatId, now, chat.settings.mutedUntil);
+        if (!decision.allow) {
+          console.warn(
+            `[TgBot] Chat ${chat.chatId} is at its hourly ceiling (${decision.used}/${decision.limit}); ` +
+              `dropped an instant ${type} alert.`,
+          );
+          return;
+        }
       }
-      void sender.send(chat.chatId, rendered.card()).catch(() => {
+      void sender.send(chat.chatId, rendered.card(), { replyMarkup: rendered.replyMarkup }).catch(() => {
         /* sender never rejects; belt-and-braces */
       });
       return;

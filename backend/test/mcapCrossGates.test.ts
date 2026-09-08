@@ -1,9 +1,12 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import {
   DEFAULT_GATE_CONFIG,
+  DEFAULT_RECROSS_WATERMARK_FACTOR,
   DEFAULT_TARGET_MCAP_USD,
   evaluateMcapGates,
+  isWatermarkReCross,
   resolveGateConfig,
+  resolveReCrossWatermarkFactor,
   resolveTargetMcapUsd,
   type McapGateInput,
 } from '../src/mcapCross/gates.js';
@@ -140,6 +143,11 @@ function input(partial: Partial<McapGateInput>): McapGateInput {
     network: 'solana',
     mcapUsd: 800_000,
     liquidityUsd: 60_000,
+    // UNKNOWN by default, deliberately. Most of the suite below is about a
+    // world where no volume filter is set, and in that world an unknown volume
+    // must be invisible — so the default input is the awkward case, not the
+    // convenient one.
+    volume24hUsd: null,
     security: normalizeSecurity(SOL_HEALTHY, 'solana'),
     ...partial,
   };
@@ -209,6 +217,28 @@ describe('evaluateMcapGates', () => {
     expect(evaluateMcapGates(input({ network: 'bsc', security: sec })).decision).toBe('pass');
   });
 
+  it('flags a null honeypot flag as a caveat so the card cannot imply it passed', () => {
+    // The pass above is deliberate; presenting it as a clean 'Scam-filtered'
+    // result is not. The caveat is what lets delivery stay permissive and
+    // honest at the same time.
+    const sec = normalizeSecurity({ ...BSC_HEALTHY, is_honeypot: null }, 'bsc');
+    expect(evaluateMcapGates(input({ network: 'bsc', security: sec })).caveats).toEqual([
+      'honeypotUnknown',
+    ]);
+  });
+
+  it('adds no honeypot caveat when the flag was actually evaluated', () => {
+    const sec = normalizeSecurity({ ...BSC_HEALTHY, is_honeypot: false }, 'bsc');
+    expect(evaluateMcapGates(input({ network: 'bsc', security: sec })).caveats).toEqual([]);
+  });
+
+  it('adds no honeypot caveat on Solana, where the flag is meaningless', () => {
+    // normalizeSecurity nulls `honeypot` on Solana by design, so a naive
+    // null-check would caveat every Solana alert forever.
+    const sec = normalizeSecurity(SOL_HEALTHY, 'solana');
+    expect(evaluateMcapGates(input({ network: 'solana', security: sec })).caveats).toEqual([]);
+  });
+
   it('rejects an LP that GMGN says is neither burned nor locked', () => {
     const sec = normalizeSecurity(
       { ...SOL_HEALTHY, burn_status: 'none', burn_ratio: '0', lock_summary: { is_locked: false } },
@@ -258,6 +288,12 @@ const ENV_KEYS = [
   'TRENCHCORD_MCAP_CROSS_TARGET_USD',
   'OCT_MCAP_CROSS_MIN_LIQUIDITY_USD',
   'OCT_MCAP_CROSS_REQUIRE_LP_SECURED',
+  'OCT_MCAP_CROSS_MIN_PRICE_CHANGE_H24',
+  'OCT_MCAP_CROSS_MAX_POOL_AGE_DAYS',
+  'OCT_MCAP_CROSS_RECROSS_WATERMARK_FACTOR',
+  'OCT_MCAP_CROSS_MAX_BUNDLER_RATE',
+  'OCT_MCAP_CROSS_MAX_SNIPER_RATE',
+  'OCT_MCAP_CROSS_MAX_INSIDER_RATE',
 ];
 let saved: Record<string, string | undefined> = {};
 
@@ -334,7 +370,15 @@ describe('AbstainLedger', () => {
 // --- Cross-chain address collisions ------------------------------------------
 
 function snap(chainId: string | null): MintSnapshot {
-  return { mint: '0xabc', symbol: null, priceUsd: 1, mcapUsd: 1, liquidityUsd: 1, chainId };
+  return {
+    mint: '0xabc',
+    symbol: null,
+    priceUsd: 1,
+    mcapUsd: 1,
+    liquidityUsd: 1,
+    volume24hUsd: null,
+    chainId,
+  };
 }
 
 describe('snapshotMatchesNetwork', () => {
@@ -348,5 +392,338 @@ describe('snapshotMatchesNetwork', () => {
   it('accepts a slug it has no opinion about — a wrong guess must cost a miss, not a wrong alert', () => {
     expect(snapshotMatchesNetwork(snap('base'), 'bsc')).toBe(true);
     expect(snapshotMatchesNetwork(snap(null), 'bsc')).toBe(true);
+  });
+});
+
+
+/**
+ * The 24h volume floor — the one gate that is OFF unless somebody turns it on.
+ *
+ * WHY THIS BLOCK IS LONGER THAN THE GATE IT TESTS. Three separate ways to get
+ * this wrong, and only one of them would be noticed by anybody:
+ *
+ *   1. Shipping it ON. Every existing user's alerts change silently.
+ *   2. Reading an unknown volume as zero. A floor then REJECTS exactly the
+ *      tokens the upstream is quietest about, and the failure looks like a
+ *      quiet market rather than a bug — the same shape pinaxCandles.ts's
+ *      calibration guard exists to prevent.
+ *   3. Reading an unknown volume as a PASS. That is the abstain rule inverted,
+ *      and it would let a filter manufacture confidence out of a null, which
+ *      is precisely why `requireLpSecured` is not user-editable.
+ *
+ * Only (1) is visible in production; (2) and (3) are silent. Hence the
+ * coverage.
+ */
+describe('evaluateMcapGates — 24h volume floor', () => {
+  const withFloor = (min: number | null) => ({ ...DEFAULT_GATE_CONFIG, minVolume24hUsd: min });
+
+  // --- (1) No filter set: today's behaviour, exactly ------------------------
+
+  it('ships OFF, so a user who sets nothing is unaffected', () => {
+    expect(DEFAULT_GATE_CONFIG.minVolume24hUsd).toBeNull();
+    expect(resolveGateConfig().minVolume24hUsd).toBeNull();
+  });
+
+  it('ignores volume entirely when no floor is set — known, unknown or zero', () => {
+    for (const volume24hUsd of [null, 0, 12, 50_000_000]) {
+      expect(evaluateMcapGates(input({ volume24hUsd })).decision).toBe('pass');
+    }
+  });
+
+  it('is not evaluated at all when off, so it cannot appear among the failures', () => {
+    const verdict = evaluateMcapGates(input({ volume24hUsd: 0 }), withFloor(null));
+    expect(verdict.decision).toBe('pass');
+    expect(verdict.failed).toEqual([]);
+  });
+
+  // --- (2) Set + known: an ordinary comparison ------------------------------
+
+  it('rejects a token below a set floor', () => {
+    const verdict = evaluateMcapGates(input({ volume24hUsd: 5_000 }), withFloor(50_000));
+    expect(verdict.decision).toBe('reject');
+    expect(verdict.failed).toContain('volume24h');
+  });
+
+  it('passes a token above a set floor', () => {
+    expect(evaluateMcapGates(input({ volume24hUsd: 500_000 }), withFloor(50_000)).decision).toBe(
+      'pass',
+    );
+  });
+
+  it('treats a genuine reported zero as a real reading, not as a gap', () => {
+    // "Listed, and nobody traded it" is data. Only "nobody reported" is a gap.
+    const verdict = evaluateMcapGates(input({ volume24hUsd: 0 }), withFloor(1));
+    expect(verdict.decision).toBe('reject');
+    expect(verdict.failed).toContain('volume24h');
+  });
+
+  it('accepts a floor of zero as a real threshold every listed token clears', () => {
+    expect(evaluateMcapGates(input({ volume24hUsd: 0 }), withFloor(0)).decision).toBe('pass');
+  });
+
+  // --- (3) Set + unknown: ABSTAIN. The whole point. -------------------------
+
+  it('ABSTAINS on an unknown volume rather than failing it', () => {
+    const verdict = evaluateMcapGates(input({ volume24hUsd: null }), withFloor(50_000));
+    expect(verdict.decision).toBe('abstain');
+    expect(verdict.abstainReason).toBe('24h volume unknown');
+    expect(verdict.failed).toEqual([]);
+  });
+
+  it('abstains on an unknown volume for EVERY watched chain, not just Solana', () => {
+    // The metric comes from the same DexScreener batch on all three chains, so
+    // there is no chain where it is structurally absent — but a per-token gap
+    // must abstain identically wherever it happens. A filter that silently
+    // rejected every BNB and Robinhood token would look exactly like a quiet
+    // week on those chains.
+    const cases: McapGateInput[] = [
+      input({ network: 'solana', volume24hUsd: null }),
+      input({
+        network: 'bsc',
+        volume24hUsd: null,
+        security: normalizeSecurity(BSC_HEALTHY, 'bsc'),
+      }),
+      input({
+        network: 'robinhood',
+        volume24hUsd: null,
+        security: normalizeSecurity(BSC_HEALTHY, 'robinhood'),
+      }),
+    ];
+    for (const c of cases) {
+      const verdict = evaluateMcapGates(c, withFloor(50_000));
+      expect(verdict.decision).toBe('abstain');
+      expect(verdict.failed).toEqual([]);
+    }
+  });
+
+  it('abstains on a NaN volume too — a non-finite number is not a reading', () => {
+    expect(evaluateMcapGates(input({ volume24hUsd: NaN }), withFloor(1)).decision).toBe('abstain');
+  });
+
+  it('never lets the floor turn an abstain into a pass', () => {
+    // Unknown volume AND unknown Solana authorities. Whatever the floor says,
+    // the answer is still "we could not tell".
+    const blind = input({ volume24hUsd: null, security: normalizeSecurity(
+        { ...SOL_HEALTHY, renounced_mint: null, renounced_freeze_account: null },
+        'solana',
+      ) });
+    for (const floor of [null, 0, 1_000_000]) {
+      expect(evaluateMcapGates(blind, withFloor(floor)).decision).toBe('abstain');
+    }
+  });
+
+  it('keeps reject ahead of abstain — a thin pool answers the question anyway', () => {
+    // Consistent with the existing rule: a token that fails a gate it CAN be
+    // measured against is not an open question just because something else was
+    // missing. Otherwise every unindexable token buys a free security lookup
+    // every cycle, forever.
+    const verdict = evaluateMcapGates(
+      input({ volume24hUsd: null, liquidityUsd: 100 }),
+      withFloor(50_000),
+    );
+    expect(verdict.decision).toBe('reject');
+    expect(verdict.failed).toContain('liquidity');
+  });
+
+  it('does not disturb the honeypot caveat', () => {
+    // #369: an unevaluated check is surfaced, never hidden. A volume threshold
+    // is a comparison over market data and must not touch that.
+    const verdict = evaluateMcapGates(
+      input({
+        network: 'bsc',
+        volume24hUsd: 500_000,
+        security: normalizeSecurity({ ...BSC_HEALTHY, is_honeypot: null }, 'bsc'),
+      }),
+      withFloor(50_000),
+    );
+    expect(verdict.decision).toBe('pass');
+    expect(verdict.caveats).toContain('honeypotUnknown');
+  });
+});
+
+// --- The first-run-up discriminator ------------------------------------------
+//
+// The owner reported the 750K signal firing on tokens that had ALREADY run and
+// were falling back DOWN through the threshold (a dead-cat bounce) rather than
+// climbing through it for the first time. The concrete case was $LOOM: chart
+// ATH 2.14M, now ~765K, 24h -20.52%, a 46-day-old pool — it "crossed" 750K
+// upward as a bounce inside a larger downtrend. These pin the three signals
+// that separate a first run-up from a fall-back.
+
+describe('evaluateMcapGates — first-run-up momentum gate', () => {
+  it('ships ON: the default floor is 0, not null (it IS the fix)', () => {
+    expect(DEFAULT_GATE_CONFIG.minPriceChangeH24).toBe(0);
+    expect(resolveGateConfig().minPriceChangeH24).toBe(0);
+  });
+
+  it('SUPPRESSES the LOOM case — negative 24h change, old pool, upward tick', () => {
+    // Under the SHIPPED config: no operator age ceiling, momentum floor 0. The
+    // momentum gate alone rejects it; the age is real but not what drops it.
+    const verdict = evaluateMcapGates(
+      input({ mcapUsd: 765_000, priceChangeH24: -0.2052, poolAgeMs: 46 * 86_400_000 }),
+    );
+    expect(verdict.decision).toBe('reject');
+    expect(verdict.failed).toContain('momentum');
+  });
+
+  it('FIRES a genuine young fast-climber — strong positive momentum', () => {
+    const verdict = evaluateMcapGates(
+      input({ mcapUsd: 780_000, priceChangeH24: 3.2, poolAgeMs: 4 * 3_600_000 }),
+    );
+    expect(verdict.decision).toBe('pass');
+  });
+
+  it('abstain-to-FIRE: an UNKNOWN 24h change is never a drop (does not mute the signal)', () => {
+    expect(evaluateMcapGates(input({ priceChangeH24: null })).decision).toBe('pass');
+    expect(evaluateMcapGates(input({ priceChangeH24: undefined })).decision).toBe('pass');
+    expect(evaluateMcapGates(input({ priceChangeH24: Number.NaN })).decision).toBe('pass');
+  });
+
+  it('is user-tunable: a higher floor rejects a weak climber the default passes', () => {
+    const weak = input({ priceChangeH24: 0.05 }); // +5%
+    expect(evaluateMcapGates(weak).decision).toBe('pass'); // default floor 0
+    const cfg = { ...DEFAULT_GATE_CONFIG, minPriceChangeH24: 0.5 }; // require +50%
+    const verdict = evaluateMcapGates(weak, cfg);
+    expect(verdict.decision).toBe('reject');
+    expect(verdict.failed).toContain('momentum');
+  });
+
+  it('no regression when loosened below zero — a downtrend fires again', () => {
+    const cfg = { ...DEFAULT_GATE_CONFIG, minPriceChangeH24: -1 };
+    expect(evaluateMcapGates(input({ priceChangeH24: -0.2052 }), cfg).decision).toBe('pass');
+  });
+
+  it('rejects on momentum even when the security lookup is unavailable', () => {
+    // Momentum is a market-data gate, so a fall-back drops without paying for a
+    // security call; security:null must not turn that reject into an abstain.
+    const verdict = evaluateMcapGates(input({ priceChangeH24: -0.3, security: null }));
+    expect(verdict.decision).toBe('reject');
+    expect(verdict.failed).toContain('momentum');
+  });
+
+  it('reads the floor from env, signed (an operator may loosen below 0)', () => {
+    process.env.OCT_MCAP_CROSS_MIN_PRICE_CHANGE_H24 = '-0.5';
+    expect(resolveGateConfig().minPriceChangeH24).toBe(-0.5);
+  });
+});
+
+describe('evaluateMcapGates — pool-age corroboration', () => {
+  it('is OFF by default — a 46-day pool is never dropped on age alone', () => {
+    expect(DEFAULT_GATE_CONFIG.maxPoolAgeDays).toBeNull();
+    const old = input({ poolAgeMs: 46 * 86_400_000, priceChangeH24: 1.0 });
+    expect(evaluateMcapGates(old).decision).toBe('pass');
+  });
+
+  it('an operator ceiling rejects a KNOWN old pool', () => {
+    const cfg = { ...DEFAULT_GATE_CONFIG, maxPoolAgeDays: 7 };
+    const verdict = evaluateMcapGates(
+      input({ poolAgeMs: 46 * 86_400_000, priceChangeH24: 1.0 }),
+      cfg,
+    );
+    expect(verdict.decision).toBe('reject');
+    expect(verdict.failed).toContain('poolAge');
+  });
+
+  it('passes a young pool under the ceiling', () => {
+    const cfg = { ...DEFAULT_GATE_CONFIG, maxPoolAgeDays: 7 };
+    expect(
+      evaluateMcapGates(input({ poolAgeMs: 2 * 86_400_000, priceChangeH24: 1.0 }), cfg).decision,
+    ).toBe('pass');
+  });
+
+  it('abstain-to-FIRE: an unknown age fires even with a ceiling set', () => {
+    const cfg = { ...DEFAULT_GATE_CONFIG, maxPoolAgeDays: 7 };
+    expect(evaluateMcapGates(input({ poolAgeMs: null, priceChangeH24: 1.0 }), cfg).decision).toBe(
+      'pass',
+    );
+  });
+
+  it('reads the ceiling from env (null when unset)', () => {
+    expect(resolveGateConfig().maxPoolAgeDays).toBeNull();
+    process.env.OCT_MCAP_CROSS_MAX_POOL_AGE_DAYS = '30';
+    expect(resolveGateConfig().maxPoolAgeDays).toBe(30);
+  });
+});
+
+describe('evaluateMcapGates — manufactured-launch discriminators', () => {
+  // Recorded live 2026-09-07: a bundled pump.fun launch vs organic BONK.
+  const BUNDLED = { bundlerRate: 0.2273, sniperRate: 0.127, insiderRate: 0 };
+  const ORGANIC = { bundlerRate: 0.0017, sniperRate: 0.0000003, insiderRate: 0.0006 };
+
+  it('are OFF by default — a bundled token still fires when no ceiling is set', () => {
+    expect(DEFAULT_GATE_CONFIG.maxBundlerRate).toBeNull();
+    expect(DEFAULT_GATE_CONFIG.maxSniperRate).toBeNull();
+    expect(DEFAULT_GATE_CONFIG.maxInsiderRate).toBeNull();
+    expect(evaluateMcapGates(input({ manipulation: BUNDLED })).decision).toBe('pass');
+  });
+
+  it('reject a bundled token and pass an organic one once a ceiling is set', () => {
+    const cfg = { ...DEFAULT_GATE_CONFIG, maxBundlerRate: 0.1 };
+    const rejected = evaluateMcapGates(input({ manipulation: BUNDLED }), cfg);
+    expect(rejected.decision).toBe('reject');
+    expect(rejected.failed).toContain('bundlerRate');
+    expect(evaluateMcapGates(input({ manipulation: ORGANIC }), cfg).decision).toBe('pass');
+  });
+
+  it('abstain-to-FIRE: an unknown flag (or whole payload) fires even with a ceiling set', () => {
+    const cfg = { ...DEFAULT_GATE_CONFIG, maxBundlerRate: 0.05, maxSniperRate: 0.05, maxInsiderRate: 0.05 };
+    // Whole payload missing — GMGN unindexed, rate-limited, or a chain (BNB) that
+    // reports nothing. Deliberately NOT in missingCriticalFields, so it fires.
+    expect(evaluateMcapGates(input({ manipulation: null }), cfg).decision).toBe('pass');
+    expect(evaluateMcapGates(input({ manipulation: undefined }), cfg).decision).toBe('pass');
+    // A single unknown field among known-good ones is ignored, not failed.
+    const partial = input({ manipulation: { bundlerRate: null, sniperRate: 0.01, insiderRate: null } });
+    expect(evaluateMcapGates(partial, cfg).decision).toBe('pass');
+  });
+
+  it('rejects on a bundled token even when the security lookup is unavailable', () => {
+    // Evaluated before the security block, like momentum: a null security payload
+    // does not rescue a token whose bundler share is known-bad.
+    const cfg = { ...DEFAULT_GATE_CONFIG, maxBundlerRate: 0.1 };
+    const verdict = evaluateMcapGates(input({ security: null, manipulation: BUNDLED }), cfg);
+    expect(verdict.decision).toBe('reject');
+    expect(verdict.failed).toContain('bundlerRate');
+  });
+
+  it('reads the ceilings from env (null when unset)', () => {
+    expect(resolveGateConfig().maxBundlerRate).toBeNull();
+    process.env.OCT_MCAP_CROSS_MAX_SNIPER_RATE = '0.2';
+    expect(resolveGateConfig().maxSniperRate).toBe(0.2);
+  });
+});
+
+describe('isWatermarkReCross — re-cross suppression via the high-watermark', () => {
+  const target = 750_000;
+  const factor = DEFAULT_RECROSS_WATERMARK_FACTOR; // 1.3
+
+  it('suppresses a re-cross of a token seen WELL above the target before', () => {
+    expect(isWatermarkReCross(2_100_000, target, factor)).toBe(true);
+    expect(isWatermarkReCross(target * 1.3, target, factor)).toBe(true);
+  });
+
+  it('does NOT suppress a genuine first cross (watermark climbed from below)', () => {
+    expect(isWatermarkReCross(740_000, target, factor)).toBe(false);
+    // Above the target but not yet "well above" — cooldown, not watermark, owns
+    // the tight oscillation here.
+    expect(isWatermarkReCross(target * 1.1, target, factor)).toBe(false);
+  });
+
+  it('the honest limit: a null/unseen watermark never suppresses (LOOM found late)', () => {
+    expect(isWatermarkReCross(null, target, factor)).toBe(false);
+    expect(isWatermarkReCross(undefined, target, factor)).toBe(false);
+    expect(isWatermarkReCross(Number.NaN, target, factor)).toBe(false);
+  });
+
+  it('guards a nonsense target or factor', () => {
+    expect(isWatermarkReCross(5_000_000, 0, factor)).toBe(false);
+    expect(isWatermarkReCross(5_000_000, target, 0.5)).toBe(false);
+  });
+
+  it('reads the factor from env, floored at 1', () => {
+    expect(resolveReCrossWatermarkFactor()).toBe(DEFAULT_RECROSS_WATERMARK_FACTOR);
+    process.env.OCT_MCAP_CROSS_RECROSS_WATERMARK_FACTOR = '2';
+    expect(resolveReCrossWatermarkFactor()).toBe(2);
+    process.env.OCT_MCAP_CROSS_RECROSS_WATERMARK_FACTOR = '0.5';
+    expect(resolveReCrossWatermarkFactor()).toBe(DEFAULT_RECROSS_WATERMARK_FACTOR);
   });
 });

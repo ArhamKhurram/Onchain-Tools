@@ -15,7 +15,15 @@ export { getSniperStore, setSniperStore, JsonSniperStore, SupabaseSniperStore, r
 export { getSniperRuntime, setSniperRuntime } from './runtime.js';
 export type { SniperRuntime } from './runtime.js';
 export { computeLegs, validateLadderSplit, MAX_LADDER_LEGS } from './legs.js';
-export { estimateFees } from './fees.js';
+export {
+  estimateFees,
+  resolveExecFees,
+  normalizeFeeSettings,
+  isValidFeeComponent,
+  DEFAULT_FEE_SETTINGS,
+  MAX_FEE_COMPONENT,
+  VENUE_FEE_RATE,
+} from './fees.js';
 export { validateRule, validateRuleStructure } from './validateRule.js';
 export type { ValidationReason, ValidationResult } from './validateRule.js';
 export { isLinearSafeRegex } from './regexGuard.js';

@@ -196,6 +196,27 @@ export class WsServer {
   }
 
   /**
+   * The distinct authenticated identities with at least one open socket.
+   *
+   * Used by the market-cap-crossing poller to decide WHOSE per-user filters it
+   * has to resolve before fanning an alert out. Enumerating the connected users
+   * rather than every user in the database is what keeps that per-user
+   * evaluation free: a crossing fires a few times an hour and is only ever
+   * evaluated against the handful of people who could actually receive it.
+   *
+   * Empty in local mode — sockets never authenticate there, so the caller
+   * substitutes the single implicit `local` user.
+   */
+  getConnectedUserIds(): string[] {
+    const users = new Set<string>();
+    for (const [ws, state] of this.clients) {
+      if (ws.readyState !== WebSocket.OPEN) continue;
+      if (state.userId) users.add(state.userId);
+    }
+    return [...users];
+  }
+
+  /**
    * Live connection snapshot for the admin stats surface.
    *
    * `users` counts distinct authenticated identities, not sockets — one person

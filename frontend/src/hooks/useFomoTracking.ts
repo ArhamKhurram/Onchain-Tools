@@ -1,6 +1,13 @@
 import { useCallback, useEffect, useState } from 'react';
 import { getAccessToken, getSupabase } from '../lib/supabase';
-import type { FomoTrackedUser, FomoServiceStatus, FomoLeaderboardEntry } from '../types/fomo';
+import type {
+  FomoTrackedUser,
+  FomoServiceStatus,
+  FomoLeaderboardEntry,
+  FomoLeaderboardResult,
+  FomoLeaderboardSource,
+  FomoLeaderboardWindow,
+} from '../types/fomo';
 
 const API_BASE = import.meta.env.VITE_API_URL
   ? `${import.meta.env.VITE_API_URL}/api`
@@ -44,18 +51,32 @@ export function useFomoServiceStatus() {
   return { status, loading, refresh };
 }
 
-async function fetchLeaderboard(window: 'all' | '24h', limit = 50): Promise<FomoLeaderboardEntry[]> {
-  const params = new URLSearchParams({ limit: String(limit) });
-  if (window === '24h') params.set('window', '24h');
+// The backend serves the leaderboard from whichever source is usable: the live
+// fomo.family service account, or the public 985monitor.xyz snapshot. It always
+// names which one, and the UI must show that rather than passing a third-party
+// snapshot off as our own live feed. 7d/30d exist only on the snapshot.
+async function fetchLeaderboard(
+  window: FomoLeaderboardWindow,
+  limit = 50,
+): Promise<FomoLeaderboardResult> {
+  const params = new URLSearchParams({ limit: String(limit), window });
   const res = await fomoFetch(`${API_BASE}/fomo/leaderboard?${params}`);
   const body = await res.json().catch(() => ({}));
   if (!res.ok) throw new Error(body.error ?? `Failed to load leaderboard (${res.status}).`);
-  return (body.entries ?? []) as FomoLeaderboardEntry[];
+  return {
+    entries: (body.entries ?? []) as FomoLeaderboardEntry[],
+    source: body.source === '985monitor' ? '985monitor' : 'fomo',
+    sourceLabel: typeof body.sourceLabel === 'string' ? body.sourceLabel : 'fomo.family',
+    sourceUrl: typeof body.sourceUrl === 'string' ? body.sourceUrl : null,
+    updatedAt: typeof body.updatedAt === 'number' ? body.updatedAt : null,
+    live: body.live === true,
+  };
 }
 
 export function useFomoLeaderboard() {
-  const [window, setWindow] = useState<'all' | '24h'>('24h');
+  const [window, setWindow] = useState<FomoLeaderboardWindow>('24h');
   const [entries, setEntries] = useState<FomoLeaderboardEntry[]>([]);
+  const [meta, setMeta] = useState<FomoLeaderboardSource | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -63,10 +84,13 @@ export function useFomoLeaderboard() {
     setLoading(true);
     setError(null);
     try {
-      setEntries(await fetchLeaderboard(window));
+      const { entries: rows, ...source } = await fetchLeaderboard(window);
+      setEntries(rows);
+      setMeta(source);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to load leaderboard.');
       setEntries([]);
+      setMeta(null);
     } finally {
       setLoading(false);
     }
@@ -76,14 +100,28 @@ export function useFomoLeaderboard() {
     refresh();
   }, [refresh]);
 
-  return { window, setWindow, entries, loading, error, refresh };
+  return { window, setWindow, entries, meta, loading, error, refresh };
 }
 
 // Distinct outcomes the UI needs to surface for track. The `status` mirrors the
-// backend's HTTP codes: 404 (not found), 409 (already tracked), 503 (FOMO not configured).
+// backend's HTTP codes: 400 (malformed identity), 404 (not found), 409 (already
+// tracked), 503 (free-text search unavailable).
 export type TrackResult =
   | { ok: true; user: FomoTrackedUser }
   | { ok: false; status: number; error: string };
+
+/**
+ * An identity the caller already holds — every leaderboard row has one, from
+ * either source. Passing it lets the backend skip resolving through the
+ * fomo.family service account, which has been Forbidden upstream since
+ * 2026-08-26 and made TRACK a permanent 503. The backend re-validates all
+ * three fields; this type only documents what it accepts.
+ */
+export interface FomoTrackIdentity {
+  fomoUserId: string;
+  fomoHandle: string | null;
+  displayName: string | null;
+}
 
 export function useFomoTracking(userId: string | undefined) {
   const [tracked, setTracked] = useState<FomoTrackedUser[]>([]);
@@ -124,15 +162,26 @@ export function useFomoTracking(userId: string | undefined) {
     refresh();
   }, [refresh]);
 
-  const track = useCallback(async (query: string): Promise<TrackResult> => {
+  const track = useCallback(async (query: string, identity?: FomoTrackIdentity): Promise<TrackResult> => {
     const trimmed = query.trim();
-    if (!trimmed) return { ok: false, status: 400, error: 'Enter a username to track.' };
+    if (!trimmed && !identity) return { ok: false, status: 400, error: 'Enter a username to track.' };
     if (!userId) return { ok: false, status: 401, error: 'Not signed in.' };
+
+    // With an identity the server writes it straight through (after validating
+    // it); `query` rides along only as a human-readable fallback label.
+    const payload = identity
+      ? {
+          query: trimmed || undefined,
+          fomoUserId: identity.fomoUserId,
+          fomoHandle: identity.fomoHandle,
+          displayName: identity.displayName,
+        }
+      : { query: trimmed };
 
     try {
       const res = await fomoFetch(`${API_BASE}/fomo/tracked`, {
         method: 'POST',
-        body: JSON.stringify({ query: trimmed }),
+        body: JSON.stringify(payload),
       });
       const body = await res.json().catch(() => ({}));
       if (!res.ok) {

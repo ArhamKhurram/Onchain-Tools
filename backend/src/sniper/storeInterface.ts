@@ -24,6 +24,7 @@ import type {
   RuleState,
   SizeUnit,
   SnipeRule,
+  SniperFeeSettings,
   WalletConfig,
 } from './types.js';
 
@@ -79,6 +80,19 @@ export interface SniperStore {
   getWallet(userId: string, walletId: string): Promise<WalletConfig | null>;
   listWallets(userId: string): Promise<WalletConfig[]>;
   deleteWallet(userId: string, walletId: string): Promise<boolean>;
+
+  /**
+   * The account-level tip + priority fee every rule inherits (fees.ts).
+   *
+   * MUST NOT throw for a user who has never set them — it returns
+   * DEFAULT_FEE_SETTINGS (zeros), which reproduces the pre-global arithmetic
+   * exactly. It MAY throw on a real backend failure, and executeFire treats
+   * that as an abort rather than firing with fees it could not read: reserving
+   * without the tip is how a daily cap goes soft.
+   */
+  getFeeSettings(userId: string): Promise<SniperFeeSettings>;
+  /** Values are validated at the API boundary and normalized again on read. */
+  setFeeSettings(userId: string, settings: SniperFeeSettings): Promise<void>;
 
   isKilled(userId: string): Promise<boolean>;
   getKillState(userId: string): Promise<KillState>;

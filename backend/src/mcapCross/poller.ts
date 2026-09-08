@@ -59,6 +59,27 @@
  * (default 24h). A market cap oscillating around the threshold would otherwise
  * produce a genuine crossing every few minutes, all of them true and all of
  * them noise — the same shape as the missed-runner poller's 24h row.
+ *
+ * PER-USER FILTERS SIT AT DELIVERY, NOT AT DETECTION (see filters.ts). Steps
+ * 1-6 above are shared by everyone and unchanged: one universe, one crossing
+ * state per token, one security lookup. What changed is step 6's last word.
+ * The OPERATOR baseline (env) still decides what gets WRITTEN — pass, reject
+ * and, critically, abstain — because the crossing ledger is global and a
+ * per-user threshold must never be able to make the sweep re-spend a security
+ * call. Then, and only for a crossing that got as far as a verdict, the same
+ * pure gate function is re-run once per CONNECTED user against their own
+ * thresholds to decide who sees it.
+ *
+ * That re-run is free: `evaluateMcapGates` is pure and the security payload is
+ * already in hand, so N users cost N comparisons and zero requests. Filters
+ * themselves are read at most once per user per firing crossing and cached for
+ * a minute, which on the observed 30-80 crossings a day is a rounding error
+ * against the Supabase egress budget — nothing per-message, nothing per-cycle.
+ *
+ * ABSTAIN STAYS ABSTAIN ON BOTH LAYERS. If the baseline abstains, nobody is
+ * evaluated and nothing is delivered. If a user's own evaluation abstains, that
+ * user does not receive it either — a threshold can narrow or widen a
+ * comparison, but it can never turn "we could not tell" into "clear".
  */
 
 import type { WsServer } from '../ws/server.js';
@@ -68,7 +89,17 @@ import { evaluateCrossing } from '../priceAlerts/crossing.js';
 import { readDexSnapshots, type MintSnapshot } from '../marketData/dexBatch.js';
 import { fetchUniverse, type UniverseToken } from './universe.js';
 import { fetchTokenSecurity } from './security.js';
-import { evaluateMcapGates, resolveGateConfig, resolveTargetMcapUsd } from './gates.js';
+import { fetchTokenManipulation } from './manipulation.js';
+import {
+  evaluateMcapGates,
+  isWatermarkReCross,
+  resolveGateConfig,
+  resolveReCrossWatermarkFactor,
+  resolveTargetMcapUsd,
+  type McapGateConfig,
+} from './gates.js';
+import { resolveUserGateConfig } from './filters.js';
+import { getStorageProvider, isHostedMode } from '../storage/index.js';
 import { AbstainLedger } from './abstainLedger.js';
 import { loadState, recordObservations, stateKey, type McapCrossRow } from './state.js';
 
@@ -108,11 +139,61 @@ export interface McapCrossAlertData {
   /** The target it crossed. Carried so a changed threshold is legible later. */
   targetUsd: number;
   liquidityUsd: number | null;
+  /**
+   * Traded USD over 24h, summed across the token's pools. Null = DexScreener
+   * did not report one; it is never rendered as zero, because a token nobody
+   * has a volume figure for and a token nobody traded are different claims.
+   */
+  volume24hUsd: number | null;
+  /**
+   * Estimated USD paid in trading fees/tax over 24h — `volume x tax rate`, the
+   * operator's "Total Fees" metric (fees.ts). Null whenever either half was
+   * unknown, which includes EVERY Solana token, since a transfer tax cannot
+   * exist there. USD, not the ETH/SOL Axiom prints.
+   */
+  totalFeesUsd: number | null;
   /** liquidity / mcap at the crossing. Null when liquidity was unknown. */
   liquidityRatio: number | null;
   /** Previous observation, i.e. where it crossed FROM. */
   previousMcapUsd: number | null;
+  /**
+   * Non-blocking gate caveats (today: `honeypotUnknown`). Carried onto the wire
+   * frame and the Telegram card so a check that never ran is never presented as
+   * a check that passed. See GateVerdict.caveats.
+   */
+  caveats: string[];
   triggeredAt: string;
+}
+
+/**
+ * Everything a transport needs to decide WHO gets one crossing, without being
+ * able to make the sweep spend anything.
+ *
+ * The Telegram roster is a set of CHATS, not OCT users — but every chat row
+ * carries `source_user_id`, "whose alerts this chat receives", so a chat that
+ * has been linked resolves to exactly one OCT user (tgbot/source.ts). That user
+ * has filters. This is how the transport asks about them.
+ *
+ * `passesFor` is a CLOSURE over the gate input and the security payload the
+ * poller already paid for: N users cost N pure comparisons and zero requests,
+ * and the filter read behind it is cached per user for a minute. Handing the
+ * transport the raw `TokenSecurity` instead would let a future caller re-run
+ * detection on its own terms; a boolean cannot.
+ */
+export interface McapCrossDeliveryVerdict {
+  /**
+   * Did the OPERATOR baseline pass? This is what a chat that resolves to NO
+   * user gets — i.e. exactly what every chat got before per-user filters
+   * existed. Preserving it is the difference between a new feature and a silent
+   * regression in chats nobody has linked.
+   */
+  baselinePass: boolean;
+  /**
+   * Would this OCT user's own thresholds pass it? Only a `pass` is true: an
+   * abstain is never a yes, so a threshold can narrow or widen a comparison but
+   * can never turn "we could not tell" into "clear".
+   */
+  passesFor(userId: string): Promise<boolean>;
 }
 
 /**
@@ -124,7 +205,7 @@ export interface McapCrossAlertData {
  */
 export interface McapCrossDelivery {
   hasSubscribers(): Promise<boolean>;
-  deliver(data: McapCrossAlertData): void;
+  deliver(data: McapCrossAlertData, verdict: McapCrossDeliveryVerdict): void;
 }
 
 function envFlag(name: string): string | undefined {
@@ -176,11 +257,61 @@ export function snapshotMatchesNetwork(
   return slug === DEX_CHAIN_SLUGS[network];
 }
 
+/**
+ * How long a user's resolved thresholds are reused before re-reading them.
+ *
+ * A minute, not a cycle: crossings arrive in bursts (a market move lifts
+ * several tokens through 750K at once) and re-reading the same four numbers per
+ * token in a burst is exactly the per-item storage read the egress rule exists
+ * to prevent. A minute is also short enough that saving a filter in the console
+ * takes effect on the next crossing rather than the next restart.
+ */
+const FILTER_CACHE_MS = 60_000;
+
+/**
+ * Per-user gate configs, resolved once and reused.
+ *
+ * Deliberately NOT keyed on the baseline: the baseline comes from env, which
+ * cannot change without a restart, so a stale entry can only be stale about the
+ * user's own values — bounded by the TTL above.
+ */
+class FilterCache {
+  private entries = new Map<string, { at: number; cfg: McapGateConfig }>();
+
+  async get(userId: string, baseline: McapGateConfig, now: number): Promise<McapGateConfig> {
+    const hit = this.entries.get(userId);
+    if (hit && now - hit.at < FILTER_CACHE_MS) return hit.cfg;
+
+    // Never throws — the storage layer degrades a failed read to "no
+    // overrides". An alert must not be lost to a transient database blip.
+    const stored = await getStorageProvider().getMcapCrossFilters(userId);
+    const cfg = resolveUserGateConfig(stored, baseline);
+    this.entries.set(userId, { at: now, cfg });
+    return cfg;
+  }
+
+  /**
+   * Drop entries that are neither live nor fresh, so this cannot grow.
+   *
+   * "Live" is the set of connected console users. TTL is the second condition
+   * because the Telegram side asks about users who may hold no socket at all —
+   * a linked chat's owner reading alerts on their phone. Evicting those on
+   * every cycle would turn a burst of crossings into one storage read per
+   * crossing, which is precisely the per-item egress the cache exists to stop.
+   */
+  prune(live: Set<string>, now: number = Date.now()): void {
+    for (const [key, entry] of this.entries) {
+      if (!live.has(key) && now - entry.at >= FILTER_CACHE_MS) this.entries.delete(key);
+    }
+  }
+}
+
 class McapCrossPoller {
   private timer: NodeJS.Timeout | null = null;
   private started = false;
   private polling = false;
   private readonly ledger = new AbstainLedger();
+  private readonly filters = new FilterCache();
   /** Logged once so a subscriber-less deploy does not repeat itself forever. */
   private loggedIdle = false;
 
@@ -254,8 +385,9 @@ class McapCrossPoller {
     snapshots: Map<string, MintSnapshot>,
   ): Promise<void> {
     const target = resolveTargetMcapUsd();
-    const cfg = resolveGateConfig();
+    const baselineCfg = resolveGateConfig();
     const cooldownMs = resolveCooldownMs();
+    const reCrossFactor = resolveReCrossWatermarkFactor();
     const now = Date.now();
     const nowIso = new Date(now).toISOString();
     const writes: McapCrossRow[] = [];
@@ -283,12 +415,16 @@ class McapCrossPoller {
       if (verdict.action === 'abstain' || verdict.observedUsd == null) continue;
 
       const observed = verdict.observedUsd;
+      const priorWatermark = prior?.highWatermarkMcap ?? null;
       const row: McapCrossRow = {
         address: token.address,
         network: token.network,
         lastSeenMcap: observed,
         lastSeenAt: nowIso,
         firedAt: prior?.firedAt ?? 0,
+        // A strict running max, so a token that pulled back is still known to
+        // have run. Written on EVERY observation, fired or not.
+        highWatermarkMcap: Math.max(priorWatermark ?? 0, observed),
       };
 
       if (verdict.action !== 'fire') {
@@ -305,17 +441,52 @@ class McapCrossPoller {
         continue;
       }
 
-      // --- The only expensive call in the whole feature, and only here ----
+      // A RE-CROSS of a token we already watched run well above the target — a
+      // token that ran to 3x, fell back, and is crossing up again days later
+      // (past the 24h cooldown). Suppressed for the same reason as the
+      // cooldown, and BEFORE the security call, because a re-cross should not
+      // cost one. Global, not per-user: an already-pumped token oscillating
+      // back through the line is noise for everyone. The honest limit — a token
+      // discovered after its peak, whose watermark never saw it — is carried by
+      // the momentum gate instead (see isWatermarkReCross).
+      if (isWatermarkReCross(priorWatermark, target, reCrossFactor)) {
+        this.ledger.clear(key);
+        writes.push(row);
+        console.log(
+          `${LOG} RE-CROSS ${usable?.symbol ? `$${usable.symbol}` : token.address.slice(0, 8)} ` +
+            `(${token.network}) at ${formatUsd(observed)} — watermark ${formatUsd(priorWatermark ?? 0)} ` +
+            `≥ ${formatUsd(target * reCrossFactor)}; suppressed.`,
+        );
+        continue;
+      }
+
+      // --- The two GMGN calls in the whole feature, and only here ----
+      // Security (renounce/honeypot/LP/top-10) and manufactured-launch analytics
+      // (bundler/sniper/insider) live on DIFFERENT GMGN endpoints —
+      // `/v1/token/security` and `/v1/token/info` — so this is two calls, not
+      // one. Both run ONLY at fire (~30-80/day), never per universe token, and
+      // both share `gmgnLimiter`. The manipulation lookup abstains-to-FIRE on
+      // any failure (see manipulation.ts), so it can never suppress an alert.
       const security = await fetchTokenSecurity(token.network, token.address);
-      const gates = evaluateMcapGates(
-        {
-          network: token.network,
-          mcapUsd: observed,
-          liquidityUsd: usable?.liquidityUsd ?? token.liquidityUsd,
-          security,
-        },
-        cfg,
-      );
+      const manipulation = await fetchTokenManipulation(token.network, token.address);
+      const gateInput = {
+        network: token.network,
+        mcapUsd: observed,
+        liquidityUsd: usable?.liquidityUsd ?? token.liquidityUsd,
+        // Straight from the batch read that already happened. There is no
+        // fallback to the universe row: `UniverseToken` carries liquidity but
+        // not volume, and inventing one would be exactly the "silence read as
+        // zero" the gate abstains to avoid.
+        volume24hUsd: usable?.volume24hUsd ?? null,
+        // The first-run-up discriminator's inputs, both from the same batch.
+        // Null (unknown) fires rather than mutes — the gate handles that.
+        priceChangeH24: usable?.priceChangeH24 ?? null,
+        poolAgeMs:
+          usable?.pairCreatedAtMs != null ? Math.max(0, now - usable.pairCreatedAtMs) : null,
+        security,
+        manipulation,
+      };
+      const gates = evaluateMcapGates(gateInput, baselineCfg);
 
       if (gates.decision === 'abstain') {
         unresolved += 1;
@@ -336,7 +507,18 @@ class McapCrossPoller {
 
       this.ledger.clear(key);
 
-      if (gates.decision === 'reject') {
+      // --- Who, if anyone, gets this? -------------------------------------
+      // The baseline verdict above governs the STATE and the Telegram surface
+      // (that roster is chat-scoped, not user-scoped — see the note on emit).
+      // Each connected console user is then judged against their own
+      // thresholds, which is why a baseline REJECT is no longer the end of the
+      // line: a user who lowered the liquidity floor asked to see exactly that
+      // token. Zero requests are spent here; the gates are pure and `security`
+      // is already in hand.
+      const wsRecipients = await this.recipientsFor(gateInput, baselineCfg, now);
+      const toTelegram = gates.decision === 'pass';
+
+      if (!toTelegram && wsRecipients.length === 0) {
         // Dropped silently as far as the user is concerned — but logged, because
         // "the filter is eating everything" and "nothing is crossing" look
         // identical from the outside otherwise.
@@ -350,21 +532,39 @@ class McapCrossPoller {
       }
 
       fired += 1;
+      // The cooldown row is written whenever the crossing reached ANYBODY, so a
+      // token delivered only to a user with loosened filters is still muted for
+      // 24h rather than re-alerting them every cycle.
       row.firedAt = now;
       writes.push(row);
-      this.emit({
-        address: token.address,
-        network: token.network,
-        chain: REVIVAL_NETWORK_CHAIN_SLUGS[token.network],
-        symbol: usable?.symbol ?? null,
-        mcapUsd: observed,
-        targetUsd: target,
-        liquidityUsd: usable?.liquidityUsd ?? null,
-        liquidityRatio: gates.liquidityRatio,
-        previousMcapUsd: prior?.lastSeenMcap ?? null,
-        triggeredAt: nowIso,
-      });
+      this.emit(
+        {
+          address: token.address,
+          network: token.network,
+          chain: REVIVAL_NETWORK_CHAIN_SLUGS[token.network],
+          symbol: usable?.symbol ?? null,
+          mcapUsd: observed,
+          targetUsd: target,
+          liquidityUsd: usable?.liquidityUsd ?? null,
+          volume24hUsd: usable?.volume24hUsd ?? null,
+          // Straight off the verdict rather than recomputed: the gate is the
+          // one place the fee model lives, so a card can never disagree with
+          // the comparison that produced it.
+          totalFeesUsd: gates.totalFeesUsd,
+          liquidityRatio: gates.liquidityRatio,
+          caveats: gates.caveats,
+          previousMcapUsd: prior?.lastSeenMcap ?? null,
+          triggeredAt: nowIso,
+        },
+        wsRecipients,
+        {
+          baselinePass: toTelegram,
+          passesFor: (userId) => this.passesFor(userId, gateInput, baselineCfg, now),
+        },
+      );
     }
+
+    this.filters.prune(new Set(this.consoleUserIds()), now);
 
     await recordObservations(writes);
 
@@ -377,6 +577,56 @@ class McapCrossPoller {
   }
 
   /**
+   * The console identities eligible for a per-user evaluation this cycle.
+   *
+   * Hosted: whoever currently has a socket open. Local: the single implicit
+   * user, because local sockets never authenticate and `broadcastRaw` there
+   * ignores the id anyway — the filter set still has to be the local user's,
+   * which is the whole point of `userId = 'local'`.
+   */
+  private consoleUserIds(): string[] {
+    return isHostedMode() ? this.wsServer.getConnectedUserIds() : ['local'];
+  }
+
+  /**
+   * Re-run the gates once per connected user, against that user's thresholds.
+   *
+   * Only a `pass` earns delivery. A user whose own evaluation ABSTAINS is
+   * skipped exactly like the baseline abstain above: a threshold changes what a
+   * comparison means, never whether the underlying fact was known. That is the
+   * property that keeps #369's honest-uncertainty work intact — `caveats` still
+   * ride the payload, and no filter value can suppress or fabricate them.
+   */
+  private async recipientsFor(
+    gateInput: Parameters<typeof evaluateMcapGates>[0],
+    baseline: McapGateConfig,
+    now: number,
+  ): Promise<string[]> {
+    const out: string[] = [];
+    for (const userId of this.consoleUserIds()) {
+      if (await this.passesFor(userId, gateInput, baseline, now)) out.push(userId);
+    }
+    return out;
+  }
+
+  /**
+   * One user, one crossing: does it clear THEIR thresholds?
+   *
+   * The single place a per-user verdict is produced, so the console fan-out and
+   * the Telegram fan-out cannot disagree about what a filter means. Only `pass`
+   * is true — `abstain` is not a yes, here or anywhere.
+   */
+  private async passesFor(
+    userId: string,
+    gateInput: Parameters<typeof evaluateMcapGates>[0],
+    baseline: McapGateConfig,
+    now: number,
+  ): Promise<boolean> {
+    const cfg = await this.filters.get(userId, baseline, now);
+    return evaluateMcapGates(gateInput, cfg).decision === 'pass';
+  }
+
+  /**
    * Fan out one alert.
    *
    * TWO TRANSPORTS, AND NEITHER IS `broadcastAlert`. That seam carries a
@@ -385,21 +635,54 @@ class McapCrossPoller {
    * observing a chain. Synthesising a fake message to squeeze through it would
    * put a chat message that never existed into the console's notification
    * history. Revival and breakout hit the same wall and answered it the same
-   * way: their own frame. So this emits a raw `mcap_cross_alert` frame (a
-   * global market fact, no user data, hence `broadcastRaw` to everyone, like
-   * `token_peak`), and reaches Telegram through an explicit signal seam on the
-   * alert router rather than through alert classification.
+   * way: their own frame. So this emits a raw `mcap_cross_alert` frame, and
+   * reaches Telegram through an explicit signal seam on the alert router rather
+   * than through alert classification.
+   *
+   * THE CONSOLE FRAME IS ADDRESSED, NOT BROADCAST. It used to go to
+   * everyone (`broadcastRaw` with no id, like `token_peak`) because the payload
+   * is a global market fact carrying no user data. It still carries no user
+   * data — but WHO SHOULD SEE IT is now a per-user question, so it is sent per
+   * recipient. In local mode `broadcastRaw` ignores the id and this collapses
+   * back to one send to the single client.
+   *
+   * TELEGRAM IS ALSO PER-USER NOW, VIA THE CHAT'S OWNER. The bot's roster is a
+   * set of CHATS, not OCT users — but each chat row carries `source_user_id`,
+   * "whose alerts this chat receives" (tgbot/source.ts), so a linked chat DOES
+   * have an owner and that owner has filters. So this hands the transport a
+   * verdict rather than a boolean: `baselinePass` for a chat that resolves to
+   * nobody (unchanged behaviour), `passesFor(owner)` for one that does. The
+   * decision of which to consult belongs to the transport, because only it
+   * knows its own roster; the decision of what a filter MEANS stays here.
+   *
+   * ONE ASYMMETRY, STATED. A crossing the baseline REJECTED only reaches this
+   * point when some connected console user's own filters passed it. So a
+   * Telegram owner who loosened their filters but holds no console socket does
+   * not get the widening — they get everything the baseline passes, narrowed by
+   * their own thresholds. Narrowing (the feature) is complete; widening is
+   * best-effort, and closing the gap would mean reading the chat roster inside
+   * the sweep, which is the coupling `McapCrossDelivery` exists to avoid.
    */
-  private emit(data: McapCrossAlertData): void {
+  private emit(
+    data: McapCrossAlertData,
+    wsRecipients: string[],
+    verdict: McapCrossDeliveryVerdict,
+  ): void {
     const label = data.symbol ? `$${data.symbol}` : `${data.address.slice(0, 8)}…`;
     console.log(
       `${LOG} CROSSED ${label} (${data.network}) ${formatUsd(data.mcapUsd)} mcap ` +
         `— liquidity ${data.liquidityUsd != null ? formatUsd(data.liquidityUsd) : '?'}` +
-        `${data.liquidityRatio != null ? ` (${(data.liquidityRatio * 100).toFixed(1)}% of mcap)` : ''}`,
+        `${data.liquidityRatio != null ? ` (${(data.liquidityRatio * 100).toFixed(1)}% of mcap)` : ''}` +
+        ` → ${wsRecipients.length} console, telegram baseline ${verdict.baselinePass ? 'yes' : 'no'}`,
     );
-    this.wsServer.broadcastRaw({ type: 'mcap_cross_alert', data });
+    for (const userId of wsRecipients) {
+      this.wsServer.broadcastRaw({ type: 'mcap_cross_alert', data }, userId);
+    }
     try {
-      this.delivery.deliver(data);
+      // Handed over WHATEVER the baseline said: a chat linked to a user with
+      // looser thresholds may still want it, and only the transport can tell.
+      // A chat that resolves to nobody sees `baselinePass` and nothing else.
+      this.delivery.deliver(data, verdict);
     } catch (err) {
       // Delivery is best-effort: a Telegram problem must not stop the sweep or
       // lose the console frame that already went out.

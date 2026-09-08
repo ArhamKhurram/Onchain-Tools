@@ -132,7 +132,7 @@ export interface Alert {
 }
 
 export interface WsIncoming {
-  type: 'message' | 'message_update' | 'message_delete' | 'alert' | 'reaction_update' | 'contract' | 'contract_enrichment' | 'chain_update' | 'token_peak' | 'gateway_ready' | 'telegram_ready' | 'gateway_auth_failed' | 'fomo_trade' | 'fomo_join' | 'pump_callout' | 'wallet_movement' | 'revival_alert' | 'breakout_alert' | 'journal_alert' | 'journal_update' | 'price_alert';
+  type: 'message' | 'message_update' | 'message_delete' | 'alert' | 'reaction_update' | 'contract' | 'contract_enrichment' | 'chain_update' | 'token_peak' | 'gateway_ready' | 'telegram_ready' | 'gateway_auth_failed' | 'fomo_trade' | 'fomo_join' | 'robinhood_fill' | 'fomo_stream_trade' | 'pump_callout' | 'wallet_movement' | 'revival_alert' | 'breakout_alert' | 'journal_alert' | 'journal_update' | 'price_alert';
   data: any;
   error?: string;
   tokenIndex?: number;

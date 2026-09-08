@@ -18,6 +18,7 @@ export {
   revivalNetworkForChain,
   revivalNetworkLabel,
   buildRevivalContractUrl,
+  buildAxiomEvmUrl,
 } from './contract.js';
 export type { ContractDetectionResult, RevivalNetwork } from './contract.js';
 // Radar × column emoji markers (threshold ladder, highest match wins).

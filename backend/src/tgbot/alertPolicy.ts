@@ -53,7 +53,7 @@ export interface AlertLike {
  * Keyed by intent rather than by the wire `type` string, because one class
  * ('contract') deliberately spans two wire types — see isContractDetection.
  */
-export type TgAlertType = 'missedRunner' | 'mcapCross' | 'keyword' | 'highlighted' | 'contract';
+export type TgAlertType = 'octSignals' | 'missedRunner' | 'mcapCross' | 'keyword' | 'highlighted' | 'contract';
 
 /**
  * How a subscribed class is delivered.
@@ -66,6 +66,7 @@ export type TgAlertType = 'missedRunner' | 'mcapCross' | 'keyword' | 'highlighte
 export type TgAlertDelivery = 'off' | 'digest' | 'instant';
 
 export const ALERT_TYPES: readonly TgAlertType[] = [
+  'octSignals',
   'missedRunner',
   'mcapCross',
   'keyword',
@@ -116,6 +117,23 @@ export interface TgAlertTypeSpec {
  * user is the last, under a warning.
  */
 export const ALERT_CATALOG: Readonly<Record<TgAlertType, TgAlertTypeSpec>> = {
+  octSignals: {
+    type: 'octSignals',
+    keyword: 'signals',
+    // NOT 'alerts' — that collides with the /alerts command itself.
+    aliases: ['signal', 'octsignals', 'oct_signals', 'scans', 'scan'],
+    label: 'OCT Alerts',
+    volume: 'medium',
+    volumeNote:
+      'Realtime algorithm-scan signals across SOL and EVM — bursty, and can be several within a minute when the market is moving.',
+    // Earns per-event delivery because the class is a curated, operator-controlled
+    // stream, not the raw feed: it is bounded upstream by whatever the source
+    // channels post, and the hourly ceiling still clamps it to maxPerHour a chat.
+    // It deliberately does NOT feed the circuit breaker (see alerts.ts route) so a
+    // burst cannot auto-mute a chat's OTHER subscriptions.
+    instantAllowed: true,
+    requiresConfirmation: false,
+  },
   missedRunner: {
     type: 'missedRunner',
     keyword: 'runners',
@@ -244,9 +262,19 @@ export interface TgChatSettings {
   mutedReason: string | null;
 }
 
-/** Every class off, not muted. The state a brand-new chat is in. */
+/**
+ * The state a brand-new chat is in, and the default every ABSENT key reads as
+ * (see readSettings). EVERY class is OFF — opt-in, the fail-closed guarantee
+ * that stopped the flood.
+ *
+ * `octSignals` (OCT Alerts) was briefly default-ON, but the operator changed it
+ * to opt-in: a user must `/alerts on signals` to receive the forwarded scans,
+ * exactly like every other class. Nothing is delivered to a chat that has not
+ * asked for it.
+ */
 export const DEFAULT_CHAT_SETTINGS: TgChatSettings = {
   alerts: {
+    octSignals: 'off',
     missedRunner: 'off',
     mcapCross: 'off',
     keyword: 'off',
@@ -374,6 +402,83 @@ export function parseAlertsCommand(args: string[]): AlertsAction {
   }
 
   return { kind: 'set', spec, delivery: wantsInstant ? 'instant' : 'digest', confirmed };
+}
+
+// --- /mute command parsing ---------------------------------------------------
+
+/**
+ * Bounds on a manual mute.
+ *
+ * A FLOOR because a mute measured in seconds is not a mute, it is a
+ * misunderstanding of what the command does — the digest interval alone is ten
+ * minutes. A CEILING because an indefinite mute is how a chat quietly stops
+ * being a user: nobody remembers they muted OCT in March, and the bot looks
+ * broken rather than silenced. Seven days is long enough for a holiday and
+ * short enough that it expires while somebody still remembers setting it.
+ *
+ * Out-of-range values are CLAMPED, not refused, because the reply states the
+ * resulting deadline rather than echoing the duration — so a clamp is visible
+ * in the answer instead of being a silent substitution.
+ */
+export const MIN_MUTE_MS = 5 * 60_000;
+export const MAX_MUTE_MS = 7 * 24 * 3_600_000;
+export const DEFAULT_MUTE_MS = 3_600_000;
+
+/** What `/mute …` asked for. */
+export type MuteAction =
+  | { kind: 'mute'; durationMs: number }
+  | { kind: 'usage'; problem: string | null };
+
+const MUTE_UNITS: Record<string, number> = {
+  m: 60_000,
+  min: 60_000,
+  mins: 60_000,
+  minute: 60_000,
+  minutes: 60_000,
+  h: 3_600_000,
+  hr: 3_600_000,
+  hrs: 3_600_000,
+  hour: 3_600_000,
+  hours: 3_600_000,
+  d: 86_400_000,
+  day: 86_400_000,
+  days: 86_400_000,
+};
+
+/**
+ * Parse the argument tail of `/mute`.
+ *
+ *   /mute            → one hour
+ *   /mute 30m|2h|1d  → that long, clamped to [MIN_MUTE_MS, MAX_MUTE_MS]
+ *   /mute 30         → thirty MINUTES; a bare number is the ambiguous case and
+ *                      minutes is the only reading where a typo is cheap
+ *
+ * Pure, so the handler is this call plus one store round-trip. Anything else
+ * returns `usage` with the specific problem rather than a generic complaint —
+ * a group gets one correction, not a guessing game.
+ */
+export function parseMuteCommand(args: string[]): MuteAction {
+  const words = args.map((a) => a.trim().toLowerCase()).filter((a) => a !== '');
+  if (words.length === 0) return { kind: 'mute', durationMs: DEFAULT_MUTE_MS };
+  if (words.length > 1) return { kind: 'usage', problem: '/mute takes one duration, or none.' };
+
+  const raw = words[0] as string;
+  const match = /^(\d+(?:\.\d+)?)\s*([a-z]*)$/.exec(raw);
+  if (!match) return { kind: 'usage', problem: `"${raw}" is not a duration.` };
+
+  const amount = Number(match[1]);
+  if (!Number.isFinite(amount) || amount <= 0) {
+    return { kind: 'usage', problem: `"${raw}" is not a duration.` };
+  }
+
+  const unitWord = match[2] ?? '';
+  const unitMs = unitWord === '' ? 60_000 : MUTE_UNITS[unitWord];
+  if (unitMs === undefined) {
+    return { kind: 'usage', problem: `I do not know the unit "${unitWord}".` };
+  }
+
+  const durationMs = Math.min(Math.max(Math.round(amount * unitMs), MIN_MUTE_MS), MAX_MUTE_MS);
+  return { kind: 'mute', durationMs };
 }
 
 /**

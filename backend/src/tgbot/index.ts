@@ -22,17 +22,26 @@
 // mounted outside /api. getUpdates needs none of that, costs one idle HTTPS
 // connection, and works identically in local mode on a laptop.
 
+import { hostname } from 'os';
 import type { WsServer } from '../ws/server.js';
 import { describeCallError, looksLikeBotToken, TelegramBotApi } from './api.js';
+import { ConflictReporter, decidePolling, instanceLabel, refusalBanner } from './polling.js';
 import { DECLINE_MESSAGE, readAllowedChatIds } from './access.js';
 import { getChatStore } from './chatStore.js';
-import { commandMap } from './commands/index.js';
+import { AdminCache } from './admin.js';
+import { telegramCommandMenu } from './commandCatalog.js';
+import { commandCoverageGaps, commandMap } from './commands/index.js';
+import type { TgCommandContext } from './commands/types.js';
+import { decideChatWrite } from './permissions.js';
 import { classifyUpdate, nextOffset } from './router.js';
 import { TelegramSender } from './sender.js';
-import { TgAlertRouter } from './alerts.js';
+import { PanelCallbackHandler } from './callbacks.js';
+import { panelDeliveryFor, setPanelDeliverySource, TgAlertRouter } from './alerts.js';
 import { readDigestIntervalMs } from './digest.js';
 import type { TgAlertType } from './alertPolicy.js';
 import type { McapCrossView } from './render.js';
+import type { SignalFilterGate } from './source.js';
+import type { OctSignalView } from './octSignals.js';
 
 /** Seconds Telegram holds an empty getUpdates open before answering. */
 const POLL_SECONDS = 30;
@@ -41,8 +50,33 @@ const POLL_SECONDS = 30;
 const BACKOFF_START_MS = 1_000;
 const BACKOFF_MAX_MS = 60_000;
 
+/**
+ * Everything one bot lifetime needs to handle an update.
+ *
+ * Gathered into one object rather than threaded as five parameters because the
+ * admin cache is the third thing (after the api and the username) that both the
+ * panel and the typed commands need, and a handler signature is not the place
+ * to discover that.
+ */
+interface Runtime {
+  api: TelegramBotApi;
+  sender: TelegramSender;
+  panel: PanelCallbackHandler;
+  admins: AdminCache;
+  /** From getMe. '' when Telegram returned no username — see identity.ts. */
+  username: string;
+}
+
 interface BotState {
   sender: TelegramSender;
+  /**
+   * The /start panel's button handler. Per-lifetime rather than per-process,
+   * unlike the alert router: everything it holds is a cache or a press budget
+   * measured in seconds, so a restart handing a chat a fresh one costs nothing
+   * — where handing a chat a fresh HOURLY alert budget would undo the flood
+   * protection. It also closes over the api instance, which the router does not.
+   */
+  panel: PanelCallbackHandler;
   /** Resolves when the poll loop has actually exited. */
   loop: Promise<void>;
 }
@@ -66,7 +100,13 @@ let alertRouter: TgAlertRouter | null = null;
 let digestTimer: NodeJS.Timeout | null = null;
 
 function getAlertRouter(): TgAlertRouter {
-  if (!alertRouter) alertRouter = new TgAlertRouter(getSender);
+  if (!alertRouter) {
+    alertRouter = new TgAlertRouter(getSender);
+    // The panel reads this router's in-memory counters (hourly usage, queued
+    // digest lines) so its cards cost no database work. Registered here rather
+    // than imported by the panel, which sits downstream of this module.
+    setPanelDeliverySource(alertRouter);
+  }
   return alertRouter;
 }
 
@@ -87,10 +127,27 @@ export async function tgSubscriberCount(type: TgAlertType): Promise<number> {
   return alertRouter ? alertRouter.subscriberCount(type) : 0;
 }
 
-/** Deliver one market-cap crossing. No-ops when the bot is not running. */
-export function tgDeliverMcapCross(view: McapCrossView): void {
-  void alertRouter?.handleSignal(view).catch((err) => {
+/**
+ * Deliver one market-cap crossing. No-ops when the bot is not running.
+ *
+ * `gate` carries the per-user filter question (see tgbot/source.ts). It is
+ * optional so a caller that has no filter context still delivers the operator
+ * baseline rather than nothing.
+ */
+export function tgDeliverMcapCross(view: McapCrossView, gate?: SignalFilterGate): void {
+  void alertRouter?.handleSignal(view, gate).catch((err) => {
     console.error('[TgBot] Crossing delivery failed:', (err as Error)?.message ?? err);
+  });
+}
+
+/**
+ * Deliver one forwarded "OCT Alerts" signal. No-ops when the bot is not
+ * running. Called straight off the ingest message flow (index.ts) — realtime,
+ * no poll: the signal rides the Telegram message that already arrived.
+ */
+export function tgDeliverOctSignal(view: OctSignalView): void {
+  void alertRouter?.handleOctSignal(view).catch((err) => {
+    console.error('[TgBot] Signal delivery failed:', (err as Error)?.message ?? err);
   });
 }
 
@@ -125,6 +182,18 @@ export function startTelegramBot(wsServer?: WsServer): void {
     return;
   }
 
+  // THE SECOND-POLLER GATE. Refused BEFORE anything is registered or created,
+  // so a refused process holds no listener, no timer and no state — it is as if
+  // the token were unset. See polling.ts for the rule and why it is not simply
+  // "hosted mode only".
+  const decision = decidePolling(process.env);
+  if (!decision.poll) {
+    for (const line of refusalBanner(decision, instanceLabel(process.env, hostname()))) {
+      console.warn(line);
+    }
+    return;
+  }
+
   const abort = new AbortController();
   lifetime = abort;
   // Registered once per process — see getAlertRouter. `alertRouter` being null
@@ -132,7 +201,7 @@ export function startTelegramBot(wsServer?: WsServer): void {
   if (wsServer && !alertRouter) wsServer.onAlert(getAlertRouter().listener());
   startDigestTimer();
 
-  void boot(token, abort).catch((err) => {
+  void boot(token, abort, decision.detail).catch((err) => {
     console.error('[TgBot] Failed to start; continuing without it:', (err as Error)?.message ?? err);
     abandon(abort);
   });
@@ -150,7 +219,7 @@ function abandon(abort: AbortController): void {
   }
 }
 
-async function boot(token: string, abort: AbortController): Promise<void> {
+async function boot(token: string, abort: AbortController, pollingDetail: string): Promise<void> {
   const api = new TelegramBotApi(token);
 
   const me = await api.getMe(abort.signal);
@@ -179,13 +248,91 @@ async function boot(token: string, abort: AbortController): Promise<void> {
     return;
   }
 
+  // A webhook left on the token makes EVERY getUpdates a 409, forever. Clearing
+  // it is idempotent and costs one call per boot, so it is done unconditionally
+  // rather than left as a thing to remember during an incident.
+  await clearAnyWebhook(api, abort.signal);
+  if (abort.signal.aborted || lifetime !== abort) {
+    abandon(abort);
+    return;
+  }
+
   const allowlist = readAllowedChatIds();
   console.log(
     `[TgBot] Online as @${username} (${commandMap.size} commands, ` +
-      `${allowlist ? `${allowlist.size} allowlisted chat(s)` : 'no chat allowlist — serving any chat that runs /start'}).`,
+      `${allowlist ? `${allowlist.size} allowlisted chat(s)` : 'no chat allowlist — serving any chat that runs /start'}); ` +
+      `polling because ${pollingDetail}.`,
   );
 
-  state = { sender, loop: pollLoop(api, sender, username, abort.signal) };
+  // Created before the loop so the very first press has somewhere to land, and
+  // given the router's counters through a thunk so it works even when no alert
+  // has ever been routed (the fan-out is created lazily).
+  const admins = new AdminCache(api);
+  const panel = new PanelCallbackHandler({ api, admins, botUsername: username, delivery: panelDeliveryFor });
+  const runtime: Runtime = { api, sender, panel, admins, username };
+
+  // Best-effort, and deliberately not awaited: it is one HTTPS call whose only
+  // effect is the `/` autocomplete menu, and the bot must start answering
+  // commands whether or not Telegram is in the mood to accept the list.
+  void publishCommandMenu(api, abort.signal);
+
+  state = { sender, panel, loop: pollLoop(runtime, abort.signal) };
+}
+
+/**
+ * Clear a webhook if one is set on this token.
+ *
+ * A webhook is the third cause of a 409 (after a duplicate deploy and a laptop),
+ * and the only one this process can fix on its own: with a webhook registered,
+ * Telegram refuses getUpdates outright and the bot receives nothing at all —
+ * not half of it. Best effort; a failure here just leaves the poll loop to
+ * report the conflict.
+ */
+async function clearAnyWebhook(api: TelegramBotApi, signal: AbortSignal): Promise<void> {
+  const info = await api.getWebhookInfo(signal);
+  if (signal.aborted) return;
+  if (!info.ok) {
+    console.warn(`[TgBot] ${describeCallError('getWebhookInfo', info)}; continuing.`);
+    return;
+  }
+  // The URL is the bot owner's own endpoint, not a secret of ours, but it is
+  // not logged anyway — the fact that one existed is the actionable part.
+  if (!info.result?.url) return;
+
+  console.warn('[TgBot] A webhook was set on this token; long polling cannot run alongside it. Removing it.');
+  const removed = await api.deleteWebhook(signal);
+  if (signal.aborted) return;
+  if (removed.ok) console.log('[TgBot] Webhook removed; queued updates will arrive on the first poll.');
+  else console.error(`[TgBot] ${describeCallError('deleteWebhook', removed)} — polling will keep returning 409.`);
+}
+
+/**
+ * Hand Telegram the `/` autocomplete menu.
+ *
+ * Called once per boot rather than once per deploy-by-hand, so the menu is a
+ * property of the running build. A failure is logged and dropped: an absent
+ * menu costs discoverability, never a command.
+ */
+async function publishCommandMenu(api: TelegramBotApi, signal: AbortSignal): Promise<void> {
+  const gaps = commandCoverageGaps();
+  if (gaps.unhandled.length > 0) {
+    console.warn(`[TgBot] Catalogued commands with no handler: ${gaps.unhandled.join(', ')}.`);
+  }
+  if (gaps.uncatalogued.length > 0) {
+    console.warn(`[TgBot] Handlers missing from the command catalog: ${gaps.uncatalogued.join(', ')}.`);
+  }
+
+  const menu = telegramCommandMenu(undefined, (problem) =>
+    console.warn(`[TgBot] Dropped a command from the Telegram menu: ${problem}.`),
+  );
+
+  const result = await api.setMyCommands(menu, signal);
+  if (result.ok) {
+    console.log(`[TgBot] Published ${menu.length} commands to Telegram's / menu.`);
+    return;
+  }
+  if (signal.aborted) return;
+  console.warn(`[TgBot] ${describeCallError('setMyCommands', result)}; the / menu may be stale.`);
 }
 
 /**
@@ -196,14 +343,12 @@ async function boot(token: string, abort: AbortController): Promise<void> {
  * unconfirmed update is redelivered forever. It advances only AFTER the batch
  * has been handled, so a crash mid-batch replays rather than drops.
  */
-async function pollLoop(
-  api: TelegramBotApi,
-  sender: TelegramSender,
-  username: string,
-  signal: AbortSignal,
-): Promise<void> {
+async function pollLoop(runtime: Runtime, signal: AbortSignal): Promise<void> {
+  const { api } = runtime;
   let offset = 0;
   let backoff = BACKOFF_START_MS;
+  const conflicts = new ConflictReporter();
+  const label = instanceLabel(process.env, hostname());
 
   while (!signal.aborted) {
     const result = await api.getUpdates(offset, POLL_SECONDS, signal);
@@ -214,12 +359,12 @@ async function pollLoop(
       // 409 is the one worth naming: it means a SECOND process (another deploy,
       // a local dev server, a webhook still set) is polling the same token, and
       // Telegram hands each update to only one of them. Silent message loss
-      // otherwise looks like a bug in this code.
+      // otherwise looks like a bug in this code — so this is reported as a
+      // banner naming THIS instance, then re-reported with a running count,
+      // rather than as one line lost in a busy log. See polling.ts.
       if (result.errorCode === 409) {
-        console.error(
-          '[TgBot] Another process is polling this bot token (409). Updates will be split between them — ' +
-            'stop the other instance, or use a separate token per environment.',
-        );
+        const lines = conflicts.record(label);
+        if (lines) for (const line of lines) console.error(line);
       } else {
         console.error(`[TgBot] ${describeCallError('getUpdates', result)}; retrying in ${backoff}ms.`);
       }
@@ -231,11 +376,15 @@ async function pollLoop(
     }
 
     backoff = BACKOFF_START_MS;
+    if (conflicts.active) {
+      console.log(`[TgBot] Conflict cleared after ${conflicts.conflicts} rejected poll(s); receiving updates again.`);
+      conflicts.clear();
+    }
     const updates = result.result ?? [];
 
     for (const update of updates) {
       try {
-        await handleUpdate(update, sender, username);
+        await handleUpdate(update, runtime);
       } catch (err) {
         // One malformed update must not stall the loop or, worse, prevent the
         // offset advancing — which would replay it on every poll forever.
@@ -251,12 +400,20 @@ async function pollLoop(
  *  by a restart-free env update on hosts that support it. */
 async function handleUpdate(
   update: Parameters<typeof classifyUpdate>[0],
-  sender: TelegramSender,
-  username: string,
+  runtime: Runtime,
 ): Promise<void> {
+  const { sender, panel, admins, username } = runtime;
   const decision = classifyUpdate(update, { botUsername: username, allowlist: readAllowedChatIds() });
 
   if (decision.kind === 'ignore') return;
+
+  // A panel button press. It carries its own allowlist and admin checks (see
+  // panel.ts's decidePanelPress) because the refusal has to be delivered as an
+  // answered callback query rather than as a chat message.
+  if (decision.kind === 'callback') {
+    await panel.handle(decision.query);
+    return;
+  }
 
   if (decision.kind === 'decline') {
     // One short line, high priority, no roster write: a chat outside the
@@ -273,25 +430,64 @@ async function handleUpdate(
     if (decision.chat.type === 'private') {
       const help = commandMap.get('help');
       if (help) {
-        await help.execute({
-          chatId: decision.chatId,
-          chat: decision.chat,
-          from: decision.from,
-          command: decision.command,
-          reply: (text) => sender.send(decision.chatId, text, { priority: 'high' }),
-        });
+        await help.execute(
+          commandContext(decision, runtime, (text) =>
+            sender.send(decision.chatId, text, { priority: 'high' }),
+          ),
+        );
       }
     }
     return;
   }
 
-  await command.execute({
+  await command.execute(
+    commandContext(decision, runtime, (text, opts) =>
+      sender.send(decision.chatId, text, { priority: 'high', replyMarkup: opts?.keyboard }),
+    ),
+  );
+  admins.prune();
+}
+
+/**
+ * Build the context one command handler runs with.
+ *
+ * `authorizeWrite` is a THUNK, not a resolved boolean: resolving it eagerly
+ * would spend a getChatMember round trip on every /status and /help, and the
+ * read commands are the common case by a wide margin. Handlers call it on the
+ * branch that is about to write. See permissions.ts for the rule and admin.ts
+ * for the cache it shares with the panel.
+ */
+function commandContext(
+  decision: Extract<ReturnType<typeof classifyUpdate>, { kind: 'command' }>,
+  runtime: Runtime,
+  reply: TgCommandContext['reply'],
+): TgCommandContext {
+  return {
     chatId: decision.chatId,
     chat: decision.chat,
     from: decision.from,
     command: decision.command,
-    reply: (text) => sender.send(decision.chatId, text, { priority: 'high' }),
-  });
+    botUsername: runtime.username,
+    async authorizeWrite() {
+      // No sender means no actor to authorize. Telegram omits `from` on some
+      // service and channel messages; refusing is the only fail-closed answer.
+      const userId = decision.from?.id;
+      if (userId === undefined) {
+        return { allow: false, message: 'Only a group admin can change what this chat receives.' };
+      }
+      const verdict = decideChatWrite({
+        chatId: decision.chatId,
+        chatType: decision.chat.type,
+        userId,
+        isAdmin:
+          decision.chat.type === 'private'
+            ? false
+            : await runtime.admins.isAdmin(decision.chatId, userId),
+      });
+      return verdict.allow ? { allow: true, message: '' } : { allow: false, message: verdict.message };
+    },
+    reply,
+  };
 }
 
 /**

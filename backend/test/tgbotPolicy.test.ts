@@ -20,6 +20,7 @@ import {
   readSettings,
   subscribedTypes,
   type AlertLike,
+  type TgAlertType,
 } from '../src/tgbot/alertPolicy';
 import { ChatOutboundGuard, DEFAULT_GUARD_LIMITS } from '../src/tgbot/guard';
 import { DigestBuffer } from '../src/tgbot/digest';
@@ -34,35 +35,53 @@ const alert = (type: string, over: Record<string, unknown> = {}): AlertLike => (
 // ---------------------------------------------------------------------------
 
 describe('fail closed: what a brand-new chat is subscribed to', () => {
-  // THE test. A bot added to somebody's group must be silent until a human
-  // deliberately turns something on. /start passes no settings at all, so this
-  // constant IS what a freshly registered chat gets.
-  it('/start results in ZERO subscriptions', () => {
+  // The five INCIDENT classes — everything except octSignals. The fail-closed
+  // guarantee is stated over these: a bot added to somebody's group must be
+  // silent on the raw feed until a human deliberately turns something on.
+  const INCIDENT: TgAlertType[] = ['missedRunner', 'mcapCross', 'keyword', 'highlighted', 'contract'];
+
+  // THE test. /start passes no settings at all, so this constant IS what a
+  // A freshly registered chat is subscribed to NOTHING — every class, OCT
+  // Alerts included, is opt-in. This is the fail-closed default.
+  it('/start leaves every class off, including OCT Alerts', () => {
     expect(subscribedTypes(DEFAULT_CHAT_SETTINGS)).toEqual([]);
-    for (const type of ALERT_TYPES) {
+    for (const type of INCIDENT) {
       expect(DEFAULT_CHAT_SETTINGS.alerts[type]).toBe('off');
     }
+    expect(DEFAULT_CHAT_SETTINGS.alerts.octSignals).toBe('off');
   });
 
-  it('an absent, null or empty settings blob reads as zero subscriptions', () => {
-    expect(subscribedTypes(readSettings(undefined))).toEqual([]);
-    expect(subscribedTypes(readSettings(null))).toEqual([]);
-    expect(subscribedTypes(readSettings({}))).toEqual([]);
-    expect(subscribedTypes(readSettings({ alerts: {} }))).toEqual([]);
+  // An absent/legacy blob also reads as everything-off — no class is delivered
+  // to a chat that has not explicitly opted in.
+  const onlyOctSignals = (raw: unknown): void => {
+    expect(subscribedTypes(readSettings(raw))).toEqual([]);
+    expect(readSettings(raw).alerts.octSignals).toBe('off');
+    for (const type of INCIDENT) expect(readSettings(raw).alerts[type]).toBe('off');
+  };
+
+  it('an absent, null or empty settings blob reads as everything off', () => {
+    onlyOctSignals(undefined);
+    onlyOctSignals(null);
+    onlyOctSignals({});
+    onlyOctSignals({ alerts: {} });
   });
 
-  it('a row written by the OLD build comes back subscribed to nothing', () => {
+  it('a row written by the OLD build comes back with no incident subscription', () => {
     // `{ contractAlerts: true }` is exactly the subscription that flooded a
     // live group. It is deliberately not migrated — it is ignored, so every
-    // chat registered under the old build has to opt in again.
-    expect(subscribedTypes(readSettings({ contractAlerts: true }))).toEqual([]);
+    // chat registered under the old build has to opt into the feed again.
+    onlyOctSignals({ contractAlerts: true });
   });
 
-  it('garbage in the blob cannot switch something on', () => {
-    expect(subscribedTypes(readSettings({ alerts: { contract: 'on' } }))).toEqual([]);
-    expect(subscribedTypes(readSettings({ alerts: { contract: true } }))).toEqual([]);
-    expect(subscribedTypes(readSettings({ alerts: { nonsense: 'digest' } }))).toEqual([]);
-    expect(subscribedTypes(readSettings('all'))).toEqual([]);
+  it('garbage in the blob cannot switch an incident class on', () => {
+    onlyOctSignals({ alerts: { contract: 'on' } });
+    onlyOctSignals({ alerts: { contract: true } });
+    onlyOctSignals({ alerts: { nonsense: 'digest' } });
+    onlyOctSignals('all');
+  });
+
+  it('an explicit off silences even OCT Alerts — it stays a normal toggle', () => {
+    expect(subscribedTypes(readSettings({ alerts: { octSignals: 'off' } }))).toEqual([]);
   });
 
   it('demotes a stored instant on a class that no longer permits it', () => {
@@ -182,7 +201,7 @@ describe('settings transitions', () => {
     expect(stored.alerts.contract).toBe('off');
   });
 
-  it('round-trips an opt-out back to silence', () => {
+  it('round-trips an opt-out back to the default (everything off)', () => {
     const on = applyAlertSetting(DEFAULT_CHAT_SETTINGS, 'contract', 'digest');
     const off = applyAlertSetting(on, 'contract', 'off');
     expect(subscribedTypes(readSettings(JSON.parse(JSON.stringify(off))))).toEqual([]);

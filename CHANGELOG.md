@@ -4,6 +4,22 @@ All notable changes to Onchain Tools are documented here. Entries before the
 rename still say "Trenchcord" — that was the product's name at the time, and
 they're left as the record of what shipped.
 
+## 2026-09-08
+
+### Fixed
+- **One Telegram call, one ping** — a scan or a keyword match from a Telegram source could ping you several times over: the same alert, word for word, stacked until the only way to stop it was muting the tab. Telegram re-sends a message after a reconnect, usually minutes and sometimes hours later, and OCT only recognised a repeat that landed within ten seconds of the original — so a replay looked like a fresh call and everything fired again. It now recognises the repeat however late it turns up, which quiets the duplicate toast, the duplicate phone push and the duplicate bot message together. The feed row and the call count were already protected and are unchanged, and Discord sources were never affected.
+
+## 2026-09-06
+
+### Added
+- **The Telegram bot has a control panel** — `/start` now opens a card showing what this chat receives, how it is delivered, how close it is to its hourly ceiling, and whether it is wired to an OCT account at all, with buttons to change any of it. A fresh chat still reads *nothing is turned on*, because the bot stays silent until somebody deliberately turns an alert on. In a group, only an admin can change what the room receives — anyone can look.
+- **Commands you can actually find** — the bot now publishes its commands to Telegram, so typing `/` lists them with descriptions instead of you having to remember them. `/help` is grouped by what you are trying to do. New: **`/mute 2h`** pauses everything without losing your subscriptions, **`/unmute`** lifts it, **`/mcap`** shows the coins that most recently crossed the market-cap threshold, and **`/queued`** shows what the next digest is holding. In a DM you can paste a bare contract address with no command at all.
+
+### Fixed
+- **The bot knows its own name** — the group-mention hint said to add `@thebotname`, literally, instead of the bot's actual handle.
+- **Typed commands respect group permissions** — `/alerts on` could be run by any member of a group, which meant one person could subscribe a whole room to the loudest alert class in the system. Buttons already checked for this; typed commands now go through the same check.
+- **Busy minutes no longer drop calls** — when a lot of Telegram traffic arrived at once, OCT asked the database the same handful of questions once per message instead of once per burst, ran out of connections, and quietly threw the overflow away. The feed looked calm; the calls that crossed during those seconds were simply never logged. Those repeated questions — your rooms, your keywords, your highlighted names — are now answered once and shared by every message in the burst, so a spike costs the same as a quiet minute. Editing a keyword, a room or a highlighted name still takes effect immediately.
+
 ## 2026-09-05
 
 ### Added

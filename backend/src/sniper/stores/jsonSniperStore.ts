@@ -35,8 +35,10 @@ import type {
   ReservationResult,
   RuleState,
   SnipeRule,
+  SniperFeeSettings,
   WalletConfig,
 } from '../types.js';
+import { DEFAULT_FEE_SETTINGS, normalizeFeeSettings } from '../fees.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const DATA_DIR =
@@ -56,7 +58,18 @@ interface UserBucket {
   wallets: Record<string, WalletConfig>;
   budgets: Record<string, BudgetRow>;
   fires: FireRecord[];
-  state: { killSwitch: boolean; trippedAt: number | null; trippedReason: string | null };
+  state: {
+    killSwitch: boolean;
+    trippedAt: number | null;
+    trippedReason: string | null;
+    /**
+     * Account-level tip + priority fee (fees.ts). OPTIONAL on the file shape
+     * because every sniper.json written before this feature lacks it; a missing
+     * value reads as DEFAULT_FEE_SETTINGS, which is the same arithmetic those
+     * installs already had.
+     */
+    fees?: SniperFeeSettings;
+  };
 }
 
 type FileShape = Record<string, UserBucket>;
@@ -69,7 +82,7 @@ function emptyBucket(): UserBucket {
     wallets: {},
     budgets: {},
     fires: [],
-    state: { killSwitch: false, trippedAt: null, trippedReason: null },
+    state: { killSwitch: false, trippedAt: null, trippedReason: null, fees: { ...DEFAULT_FEE_SETTINGS } },
   };
 }
 
@@ -105,6 +118,7 @@ function bucket(userId: string): UserBucket {
     existing.budgets ??= {};
     existing.fires ??= [];
     existing.state ??= { killSwitch: false, trippedAt: null, trippedReason: null };
+    existing.state.fees ??= { ...DEFAULT_FEE_SETTINGS };
     return existing;
   }
   const fresh = emptyBucket();
@@ -183,7 +197,26 @@ export class JsonSniperStore implements SniperStore {
   }
   async setKillSwitch(userId: string, on: boolean, reason: string | null): Promise<void> {
     const b = bucket(userId);
-    b.state = { killSwitch: on, trippedAt: on ? Date.now() : null, trippedReason: on ? reason : null };
+    b.state = {
+      killSwitch: on,
+      trippedAt: on ? Date.now() : null,
+      trippedReason: on ? reason : null,
+      // Preserved, not rebuilt: the fees live on this same object, and dropping
+      // them on every kill/resume would reset the operator's tip to zero.
+      fees: b.state.fees ?? { ...DEFAULT_FEE_SETTINGS },
+    };
+    save();
+  }
+
+  // --- fee settings (account-level; see fees.ts) ---
+  async getFeeSettings(userId: string): Promise<SniperFeeSettings> {
+    // Normalized on READ as well as write, because sniper.json is a plain file
+    // an operator can hand-edit into a negative or a string.
+    return normalizeFeeSettings(bucket(userId).state.fees);
+  }
+
+  async setFeeSettings(userId: string, settings: SniperFeeSettings): Promise<void> {
+    bucket(userId).state.fees = normalizeFeeSettings(settings);
     save();
   }
 

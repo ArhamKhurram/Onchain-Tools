@@ -14,12 +14,15 @@
 // alert rather than a visible bug.
 
 import {
+  buildAxiomEvmUrl,
   buildContractUrl,
   buildRevivalContractUrl,
   compactUsd,
   revivalNetworkLabel,
   shortAddress,
   type ContractLinkTemplates,
+  type EvmPlatform,
+  type SolPlatform,
 } from '@oct/shared';
 import type { BotSnapshotResponse } from '@oct/shared';
 // The signature is brand, not Discord — one constant so the two bots cannot
@@ -36,6 +39,10 @@ import {
   type TgChatSettings,
 } from './alertPolicy.js';
 import type { PendingDigest } from './digest.js';
+import type { OctSignalView } from './octSignals.js';
+import type { TgInlineKeyboardButton, TgInlineKeyboardMarkup } from './types.js';
+import { COMMAND_GROUPS } from './commandCatalog.js';
+import { groupMentionNote } from './identity.js';
 
 /**
  * Chart links use OCT's shipped defaults rather than a user's own preferences:
@@ -78,45 +85,42 @@ function name(value: string | null | undefined, fallback = '—'): string {
   return escapeHtml(clampName(value, fallback));
 }
 
-/**
- * `/start` — registration confirmation.
- *
- * The wording here is load-bearing. The previous version said "contract
- * detections will land here", because they did: registration switched them on.
- * That is what flooded a live group. Registration now subscribes a chat to
- * NOTHING, so this card's job is to say so plainly and point at the one command
- * that changes it — a group must never be surprised by the first alert.
- */
-export function renderStart(chatTitle: string | null, isGroup: boolean): string {
-  return joinLines([
-    bold('OCT is listening. 👀'),
-    '',
-    isGroup
-      ? `This chat${chatTitle ? ` (${name(chatTitle)})` : ''} is registered, and it is subscribed to nothing yet — the bot will stay quiet until you turn an alert on.`
-      : 'This chat is registered, and it is subscribed to nothing yet — the bot will stay quiet until you turn an alert on.',
-    '',
-    `Run ${code('/alerts')} to see what is available and how loud each one is.`,
-    '',
-    `No Telegram or Discord account of yours is connected, and none is needed — this bot reads only messages addressed to it with a ${code('/command')}.`,
-    '',
-    `Type ${code('/help')} for the command list.`,
-    '',
-    footer(),
-  ]);
-}
+// `/start`'s card used to live here, as prose. It is now the control PANEL —
+// a status block plus an inline keyboard — and it lives in panel.ts with the
+// callback-data grammar and the permission rule it cannot be separated from.
+// The wording that mattered survived the move intact: registration subscribes a
+// chat to nothing, and the card says so in its first status line.
 
-/** `/help` — the command list. */
-export function renderHelp(): string {
+/**
+ * `/help` — the command list, GROUPED BY WHAT SOMEBODY IS TRYING TO DO.
+ *
+ * The flat five-line version it replaces was readable only because there were
+ * five commands; the ordering carried no information, so a reader with a
+ * question ("why is this thing so loud") had to know which command answered it
+ * before reading the list. The groups and their order live in
+ * commandCatalog.ts, shared with the panel's Help view and Telegram's own `/`
+ * menu, so adding a command cannot leave one of the three behind.
+ *
+ * `botUsername` comes from getMe — see identity.ts for why it is a parameter,
+ * and what the card does when Telegram gave us no username.
+ */
+export function renderHelp(botUsername: string): string {
   return joinLines([
     bold('OCT bot commands'),
+    ...COMMAND_GROUPS.flatMap((group): (string | null)[] => [
+      '',
+      bold(group.title),
+      group.note ? italic(group.note) : null,
+      ...group.commands.map((spec) => `${code(spec.usage)} — ${escapeHtml(spec.blurb)}`),
+    ]),
     '',
-    `${code('/start')} — register this chat (subscribes to nothing)`,
-    `${code('/alerts')} — see and change what this chat receives`,
-    `${code('/help')} — this list`,
-    `${code('/status')} — what this chat is registered for`,
-    `${code('/token <address> [chain]')} — market snapshot from OCT enrichment`,
-    '',
-    italic('In a group, add @thebotname to any command if other bots are present.'),
+    italic('In a DM, paste a bare contract address — no command needed.'),
+    // Null when getMe returned no username: the line vanishes rather than
+    // rendering a sentence with a hole where the handle should be.
+    (() => {
+      const note = groupMentionNote(botUsername);
+      return note ? italic(note) : null;
+    })(),
     '',
     footer(),
   ]);
@@ -383,6 +387,96 @@ export interface McapCrossView {
   targetUsd: number;
   liquidityUsd: number | null;
   liquidityRatio: number | null;
+  /** Traded USD over 24h across all pools. Null/absent = not reported. */
+  volume24hUsd?: number | null;
+  /**
+   * Estimated USD paid in trading fees/tax over 24h (volume x tax rate).
+   * Null/absent = not computable — no volume, or no tax rate, which is every
+   * Solana token. USD, because Axiom's ETH/SOL would need a native price this
+   * pipeline does not hold.
+   */
+  totalFeesUsd?: number | null;
+  /** Non-blocking gate caveats, e.g. `honeypotUnknown`. Absent = clean pass. */
+  caveats?: string[];
+}
+
+/**
+ * Quick-buy venues for the crossing card, in the order they appear as buttons.
+ *
+ * Each entry names a PRESET the shared referral machinery already knows, per
+ * chain — never a referral code. buildRevivalContractUrl → buildContractUrl →
+ * getPresetTemplate embeds the owner's own REFERRALS code into the URL, so the
+ * owner earns the referral fee; this table only says which venue applies where.
+ *
+ * `null` means the venue does not support that chain and is omitted — a
+ * wrong-chain link is a wasted click, or worse points at the wrong token. Which
+ * venues are valid per chain is fixed upstream by SolPlatform/EvmPlatform in
+ * @oct/shared: Axiom and Padre are Solana-only; GMGN and Bloom span both.
+ */
+const MCAP_QUICK_BUY_VENUES: {
+  label: string;
+  sol: SolPlatform | null;
+  evm: EvmPlatform | null;
+}[] = [
+  { label: 'GMGN', sol: 'gmgn', evm: 'gmgn' },
+  { label: 'Axiom', sol: 'axiom', evm: null },
+  { label: 'Padre', sol: 'padre', evm: null },
+  { label: 'Bloom', sol: 'bloom', evm: 'bloom' },
+];
+
+/**
+ * A per-venue link config for buildRevivalContractUrl. buildContractUrl keys
+ * sol-vs-evm off the ADDRESS (`0x…` = EVM), so the venue goes in the field that
+ * matches this chain and the OTHER field gets a valid throwaway default that is
+ * never read (only a `custom` platform reads `sol`/`evm`; a preset never does).
+ */
+function venueConfig(platform: SolPlatform | EvmPlatform, isSol: boolean): ContractLinkTemplates {
+  return {
+    sol: '',
+    evm: '',
+    solPlatform: isSol ? (platform as SolPlatform) : 'axiom',
+    evmPlatform: isSol ? 'gmgn' : (platform as EvmPlatform),
+  };
+}
+
+/**
+ * The Rick-style quick-buy keyboard for a market-cap crossing: one URL button
+ * per venue that supports the token's chain, each carrying the owner's referral.
+ *
+ * URL buttons, not inline `<a>` links: they need no callback handling, and their
+ * `url` is a JSON field of reply_markup (see api.ts) — so it must be RAW, never
+ * escapeHtml'd (that context is text/attributes, and escaping here would corrupt
+ * the URL with `&amp;`). The safe-link path for a button is the same http(s)
+ * guard link() applies; an address is untrusted input, so a URL that does not
+ * build to http(s) is dropped rather than sent.
+ *
+ * Returns undefined when nothing applies, so the caller can simply omit the
+ * reply_markup rather than attach an empty keyboard.
+ */
+export function mcapCrossQuickBuyKeyboard(view: {
+  address: string;
+  network: string;
+}): TgInlineKeyboardMarkup | undefined {
+  // buildContractUrl decides sol-vs-evm from the address, so decide the venue
+  // list the same way — a base58 mint is Solana, an 0x address is EVM.
+  const isSol = !view.address.startsWith('0x');
+
+  const buttons: TgInlineKeyboardButton[] = [];
+  for (const venue of MCAP_QUICK_BUY_VENUES) {
+    const platform = isSol ? venue.sol : venue.evm;
+    if (!platform) continue;
+    const url = buildRevivalContractUrl(view.address, view.network, venueConfig(platform, isSol));
+    // Same guard as link(): only http(s) is a real, tappable link.
+    if (!/^https?:\/\//i.test(url.trim())) continue;
+    buttons.push({ text: venue.label, url });
+  }
+
+  if (buttons.length === 0) return undefined;
+
+  // Two per row keeps four venues to two tidy rows on a phone; never more.
+  const rows: TgInlineKeyboardButton[][] = [];
+  for (let i = 0; i < buttons.length; i += 2) rows.push(buttons.slice(i, i + 2));
+  return { inline_keyboard: rows };
 }
 
 /**
@@ -399,25 +493,192 @@ export interface McapCrossView {
  * question anyone asks and is the difference between an alert that gets acted
  * on and one that gets screenshotted. The chain goes on the card for the same
  * reason a wrong-chain address is a wasted click.
+ *
+ * The quick-buy venues (GMGN/Axiom/Padre/Bloom, chain-correct) ride the message
+ * as a reply_markup keyboard, not as text — see mcapCrossQuickBuyKeyboard, which
+ * the delivery path (alerts.ts) attaches. This body keeps `code(address)` so the
+ * CA stays tap-to-copy even for a client that renders no buttons.
  */
 export function renderMcapCrossCard(view: McapCrossView): string {
   const ticker = clampName((view.symbol ?? '').toUpperCase().replace(/^\$/, ''), '');
-  const heading = ticker !== '' ? `📈 $${ticker} crossed ${compactUsd(view.targetUsd)}` : `📈 Crossed ${compactUsd(view.targetUsd)}`;
+  // A mint fragment rides in the heading because a ticker is NOT unique: two
+  // different mints can share `$CNPY` and each legitimately cross, and with only
+  // the symbol in bold the two cards read as one duplicate glitch. The full
+  // address is already below, but the eye catches the heading — so the first
+  // four chars of the mint go here to distinguish real collisions at a glance.
+  const mintTag = view.address ? ` · ${view.address.slice(0, 4)}` : '';
+  const heading =
+    ticker !== ''
+      ? `📈 $${ticker}${mintTag} crossed ${compactUsd(view.targetUsd)}`
+      : `📈 Crossed ${compactUsd(view.targetUsd)}`;
   const depth =
     view.liquidityUsd != null
       ? `${compactUsd(view.liquidityUsd)}${view.liquidityRatio != null ? ` (${(view.liquidityRatio * 100).toFixed(1)}% of mcap)` : ''}`
       : 'unknown';
 
+  // An unevaluated honeypot check is stated, not swallowed. See
+  // GateVerdict.caveats: the EVM gate deliberately passes a null `is_honeypot`
+  // (abstaining there would silence BNB almost entirely), so the ONLY honest
+  // place to put that uncertainty is in front of the person about to buy.
+  const caveated = view.caveats?.includes('honeypotUnknown') === true;
+
   return joinLines([
     bold(heading),
     `${bold('MCap:')} ${escapeHtml(compactUsd(view.mcapUsd))}`,
     `${bold('Liquidity:')} ${escapeHtml(depth)}`,
+    // Volume earns a line only when it is KNOWN. Printing "unknown" beside a
+    // number the reader can act on adds a row of noise to every card for the
+    // minority of tokens DexScreener is quiet about; liquidity says "unknown"
+    // because a gate depends on it, and volume's gate is off unless asked for.
+    ...(view.volume24hUsd != null
+      ? [`${bold('Vol 24h:')} ${escapeHtml(compactUsd(view.volume24hUsd))}`]
+      : []),
+    // Same rule as volume: a line only when the figure is KNOWN. "est." and
+    // the explicit $ are both load-bearing — the reader knows this number from
+    // Axiom, where it is exact and denominated in ETH/SOL, and neither is true
+    // here. Absent on Solana by construction; see fees.ts.
+    ...(view.totalFeesUsd != null
+      ? [`${bold('Fees 24h:')} ${escapeHtml(`~${compactUsd(view.totalFeesUsd)} est.`)}`]
+      : []),
     `${bold('Chain:')} ${escapeHtml(revivalNetworkLabel(view.network))}`,
+    ...(caveated ? [`${bold('⚠ Honeypot:')} ${escapeHtml('not evaluated — verify before buying')}`] : []),
     '',
+    // The chart/quick-buy links live in the reply_markup keyboard, not here.
+    // The CA stays as tap-to-copy code so it survives a client with no buttons.
     code(view.address),
-    link('Chart ↗', buildRevivalContractUrl(view.address, view.network, LINK_TEMPLATES)),
-    footer('Scam-filtered'),
+    footer(caveated ? 'Scam-filtered · honeypot status unknown' : 'Scam-filtered'),
   ]);
+}
+
+// --- OCT Alerts (forwarded algorithm-scan signals) --------------------------
+
+/** SOL/EVM display label for a signal's SOURCE chain (digest line only). */
+const OCT_SIGNAL_CHAIN_LABEL: Record<'sol' | 'evm', string> = { sol: 'SOL', evm: 'EVM' };
+
+/**
+ * Human-readable chain name for an OCT Alerts card's `Chain:` line. Unlike the
+ * compact crossing-card label (revivalNetworkLabel → "HOOD"/"BNB"), the forwarded
+ * signal spells the chain out ("Robinhood", "Base") so a fresh subscriber reads
+ * it plainly. Falls back to revivalNetworkLabel for any chain not mapped here.
+ */
+const OCT_SIGNAL_NETWORK_LABELS: Record<string, string> = {
+  solana: 'Solana',
+  sol: 'Solana',
+  robinhood: 'Robinhood',
+  hood: 'Robinhood',
+  base: 'Base',
+  bsc: 'BNB Chain',
+  bnb: 'BNB Chain',
+  eth: 'Ethereum',
+  ethereum: 'Ethereum',
+  arb: 'Arbitrum',
+  polygon: 'Polygon',
+  avax: 'Avalanche',
+};
+
+function octSignalChainLabel(chain: 'sol' | 'evm', network: string): string {
+  if (chain === 'sol') return 'Solana';
+  return OCT_SIGNAL_NETWORK_LABELS[network.trim().toLowerCase()] ?? revivalNetworkLabel(network);
+}
+
+/**
+ * The quick-buy keyboard for an OCT Alerts card.
+ *
+ * DELIBERATELY NOT `mcapCrossQuickBuyKeyboard`. The operator wants a different
+ * venue set here — Axiom in place of Bloom — and the crossing card must keep its
+ * own (GMGN/Axiom/Padre/Bloom). Both build their URLs from the SAME shared
+ * machinery (buildRevivalContractUrl / buildAxiomEvmUrl → getPresetTemplate),
+ * so the owner's referral is embedded by the shared code, never a literal here.
+ *
+ * The set, per chain:
+ *   • Solana  → GMGN + Axiom. (Bloom and Padre are dropped from this card.)
+ *   • EVM     → GMGN always; Axiom ONLY on the Robinhood chain, whose Axiom URL
+ *               is verified. On every other EVM chain Axiom is omitted rather
+ *               than pointed at a chain it may not serve — a wrong-chain link is
+ *               worse than one fewer button.
+ *
+ * URL buttons carry a RAW url (a JSON field of reply_markup — never escapeHtml'd,
+ * which would corrupt it with `&amp;`). The address is untrusted, so any url
+ * that does not build to http(s) is dropped, the same guard `link()` applies.
+ * Returns undefined when nothing applies so the caller omits reply_markup.
+ */
+export function octSignalQuickBuyKeyboard(view: {
+  address: string;
+  network: string;
+}): TgInlineKeyboardMarkup | undefined {
+  // buildContractUrl keys sol-vs-evm off the address, so decide the venue set
+  // the same way — a base58 mint is Solana, an 0x address is EVM.
+  const isSol = !view.address.startsWith('0x');
+  const buttons: TgInlineKeyboardButton[] = [];
+
+  const push = (text: string, url: string | null): void => {
+    if (url && /^https?:\/\//i.test(url.trim())) buttons.push({ text, url });
+  };
+
+  // GMGN spans both chains (referral embedded by the shared machinery).
+  push('GMGN', buildRevivalContractUrl(view.address, view.network, venueConfig('gmgn', isSol)));
+
+  // Axiom: native on Solana; on EVM only the Robinhood chain has a verified
+  // referral URL, so buildAxiomEvmUrl returns null (→ no button) elsewhere.
+  push(
+    'Axiom',
+    isSol
+      ? buildRevivalContractUrl(view.address, view.network, venueConfig('axiom', true))
+      : buildAxiomEvmUrl(view.address, view.network),
+  );
+
+  if (buttons.length === 0) return undefined;
+
+  const rows: TgInlineKeyboardButton[][] = [];
+  for (let i = 0; i < buttons.length; i += 2) rows.push(buttons.slice(i, i + 2));
+  return { inline_keyboard: rows };
+}
+
+/**
+ * A forwarded "OCT Alerts" signal, as a MINIMAL Telegram card.
+ *
+ * WHAT IT SHOWS AND WHY. The upstream scan body carries a vendor-linked name,
+ * ATH/USD/LIQ/VOL rows, socials, holder %, link-farm rows and promo — none of
+ * which the operator wants forwarded. So this card is built from EXTRACTED
+ * FIELDS (octSignals.ts), not the body: a `$TICKER` header, the market cap when
+ * we could parse it, the chain, and the tap-to-copy contract address. Nothing
+ * else. Every field is escaped (html.ts): a `<` that slipped through raw would
+ * be a 400 and a silently dropped signal.
+ *
+ * WHITE-LABEL. No vendor name, no vendor chart link — the OCT signature in the
+ * footer is the only attribution, and the neutral header fallback is the alert
+ * type's own label ("OCT Alerts"). The referral quick-buy keyboard rides the
+ * message as reply_markup (octSignalQuickBuyKeyboard), attached by the delivery
+ * path; the CA stays as `<code>` so it survives a client that renders no buttons.
+ * A message with no address renders its header/chain without a CA or buttons
+ * rather than being dropped.
+ */
+export function renderOctSignalCard(view: OctSignalView): string {
+  const ticker = clampName(view.ticker ?? '', '');
+  const heading = ticker !== '' ? `💠 $${ticker}` : `💠 ${ALERT_CATALOG.octSignals.label}`;
+  // Chain line: SOL reads "Solana"; an EVM signal spells its resolved chain out
+  // ("Robinhood", "Base"), falling back to revivalNetworkLabel for the rest.
+  const chainLabel = octSignalChainLabel(view.chain, view.network);
+  const primary = view.addresses[0];
+
+  return joinLines([
+    bold(heading),
+    view.mcapDisplay ? `${bold('MCap:')} ${escapeHtml(view.mcapDisplay)}` : null,
+    `${bold('Chain:')} ${escapeHtml(chainLabel)}`,
+    '',
+    primary ? code(primary) : null,
+    footer(),
+  ]);
+}
+
+/** One digest line for a forwarded signal. Terse; keeps the address. */
+export function octSignalDigestLine(view: OctSignalView): string {
+  const address = view.addresses[0];
+  const head = address ? code(address) : escapeHtml(truncate(view.text.trim(), 90));
+  return (
+    `${escapeHtml(ALERT_CATALOG.octSignals.label)} — ${head} ` +
+    escapeHtml(`· ${OCT_SIGNAL_CHAIN_LABEL[view.chain]}`)
+  );
 }
 
 /** One line of a digest for a market-cap crossing. Terse; keeps the address. */
@@ -467,6 +728,146 @@ export function renderDigest(pending: PendingDigest, now: number): string {
     ...pending.lines.map((l) => (l.count > 1 ? `${l.line} ${bold(`×${l.count}`)}` : l.line)),
     pending.dropped > 0 ? italic(`+${pending.dropped} more not shown`) : null,
     '',
+    footer(),
+  ]);
+}
+
+/**
+ * `3h ago`, `12m ago`, `just now`.
+ *
+ * Absolute UTC timestamps are what the mute notice uses, because "until when"
+ * is a deadline somebody has to plan around. Recency is the opposite question —
+ * a reader scanning crossings wants to know whether the top line is minutes or
+ * days old, and "4h ago" answers it without arithmetic. Pure, clock-injected,
+ * and it never renders a negative age: a clock skew that puts a row in the
+ * future reads as "just now" rather than as "-3m ago".
+ */
+export function formatAgo(then: number, now: number): string {
+  const seconds = Math.max(0, Math.round((now - then) / 1000));
+  if (seconds < 90) return 'just now';
+  const minutes = Math.round(seconds / 60);
+  if (minutes < 60) return `${minutes}m ago`;
+  const hours = Math.round(minutes / 60);
+  if (hours < 48) return `${hours}h ago`;
+  return `${Math.round(hours / 24)}d ago`;
+}
+
+/** One row of `/mcap`: what crossed, on which chain, and when. */
+export interface RecentCrossingView {
+  address: string;
+  /** GeckoTerminal network id — 'solana' | 'bsc' | 'robinhood'. */
+  network: string;
+  /** The last market cap recorded for the token, not the value at the cross. */
+  mcapUsd: number;
+  /** Epoch ms of the alert. Always > 0; rows that never fired are not listed. */
+  firedAt: number;
+}
+
+/**
+ * `/mcap` — the last few market-cap crossings.
+ *
+ * WHAT THIS IS AND IS NOT. It reads `mcap_cross_state.fired_at`, which records
+ * that a TOKEN crossed the threshold — not that any particular chat was sent
+ * anything. So it lists crossings a chat may never have been subscribed for,
+ * and the copy says "crossed", never "you missed". Inventing a per-chat
+ * delivery history to make the second sentence true would need a table this bot
+ * does not have, which is the same call renderPanelRecent made about "Queued".
+ *
+ * NO SYMBOL, ON PURPOSE. The state row holds an address, a chain and a number;
+ * resolving five tickers means five token-catalog reads per invocation, on a
+ * command any group member can run, against a database whose connection pool is
+ * already the production constraint. The address is `<code>` and therefore
+ * tap-to-copy, which is what a reader does with it next anyway.
+ */
+export function renderRecentCrossings(
+  rows: RecentCrossingView[],
+  opts: { targetUsd: number; now: number; enabled: boolean },
+): string {
+  if (!opts.enabled) {
+    return joinLines([
+      bold('📈 Market-cap crossings'),
+      '',
+      escapeHtml('The crossing poller is not running on this OCT instance.'),
+      footer(),
+    ]);
+  }
+
+  if (rows.length === 0) {
+    return joinLines([
+      bold('📈 Market-cap crossings'),
+      '',
+      italic(`Nothing has crossed ${compactUsd(opts.targetUsd)} on record yet.`),
+      footer(),
+    ]);
+  }
+
+  return joinLines([
+    bold(`📈 Last ${rows.length} to cross ${compactUsd(opts.targetUsd)}`),
+    '',
+    ...rows.flatMap((row) => [
+      `${bold(compactUsd(row.mcapUsd))} ${escapeHtml(
+        `· ${revivalNetworkLabel(row.network)} · ${formatAgo(row.firedAt, opts.now)}`,
+      )}`,
+      `${code(row.address)}\n${link('Chart ↗', buildRevivalContractUrl(row.address, row.network, LINK_TEMPLATES))}`,
+    ]),
+    '',
+    italic('Market cap is the latest reading, not the value at the cross.'),
+    footer('Scam-filtered'),
+  ]);
+}
+
+/**
+ * `/queued` — what this chat's next digest will contain.
+ *
+ * The typed twin of the panel's Queued card, and it reads the SAME in-process
+ * buffer through `peek` rather than `take`: rendering must never consume the
+ * batch it is describing. It costs no storage read at all, which is why it can
+ * be a command anyone in the room may run.
+ */
+export function renderQueued(
+  view: { lines: { line: string; count: number }[]; dropped: number },
+  opts: { digestMinutes: number; subscribed: number },
+): string {
+  const empty = view.lines.length === 0;
+  return joinLines([
+    bold('🕘 Queued for the next digest'),
+    '',
+    empty
+      ? italic(
+          opts.subscribed === 0
+            ? 'Nothing — this chat is subscribed to nothing yet. Run /alerts to choose.'
+            : 'Nothing buffered right now.',
+        )
+      : null,
+    ...view.lines.map((l) => (l.count > 1 ? `${l.line} ${bold(`×${l.count}`)}` : l.line)),
+    view.dropped > 0 ? italic(`+${view.dropped} more not shown`) : null,
+    '',
+    italic(`Next flush is at most ${opts.digestMinutes} min away.`),
+    footer(),
+  ]);
+}
+
+/** The reply to a successful `/mute`. States the deadline, not the duration. */
+export function renderMuted(untilMs: number): string {
+  const until = new Date(untilMs).toISOString().replace('T', ' ').slice(0, 16);
+  return joinLines([
+    `${bold('🔇 Muted.')} ${escapeHtml(`No alerts here until ${until} UTC.`)}`,
+    italic('Subscriptions are untouched — /unmute resumes them early.'),
+    footer(),
+  ]);
+}
+
+/** The reply to a malformed `/mute …`. */
+export function renderMuteUsage(problem: string | null): string {
+  return joinLines([
+    problem ? escapeHtml(problem) : null,
+    problem ? '' : null,
+    bold('Usage'),
+    `${code('/mute')} — pause alerts for 1 hour`,
+    `${code('/mute 30m')} · ${code('/mute 2h')} · ${code('/mute 1d')} — pause for that long`,
+    `${code('/unmute')} — resume now`,
+    '',
+    italic('Muting changes nothing about what this chat is subscribed to.'),
     footer(),
   ]);
 }

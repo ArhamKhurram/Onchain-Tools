@@ -270,6 +270,98 @@ describe('logContract is idempotent per call — hosted (Supabase)', () => {
 });
 
 // ---------------------------------------------------------------------------
+// The `duplicate` flag
+//
+// Suppressing the ROW is only half the fix: ingest broadcasts whatever
+// `logContract` hands back, so without a flag the console cannot tell a
+// re-delivery from a fresh scan and renders a second feed row for it. The flag
+// is transport-only — it must never reach a column or a read path.
+// ---------------------------------------------------------------------------
+
+describe('logContract flags a re-delivery as `duplicate` — hosted (Supabase)', () => {
+  it('leaves the first delivery unflagged', async () => {
+    const { repo } = makeRepo();
+    const first = await repo.logContract('u1', call());
+    expect(first.duplicate).toBeUndefined();
+  });
+
+  it('flags every subsequent re-delivery of the same call', async () => {
+    const { repo, inserts } = makeRepo();
+    await repo.logContract('u1', call());
+    for (const gap of [5_000, 2 * MINUTE, 60 * MINUTE]) {
+      const again = await repo.logContract('u1', call({ timestamp: laterBy(gap) }));
+      expect(again.duplicate).toBe(true);
+    }
+    expect(inserts).toHaveLength(1);
+  });
+
+  it('flags without costing the duplicate its enrichment', async () => {
+    const { repo } = makeRepo();
+    await repo.logContract('u1', call());
+    await repo.enrichContract('u1', ADDRESS, { tokenSymbol: 'EXMPL', fdvAtCall: 816_000 }, { messageId: MESSAGE_ID });
+
+    const duplicate = await repo.logContract('u1', call({ timestamp: laterBy(2 * MINUTE) }));
+    expect(duplicate.duplicate).toBe(true);
+    expect(duplicate.fdvAtCall).toBe(816_000);
+  });
+
+  it('does not flag a genuinely different call of the same address', async () => {
+    const { repo } = makeRepo();
+    await repo.logContract('u1', call());
+    const second = await repo.logContract('u1', call({ messageId: 'tg_-1002345678_9912' }));
+    expect(second.duplicate).toBeUndefined();
+    expect(second.firstSeen).toBe(false);
+  });
+
+  it('flags the loser of the unique-index race too', async () => {
+    const { repo, applyUniqueIndex, rows } = makeRepo();
+    applyUniqueIndex();
+    rows.push({
+      id: 'row-racer',
+      user_id: 'u1',
+      message_id: MESSAGE_ID,
+      address: ADDRESS,
+      chain: 'sol',
+      first_seen: true,
+      token_symbol: 'RACED',
+    });
+    const logged = await repo.logContract('u1', call());
+    expect(logged.duplicate).toBe(true);
+  });
+
+  it('never writes the flag to a column', async () => {
+    const { repo, rows } = makeRepo();
+    await repo.logContract('u1', call({ duplicate: true }));
+    await repo.logContract('u1', call({ timestamp: laterBy(MINUTE) }));
+    for (const row of rows) expect('duplicate' in row).toBe(false);
+  });
+});
+
+describe('logContract flags a re-delivery as `duplicate` — local (JSON)', () => {
+  it('flags the re-delivery and leaves the stored entry clean', () => {
+    contractLog.deleteAllContracts();
+    const first = contractLog.logContract(call());
+    expect(first.duplicate).toBeUndefined();
+
+    const again = contractLog.logContract(call({ timestamp: laterBy(2 * MINUTE) }));
+    expect(again.duplicate).toBe(true);
+
+    // The flag lives on the returned copy only: the persisted log — and so
+    // every later read of it — stays free of it.
+    const [stored] = contractLog.getContracts(100);
+    expect(stored.duplicate).toBeUndefined();
+    expect(contractLog.getContractByMessage(MESSAGE_ID, ADDRESS)?.duplicate).toBeUndefined();
+  });
+
+  it('does not flag a different message mentioning the same address', () => {
+    contractLog.deleteAllContracts();
+    contractLog.logContract(call());
+    const second = contractLog.logContract(call({ messageId: 'tg_-1002345678_9912' }));
+    expect(second.duplicate).toBeUndefined();
+  });
+});
+
+// ---------------------------------------------------------------------------
 // Local (JSON contract log)
 // ---------------------------------------------------------------------------
 

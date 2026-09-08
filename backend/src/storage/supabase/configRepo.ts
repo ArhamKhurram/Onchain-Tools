@@ -10,11 +10,18 @@ export class ConfigRepo extends BaseRepo {
   tokens!: TokensRepo;
   telegram!: TelegramRepo;
 
+  /**
+   * Read on every inbound message (both ingest handlers build their processor
+   * context from it) as well as every alert/notify path. `cached()` rather than
+   * get/set: on a cache miss this is ~8 round-trips, and without single-flight
+   * a burst of messages ran one whole copy of that per message. That is what
+   * drained the Supabase pool on 2026-09-06.
+   */
   async getConfig(userId: string): Promise<AppConfig> {
-    const cacheKey = `${userId}:config`;
-    const cached = this.getCached<AppConfig>(cacheKey);
-    if (cached) return cached;
+    return this.cached(`${userId}:config`, () => this.loadConfig(userId));
+  }
 
+  private async loadConfig(userId: string): Promise<AppConfig> {
     // One concurrent stage for the five independent loads: this runs on every
     // alert/notify path behind a 10s cache, so a cache miss used to cost seven
     // sequential round-trip stages. The rooms bundle also carries the global
@@ -74,7 +81,7 @@ export class ConfigRepo extends BaseRepo {
       },
     };
 
-    const config = {
+    return {
       ...merged,
       globalHighlightedUsers: highlightRowsToApp(roomsBundle.globalHighlightRows).highlightedUsers,
       globalKeywordPatterns: keywordRowsToApp(roomsBundle.globalKeywordRows),
@@ -84,8 +91,6 @@ export class ConfigRepo extends BaseRepo {
       telegramApiHash: telegramCreds?.apiHash,
       telegramSessions,
     } as AppConfig;
-    this.setCache(cacheKey, config);
-    return config;
   }
 
   async updateConfig(userId: string, partial: Partial<AppConfig>): Promise<AppConfig> {

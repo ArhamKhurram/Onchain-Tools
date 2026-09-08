@@ -43,9 +43,14 @@ export type Venue = 'slotshark' | 'dryrun';
 
 export interface SolanaExecParams {
   kind: 'sol';
-  /** SOL. Omitted (undefined) selects the venue's auto tip. */
+  /**
+   * SOL. An EXPLICIT per-rule override of the account-level tip
+   * (`SniperFeeSettings.tip`). Omitted (undefined) means "not set on this rule":
+   * the global applies, and when the global is zero the venue picks its auto
+   * tip exactly as before. See fees.ts for the precedence rule.
+   */
   tip?: number;
-  /** SOL. Omitted selects the venue's auto priority fee. */
+  /** SOL. Same override/inherit semantics as `tip`. */
   priorityFee?: number;
   /** Default true. Through GMGN this is a boolean the venue honours; the relay is not our choice. */
   antimev: boolean;
@@ -67,6 +72,27 @@ export interface EvmExecParams {
 }
 
 export type ExecParams = SolanaExecParams | EvmExecParams;
+
+// ---------------------------------------------------------------------------
+// Account-level fee settings
+// ---------------------------------------------------------------------------
+
+/**
+ * ONE set of blockspace-bid settings per account, inherited by every rule that
+ * does not explicitly override them. The operator sets these once instead of on
+ * every rule; the console surfaces the combined figure (venue rate + tip +
+ * priority fee) as a single readout.
+ *
+ * Native units (SOL today). Both components are REQUIRED and must be finite and
+ * non-negative — see fees.ts:normalizeFeeSettings, which is the only way a
+ * value from a store reaches the reservation arithmetic.
+ */
+export interface SniperFeeSettings {
+  /** SOL. Jito-style tip bid on every Solana leg that does not override it. */
+  tip: number;
+  /** SOL. Priority fee bid on every Solana leg that does not override it. */
+  priorityFee: number;
+}
 
 // ---------------------------------------------------------------------------
 // Matcher — AND/OR/NOT over the shared KeywordPattern

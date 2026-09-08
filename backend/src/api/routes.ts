@@ -1,6 +1,7 @@
 import { Router } from 'express';
 import type { WsServer } from '../ws/server.js';
 import { createFomoRouter } from '../fomo/routes.js';
+import { createRobinhoodRouter } from '../robinhood/routes.js';
 import { createPumpfunRouter } from '../pumpfun/routes.js';
 import { createPortfolioRouter } from '../portfolio/routes.js';
 import { createRouterContext } from './context.js';
@@ -18,9 +19,11 @@ import { createAlertsRoutes } from './routes/alerts.js';
 import { createRevivalRoutes } from './routes/revival.js';
 import { createJournalRoutes } from './routes/journal.js';
 import { createPriceAlertsRoutes } from './routes/priceAlerts.js';
+import { createMcapCrossRoutes } from './routes/mcapCross.js';
 import { createCallersRoutes } from './routes/callers.js';
 import { createAdminRoutes } from './routes/admin.js';
 import { createPushoverRoutes } from './routes/pushover.js';
+import { createTgBotRoutes } from './routes/tgbot.js';
 
 // Thin composition root for the /api surface. Each domain lives in its own
 // sub-router under ./routes/; the shared gateway/telegram/storage context is
@@ -44,11 +47,16 @@ export function createRouter(wsServer: WsServer): Router {
   router.use(createRevivalRoutes(ctx));    // /revival/alerts
   router.use(createJournalRoutes(ctx));    // /journal/*
   router.use(createPriceAlertsRoutes(ctx)); // /price-alerts*
+  router.use(createMcapCrossRoutes(ctx));  // /mcap-cross/filters
+  router.use(createTgBotRoutes());         // /tgbot/link-code
   router.use(createCallersRoutes(ctx));    // /callers/scores
   router.use(createAdminRoutes(wsServer)); // /admin/stats (operator only)
   router.use(createPushoverRoutes(ctx));   // /pushover/signal-convergence
 
   router.use('/fomo', createFomoRouter(wsServer));
+  // Robinhood Chain (4663) tape/radar/flow from robinhoodtrenches — a separate,
+  // clearly-labelled third-party source, NOT a fomo.family proxy.
+  router.use('/robinhood', createRobinhoodRouter());
   router.use('/pumpfun', createPumpfunRouter());
   router.use('/portfolio', createPortfolioRouter());
 

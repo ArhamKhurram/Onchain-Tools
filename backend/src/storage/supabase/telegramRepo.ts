@@ -3,23 +3,23 @@ import { BaseRepo, throwIfError } from './client.js';
 
 export class TelegramRepo extends BaseRepo {
   async getTelegramApiCredentials(userId: string): Promise<{ apiId: string; apiHash: string } | null> {
-    const cacheKey = `${userId}:tg_creds`;
-    const cached = this.getCached<{ apiId: string; apiHash: string }>(cacheKey);
-    if (cached) return cached;
+    // getConfig fans out to this on every cache miss, so it rides the ingest
+    // burst. `cached()` gives it single-flight; the negative (null) result is
+    // cached as well, since users with no Telegram credentials would otherwise
+    // re-query on every miss forever.
+    return this.cached(`${userId}:tg_creds`, async () => {
+      const { data } = await this.supabase
+        .from('telegram_credentials')
+        .select('encrypted_api_id, api_id_iv, api_id_tag, encrypted_api_hash, api_hash_iv, api_hash_tag')
+        .eq('user_id', userId)
+        .single();
 
-    const { data } = await this.supabase
-      .from('telegram_credentials')
-      .select('encrypted_api_id, api_id_iv, api_id_tag, encrypted_api_hash, api_hash_iv, api_hash_tag')
-      .eq('user_id', userId)
-      .single();
+      if (!data) return null;
 
-    if (!data) return null;
-
-    const apiId = decryptToken(data.encrypted_api_id, data.api_id_iv, data.api_id_tag);
-    const apiHash = decryptToken(data.encrypted_api_hash, data.api_hash_iv, data.api_hash_tag);
-    const result = { apiId, apiHash };
-    this.setCache(cacheKey, result);
-    return result;
+      const apiId = decryptToken(data.encrypted_api_id, data.api_id_iv, data.api_id_tag);
+      const apiHash = decryptToken(data.encrypted_api_hash, data.api_hash_iv, data.api_hash_tag);
+      return { apiId, apiHash };
+    });
   }
 
   async setTelegramApiCredentials(userId: string, apiId?: string, apiHash?: string): Promise<void> {
@@ -48,21 +48,17 @@ export class TelegramRepo extends BaseRepo {
   }
 
   async getTelegramSessions(userId: string): Promise<string[]> {
-    const cacheKey = `${userId}:tg_sessions`;
-    const cached = this.getCached<string[]>(cacheKey);
-    if (cached) return cached;
+    return this.cached(`${userId}:tg_sessions`, async () => {
+      const { data } = await this.supabase
+        .from('telegram_sessions')
+        .select('encrypted_session, session_iv, session_tag, position')
+        .eq('user_id', userId)
+        .order('position');
 
-    const { data } = await this.supabase
-      .from('telegram_sessions')
-      .select('encrypted_session, session_iv, session_tag, position')
-      .eq('user_id', userId)
-      .order('position');
+      if (!data || data.length === 0) return [];
 
-    if (!data || data.length === 0) return [];
-
-    const sessions = data.map((row) => decryptToken(row.encrypted_session, row.session_iv, row.session_tag));
-    this.setCache(cacheKey, sessions);
-    return sessions;
+      return data.map((row) => decryptToken(row.encrypted_session, row.session_iv, row.session_tag));
+    });
   }
 
   async setTelegramSessions(userId: string, sessions: string[]): Promise<void> {

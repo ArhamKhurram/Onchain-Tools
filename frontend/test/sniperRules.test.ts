@@ -5,6 +5,7 @@ import {
   describeValidationReason,
   estimateFeesPreview,
   isSolAddress,
+  resolveExecFeesPreview,
   parseLadderSplit,
   triggerTotalPreview,
   validateLadderSplit,
@@ -208,5 +209,68 @@ describe('describeValidationReason', () => {
     // Same principle as the abort reasons: a money log stays greppable even
     // when the UI has not caught up with the backend.
     expect(describeValidationReason('some_future_reason')).toBe('some_future_reason');
+  });
+});
+
+
+// ---------------------------------------------------------------------------
+// Account-level fee inheritance
+// ---------------------------------------------------------------------------
+//
+// Mirrors backend/src/sniper/fees.ts. The preview has to apply the SAME
+// precedence the server does, or the fire modal quotes a number that is not
+// what gets reserved.
+
+describe('resolveExecFeesPreview -- precedence', () => {
+  const global = { tip: 0.01, priorityFee: 0.002 };
+
+  it('inherits the account setting when the rule sets neither', () => {
+    expect(resolveExecFeesPreview(feeShape(), global)).toEqual({ tip: 0.01, priorityFee: 0.002 });
+  });
+
+  it('lets an explicit rule value win, per component', () => {
+    const r = feeShape({ exec: { kind: 'sol', tip: 0.05, antimev: true } });
+    expect(resolveExecFeesPreview(r, global)).toEqual({ tip: 0.05, priorityFee: 0.002 });
+  });
+
+  it('treats an explicit zero as an override, not as unset', () => {
+    const r = feeShape({ exec: { kind: 'sol', tip: 0, priorityFee: 0, antimev: true } });
+    expect(resolveExecFeesPreview(r, global)).toEqual({ tip: 0, priorityFee: 0 });
+  });
+
+  it('never inherits the SOL setting into an EVM rule', () => {
+    const r = feeShape({ exec: { kind: 'evm' } });
+    expect(resolveExecFeesPreview(r, global)).toEqual({ tip: 0, priorityFee: 0 });
+  });
+
+  it('defaults to zeroes, so a preview drawn before the fetch resolves is the old figure', () => {
+    expect(resolveExecFeesPreview(feeShape())).toEqual({ tip: 0, priorityFee: 0 });
+    expect(estimateFeesPreview(feeShape(), 10)).toBeCloseTo(0.05, 12);
+  });
+
+  it.each([NaN, Infinity, -1, undefined as unknown as number])(
+    'never turns a bad value (%p) into a NaN or negative preview',
+    (v) => {
+      const fromGlobal = estimateFeesPreview(feeShape(), 10, { tip: v, priorityFee: 0 });
+      expect(Number.isFinite(fromGlobal)).toBe(true);
+      expect(fromGlobal).toBeCloseTo(0.05, 12);
+
+      const fromRule = estimateFeesPreview(feeShape({ exec: { kind: 'sol', tip: v, antimev: true } }), 10, {
+        tip: 0.01,
+        priorityFee: 0,
+      });
+      expect(Number.isFinite(fromRule)).toBe(true);
+      expect(fromRule).toBeGreaterThanOrEqual(0.05);
+    },
+  );
+});
+
+describe('triggerTotalPreview with inherited fees', () => {
+  it('charges the inherited tip on every leg', () => {
+    const rule = {
+      ...legShape({ entryStyle: 'ladder', ladderSplit: [0.5, 0.5], sizeTotal: 2, walletIds: ['w1'] }),
+      ...feeShape(),
+    };
+    expect(triggerTotalPreview(rule, { tip: 0.01, priorityFee: 0 })).toBeCloseTo(2 * (1 + 0.005 + 0.01), 12);
   });
 });

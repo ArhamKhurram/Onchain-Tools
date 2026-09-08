@@ -20,7 +20,7 @@
 // Telegram's own convention, `/cmd@ourname` is explicitly ours, and
 // `/cmd@anyoneelse` is somebody else's message that we must not answer.
 
-import type { TgChat, TgUpdate, TgUser } from './types.js';
+import type { TgCallbackQuery, TgChat, TgUpdate, TgUser } from './types.js';
 import { isChatAllowed } from './access.js';
 
 export interface ParsedCommand {
@@ -69,10 +69,46 @@ export function parseCommand(text: string, botUsername: string): ParsedCommand |
   };
 }
 
+/**
+ * A bare contract address, as `/token <address>`.
+ *
+ * WHY THIS EXISTS. Pasting a mint into a DM and getting a snapshot is what
+ * every trading bot does, and it is what people try first — typing `/token`
+ * before the address is a step nobody expects. The command is not removed:
+ * this is a second door onto the same handler, and `/token <addr> <chain>`
+ * remains the way to name a chain.
+ *
+ * PRIVATE CHATS ONLY, and that restriction is the whole safety argument. In a
+ * group, "answer any message that looks like an address" would break the
+ * promise the bot is sold on — that it reads only what is addressed to it —
+ * and would make it a bot that talks over every call in the room. Telegram's
+ * privacy mode does not save us here: a REPLY to one of the bot's own messages
+ * IS delivered, so a group member quoting a card and pasting an address would
+ * otherwise trigger it. classifyUpdate checks the chat type, not the privacy
+ * setting.
+ *
+ * The shape test is deliberately loose — base58 of plausible length, or an EVM
+ * `0x…` — because the handler already bounds the work (length check, then one
+ * catalog read) and a stricter check here would reject real addresses on
+ * chains OCT adds later. Returns null for anything with whitespace in it: a
+ * sentence that happens to contain an address is chat, not a lookup.
+ */
+export function bareAddressCommand(text: string): ParsedCommand | null {
+  const candidate = text.trim();
+  if (candidate === '' || /\s/.test(candidate)) return null;
+
+  const isEvm = /^0x[0-9a-fA-F]{40}$/.test(candidate);
+  const isBase58 = /^[1-9A-HJ-NP-Za-km-z]{32,44}$/.test(candidate);
+  if (!isEvm && !isBase58) return null;
+
+  return { name: 'token', args: [candidate], rest: candidate, addressedTo: null };
+}
+
 /** What index.ts should do about one update. */
 export type RouteDecision =
   | { kind: 'ignore'; reason: string }
   | { kind: 'decline'; chatId: number }
+  | { kind: 'callback'; query: TgCallbackQuery }
   | {
       kind: 'command';
       chatId: number;
@@ -97,6 +133,23 @@ export interface RouteContext {
  * too: a channel has no interactive sender to answer.
  */
 export function classifyUpdate(update: TgUpdate, ctx: RouteContext): RouteDecision {
+  // A panel button press. It is routed BEFORE the message branch and is NOT
+  // allowlist-checked here: the check exists, but it belongs with the rest of
+  // the per-press authorization in panel.ts's decidePanelPress, where the
+  // refusal can be delivered as an answered callback query rather than as a
+  // chat message. Answering a press with a new message is exactly the spam the
+  // panel is built to avoid, and a chat outside the allowlist has already been
+  // told once.
+  //
+  // A press from a bot is dropped for the same reason a message from one is:
+  // that is how loops start. Telegram does not currently deliver such a query,
+  // which is why this is a cheap guard rather than a load-bearing one.
+  const callback = update.callback_query;
+  if (callback) {
+    if (callback.from.is_bot) return { kind: 'ignore', reason: 'callback from a bot' };
+    return { kind: 'callback', query: callback };
+  }
+
   const message = update.message;
   if (!message) return { kind: 'ignore', reason: 'not a new message' };
 
@@ -108,9 +161,14 @@ export function classifyUpdate(update: TgUpdate, ctx: RouteContext): RouteDecisi
   // A bot answering another bot is how loops start.
   if (message.from?.is_bot) return { kind: 'ignore', reason: 'from a bot' };
 
-  const command = parseCommand(text, ctx.botUsername);
   // The single rule that keeps the bot quiet in someone else's group: anything
   // that is not a command addressed to us is dropped before any other check.
+  // The ONE exception is a bare contract address in a DM, where there is no
+  // room to be quiet in and no other conversation to talk over — see
+  // bareAddressCommand for why it can never apply to a group.
+  const command =
+    parseCommand(text, ctx.botUsername) ??
+    (message.chat.type === 'private' ? bareAddressCommand(text) : null);
   if (!command) return { kind: 'ignore', reason: 'not a command for this bot' };
 
   const chatId = message.chat.id;

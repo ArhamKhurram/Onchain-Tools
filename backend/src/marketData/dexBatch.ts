@@ -37,6 +37,8 @@
  * backend/test/priceAlertCrossing.test.ts and backend/test/dexBatch.test.ts.
  */
 
+import { num } from '../utils/untrusted.js';
+
 /** The subset of a DexScreener pair these subsystems read. */
 export interface DexPair {
   baseToken?: { address?: string; symbol?: string };
@@ -45,6 +47,19 @@ export interface DexPair {
   /** Token-level; `fdv` is the fallback when `marketCap` is absent. */
   marketCap?: number;
   fdv?: number;
+  /**
+   * PER-PAIR traded USD by window. Unlike every other field on this interface
+   * it is ADDITIVE across a token's pools — see `snapshotsFromPairs`.
+   */
+  volume?: { h24?: number };
+  /**
+   * PER-PAIR price change by window, in PERCENT (DexScreener's own unit, e.g.
+   * -20.52 for a 20.52% drop). A property of the pool's own tape, so it is read
+   * off the deepest pair like price and liquidity — never summed.
+   */
+  priceChange?: { h1?: number | string; h6?: number | string; h24?: number | string };
+  /** Pool creation time, ms epoch. Best-effort; the basis for pool age. */
+  pairCreatedAt?: number | string;
   /** DexScreener's own chain slug ("solana", "bsc", …). Best-effort. */
   chainId?: string;
 }
@@ -56,8 +71,37 @@ export interface MintSnapshot {
   mcapUsd: number | null;
   /** Deepest pair's USD liquidity. Null when no pair reported one. */
   liquidityUsd: number | null;
+  /**
+   * Traded USD over 24h, SUMMED across every pool for this mint. Null — never
+   * zero — when no pool reported a figure, because "DexScreener did not say"
+   * and "nobody traded it" are different facts and only one of them is
+   * evidence. See `snapshotsFromPairs`.
+   */
+  volume24hUsd: number | null;
+  /**
+   * 24h price change as a FRACTION (DexScreener's percent ÷ 100, so -0.2052 for
+   * a 20.52% drop), read from the deepest pair. Null — never zero — when no
+   * figure was reported, so a data gap can never read as "flat". The market-cap
+   * crossing signal uses the SIGN of this to tell a first run-up from a
+   * fall-back through the target (mcapCross/gates.ts).
+   */
+  priceChangeH24: number | null;
+  /** 6h price change as a fraction, deepest pair. Carried for context; the gate uses h24. */
+  priceChangeH6: number | null;
+  /**
+   * Pool creation time (ms epoch) of the OLDEST reporting pool — i.e. how long
+   * the token has been tradeable at all. Null when no pool reported one. Used
+   * as the basis for pool age, a corroborating first-run-up signal.
+   */
+  pairCreatedAtMs: number | null;
   /** DexScreener chain slug from the deepest pair, when it reported one. */
   chainId: string | null;
+}
+
+/** DexScreener prints price change in percent; the snapshot stores a fraction. */
+function pctToFraction(value: unknown): number | null {
+  const pct = num(value);
+  return pct == null ? null : pct / 100;
 }
 
 /** See the module header: the RESPONSE cap, not the address cap. */
@@ -89,6 +133,22 @@ export function chunkMints(mints: string[], size: number = DEFAULT_BATCH_SIZE): 
  * journal/volumeDeath.ts:extractTokenVolumeSnapshot). Market cap is a
  * token-level figure so any pair reporting one is acceptable as a fallback,
  * which matters for tokens whose deepest pool omits it.
+ *
+ * VOLUME IS THE ONE ADDITIVE FIELD, and it is deliberately not read off the
+ * deepest pair. Liquidity, price and chain are PROPERTIES of a pool, so the
+ * deepest pool is the honest representative. 24h volume is a FLOW, and a token
+ * that trades across a PumpSwap pool and four Meteora pools traded all of it —
+ * measured 2026-09-07 on one live mint, the deepest pool carried $9.14M of a
+ * $10.7M token total, so reading the deepest pool alone under-reports by ~15%.
+ * Under-reporting a floor filter is the direction that silently drops real
+ * alerts, so the sum is the only defensible reading.
+ *
+ * THE SUM IS STILL A FLOOR, NOT A TOTAL, and the 30-pair cap is why. A token
+ * whose pools were truncated out of this response contributes only the pools
+ * that came back. That biases the figure DOWNWARD, which for a `min` threshold
+ * costs a false negative (a missed alert) rather than a false positive (an
+ * alert on a token that does not trade) — the same direction every other
+ * uncertainty in this pipeline is resolved in.
  *
  * `missing` lists requested mints with no matching pair — either unlisted or
  * lost to the 30-pair cap. The caller disambiguates via `wasTruncated`.
@@ -124,12 +184,42 @@ export function snapshotsFromPairs(
       }
     }
     const liq = best.liquidity?.usd;
+
+    // Additive across pools, and null-unless-somebody-said. `seen` is what
+    // separates "every pool reported 0" (a real zero — the token is listed and
+    // dead) from "no pool reported anything" (unknown, which must abstain).
+    let volume = 0;
+    let seen = false;
+    for (const p of sorted) {
+      const v = p.volume?.h24;
+      if (typeof v === 'number' && Number.isFinite(v) && v >= 0) {
+        volume += v;
+        seen = true;
+      }
+    }
+
+    // Pool age comes from the OLDEST pool (the min creation time), because the
+    // honest "how long has this been tradeable" is the first pool, not the
+    // deepest one — a mature token that opened a fresh deep pool is still
+    // mature. Silence stays null rather than collapsing to "brand new".
+    let oldestCreatedAt: number | null = null;
+    for (const p of sorted) {
+      const created = num(p.pairCreatedAt);
+      if (created != null && created > 0) {
+        oldestCreatedAt = oldestCreatedAt == null ? created : Math.min(oldestCreatedAt, created);
+      }
+    }
+
     snapshots.set(mint, {
       mint,
       symbol: best.baseToken?.symbol ?? null,
       priceUsd: Number.isFinite(price) && price > 0 ? price : null,
       mcapUsd: typeof mcapRaw === 'number' && Number.isFinite(mcapRaw) && mcapRaw > 0 ? mcapRaw : null,
       liquidityUsd: typeof liq === 'number' && Number.isFinite(liq) && liq >= 0 ? liq : null,
+      volume24hUsd: seen ? volume : null,
+      priceChangeH24: pctToFraction(best.priceChange?.h24),
+      priceChangeH6: pctToFraction(best.priceChange?.h6),
+      pairCreatedAtMs: oldestCreatedAt,
       chainId: typeof best.chainId === 'string' && best.chainId !== '' ? best.chainId : null,
     });
   }

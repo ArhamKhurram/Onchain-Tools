@@ -1,16 +1,18 @@
-import { Key, Settings2, Zap, Volume2, Bell, Bot, Tag, AtSign, Users, Shield, HelpCircle, Gauge } from 'lucide-react';
+import { Key, Settings2, Zap, Volume2, Bell, Bot, Tag, AtSign, Users, Shield, HelpCircle, Gauge, TrendingUp, Send } from 'lucide-react';
 import type { SoundConfig, PushoverTriggers, PushoverFilters, MissedRunnerConfig, DiscordBotDmConfig } from '../../types';
 
-export type Section = 'tokens' | 'general' | 'contracts' | 'callerquality' | 'sounds' | 'pushover' | 'discordbot' | 'keywords' | 'mentions' | 'users' | 'guilds' | 'help';
+export type Section = 'tokens' | 'general' | 'contracts' | 'callerquality' | 'mcapalerts' | 'sounds' | 'pushover' | 'discordbot' | 'telegrambot' | 'keywords' | 'mentions' | 'users' | 'guilds' | 'help';
 
 export const SECTIONS: { id: Section; label: string; icon: typeof Key }[] = [
   { id: 'tokens', label: 'Tokens', icon: Key },
   { id: 'general', label: 'General', icon: Settings2 },
   { id: 'contracts', label: 'Contracts', icon: Zap },
   { id: 'callerquality', label: 'Caller Quality', icon: Gauge },
+  { id: 'mcapalerts', label: 'Market-Cap Alerts', icon: TrendingUp },
   { id: 'sounds', label: 'Sounds & Notifications', icon: Volume2 },
   { id: 'pushover', label: 'Pushover', icon: Bell },
   { id: 'discordbot', label: 'Discord Bot', icon: Bot },
+  { id: 'telegrambot', label: 'Telegram Bot', icon: Send },
   { id: 'keywords', label: 'Keywords', icon: Tag },
   { id: 'mentions', label: 'Mentions', icon: AtSign },
   { id: 'users', label: 'Highlighted Users', icon: Users },

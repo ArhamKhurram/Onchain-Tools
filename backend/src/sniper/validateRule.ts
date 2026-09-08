@@ -17,11 +17,11 @@
 // The reason strings are a frozen vocabulary: the console renders them directly
 // and the two halves must not invent overlapping spellings.
 
-import { estimateFees } from './fees.js';
+import { estimateFees, isValidFeeComponent } from './fees.js';
 import { computeLegs, validateLadderSplit } from './legs.js';
 import { validateMatcher } from './matcher.js';
 import { isLinearSafeRegex } from './regexGuard.js';
-import type { MatcherNode, SnipeRule, WalletConfig } from './types.js';
+import type { MatcherNode, SnipeRule, SniperFeeSettings, WalletConfig } from './types.js';
 
 export type ValidationReason =
   | 'no_mint'
@@ -32,6 +32,7 @@ export type ValidationReason =
   | 'wallet_chain_mismatch'
   | 'venue_chain_mismatch'
   | 'exec_kind_mismatch'
+  | 'exec_fee_out_of_range'
   | 'matcher_too_deep'
   | 'matcher_too_many_nodes'
   | 'matcher_regex_invalid'
@@ -133,6 +134,18 @@ export function validateRuleStructure(rule: SnipeRule): ValidationResult {
     (rule.chain === 'sol' && rule.exec.kind === 'sol') || (rule.chain === 'bsc' && rule.exec.kind === 'evm');
   if (!execMatches) return fail('exec_kind_mismatch');
 
+  // A rule-level tip/priority fee is an OVERRIDE of the account-level setting
+  // (fees.ts), and an override that is negative, NaN or Infinity corrupts the
+  // reservation: `amountWithFees` becomes NaN or shrinks, and every downstream
+  // cap comparison then reads false — the cap turns OFF. `undefined` is the
+  // "inherit the global" signal and stays legal.
+  if (rule.exec.kind === 'sol') {
+    const overrides = [rule.exec.tip, rule.exec.priorityFee];
+    if (overrides.some((v) => v !== undefined && !isValidFeeComponent(v))) {
+      return fail('exec_fee_out_of_range');
+    }
+  }
+
   if (!Number.isFinite(rule.slippageBps) || rule.slippageBps < 1 || rule.slippageBps > 10_000) {
     return fail('slippage_out_of_range');
   }
@@ -208,7 +221,17 @@ export function validateRuleStructure(rule: SnipeRule): ValidationResult {
  * wallet rows. `wallets` is passed in rather than fetched so this stays a pure
  * function — it is the unit-test target for the whole rejection vocabulary.
  */
-export function validateRule(rule: SnipeRule, wallets: WalletConfig[]): ValidationResult {
+export function validateRule(
+  rule: SnipeRule,
+  wallets: WalletConfig[],
+  /**
+   * The account-level fees this rule inherits. REQUIRED rather than defaulted:
+   * arming checks the rule's own trigger total against its own cap, and doing
+   * that against zeroed fees would arm a rule that aborts `per_trigger_cap` on
+   * every real fire.
+   */
+  feeSettings: SniperFeeSettings,
+): ValidationResult {
   const structural = validateRuleStructure(rule);
   if (!structural.ok) return structural;
 
@@ -229,7 +252,10 @@ export function validateRule(rule: SnipeRule, wallets: WalletConfig[]): Validati
   // A rule whose own legs cannot clear its own per-trigger cap aborts at
   // executeFire step 2 on EVERY trigger. Without this it sits armed and inert,
   // looking healthy and firing nothing.
-  const triggerTotal = computeLegs(rule).reduce((sum, leg) => sum + leg.amount + estimateFees(rule, leg.amount), 0);
+  const triggerTotal = computeLegs(rule).reduce(
+    (sum, leg) => sum + leg.amount + estimateFees(rule, leg.amount, feeSettings),
+    0,
+  );
   if (triggerTotal > rule.perTriggerCap) {
     return fail('size_over_trigger_cap', `${triggerTotal} > ${rule.perTriggerCap}`);
   }

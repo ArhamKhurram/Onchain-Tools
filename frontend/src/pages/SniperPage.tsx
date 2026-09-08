@@ -2,6 +2,7 @@ import { useMemo } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { Crosshair } from 'lucide-react';
 import { useAuthSession } from '../hooks/useAuthSession';
+import { useSniperFees } from '../hooks/useSniperFees';
 import { useSniperFires } from '../hooks/useSniperFires';
 import { useSniperRules } from '../hooks/useSniperRules';
 import { useSniperStatus } from '../hooks/useSniperStatus';
@@ -9,6 +10,7 @@ import { useSniperVenues } from '../hooks/useSniperVenues';
 import { useSniperWallets } from '../hooks/useSniperWallets';
 import ConsoleEmptyState from '../components/console/ConsoleEmptyState';
 import ConsoleSubnav from '../components/console/ConsoleSubnav';
+import SniperFeeBar from '../components/sniper/SniperFeeBar';
 import SniperFiresTable from '../components/sniper/SniperFiresTable';
 import SniperRulesTable from '../components/sniper/SniperRulesTable';
 import SniperStatusBar from '../components/sniper/SniperStatusBar';
@@ -52,6 +54,10 @@ export default function SniperPage() {
   const wallets = useSniperWallets();
   const rules = useSniperRules();
   const fires = useSniperFires();
+  // Account-level tip + priority fee. Owned here for the same reason every other
+  // sniper hook is: editing it has to move the rule form's trigger-total preview
+  // and the fire modal's per-leg fee in the same paint.
+  const fees = useSniperFees();
   const venues = useSniperVenues(userId);
 
   // Page-container entrance only. The tables beneath re-render on every
@@ -104,6 +110,7 @@ export default function SniperPage() {
           onSetKill={(on) => status.setKill(on)}
           onRefresh={() => void status.refresh()}
         />
+        <SniperFeeBar fees={fees.fees} venueFeeRate={fees.venueFeeRate} error={fees.error} save={fees.save} />
         <ConsoleSubnav tabs={SNIPER_TABS} active={view} onChange={setView} />
         <div className="flex-1 min-h-0">
           {view === 'rules' && status.status && !status.status.venue.connected && status.status.counts.rules === 0 ? (
@@ -112,6 +119,7 @@ export default function SniperPage() {
             <SniperRulesTable
               rules={rules}
               wallets={wallets.wallets}
+              fees={fees.fees}
               processDryRun={status.status?.processDryRun ?? false}
               killed={status.status?.kill.on ?? false}
             />

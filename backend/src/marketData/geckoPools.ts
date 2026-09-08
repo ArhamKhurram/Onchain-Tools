@@ -38,6 +38,46 @@ import { geckoTerminalGet } from '../revival/candles.js';
 /** Pools per GeckoTerminal page. Fixed by the API, not by us. */
 export const POOLS_PER_PAGE = 20;
 
+/**
+ * The GeckoTerminal pool-list endpoints this module can sweep.
+ *
+ * They all return the SAME `data[].attributes` + `relationships.base_token`
+ * shape (verified live 2026-09-07), so `parsePoolsPage` reads all three; only
+ * the path and the ranking differ.
+ *
+ *   - `busiest`  — `/pools?sort=h24_volume_usd_desc`. The chain's highest-volume
+ *     pools. This is what `sweepBusiestPools` (revival's tier) uses, and it was
+ *     the market-cap crossing signal's ONLY source until #386. It is broad but
+ *     blind to a token that is climbing fast on modest absolute volume — a
+ *     token about to cross 750K is often exactly that.
+ *   - `trending` — `/trending_pools`. GeckoTerminal's own "moving right now"
+ *     ranking. Its whole purpose is to surface pools before they are the
+ *     biggest by 24h volume, which is the set a threshold-crossing detector is
+ *     structurally most likely to be missing. One page (~20 pools) per sweep.
+ *   - `new`      — `/new_pools`. Recently created pools. Lowest value for a
+ *     750K crossing (most are far below it and `market_cap_usd` is usually null
+ *     this early), so it is available but OFF by default; a fast launch that
+ *     runs straight through 750K is the case it exists for.
+ */
+export type PoolDiscoverySource = 'busiest' | 'trending' | 'new';
+
+export const POOL_DISCOVERY_SOURCES: readonly PoolDiscoverySource[] = [
+  'busiest',
+  'trending',
+  'new',
+] as const;
+
+export function isPoolDiscoverySource(value: string): value is PoolDiscoverySource {
+  return (POOL_DISCOVERY_SOURCES as readonly string[]).includes(value);
+}
+
+/** Path builder per source. Page is 1-based; GeckoTerminal caps pool lists at page 10. */
+const SOURCE_PATH: Record<PoolDiscoverySource, (network: RevivalNetwork, page: number) => string> = {
+  busiest: (n, p) => `/networks/${n}/pools?page=${p}&sort=h24_volume_usd_desc`,
+  trending: (n, p) => `/networks/${n}/trending_pools?page=${p}`,
+  new: (n, p) => `/networks/${n}/new_pools?page=${p}`,
+};
+
 /** One base token found by a pool sweep. */
 export interface PoolToken {
   address: string;
@@ -46,6 +86,8 @@ export interface PoolToken {
   volume24hUsd: number;
   /** Pool name ("SYM / SOL"), used only for logging. Null when absent. */
   poolName: string | null;
+  /** Which endpoint surfaced this token. Absent from `sweepBusiestPools` output. */
+  source?: PoolDiscoverySource;
 }
 
 export interface PoolSweepOptions {
@@ -130,4 +172,110 @@ export async function sweepBusiestPools(
   }
 
   return tokens;
+}
+
+export interface MultiSourceSweepOptions {
+  /**
+   * Endpoints to sweep, IN PRIORITY ORDER. A token found by an earlier source
+   * keeps that source's row and is not re-added by a later one, so putting
+   * `trending` before `busiest` guarantees the movers are in the universe even
+   * when `maxTokens` is smaller than `busiest` alone would fill.
+   */
+  sources: PoolDiscoverySource[];
+  /** Drop pools whose USD reserve is below this. */
+  minLiquidityUsd: number;
+  /** Ceiling on DISTINCT base tokens across all sources combined. */
+  maxTokens: number;
+  /**
+   * Pages per source. Defaults: `busiest` fills the remaining budget
+   * (`ceil(maxTokens / 20)`), `trending`/`new` one page each — those two are
+   * short rankings where later pages add little and every page is a request
+   * against the ~6/min budget revival shares.
+   */
+  pagesPerSource?: Partial<Record<PoolDiscoverySource, number>>;
+}
+
+/**
+ * Concatenate per-source token lists into ONE deduped universe, honouring
+ * priority order and the token cap. Pure — the ordering/dedup contract that
+ * `sweepPools` promises lives here so it can be tested without the network.
+ *
+ * First occurrence of an address wins, so a token trending AND busiest is
+ * counted once, under whichever source came first in `sources`.
+ */
+export function mergePoolLists(lists: PoolToken[][], maxTokens: number): PoolToken[] {
+  const max = Math.max(0, Math.floor(maxTokens));
+  const seen = new Set<string>();
+  const out: PoolToken[] = [];
+  for (const list of lists) {
+    for (const token of list) {
+      if (out.length >= max) return out;
+      if (seen.has(token.address)) continue;
+      seen.add(token.address);
+      out.push(token);
+    }
+  }
+  return out;
+}
+
+/** Page through ONE source, deduped within itself, up to `budget` tokens. */
+async function collectSource(
+  network: RevivalNetwork,
+  source: PoolDiscoverySource,
+  minLiquidityUsd: number,
+  pages: number,
+  budget: number,
+): Promise<PoolToken[]> {
+  const seen = new Set<string>();
+  const tokens: PoolToken[] = [];
+  for (let page = 1; page <= pages && tokens.length < budget; page += 1) {
+    const json = await geckoTerminalGet(network, SOURCE_PATH[source](network, page));
+    // A failed page ends this source rather than emptying the universe — the
+    // same "partial is better than none" rule sweepBusiestPools uses.
+    if (!json) break;
+    let addedThisPage = 0;
+    for (const token of parsePoolsPage(json, network, minLiquidityUsd)) {
+      if (seen.has(token.address)) continue; // one token, many pools
+      seen.add(token.address);
+      tokens.push({ ...token, source });
+      addedThisPage += 1;
+      if (tokens.length >= budget) break;
+    }
+    // A page that yielded nothing usable means we have run past the ranked
+    // rows; more pages would only spend budget for empty results.
+    if (addedThisPage === 0) break;
+  }
+  return tokens;
+}
+
+/**
+ * The busiest + trending (+ optionally new) tokens on one chain, merged and
+ * capped at `maxTokens` DISTINCT base tokens.
+ *
+ * WHY THIS EXISTS ALONGSIDE `sweepBusiestPools`. Revival's broad tier wants a
+ * small, purely volume-ranked list and its behaviour is pinned by tests, so it
+ * keeps calling `sweepBusiestPools` unchanged. The market-cap crossing signal
+ * wants the WIDEST plausible candidate set — a token about to cross a threshold
+ * is disproportionately one that is trending rather than already top-of-book by
+ * 24h volume — so it composes several rankings here. Same upstream, same paced
+ * queue, same graceful degradation; only the composition differs.
+ *
+ * Returns whatever it managed to collect. A source that fails contributes
+ * nothing rather than throwing, so one 429 shortens the universe for a cycle
+ * instead of emptying it.
+ */
+export async function sweepPools(
+  network: RevivalNetwork,
+  opts: MultiSourceSweepOptions,
+): Promise<PoolToken[]> {
+  const max = Math.max(0, Math.floor(opts.maxTokens));
+  if (max === 0 || opts.sources.length === 0) return [];
+  const busiestPages = Math.max(1, Math.ceil(max / POOLS_PER_PAGE));
+
+  const lists: PoolToken[][] = [];
+  for (const source of opts.sources) {
+    const pages = opts.pagesPerSource?.[source] ?? (source === 'busiest' ? busiestPages : 1);
+    lists.push(await collectSource(network, source, opts.minLiquidityUsd, Math.max(1, pages), max));
+  }
+  return mergePoolLists(lists, max);
 }

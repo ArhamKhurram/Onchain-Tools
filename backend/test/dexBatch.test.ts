@@ -87,3 +87,120 @@ describe('the 30-pair cap', () => {
     expect(chunkMints(new Array(40).fill('a'), 999)).toHaveLength(2);
   });
 });
+
+/**
+ * 24h volume — the one additive field.
+ *
+ * Every other field on a snapshot is a PROPERTY of the deepest pool. Volume is
+ * a FLOW, and a token that trades across six pools traded all of it. Measured
+ * on one live mint on 2026-09-07: the deepest pool carried $9.14M of a $10.7M
+ * token total, so reading the deepest pool alone under-reports by ~15%. Against
+ * a `min` threshold that under-report costs real alerts.
+ */
+describe('snapshotsFromPairs — 24h volume', () => {
+  it('SUMS volume across every pool, unlike liquidity', () => {
+    const { snapshots } = snapshotsFromPairs(
+      [
+        pair({ address: 'A', liquidity: { usd: 130_000 }, volume: { h24: 9_141_324 } }),
+        pair({ address: 'A', liquidity: { usd: 68_000 }, volume: { h24: 1_125_928 } }),
+        pair({ address: 'A', liquidity: { usd: 7_000 }, volume: { h24: 208_317 } }),
+      ],
+      ['A'],
+    );
+    const snap = snapshots.get('A');
+    // Liquidity still comes from the deepest pool alone…
+    expect(snap?.liquidityUsd).toBe(130_000);
+    // …while volume is the whole token's day.
+    expect(snap?.volume24hUsd).toBe(9_141_324 + 1_125_928 + 208_317);
+  });
+
+  it('reports NULL, not zero, when no pool offered a figure', () => {
+    // The difference the whole abstain path rests on: "DexScreener did not say"
+    // is not "nobody traded it", and only one of those is evidence.
+    const { snapshots } = snapshotsFromPairs([pair({ address: 'A' })], ['A']);
+    expect(snapshots.get('A')?.volume24hUsd).toBeNull();
+  });
+
+  it('reports a genuine zero as zero — a listed, dead token is a real reading', () => {
+    const { snapshots } = snapshotsFromPairs([pair({ address: 'A', volume: { h24: 0 } })], ['A']);
+    expect(snapshots.get('A')?.volume24hUsd).toBe(0);
+  });
+
+  it('counts the pools that reported and ignores the ones that did not', () => {
+    const { snapshots } = snapshotsFromPairs(
+      [
+        pair({ address: 'A', volume: { h24: 500 } }),
+        pair({ address: 'A' }),
+        pair({ address: 'A', volume: { h24: 250 } }),
+      ],
+      ['A'],
+    );
+    expect(snapshots.get('A')?.volume24hUsd).toBe(750);
+  });
+
+  it('drops a non-numeric or negative figure rather than poisoning the sum', () => {
+    const { snapshots } = snapshotsFromPairs(
+      [
+        pair({ address: 'A', volume: { h24: 400 } }),
+        pair({ address: 'A', volume: { h24: Number.NaN } }),
+        pair({ address: 'A', volume: { h24: -10 } }),
+      ],
+      ['A'],
+    );
+    expect(snapshots.get('A')?.volume24hUsd).toBe(400);
+  });
+});
+
+/**
+ * Price change and pool age — the first-run-up signals.
+ *
+ * Both feed mcapCross/gates.ts's discriminator between a token climbing THROUGH
+ * the target and one falling back through it. Price change is a POOL property
+ * (deepest pair, like price) and stored as a fraction; pool age comes from the
+ * OLDEST pool because "how long has this been tradeable" is the first pool, not
+ * the deepest one.
+ */
+describe('snapshotsFromPairs — price change and pool age', () => {
+  it('reads 24h/6h price change from the DEEPEST pair, as a fraction', () => {
+    const { snapshots } = snapshotsFromPairs(
+      [
+        pair({ address: 'A', liquidity: { usd: 1_000 }, priceChange: { h24: 999, h6: 999 } }),
+        pair({ address: 'A', liquidity: { usd: 90_000 }, priceChange: { h24: -20.52, h6: 5.1 } }),
+      ],
+      ['A'],
+    );
+    const s = snapshots.get('A');
+    expect(s?.priceChangeH24).toBeCloseTo(-0.2052);
+    expect(s?.priceChangeH6).toBeCloseTo(0.051);
+  });
+
+  it('reports NULL price change when the deepest pair reported none', () => {
+    const { snapshots } = snapshotsFromPairs([pair({ address: 'A', liquidity: { usd: 5 } })], ['A']);
+    expect(snapshots.get('A')?.priceChangeH24).toBeNull();
+    expect(snapshots.get('A')?.priceChangeH6).toBeNull();
+  });
+
+  it('accepts a numeric string price change (untrusted narrowing)', () => {
+    const { snapshots } = snapshotsFromPairs(
+      [pair({ address: 'A', priceChange: { h24: '-20.52' } })],
+      ['A'],
+    );
+    expect(snapshots.get('A')?.priceChangeH24).toBeCloseTo(-0.2052);
+  });
+
+  it('takes pool age from the OLDEST pool — max age, not the deepest pool', () => {
+    const { snapshots } = snapshotsFromPairs(
+      [
+        pair({ address: 'A', liquidity: { usd: 90_000 }, pairCreatedAt: 2_000 }),
+        pair({ address: 'A', liquidity: { usd: 1_000 }, pairCreatedAt: 1_000 }),
+      ],
+      ['A'],
+    );
+    expect(snapshots.get('A')?.pairCreatedAtMs).toBe(1_000);
+  });
+
+  it('reports NULL pool age when no pool reported a creation time', () => {
+    const { snapshots } = snapshotsFromPairs([pair({ address: 'A' })], ['A']);
+    expect(snapshots.get('A')?.pairCreatedAtMs).toBeNull();
+  });
+});

@@ -15,7 +15,27 @@ import {
   HODLERS_TTL_MS,
 } from './cache.js';
 import { getFomoUpstreamHealth } from './health.js';
+import {
+  fetchMonitor985Snapshot,
+  isMonitor985Window,
+  select985Board,
+  MONITOR_985_CACHE_KEY,
+  MONITOR_985_HOME,
+  MONITOR_985_LABEL,
+  MONITOR_985_SOURCE,
+  MONITOR_985_TTL_MS,
+  type Monitor985Snapshot,
+  type Monitor985Window,
+} from './monitor985.js';
 import { fetchWorkerHealth, isFomoProxyMode } from './proxy-client.js';
+import { getRecentStreamTrades, getStreamFeedSize } from './streamFeed.js';
+import { getFomoStreamStatus } from './streamListener.js';
+import {
+  FOMO_STREAM_SCOPE_NOTE,
+  FOMO_STREAM_SOURCE,
+  FOMO_STREAM_SOURCE_LABEL,
+  FOMO_STREAM_SOURCE_URL,
+} from './streamNormalize.js';
 import {
   getFomoServiceClient,
   extractLeaderboardEntries,
@@ -35,6 +55,11 @@ import { sendServiceError } from '../bot/errors.js';
 import type { FomoClientLike } from './types.js';
 import type { WsServer } from '../ws/server.js';
 import { deliverRecentTradesToUser, loadDeliveredTrades, MAX_TRADE_HISTORY } from './dispatch.js';
+import {
+  parseSuppliedFomoIdentity,
+  sanitizeForEcho,
+  type SuppliedFomoIdentity,
+} from './trackedIdentity.js';
 
 function getUserId(req: any): string {
   return req.userId ?? 'local';
@@ -44,6 +69,44 @@ function safeError(err: any, fallback: string): string {
   if (!isHostedMode()) return err?.message ?? fallback;
   console.error(`[FomoAPI] ${fallback}:`, err?.message ?? err);
   return fallback;
+}
+
+/**
+ * What GET /api/fomo/leaderboard returns, whichever source served it. The
+ * source fields are not decoration — the console must be able to tell a live
+ * fomo.family read from a third-party snapshot, and how stale the latter is.
+ */
+interface LeaderboardPayload {
+  entries: Array<{
+    fomoUserId: string;
+    fomoHandle: string | null;
+    displayName: string | null;
+    pnl?: number | null;
+    volume?: number | null;
+    rank?: number | null;
+    followers?: number | null;
+    numTrades?: number | null;
+  }>;
+  window: Monitor985Window;
+  source: 'fomo' | typeof MONITOR_985_SOURCE;
+  sourceLabel: string;
+  sourceUrl: string;
+  /** Snapshot generation time (985monitor) or read time (live). ms epoch. */
+  updatedAt: number | null;
+  live: boolean;
+}
+
+/**
+ * One cached read of the whole 985monitor file, shared by every window and
+ * limit — it is a single static document, so per-window caching would just
+ * multiply the same fetch.
+ */
+async function loadMonitor985Snapshot(): Promise<Monitor985Snapshot> {
+  const cached = getCached<Monitor985Snapshot>(MONITOR_985_CACHE_KEY);
+  if (cached) return cached;
+  const snapshot = await fetchMonitor985Snapshot();
+  setCached(MONITOR_985_CACHE_KEY, snapshot, MONITOR_985_TTL_MS);
+  return snapshot;
 }
 
 interface ResolvedFomoUser {
@@ -140,45 +203,103 @@ export function createFomoRouter(wsServer: WsServer): Router {
     });
   });
 
-  // GET /api/fomo/leaderboard?window=24h|all&limit=50
+  // GET /api/fomo/leaderboard?window=24h|7d|30d|all&limit=50
+  //
+  // Two sources, in priority order:
+  //   1. the live fomo.family service account (24h / all only), when it works;
+  //   2. the public 985monitor.xyz snapshot, otherwise.
+  //
+  // The response always names which one it came from (`source`) and, for the
+  // snapshot, how old the data is (`updatedAt`) — the console renders that
+  // rather than passing third-party snapshot data off as our own live feed.
+  // Before this, an unavailable service account was a dead red error box; the
+  // fomo.family account has been Forbidden upstream since 2026-08-26.
   router.get('/leaderboard', async (req, res) => {
     const windowParam = typeof req.query.window === 'string' ? req.query.window : 'all';
-    const window = windowParam === '24h' ? '24h' : undefined;
+    const window: Monitor985Window = isMonitor985Window(windowParam) ? windowParam : 'all';
     const limitRaw = Number.parseInt(String(req.query.limit ?? '50'), 10);
     const limit = Number.isFinite(limitRaw) ? Math.min(Math.max(limitRaw, 1), 100) : 50;
 
-    const client = await ensureSharedFomoClientReady();
-    if (!client) {
-      return res.status(503).json({
-        error: 'FOMO service account is not configured. Seed fomo_poll_state.refresh_token or set FOMO_REFRESH_TOKEN.',
+    // The live API only ever exposed 24h and all-time; 7d/30d exist only on the
+    // snapshot, so asking for those skips the live path entirely rather than
+    // silently serving all-time under a 7d label.
+    const liveWindow = window === '24h' ? '24h' : window === 'all' ? undefined : null;
+
+    // 1. Live fomo.family, when the window is one it supports and the shared
+    //    service account is usable.
+    if (liveWindow !== null) {
+      const cacheKey = leaderboardCacheKey(liveWindow, limit);
+      const cached = getCached<LeaderboardPayload>(cacheKey);
+      if (cached) return res.json(cached);
+
+      const client = await ensureSharedFomoClientReady().catch((err) => {
+        console.warn('[FomoAPI] FOMO client unavailable for leaderboard:', (err as Error)?.message);
+        return null;
       });
+
+      if (client) {
+        try {
+          const result = await client.getLeaderboard(limit, liveWindow);
+          if (result.status && result.status >= 200 && result.status < 300) {
+            const entries = extractLeaderboardEntries(result.json);
+            if (entries.length === 0) {
+              console.warn('[FomoAPI] Leaderboard returned 0 parsed entries; envelope may have changed.');
+            } else {
+              const payload: LeaderboardPayload = {
+                entries,
+                window,
+                source: 'fomo',
+                sourceLabel: 'fomo.family',
+                sourceUrl: 'https://fomo.family',
+                updatedAt: Date.now(),
+                live: true,
+              };
+              setCached(cacheKey, payload, LEADERBOARD_TTL_MS);
+              return res.json(payload);
+            }
+          } else {
+            console.error(
+              `[FomoAPI] Leaderboard upstream ${result.status ?? 0}:`,
+              result.text?.slice?.(0, 500) ?? '(no body)',
+            );
+          }
+        } catch (err: any) {
+          console.error('[FomoAPI] Leaderboard error:', err?.message ?? err);
+        }
+      }
     }
 
-    const cacheKey = leaderboardCacheKey(window, limit);
-    const cached = getCached<{ entries: ReturnType<typeof extractLeaderboardEntries> }>(cacheKey);
-    if (cached) {
-      return res.json(cached);
-    }
-
+    // 2. 985monitor snapshot. Never throws out of here — a third-party file
+    //    being down degrades to a labelled error, not a 500.
     try {
-      const result = await client.getLeaderboard(limit, window);
-      if (!result.status || result.status < 200 || result.status >= 300) {
-        console.error(
-          `[FomoAPI] Leaderboard upstream ${result.status ?? 0}:`,
-          result.text?.slice?.(0, 500) ?? '(no body)',
-        );
-        return res.status(502).json({ error: 'Failed to fetch FOMO leaderboard.' });
-      }
-      const entries = extractLeaderboardEntries(result.json);
-      if (entries.length === 0) {
-        console.warn('[FomoAPI] Leaderboard returned 0 parsed entries; envelope may have changed.');
-      }
-      const payload = { entries };
-      setCached(cacheKey, payload, LEADERBOARD_TTL_MS);
-      res.json(payload);
+      const snapshot = await loadMonitor985Snapshot();
+      const entries = select985Board(snapshot, window, limit).map((e) => ({
+        fomoUserId: e.fomoUserId,
+        fomoHandle: e.fomoHandle,
+        displayName: e.displayName,
+        pnl: e.pnl,
+        volume: e.volume,
+        rank: e.rank,
+        followers: e.followers,
+        numTrades: e.numTrades,
+      }));
+      const payload: LeaderboardPayload = {
+        entries,
+        window,
+        source: MONITOR_985_SOURCE,
+        sourceLabel: MONITOR_985_LABEL,
+        sourceUrl: MONITOR_985_HOME,
+        updatedAt: snapshot.updatedAt,
+        live: false,
+      };
+      return res.json(payload);
     } catch (err: any) {
-      console.error('[FomoAPI] Leaderboard error:', err?.message ?? err);
-      res.status(500).json({ error: safeError(err, 'Failed to fetch FOMO leaderboard') });
+      console.error('[FomoAPI] 985monitor leaderboard fallback failed:', err?.message ?? err);
+      return res.status(503).json({
+        error:
+          'Leaderboard unavailable: the fomo.family service account is not usable and the 985monitor snapshot could not be reached.',
+        source: MONITOR_985_SOURCE,
+      });
     }
   });
 
@@ -361,7 +482,7 @@ export function createFomoRouter(wsServer: WsServer): Router {
     try {
       const resolved = await resolveFomoUser(client, query);
       if (!resolved) {
-        return res.status(404).json({ error: `No FOMO user found for "${query}".` });
+        return res.status(404).json({ error: `No FOMO user found for "${sanitizeForEcho(query)}".` });
       }
       res.json(resolved);
     } catch (err: any) {
@@ -413,28 +534,61 @@ export function createFomoRouter(wsServer: WsServer): Router {
     }
   });
 
-  // POST /api/fomo/tracked — body { query } → resolve + track.
+  // POST /api/fomo/tracked — track a FOMO user. Two ways in:
+  //
+  //   1. body { fomoUserId, fomoHandle?, displayName? } — an identity the
+  //      caller already holds. The leaderboard has one for every row (live or
+  //      985monitor snapshot), so it never needs a lookup. This path does not
+  //      touch the FOMO service account at all, which is the point: that
+  //      account has been Forbidden upstream since 2026-08-26, and requiring it
+  //      here made the leaderboard's TRACK button a permanent 503.
+  //
+  //   2. body { query } — free text. Still needs the live client to resolve a
+  //      handle, so it still 503s while the account is blocked. That 503 is now
+  //      scoped to the one path that genuinely cannot work without it.
+  //
+  // A supplied identity is untrusted input on its way into the database — see
+  // parseSuppliedFomoIdentity for the narrowing. Note what is NOT read from the
+  // body: `user_id`. The row's owner is always getUserId(req).
   router.post('/tracked', async (req, res) => {
     const userId = getUserId(req);
+
+    const supplied = parseSuppliedFomoIdentity(req.body);
+    if (supplied.kind === 'invalid') {
+      return res.status(400).json({ error: supplied.error });
+    }
+
     const query = typeof req.body?.query === 'string' ? req.body.query.trim() : '';
-    if (!query) return res.status(400).json({ error: 'A search query is required.' });
+    if (supplied.kind === 'none' && !query) {
+      return res.status(400).json({ error: 'A search query is required.' });
+    }
 
     const db = getFomoServiceClient();
     if (!db) return res.status(503).json({ error: 'FOMO tracking is not available (storage not configured).' });
 
-    const client = await ensureSharedFomoClientReady();
-    if (!client) {
-      return res.status(503).json({
-        error: 'FOMO service account is not configured. Seed fomo_poll_state.refresh_token or set FOMO_REFRESH_TOKEN.',
-      });
+    let resolved: SuppliedFomoIdentity;
+    if (supplied.kind === 'ok') {
+      resolved = supplied.identity;
+    } else {
+      const client = await ensureSharedFomoClientReady();
+      if (!client) {
+        return res.status(503).json({
+          error:
+            'FOMO service account is not configured, so free-text search is unavailable. Track from the leaderboard instead.',
+        });
+      }
+      try {
+        const found = await resolveFomoUser(client, query);
+        if (!found) {
+          return res.status(404).json({ error: `No FOMO user found for "${sanitizeForEcho(query)}".` });
+        }
+        resolved = found;
+      } catch (err: any) {
+        return res.status(500).json({ error: safeError(err, 'Failed to resolve FOMO user') });
+      }
     }
 
     try {
-      const resolved = await resolveFomoUser(client, query);
-      if (!resolved) {
-        return res.status(404).json({ error: `No FOMO user found for "${query}".` });
-      }
-
       const { data, error } = await db
         .from('fomo_tracked_users')
         .insert({
@@ -509,6 +663,48 @@ export function createFomoRouter(wsServer: WsServer): Router {
     } catch (err: any) {
       res.status(500).json({ error: safeError(err, 'Failed to untrack FOMO user') });
     }
+  });
+
+  // --- 985monitor live stream -----------------------------------------------
+  //
+  // A distinct third-party source, deliberately NOT merged into the fomo.family
+  // trade routes above. Every response carries the same scope envelope the
+  // Robinhood routes use, so the console cannot render one as the other.
+  //
+  // Read-only, keyless, in-memory only: no persistence and no Supabase reads,
+  // so this costs nothing in egress no matter how often the console seeds.
+
+  const STREAM_ENVELOPE = {
+    source: FOMO_STREAM_SOURCE,
+    sourceLabel: FOMO_STREAM_SOURCE_LABEL,
+    sourceUrl: FOMO_STREAM_SOURCE_URL,
+    scope: FOMO_STREAM_SCOPE_NOTE,
+  } as const;
+
+  // GET /api/fomo/stream/status — listener health. Always 200: a third-party
+  // source being down is a degraded panel, never an OCT error.
+  router.get('/stream/status', (_req, res) => {
+    const listener = getFomoStreamStatus();
+    res.json({
+      ...STREAM_ENVELOPE,
+      available: listener.connected || getStreamFeedSize() > 0,
+      listener,
+      bufferedTrades: getStreamFeedSize(),
+    });
+  });
+
+  // GET /api/fomo/stream/tape?limit=150 — the seed for the console's tape.
+  // Live rows continue from here over the existing WS (`fomo_stream_trade`).
+  router.get('/stream/tape', (req, res) => {
+    const raw = Number.parseInt(String(req.query.limit ?? ''), 10);
+    const limit = Number.isFinite(raw) ? Math.min(Math.max(raw, 1), 300) : 150;
+    const listener = getFomoStreamStatus();
+    res.json({
+      ...STREAM_ENVELOPE,
+      available: listener.connected || getStreamFeedSize() > 0,
+      listenerEnabled: listener.enabled,
+      trades: getRecentStreamTrades(limit),
+    });
   });
 
   return router;

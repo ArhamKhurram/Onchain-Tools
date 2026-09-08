@@ -152,6 +152,34 @@ export function buildContractUrl(
   return template.replace('{address}', addr);
 }
 
+/**
+ * Axiom trade link for an EVM chain, or null when Axiom has no VERIFIED route
+ * for that chain.
+ *
+ * Axiom is modelled as Solana-only by `SolPlatform`/`EvmPlatform` (it started
+ * Solana-only), but it has since added the Robinhood chain, whose token route
+ * mirrors the Solana one and differs only in the `?chain=` query:
+ *
+ *   https://axiom.trade/t/<0x…>/@<ref>?chain=robinhood      (verified)
+ *
+ * The owner referral is embedded from `REFERRALS.axiom` — never a literal — so
+ * the owner earns the fee exactly like every other preset here. This lives
+ * beside the rest of the referral machinery on purpose: it is the ONE Axiom
+ * route buildContractUrl cannot express (the platform enums have no evm `axiom`
+ * member), so a caller reaches it here rather than inlining a template.
+ *
+ * Every OTHER EVM chain (base/bsc/eth/…) returns null: Axiom's URL for those is
+ * not verified, and a wrong-chain link is worse than no button — the caller is
+ * expected to omit the Axiom button when this returns null.
+ */
+export function buildAxiomEvmUrl(address: string, evmChain: string | null | undefined): string | null {
+  const chain = evmChain?.trim().toLowerCase();
+  if (chain === 'robinhood' || chain === 'hood') {
+    return `https://axiom.trade/t/${address}/@${REFERRALS.axiom}?chain=robinhood`;
+  }
+  return null;
+}
+
 // --- FOMO network id ↔ OCT chain mapping ----------------------------------
 // FOMO identifies chains by numeric network id; OCT uses slugs ('sol', 'eth', …).
 // Shared so the backend can resolve token metadata from a trade and the frontend
