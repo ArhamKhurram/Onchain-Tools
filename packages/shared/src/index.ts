@@ -35,6 +35,37 @@ export {
 export { processDiscordMessage } from './message.js';
 export type { MessageProcessorContext } from './message.js';
 
+// Effective Discord channel permissions — the Room Settings picker must only
+// offer channels the signed-in user can actually view. Shared because both
+// gateways build that list: the server one in local mode, the browser one in
+// hosted mode.
+export {
+  PERMISSION_ADMINISTRATOR,
+  PERMISSION_VIEW_CHANNEL,
+  OVERWRITE_TYPE_ROLE,
+  OVERWRITE_TYPE_MEMBER,
+  FEED_CHANNEL_TYPES,
+  isFeedChannelType,
+  toBits,
+  computeBasePermissions,
+  computeChannelPermissions,
+  canViewChannel,
+  buildGuildPermissionContext,
+  filterPickableChannels,
+} from './discordPermissions.js';
+export type {
+  PermissionOverwrite,
+  GuildMemberPermissionContext,
+  ChannelPermissionInput,
+} from './discordPermissions.js';
+export {
+  readGuildChannels,
+  readSelfMemberRoleIds,
+  readGuildPermissionSnapshot,
+  mergedMembersAt,
+} from './discordGuildPayload.js';
+export type { RawGuildChannel, GuildPermissionSnapshot } from './discordGuildPayload.js';
+
 // Recently-seen Discord message cache (reply/reference preview resolution).
 export { cacheDiscordMessage, lookupCachedMessage } from './messageReplyCache.js';
 

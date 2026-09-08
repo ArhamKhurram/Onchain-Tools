@@ -27,7 +27,7 @@ export const createSourcesSlice: StateCreator<AppState, [], [], SourcesSlice> = 
     fetchGuilds: async () => {
       if (isClientGatewayMode()) {
         const gw = getClientGatewayManager();
-        if (gw) set({ guilds: gw.getGuilds() });
+        if (gw) set({ guilds: await gw.getGuilds() });
         return;
       }
       try {
