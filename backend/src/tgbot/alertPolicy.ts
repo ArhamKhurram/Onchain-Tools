@@ -264,22 +264,17 @@ export interface TgChatSettings {
 
 /**
  * The state a brand-new chat is in, and the default every ABSENT key reads as
- * (see readSettings). Every incident class is OFF — the fail-closed guarantee
+ * (see readSettings). EVERY class is OFF — opt-in, the fail-closed guarantee
  * that stopped the flood.
  *
- * `octSignals` is the ONE deliberate exception: it is ON (instant) by default,
- * on the operator's explicit instruction, because it is a curated,
- * operator-controlled stream rather than the raw feed. It defaults on for
- * EXISTING chats too — their stored blobs predate the key, so readSettings
- * supplies this value — which is how every current subscriber starts receiving
- * it without a migration. It stays a normal toggle: `/alerts off signals`
- * silences it, and turning it off round-trips like any other class. The hourly
- * ceiling still binds it, and it cannot trip the circuit breaker (alerts.ts), so
- * a default-on bursty class cannot mute a chat's other subscriptions.
+ * `octSignals` (OCT Alerts) was briefly default-ON, but the operator changed it
+ * to opt-in: a user must `/alerts on signals` to receive the forwarded scans,
+ * exactly like every other class. Nothing is delivered to a chat that has not
+ * asked for it.
  */
 export const DEFAULT_CHAT_SETTINGS: TgChatSettings = {
   alerts: {
-    octSignals: 'instant',
+    octSignals: 'off',
     missedRunner: 'off',
     mcapCross: 'off',
     keyword: 'off',
