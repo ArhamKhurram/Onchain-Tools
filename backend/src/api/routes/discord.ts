@@ -112,7 +112,7 @@ export function createDiscordRoutes(ctx: RouterContext): Router {
     const gateway = await requireGateway(req, res);
     if (!gateway) return;
     await gateway.waitUntilReady();
-    const guilds = gateway.getGuilds();
+    const guilds = await gateway.getGuilds();
     res.json(guilds);
   });
 

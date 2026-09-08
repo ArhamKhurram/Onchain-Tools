@@ -228,7 +228,7 @@ export function useClientGateway() {
       const manager = getClientGatewayManager();
       if (!manager) return;
       useAppStore.setState({
-        guilds: manager.getGuilds(),
+        guilds: await manager.getGuilds(),
         dmChannels: manager.getDMChannels(),
         authStatus: {
           ...store.authStatus,
