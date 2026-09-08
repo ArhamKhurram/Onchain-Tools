@@ -550,6 +550,100 @@ export function renderMcapCrossCard(view: McapCrossView): string {
   ]);
 }
 
+// --- Flap stock listings (a brand-new RWA asset) ----------------------------
+
+/** SOL is never a Flap chain; these are the only two, spelled for the card. */
+const FLAP_CHAIN_LABELS: Record<string, string> = {
+  bsc: 'BNB',
+  bnb: 'BNB',
+  robinhood: 'Robinhood',
+  hood: 'Robinhood',
+};
+
+function flapChainLabel(network: string): string {
+  return FLAP_CHAIN_LABELS[network.trim().toLowerCase()] ?? revivalNetworkLabel(network);
+}
+
+/** The subset of a new-stock listing this card renders. */
+export interface FlapStockView {
+  /** The RWA ticker(s) — display-ready, already resolved by the poller. */
+  symbols: string[];
+  /** The chain the stock was listed on: 'bsc' | 'robinhood'. */
+  network: string;
+  /** The FIRST token minted with this pairing — the CA + quick-buy target. */
+  firstTokenAddress: string;
+}
+
+/**
+ * The quick-buy keyboard for a new-stock card.
+ *
+ * The first token is always an EVM (`0x…`) address on BNB or Robinhood, so the
+ * venue set is EVM-only: GMGN on every chain (referral embedded by the shared
+ * machinery), plus Axiom on Robinhood alone — the one EVM chain whose Axiom URL
+ * is verified (buildAxiomEvmUrl returns null elsewhere → no button). Buttons
+ * carry a RAW url (a reply_markup JSON field — never escapeHtml'd), and any url
+ * that does not build to http(s) is dropped, the same guard `link()` applies.
+ */
+export function flapStockQuickBuyKeyboard(view: {
+  address: string;
+  network: string;
+}): TgInlineKeyboardMarkup | undefined {
+  const buttons: TgInlineKeyboardButton[] = [];
+  const push = (text: string, url: string | null): void => {
+    if (url && /^https?:\/\//i.test(url.trim())) buttons.push({ text, url });
+  };
+
+  // A Flap listing is EVM; if a base58 address ever arrives, isSol keeps the
+  // shared builder honest rather than mislabelling the chain.
+  const isSol = !view.address.startsWith('0x');
+  push('GMGN', buildRevivalContractUrl(view.address, view.network, venueConfig('gmgn', isSol)));
+  push('Axiom', isSol ? null : buildAxiomEvmUrl(view.address, view.network));
+
+  if (buttons.length === 0) return undefined;
+  const rows: TgInlineKeyboardButton[][] = [];
+  for (let i = 0; i < buttons.length; i += 2) rows.push(buttons.slice(i, i + 2));
+  return { inline_keyboard: rows };
+}
+
+/** The `$A / $B` symbol heading fragment, or '' when nothing is showable. */
+function flapSymbolHeading(symbols: string[]): string {
+  const cleaned = symbols
+    .map((s) => clampName(s.toUpperCase().replace(/^\$/, ''), ''))
+    .filter((s) => s !== '');
+  return cleaned.map((s) => `$${s}`).join(' / ');
+}
+
+/**
+ * A brand-new Flap stock listing, as a Telegram card.
+ *
+ * It names the underlying RWA ticker(s) — the actual news — then the chain and
+ * the first token minted with that pairing as a tap-to-copy CA. The quick-buy
+ * venues ride the message as a reply_markup keyboard (flapStockQuickBuyKeyboard),
+ * attached by the delivery path; the CA stays as `<code>` so it survives a
+ * client that renders no buttons. Every field is escaped (html.ts) — a `<` in a
+ * hostile on-chain symbol would be a 400 and a silently dropped alert.
+ */
+export function renderFlapStockCard(view: FlapStockView): string {
+  const heading = flapSymbolHeading(view.symbols);
+  return joinLines([
+    bold(heading !== '' ? `🆕 New Flap stock: ${heading}` : '🆕 New Flap stock listed'),
+    `${bold('Chain:')} ${escapeHtml(flapChainLabel(view.network))}`,
+    '',
+    code(view.firstTokenAddress),
+    footer('New RWA listing'),
+  ]);
+}
+
+/** One digest line for a new-stock listing. Terse; keeps the CA. */
+export function flapStockDigestLine(view: FlapStockView): string {
+  const heading = flapSymbolHeading(view.symbols);
+  const head = heading !== '' ? escapeHtml(heading) : code(view.firstTokenAddress);
+  return (
+    `${escapeHtml(ALERT_CATALOG.flapStock.label)} — ${head} ` +
+    escapeHtml(`· ${flapChainLabel(view.network)}`)
+  );
+}
+
 // --- OCT Alerts (forwarded algorithm-scan signals) --------------------------
 
 /** SOL/EVM display label for a signal's SOURCE chain (digest line only). */

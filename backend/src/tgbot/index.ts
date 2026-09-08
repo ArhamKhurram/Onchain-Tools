@@ -39,7 +39,7 @@ import { PanelCallbackHandler } from './callbacks.js';
 import { panelDeliveryFor, setPanelDeliverySource, TgAlertRouter } from './alerts.js';
 import { readDigestIntervalMs } from './digest.js';
 import type { TgAlertType } from './alertPolicy.js';
-import type { McapCrossView } from './render.js';
+import type { FlapStockView, McapCrossView } from './render.js';
 import type { SignalFilterGate } from './source.js';
 import type { OctSignalView } from './octSignals.js';
 
@@ -137,6 +137,16 @@ export async function tgSubscriberCount(type: TgAlertType): Promise<number> {
 export function tgDeliverMcapCross(view: McapCrossView, gate?: SignalFilterGate): void {
   void alertRouter?.handleSignal(view, gate).catch((err) => {
     console.error('[TgBot] Crossing delivery failed:', (err as Error)?.message ?? err);
+  });
+}
+
+/**
+ * Deliver one Flap NEW-STOCK listing. No-ops when the bot is not running.
+ * Called by the flap poller through the injected delivery seam (index.ts).
+ */
+export function tgDeliverFlapStock(view: FlapStockView): void {
+  void alertRouter?.handleFlapStock(view).catch((err) => {
+    console.error('[TgBot] Flap listing delivery failed:', (err as Error)?.message ?? err);
   });
 }
 
