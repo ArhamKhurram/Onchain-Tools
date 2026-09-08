@@ -4,6 +4,11 @@ All notable changes to Onchain Tools are documented here. Entries before the
 rename still say "Trenchcord" — that was the product's name at the time, and
 they're left as the record of what shipped.
 
+## 2026-09-08
+
+### Fixed
+- **One Telegram call, one ping** — a scan or a keyword match from a Telegram source could ping you several times over: the same alert, word for word, stacked until the only way to stop it was muting the tab. Telegram re-sends a message after a reconnect, usually minutes and sometimes hours later, and OCT only recognised a repeat that landed within ten seconds of the original — so a replay looked like a fresh call and everything fired again. It now recognises the repeat however late it turns up, which quiets the duplicate toast, the duplicate phone push and the duplicate bot message together. The feed row and the call count were already protected and are unchanged, and Discord sources were never affected.
+
 ## 2026-09-06
 
 ### Added
