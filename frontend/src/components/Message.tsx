@@ -18,6 +18,7 @@ import { TelegramExtras } from './message/TelegramExtras';
 import { DeletedBadge, EditedIndicator } from './message/badges';
 import { MessageAttachments } from './message/MessageAttachments';
 import { MessageEmbeds } from './message/MessageEmbeds';
+import { ForwardedContent } from './message/ForwardedContent';
 import { DEFAULT_FEED_ROW_DENSITY, FEED_ROW_DENSITY_STYLE, type FeedRowDensity } from './feed/feedChromeContract';
 
 interface MessageProps {
@@ -116,6 +117,21 @@ function Message({ message, isCompact, messageDisplay = 'default', compactModeAv
   const bgStyle = guildColor ? { backgroundColor: guildColor, ...highlightInlineStyle } : highlightInlineStyle;
 
   const isTelegram = message.source === 'telegram';
+
+  // A Discord forward carries its body in `forwardedMessage`, not `content`.
+  // Every render branch below shows it in the same place: after the author's
+  // own comment (usually empty on a forward) and before their attachments.
+  const forwardedProps = {
+    forwarded: message.forwardedMessage,
+    contractAddresses: message.contractAddresses,
+    mentions: message.mentions,
+    addrColors,
+    templates,
+    clickAct,
+    showFull,
+    disableEmbeds,
+    onImageClick: setLightboxSrc,
+  };
 
   const discordPath = `discord.com/channels/${message.guildId ?? '@me'}/${message.channelId}/${message.id}`;
   const discordUrl = openInDiscordApp ? `discord://${discordPath}` : `https://${discordPath}`;
@@ -315,6 +331,8 @@ function Message({ message, isCompact, messageDisplay = 'default', compactModeAv
             <EditedIndicator message={message} addrColors={addrColors} templates={templates} clickAct={clickAct} showFull={showFull} />
           </div>
 
+          <ForwardedContent {...forwardedProps} textClass={d.compactText} leadClass={d.lead} />
+
           <MessageAttachments attachments={message.attachments} onImageClick={setLightboxSrc} />
 
           <MessageEmbeds embeds={message.embeds} disableEmbeds={disableEmbeds} showFull={showFull} onImageClick={setLightboxSrc} />
@@ -386,6 +404,8 @@ function Message({ message, isCompact, messageDisplay = 'default', compactModeAv
             {renderContent(message.content, message.contractAddresses, message.mentions, addrColors, templates, clickAct, showFull)}
             <EditedIndicator message={message} addrColors={addrColors} templates={templates} clickAct={clickAct} showFull={showFull} />
           </div>
+
+          <ForwardedContent {...forwardedProps} textClass={d.text} leadClass={d.lead} />
 
           <MessageAttachments attachments={message.attachments} onImageClick={setLightboxSrc} />
 
@@ -522,6 +542,8 @@ function Message({ message, isCompact, messageDisplay = 'default', compactModeAv
           {renderContent(message.content, message.contractAddresses, message.mentions, addrColors, templates, clickAct, showFull)}
           <EditedIndicator message={message} addrColors={addrColors} templates={templates} clickAct={clickAct} showFull={showFull} />
         </div>
+
+        <ForwardedContent {...forwardedProps} textClass={d.text} leadClass={d.lead} />
 
         <MessageAttachments attachments={message.attachments} onImageClick={setLightboxSrc} />
 

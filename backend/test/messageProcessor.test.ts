@@ -133,3 +133,120 @@ describe('processDiscordMessage (shared via backend shim)', () => {
     expect(cacheUserName).toHaveBeenCalledWith('u1', 'Satoshi');
   });
 });
+
+// A Discord forward puts the forwarded body in `message_snapshots` and leaves
+// `content` to the forwarder's own comment (usually empty). Reading `content`
+// alone rendered the message blank in the feed AND hid whatever contract the
+// person was forwarding, which is normally the entire point of forwarding it.
+describe('processDiscordMessage — forwards', () => {
+  const forwarded = (snapshot: Record<string, unknown>, over: Partial<DiscordMessage> = {}): DiscordMessage =>
+    rawMsg({
+      content: '',
+      message_reference: { type: 1, message_id: 'src-1', channel_id: '999', guild_id: 'g2' },
+      message_snapshots: [{ message: snapshot }],
+      ...over,
+    } as Partial<DiscordMessage>);
+
+  it('surfaces the forwarded body instead of leaving the message blank', () => {
+    const r = processDiscordMessage(
+      gateway, forwarded({ content: 'gm, this one is running', timestamp: '2026-01-01T00:00:00.000Z' }),
+      undefined, undefined, undefined, ctx({}),
+    );
+    // The message's own content stays the forwarder's comment — the forwarded
+    // text is a separate field so the UI can label it as forwarded.
+    expect(r.content).toBe('');
+    expect(r.forwardedMessage?.content).toBe('gm, this one is running');
+    expect(r.forwardedMessage?.timestamp).toBe('2026-01-01T00:00:00.000Z');
+  });
+
+  it('leaves forwardedMessage null on an ordinary message', () => {
+    const r = processDiscordMessage(gateway, rawMsg(), undefined, undefined, undefined, ctx({}));
+    expect(r.forwardedMessage).toBeNull();
+  });
+
+  it('detects a contract that only appears in the forwarded body', () => {
+    const r = processDiscordMessage(
+      gateway, forwarded({ content: `CA: ${EVM}` }), undefined, undefined, undefined, ctx({}),
+    );
+    expect(r.hasContractAddress).toBe(true);
+    expect(r.contractAddresses).toContain(EVM_CANON);
+  });
+
+  it('detects a contract inside a forwarded embed', () => {
+    const r = processDiscordMessage(
+      gateway, forwarded({ content: '', embeds: [{ description: `New pair
+CA: ${EVM}` }] }),
+      undefined, undefined, undefined, ctx({}),
+    );
+    expect(r.hasContractAddress).toBe(true);
+    expect(r.contractAddresses).toContain(EVM_CANON);
+    expect(r.forwardedMessage?.embeds).toHaveLength(1);
+  });
+
+  it('still honours the detection flag for forwarded contracts', () => {
+    const r = processDiscordMessage(
+      gateway, forwarded({ content: `CA: ${EVM}` }), undefined, undefined, undefined, ctx({ contractDetection: false }),
+    );
+    expect(r.hasContractAddress).toBe(false);
+  });
+
+  it('matches keywords against the forwarded body', () => {
+    const r = processDiscordMessage(
+      gateway, forwarded({ content: 'stealth launch incoming' }), undefined, undefined, undefined,
+      ctx({ globalKeywordPatterns: [{ pattern: 'stealth', matchMode: 'includes' }] }),
+    );
+    expect(r.matchedKeywords).toEqual(['stealth']);
+  });
+
+  it('keeps the forwarder’s own comment scannable alongside the forwarded body', () => {
+    const r = processDiscordMessage(
+      gateway, forwarded({ content: 'and the chart' }, { content: `first look ${EVM}` }),
+      undefined, undefined, undefined, ctx({}),
+    );
+    expect(r.content).toBe(`first look ${EVM}`);
+    expect(r.contractAddresses).toContain(EVM_CANON);
+    expect(r.forwardedMessage?.content).toBe('and the chart');
+  });
+
+  it('resolves mentions and channel/role tokens from inside the forwarded body', () => {
+    const r = processDiscordMessage(
+      gateway,
+      forwarded({
+        content: 'ping <@u9> in <#999> cc <@&42>',
+        mentions: [{ id: 'u9', username: 'vitalik', global_name: 'Vitalik', avatar: null }],
+      }),
+      undefined, undefined, undefined, ctx({}),
+    );
+    expect(r.mentions['u9']).toBe('Vitalik');
+    expect(r.mentions['ch:999']).toBe('linked-chan');
+    expect(r.mentions['role:42']).toBe('Admins');
+  });
+
+  it('labels the origin when the source channel is known, and stays quiet when it is not', () => {
+    const known = processDiscordMessage(
+      gateway, forwarded({ content: 'x' }), undefined, undefined, undefined, ctx({}),
+    );
+    expect(known.forwardedMessage?.origin).toBe('My Guild / #linked-chan');
+
+    // Forwards routinely come from servers this client isn't in. Printing the
+    // gateway's "unknown" placeholder there would be worse than saying nothing.
+    const unknown = processDiscordMessage(
+      gateway,
+      forwarded({ content: 'x' }, {
+        message_reference: { type: 1, message_id: 'src-1', channel_id: 'not-cached' },
+      } as Partial<DiscordMessage>),
+      undefined, undefined, undefined, ctx({}),
+    );
+    expect(unknown.forwardedMessage?.origin).toBeNull();
+  });
+
+  it('renders a forward that carries only an attachment', () => {
+    const r = processDiscordMessage(
+      gateway,
+      forwarded({ content: '', attachments: [{ id: 'a1', filename: 'chart.png', url: 'u', proxy_url: 'p', size: 1 }] }),
+      undefined, undefined, undefined, ctx({}),
+    );
+    expect(r.forwardedMessage?.content).toBe('');
+    expect(r.forwardedMessage?.attachments).toHaveLength(1);
+  });
+});
