@@ -611,9 +611,9 @@ beforeEach(() => {
 });
 
 describe('delivery', () => {
-  it('a fresh chat receives OCT Alerts by default, with CA and referral buttons', async () => {
-    // DEFAULT_CHAT_SETTINGS is exactly what a chat that only ran /start has.
-    seed({ ...DEFAULT_CHAT_SETTINGS, alerts: { ...DEFAULT_CHAT_SETTINGS.alerts } });
+  it('a chat opted into OCT Alerts receives them, with CA and referral buttons', async () => {
+    // OCT Alerts is opt-in, so the chat must have turned it on.
+    seed({ ...DEFAULT_CHAT_SETTINGS, alerts: { ...DEFAULT_CHAT_SETTINGS.alerts, octSignals: 'instant' } });
     const sender = fakeSender();
     const router = new TgAlertRouter(() => sender as never);
 
@@ -629,13 +629,13 @@ describe('delivery', () => {
     expect(buttons.find((b) => b.text === 'Axiom')!.url).toContain(`@${REFERRALS.axiom}`);
   });
 
-  it('an existing chat keeps its other settings and gains OCT Alerts on (no regression)', () => {
-    // A row written before octSignals existed: keyword on, contract off, no
-    // octSignals key. readSettings must preserve those and default octSignals on.
+  it('an existing chat keeps its other settings and OCT Alerts stays OFF (opt-in)', () => {
+    // A legacy row without an octSignals key: other settings preserved, and the
+    // absent key reads as OFF — nothing is delivered until the chat opts in.
     const stored = readSettings({ alerts: { keyword: 'digest', contract: 'off' } });
     expect(stored.alerts.keyword).toBe('digest');
     expect(stored.alerts.contract).toBe('off');
-    expect(stored.alerts.octSignals).toBe('instant');
+    expect(stored.alerts.octSignals).toBe('off');
   });
 
   it('a chat that turned OCT Alerts off receives nothing', async () => {
@@ -652,7 +652,7 @@ describe('delivery', () => {
     // this class is exempt from the per-chat hourly ceiling that bounds the
     // incident classes. Distinct addresses so the dedupe never collapses them.
     vi.stubEnv('TG_BOT_MAX_MESSAGES_PER_HOUR', '2');
-    seed({ ...DEFAULT_CHAT_SETTINGS, alerts: { ...DEFAULT_CHAT_SETTINGS.alerts } });
+    seed({ ...DEFAULT_CHAT_SETTINGS, alerts: { ...DEFAULT_CHAT_SETTINGS.alerts, octSignals: 'instant' } });
     const sender = fakeSender();
     const router = new TgAlertRouter(() => sender as never);
 
@@ -667,7 +667,7 @@ describe('delivery', () => {
 
   it('still honours an explicit mute even while uncapped', async () => {
     // "No cap" is not "cannot opt out": a chat that muted still gets nothing.
-    seed({ ...DEFAULT_CHAT_SETTINGS, alerts: { ...DEFAULT_CHAT_SETTINGS.alerts }, mutedUntil: 10_000 });
+    seed({ ...DEFAULT_CHAT_SETTINGS, alerts: { ...DEFAULT_CHAT_SETTINGS.alerts, octSignals: 'instant' }, mutedUntil: 10_000 });
     const sender = fakeSender();
     const router = new TgAlertRouter(() => sender as never);
 
@@ -678,7 +678,7 @@ describe('delivery', () => {
   it('respects an existing mute — a muted chat gets no OCT Alerts', async () => {
     seed({
       ...DEFAULT_CHAT_SETTINGS,
-      alerts: { ...DEFAULT_CHAT_SETTINGS.alerts },
+      alerts: { ...DEFAULT_CHAT_SETTINGS.alerts, octSignals: 'instant' },
       mutedUntil: 9_000_000,
       mutedReason: 'flooded',
     });
@@ -695,7 +695,7 @@ describe('delivery', () => {
     // OCT Alerts on (default) AND missed runners on instant.
     seed({
       ...DEFAULT_CHAT_SETTINGS,
-      alerts: { ...DEFAULT_CHAT_SETTINGS.alerts, missedRunner: 'instant' },
+      alerts: { ...DEFAULT_CHAT_SETTINGS.alerts, octSignals: 'instant', missedRunner: 'instant' },
     });
     const sender = fakeSender();
     const router = new TgAlertRouter(() => sender as never);
@@ -721,7 +721,7 @@ describe('delivery', () => {
 
 describe('dedupe — one call = one alert (chain + primary address, TTL-bounded)', () => {
   it('collapses the same contract posted twice within the TTL to ONE alert', async () => {
-    seed({ ...DEFAULT_CHAT_SETTINGS, alerts: { ...DEFAULT_CHAT_SETTINGS.alerts } });
+    seed({ ...DEFAULT_CHAT_SETTINGS, alerts: { ...DEFAULT_CHAT_SETTINGS.alerts, octSignals: 'instant' } });
     const sender = fakeSender();
     const router = new TgAlertRouter(() => sender as never);
 
@@ -733,7 +733,7 @@ describe('dedupe — one call = one alert (chain + primary address, TTL-bounded)
 
   it('re-alerts the same contract after the TTL has elapsed', async () => {
     vi.stubEnv('OCT_SIGNAL_DEDUPE_TTL_MS', '600000');
-    seed({ ...DEFAULT_CHAT_SETTINGS, alerts: { ...DEFAULT_CHAT_SETTINGS.alerts } });
+    seed({ ...DEFAULT_CHAT_SETTINGS, alerts: { ...DEFAULT_CHAT_SETTINGS.alerts, octSignals: 'instant' } });
     const sender = fakeSender();
     const router = new TgAlertRouter(() => sender as never);
 
@@ -745,7 +745,7 @@ describe('dedupe — one call = one alert (chain + primary address, TTL-bounded)
   it('the SAME address on sol vs evm both alert (distinct tokens)', async () => {
     // Use one bare 0x string reachable as an EVM address and a distinct SOL mint;
     // the key includes the chain, so even a shared string would not collide.
-    seed({ ...DEFAULT_CHAT_SETTINGS, alerts: { ...DEFAULT_CHAT_SETTINGS.alerts } });
+    seed({ ...DEFAULT_CHAT_SETTINGS, alerts: { ...DEFAULT_CHAT_SETTINGS.alerts, octSignals: 'instant' } });
     const sender = fakeSender();
     const router = new TgAlertRouter(() => sender as never);
 
@@ -755,7 +755,7 @@ describe('dedupe — one call = one alert (chain + primary address, TTL-bounded)
   });
 
   it('a no-address signal is NEVER address-deduped — every one forwards', async () => {
-    seed({ ...DEFAULT_CHAT_SETTINGS, alerts: { ...DEFAULT_CHAT_SETTINGS.alerts } });
+    seed({ ...DEFAULT_CHAT_SETTINGS, alerts: { ...DEFAULT_CHAT_SETTINGS.alerts, octSignals: 'instant' } });
     const sender = fakeSender();
     const router = new TgAlertRouter(() => sender as never);
 

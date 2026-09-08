@@ -128,19 +128,17 @@ describe('fail closed: opening the panel subscribes nothing', () => {
   // that has only opened the panel is subscribed to.
   it('the panel default is the same object the fan-out reads', () => {
     expect(panelHomeSettings()).toBe(DEFAULT_CHAT_SETTINGS);
-    // Every INCIDENT class is off; octSignals ("OCT Alerts") is the one
-    // deliberate default-on exception — a curated operator stream, on the
-    // operator's explicit instruction (see DEFAULT_CHAT_SETTINGS).
-    expect(subscribedTypes(panelHomeSettings())).toEqual(['octSignals']);
-    for (const type of ['missedRunner', 'mcapCross', 'keyword', 'highlighted', 'contract'] as const) {
+    // Every class is off — the panel subscribes a fresh chat to NOTHING,
+    // OCT Alerts included (opt-in; see DEFAULT_CHAT_SETTINGS).
+    expect(subscribedTypes(panelHomeSettings())).toEqual([]);
+    for (const type of ['octSignals', 'missedRunner', 'mcapCross', 'keyword', 'highlighted', 'contract'] as const) {
       expect(panelHomeSettings().alerts[type]).toBe('off');
     }
   });
 
-  it('the home card of a fresh chat shows OCT Alerts on and no loud class', () => {
+  it('the home card of a fresh chat shows no class on', () => {
     const card = renderPanelHome(state({ settings: panelHomeSettings() }), null);
-    expect(card).toContain('OCT Alerts');
-    // The class that flooded a live group is still off for a fresh chat.
+    // The class that flooded a live group is off for a fresh chat.
     expect(card).not.toContain('Contract detections');
   });
 

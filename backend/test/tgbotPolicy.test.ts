@@ -41,28 +41,25 @@ describe('fail closed: what a brand-new chat is subscribed to', () => {
   const INCIDENT: TgAlertType[] = ['missedRunner', 'mcapCross', 'keyword', 'highlighted', 'contract'];
 
   // THE test. /start passes no settings at all, so this constant IS what a
-  // freshly registered chat gets: every incident class off. octSignals ("OCT
-  // Alerts") is the ONE deliberate exception — a curated, operator-controlled
-  // stream that is on (instant) by default on the operator's explicit
-  // instruction, and stays a normal toggle.
-  it('/start leaves every incident class off, and only OCT Alerts on', () => {
-    expect(subscribedTypes(DEFAULT_CHAT_SETTINGS)).toEqual(['octSignals']);
+  // A freshly registered chat is subscribed to NOTHING — every class, OCT
+  // Alerts included, is opt-in. This is the fail-closed default.
+  it('/start leaves every class off, including OCT Alerts', () => {
+    expect(subscribedTypes(DEFAULT_CHAT_SETTINGS)).toEqual([]);
     for (const type of INCIDENT) {
       expect(DEFAULT_CHAT_SETTINGS.alerts[type]).toBe('off');
     }
-    expect(DEFAULT_CHAT_SETTINGS.alerts.octSignals).toBe('instant');
+    expect(DEFAULT_CHAT_SETTINGS.alerts.octSignals).toBe('off');
   });
 
-  // The default-on flows to EXISTING chats too: their stored blobs predate the
-  // key, so an absent key must read as instant. That is how every current
-  // subscriber starts receiving it with no migration.
+  // An absent/legacy blob also reads as everything-off — no class is delivered
+  // to a chat that has not explicitly opted in.
   const onlyOctSignals = (raw: unknown): void => {
-    expect(subscribedTypes(readSettings(raw))).toEqual(['octSignals']);
-    expect(readSettings(raw).alerts.octSignals).toBe('instant');
+    expect(subscribedTypes(readSettings(raw))).toEqual([]);
+    expect(readSettings(raw).alerts.octSignals).toBe('off');
     for (const type of INCIDENT) expect(readSettings(raw).alerts[type]).toBe('off');
   };
 
-  it('an absent, null or empty settings blob reads as OCT Alerts on, everything else off', () => {
+  it('an absent, null or empty settings blob reads as everything off', () => {
     onlyOctSignals(undefined);
     onlyOctSignals(null);
     onlyOctSignals({});
@@ -198,17 +195,16 @@ describe('/alerts parsing', () => {
 
 describe('settings transitions', () => {
   it('round-trips an opt-in through JSON without leaking the other classes', () => {
-    // octSignals is on by default, so an opt-in to another class shows both.
     const next = applyAlertSetting(DEFAULT_CHAT_SETTINGS, 'missedRunner', 'digest');
     const stored = readSettings(JSON.parse(JSON.stringify(next)));
-    expect(subscribedTypes(stored)).toEqual(['octSignals', 'missedRunner']);
+    expect(subscribedTypes(stored)).toEqual(['missedRunner']);
     expect(stored.alerts.contract).toBe('off');
   });
 
-  it('round-trips an opt-out back to the default (OCT Alerts only)', () => {
+  it('round-trips an opt-out back to the default (everything off)', () => {
     const on = applyAlertSetting(DEFAULT_CHAT_SETTINGS, 'contract', 'digest');
     const off = applyAlertSetting(on, 'contract', 'off');
-    expect(subscribedTypes(readSettings(JSON.parse(JSON.stringify(off))))).toEqual(['octSignals']);
+    expect(subscribedTypes(readSettings(JSON.parse(JSON.stringify(off))))).toEqual([]);
   });
 
   it('never mutates the settings it was handed', () => {
