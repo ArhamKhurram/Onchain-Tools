@@ -25,7 +25,13 @@ import { createBotRouter } from './api/routes/bot.js';
 import { createSniperRouter } from './api/sniper/router.js';
 import { requireBotAuth } from './auth/botAuth.js';
 import { startBot } from './bot/index.js';
-import { startTelegramBot, tgDeliverMcapCross, tgDeliverOctSignal, tgSubscriberCount } from './tgbot/index.js';
+import {
+  startTelegramBot,
+  tgDeliverFlapStock,
+  tgDeliverMcapCross,
+  tgDeliverOctSignal,
+  tgSubscriberCount,
+} from './tgbot/index.js';
 import { buildOctSignalView } from './tgbot/octSignals.js';
 import {
   resolveSignalIngestUserId,
@@ -64,6 +70,7 @@ import { startJournalPoller } from './journal/poller.js';
 import { startJournalVolumeDeathPoller } from './journal/volumeDeathPoller.js';
 import { startPriceAlertPoller } from './priceAlerts/poller.js';
 import { startMcapCrossPoller } from './mcapCross/poller.js';
+import { startFlapPoller } from './flap/poller.js';
 import { startTokenPeakSampler } from './alerts/tokenPeakSampler.js';
 import { onPeakRaised } from './alerts/tokenPeakStore.js';
 import {
@@ -1007,6 +1014,21 @@ httpServer.listen(PORT, HOST, async () => {
         },
         verdict,
       ),
+  });
+  // Flap RWA-stock listing watcher (a brand-new underlying stock on BNB /
+  // Robinhood, deduped on the RWA asset — NOT every meme launch). Its own
+  // independent signal, never fused. Self-gates HARD like mcapCross: with no
+  // Telegram chat subscribed it makes zero RPC requests. BNB works out of the
+  // box (Pinax/PINAX_API_KEY); Robinhood only when its RPC + VaultPortal env are
+  // set. Delivery injected so flap/ never reaches into tgbot/.
+  startFlapPoller({
+    hasSubscribers: async () => (await tgSubscriberCount('flapStock')) > 0,
+    deliver: (data) =>
+      tgDeliverFlapStock({
+        symbols: data.symbols,
+        network: data.network,
+        firstTokenAddress: data.firstTokenAddress,
+      }),
   });
   // Global pump.fun KOL-callout fan-out poller. Self-gates on Supabase (idle in
   // local mode), keyless upstream, so it never crashes the server.

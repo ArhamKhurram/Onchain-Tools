@@ -1,5 +1,6 @@
 import { alerts } from './alerts.js';
 import { fees } from './fees.js';
+import { flap } from './flap.js';
 import { filters } from './filters.js';
 import { help } from './help.js';
 import { link, unlink as unlinkChat } from './link.js';
@@ -37,6 +38,7 @@ export const commands: TgCommand[] = [
   mcap,
   queued,
   fees,
+  flap,
   link,
   unlinkChat,
   filters,

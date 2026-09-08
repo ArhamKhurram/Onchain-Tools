@@ -176,6 +176,20 @@ const fees: CommandSpec = {
 };
 
 /**
+ * `adminOnly` is FALSE for the same reason `/fees` is: this has no group form.
+ * `/flap test` is refused outside a private chat and, inside one, needs a named
+ * operator (the same TG_BOT_SNIPER_OPERATORS allowlist), so "a group admin can
+ * run it" would overstate the access. The caveat lives on the group's note.
+ */
+const flap: CommandSpec = {
+  name: 'flap',
+  description: 'Admin: preview the most recent Flap stock listing',
+  usage: '/flap test',
+  blurb: 'operator dry-run — send yourself the latest Flap new-stock card',
+  adminOnly: false,
+};
+
+/**
  * The help card, in reading order.
  *
  * "Set up" first because a chat that has just added the bot is the common
@@ -201,6 +215,11 @@ export const COMMAND_GROUPS: readonly CommandGroup[] = [
     note: 'Private chat only, and only for an authorized operator.',
     commands: [fees],
   },
+  {
+    title: 'Diagnostics',
+    note: 'Private chat only, and only for an authorized operator.',
+    commands: [flap],
+  },
 ];
 
 /** Every spec, in help order. The menu and the boot-time coverage check read this. */
@@ -223,6 +242,7 @@ export const SPEC = {
   mcap,
   queued,
   fees,
+  flap,
   link,
   unlink,
   filters,

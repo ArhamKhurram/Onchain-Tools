@@ -53,7 +53,14 @@ export interface AlertLike {
  * Keyed by intent rather than by the wire `type` string, because one class
  * ('contract') deliberately spans two wire types — see isContractDetection.
  */
-export type TgAlertType = 'octSignals' | 'missedRunner' | 'mcapCross' | 'keyword' | 'highlighted' | 'contract';
+export type TgAlertType =
+  | 'octSignals'
+  | 'missedRunner'
+  | 'flapStock'
+  | 'mcapCross'
+  | 'keyword'
+  | 'highlighted'
+  | 'contract';
 
 /**
  * How a subscribed class is delivered.
@@ -68,6 +75,7 @@ export type TgAlertDelivery = 'off' | 'digest' | 'instant';
 export const ALERT_TYPES: readonly TgAlertType[] = [
   'octSignals',
   'missedRunner',
+  'flapStock',
   'mcapCross',
   'keyword',
   'highlighted',
@@ -141,6 +149,21 @@ export const ALERT_CATALOG: Readonly<Record<TgAlertType, TgAlertTypeSpec>> = {
     label: 'Missed runners',
     volume: 'low',
     volumeNote: 'Rare — a token alerts at most once per 24h, a few per day at most.',
+    instantAllowed: true,
+    requiresConfirmation: false,
+  },
+  flapStock: {
+    type: 'flapStock',
+    keyword: 'flap',
+    aliases: ['flapstock', 'flap_stock', 'stock', 'stocks', 'rwa', 'listings'],
+    label: 'Flap stock listings',
+    volume: 'low',
+    volumeNote:
+      'Rare — only when Flap lists a brand-new stock (a new RWA asset) on BNB or Robinhood, not on ' +
+      'every meme launched against an existing one. A handful a month at most.',
+    // Rare BY CONSTRUCTION — a listing fires once, the first time an underlying
+    // RWA asset is ever seen (flap/poller.ts dedupes on the asset). Like
+    // missedRunner it earns per-event delivery, but the DEFAULT is still digest.
     instantAllowed: true,
     requiresConfirmation: false,
   },
@@ -236,8 +259,9 @@ export function classifyAlert(alert: AlertLike): TgAlertType | null {
       return 'keyword';
     case 'missed_runner':
       return 'missedRunner';
-    // 'mcapCross' is deliberately absent: it never travels as an AlertLike.
-    // See the note at the top of this file.
+    // 'mcapCross' and 'flapStock' are deliberately absent: both are raised by a
+    // chain-watching poller, never travel as an AlertLike, and reach delivery
+    // through TgAlertRouter.handleSignal / handleFlapStock. See the file header.
     default:
       // Anything that does not reach onAlert, and anything added later that
       // nobody has decided a volume for yet. Silence is the safe answer.
@@ -276,6 +300,7 @@ export const DEFAULT_CHAT_SETTINGS: TgChatSettings = {
   alerts: {
     octSignals: 'off',
     missedRunner: 'off',
+    flapStock: 'off',
     mcapCross: 'off',
     keyword: 'off',
     highlighted: 'off',
