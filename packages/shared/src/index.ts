@@ -35,6 +35,18 @@ export {
 export { processDiscordMessage } from './message.js';
 export type { MessageProcessorContext } from './message.js';
 
+// Discord forwards — a forwarded body lives in `message_snapshots`, not
+// `content`. Read forward.ts before touching anything that scans message text.
+export {
+  MESSAGE_REFERENCE_DEFAULT,
+  MESSAGE_REFERENCE_FORWARD,
+  isForwardReference,
+  forwardedParts,
+  contentWithForward,
+  embedsWithForward,
+} from './forward.js';
+export type { ForwardedParts } from './forward.js';
+
 // Effective Discord channel permissions — the Room Settings picker must only
 // offer channels the signed-in user can actually view. Shared because both
 // gateways build that list: the server one in local mode, the browser one in
@@ -150,6 +162,7 @@ export type {
   DiscordChannel,
   DiscordReaction,
   DiscordMessage,
+  DiscordMessageSnapshot,
   DiscordAttachment,
   DiscordEmbed,
   GatewayPayload,
@@ -220,6 +233,7 @@ export type {
   TelegramPoll,
   TelegramForward,
   TelegramButton,
+  ForwardedMessage,
   FrontendMessage,
   // contract log entry
   ContractEntry,

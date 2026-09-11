@@ -16,7 +16,7 @@ import { playHighlightSound, playContractAlertSound, playKeywordAlertSound } fro
 import { showDesktopNotification } from '../utils/desktopNotification';
 import { buildContractUrl } from '../utils/contractUrl';
 import { queueContractDetection, tryRickEnrich } from '../discord/contractPendingQueue';
-import { cacheDiscordMessage } from '@oct/shared';
+import { cacheDiscordMessage, contentWithForward } from '@oct/shared';
 import { track } from '../lib/analytics';
 
 function isUserHighlighted(
@@ -94,7 +94,9 @@ function handleLiveMessage(gw: GatewayManager, rawMsg: DiscordMessage & { _chann
   );
   if (matchedRooms.length === 0 && !isDM) return;
 
-  cacheDiscordMessage(rawMsg);
+  // Cache the forwarded body, not the forward's empty `content` — a reply to a
+  // forward should preview what was forwarded.
+  cacheDiscordMessage({ id: rawMsg.id, content: contentWithForward(rawMsg), author: rawMsg.author });
 
   const roomIds = matchedRooms.map((r) => r.id);
   if (isDM) roomIds.push(`dm:${rawMsg.channel_id}`);

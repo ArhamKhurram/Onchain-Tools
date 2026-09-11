@@ -50,7 +50,7 @@ import { buildContractUrl, detectEvmChainFromContent, extractEvmChainFromGmgnLin
 import { tryParseTokenEnrichment, buildRickReplyContext } from './utils/rickEmbedParser.js';
 import { enrichToken, persistEnrichment } from './utils/tokenSnapshot.js';
 import { resolveFallbackTarget, recordFallbackFdv } from './utils/dexFallback.js';
-import { cacheDiscordMessage } from '@oct/shared';
+import { cacheDiscordMessage, contentWithForward, embedsWithForward } from '@oct/shared';
 import type { TokenEnrichment } from './utils/rickEmbedParser.js';
 import { processDiscordMessage } from './utils/messageProcessor.js';
 import type { MessageProcessorContext } from './utils/messageProcessor.js';
@@ -269,7 +269,13 @@ function wireGatewayEvents(gw: GatewayManager, wsServer: WsServer, userId: strin
 
     if (rooms.length === 0 && !isDM) return;
 
-    cacheDiscordMessage(rawMsg);
+    // A forward's body lives in `message_snapshots`, so every raw-text read
+    // below goes through the forward helpers — otherwise the chain hint, the
+    // GMGN link scan and the reply-preview cache all see an empty message.
+    const scanText = contentWithForward(rawMsg);
+    const scanEmbeds = embedsWithForward(rawMsg);
+
+    cacheDiscordMessage({ id: rawMsg.id, content: scanText, author: rawMsg.author });
 
     const config = await storage.getConfig(userId);
     const isHighlighted = await storage.isUserHighlighted(userId, rawMsg.author.id);
@@ -283,7 +289,7 @@ function wireGatewayEvents(gw: GatewayManager, wsServer: WsServer, userId: strin
 
     const roomKeywords = rooms.flatMap((r) => r.keywordPatterns ?? []);
     const frontendMsg = processDiscordMessage(gw, rawMsg, rawMsg._channelName, rawMsg._guildName, roomKeywords, ctx);
-    const evmChainHint = detectEvmChainFromContent(rawMsg.content, rawMsg.embeds);
+    const evmChainHint = detectEvmChainFromContent(scanText, scanEmbeds);
 
     checkPushover(config.pushover, frontendMsg, evmChainHint, config.contractLinkTemplates);
 
@@ -369,7 +375,7 @@ function wireGatewayEvents(gw: GatewayManager, wsServer: WsServer, userId: strin
       });
     }
 
-    const gmgnChainUpdates = extractEvmChainFromGmgnLinks(rawMsg.content, rawMsg.embeds);
+    const gmgnChainUpdates = extractEvmChainFromGmgnLinks(scanText, scanEmbeds);
     for (const { address, chain: detectedChain } of gmgnChainUpdates) {
       const updated = await storage.updateEvmChain(userId, address, detectedChain);
       if (updated) {
@@ -407,7 +413,12 @@ function wireGatewayEvents(gw: GatewayManager, wsServer: WsServer, userId: strin
       editedTimestamp: rawMsg.edited_timestamp ?? null,
     }, roomIds, userId);
 
-    cacheDiscordMessage(rawMsg);
+    // Same forward handling as the create path: an edit to a forward carries an
+    // empty `content`, which would otherwise blank out the cached body. Only
+    // forwards are rewritten — a partial update with no `content` at all must
+    // stay undefined so the cache keeps what it already had.
+    const cachedContent = rawMsg.message_snapshots?.length ? contentWithForward(rawMsg) : rawMsg.content;
+    cacheDiscordMessage({ id: rawMsg.id, content: cachedContent, author: rawMsg.author });
 
     const rickReply = buildRickReplyContext(rawMsg.referenced_message, rawMsg.message_reference);
     const rickEnrichment = tryParseTokenEnrichment({
