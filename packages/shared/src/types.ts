@@ -700,6 +700,7 @@ export type WorkspacePanelType =
   | 'contracts'
   | 'top-callers-feed'
   | 'radar'
+  | 'everything'
   | 'fomo-feed'
   | 'fomo-leaderboard'
   | 'token-lookup'
@@ -708,8 +709,23 @@ export type WorkspacePanelType =
   | 'pump-top-callers'
   | 'pump-leaderboard';
 
+/**
+ * Event kinds the Everything feed interleaves. These are DISPLAY buckets over
+ * already-detected events (FOMO buys/sells, the 985monitor tape, pump callouts,
+ * Robinhood fills) — not new detections. The panel keeps signals independent
+ * and only interleaves them for viewing (see the "Signals stay independent"
+ * rule in CLAUDE.md).
+ */
+export type EverythingFeedKind = 'buy' | 'sell' | 'callout' | 'tape' | 'rh';
+
 export interface WorkspacePanelConfig {
   roomId?: string;
+  /**
+   * Everything feed: which event kinds the filter chips leave visible. Absent
+   * means every kind is shown (the default); an explicit (possibly empty) list
+   * is the operator's saved chip selection, so all-chips-off persists as `[]`.
+   */
+  everythingKinds?: EverythingFeedKind[];
 }
 
 /** A widget slot inside a column stack. */

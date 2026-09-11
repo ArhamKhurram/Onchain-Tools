@@ -23,6 +23,10 @@ export const WORKSPACE_WIDGETS: WorkspaceWidgetDef[] = [
   { type: 'contracts', label: 'Contract feed', description: 'Detected contract addresses from your channels' },
   { type: 'top-callers-feed', label: 'Top Callers Feed', description: 'A quiet feed of only your elite & trusted callers, with inline stats' },
   { type: 'radar', label: 'Radar', description: 'Token mention aggregation and overlap' },
+  // Headline of the FOMO/pump group: one chronological stream that interleaves
+  // every already-detected FOMO + pump.fun event so the operator doesn't have to
+  // watch four panels at once. Display-only aggregation — it fuses no detections.
+  { type: 'everything', label: 'Everything', description: 'Every FOMO buy/sell, pump.fun callout & thesis in one live feed' },
   { type: 'fomo-feed', label: 'FOMO live', description: 'Live buys and sells from tracked traders' },
   { type: 'fomo-leaderboard', label: 'FOMO leaderboard', description: 'Top traders on fomo.family' },
   { type: 'token-lookup', label: 'Token lookup', description: 'Top FOMO holders for any token address' },

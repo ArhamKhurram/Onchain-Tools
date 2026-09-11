@@ -8,14 +8,16 @@ import PumpCallersTab from '../pumpfun/PumpCallersTab';
 import PumpCalloutFeed from '../pumpfun/PumpCalloutFeed';
 import PumpTopCallersTab from '../pumpfun/PumpTopCallersTab';
 import WorkspacePumpLeaderboard from './WorkspacePumpLeaderboard';
-import type { WorkspacePanelSlot } from '../../types/workspace';
+import WorkspaceEverythingFeed from './WorkspaceEverythingFeed';
+import type { WorkspacePanelConfig, WorkspacePanelSlot } from '../../types/workspace';
 
 interface PanelContentProps {
   panel: WorkspacePanelSlot;
   onRoomChange: (roomId: string) => void;
+  onConfigChange: (config: Partial<WorkspacePanelConfig>) => void;
 }
 
-export default function PanelContent({ panel, onRoomChange }: PanelContentProps) {
+export default function PanelContent({ panel, onRoomChange, onConfigChange }: PanelContentProps) {
   const roomId = panel.config?.roomId;
 
   const content = (() => {
@@ -44,6 +46,8 @@ export default function PanelContent({ panel, onRoomChange }: PanelContentProps)
         return <ContractDashboard embedded topOnly />;
       case 'radar':
         return <RadarTable />;
+      case 'everything':
+        return <WorkspaceEverythingFeed config={panel.config} onConfigChange={onConfigChange} />;
       case 'fomo-feed':
         return <FomoTradeFeed embedded />;
       case 'fomo-leaderboard':
@@ -75,6 +79,7 @@ export function panelSubtitle(panel: WorkspacePanelSlot, roomName: string | null
   if (panel.type === 'contracts') return 'Live detections';
   if (panel.type === 'top-callers-feed') return 'Elite & trusted only';
   if (panel.type === 'radar') return 'Token radar';
+  if (panel.type === 'everything') return 'FOMO + pump, one stream';
   if (panel.type === 'fomo-feed') return 'Tracked traders';
   if (panel.type === 'fomo-leaderboard') return 'Top traders';
   if (panel.type === 'token-lookup') return 'FOMO holders by token';

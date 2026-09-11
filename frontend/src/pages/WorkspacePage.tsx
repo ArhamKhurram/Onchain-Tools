@@ -20,7 +20,7 @@ import {
 } from '../data/workspaceWidgets';
 import { routes } from '../lib/routes';
 import { MotionFeatures, fadeIn, m, useTransition } from '../lib/motion';
-import type { WorkspaceLayout, WorkspacePanelSlot } from '../types/workspace';
+import type { WorkspaceLayout, WorkspacePanelConfig, WorkspacePanelSlot } from '../types/workspace';
 
 type RoomPickTarget =
   | { mode: 'configure'; panelId: string }
@@ -85,23 +85,29 @@ export default function WorkspacePage() {
     setRoomPick({ mode: 'configure', panelId: panel.id });
   };
 
-  // Room picked from inside a room panel's own header switcher. In edit mode it
-  // joins the unsaved draft like every other layout tweak; outside edit mode it
-  // is a live change, so it persists immediately through the same config path
-  // the "Save layout" button uses.
-  const handlePanelRoomChange = useCallback(
-    (panelId: string, roomId: string) => {
+  // A live change to one panel's config from inside the panel itself — a room
+  // switch from a room panel's header, or a filter-chip toggle in the Everything
+  // feed. In edit mode it joins the unsaved draft like every other layout tweak;
+  // outside edit mode it is a live change, so it persists immediately through the
+  // same config path the "Save layout" button uses.
+  const handlePanelConfigChange = useCallback(
+    (panelId: string, config: Partial<WorkspacePanelConfig>) => {
       if (editMode) {
-        setDraft((prev) => updatePanelConfig(prev, panelId, { roomId }));
+        setDraft((prev) => updatePanelConfig(prev, panelId, config));
         return;
       }
-      const next = updatePanelConfig(savedLayout, panelId, { roomId });
-      // Show the new room right away; the saved config takes over as soon as the
+      const next = updatePanelConfig(savedLayout, panelId, config);
+      // Show the change right away; the saved config takes over as soon as the
       // write lands (or we roll back if it fails).
       setPendingLayout(next);
       void updateConfig({ workspaceLayout: next }).catch(() => setPendingLayout(null));
     },
     [editMode, savedLayout, updateConfig],
+  );
+
+  const handlePanelRoomChange = useCallback(
+    (panelId: string, roomId: string) => handlePanelConfigChange(panelId, { roomId }),
+    [handlePanelConfigChange],
   );
 
   const handleRoomSelect = (roomId: string) => {
@@ -178,6 +184,7 @@ export default function WorkspacePage() {
             onRemovePanel={handleRemovePanel}
             onConfigurePanel={handleConfigurePanel}
             onPanelRoomChange={handlePanelRoomChange}
+            onPanelConfigChange={handlePanelConfigChange}
           />
         )}
         <RoomPickerModal
