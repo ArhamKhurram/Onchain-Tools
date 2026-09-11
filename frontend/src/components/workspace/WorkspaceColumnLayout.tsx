@@ -2,7 +2,12 @@ import { Fragment, useCallback, useState } from 'react';
 import { Panel, PanelGroup, PanelResizeHandle } from 'react-resizable-panels';
 import WorkspacePanelChrome from './WorkspacePanelChrome';
 import { countPanels, movePanel } from '../../data/workspaceWidgets';
-import type { WorkspaceColumn, WorkspaceLayout, WorkspacePanelSlot } from '../../types/workspace';
+import type {
+  WorkspaceColumn,
+  WorkspaceLayout,
+  WorkspacePanelConfig,
+  WorkspacePanelSlot,
+} from '../../types/workspace';
 
 interface WorkspaceColumnLayoutProps {
   layout: WorkspaceLayout;
@@ -11,6 +16,7 @@ interface WorkspaceColumnLayoutProps {
   onRemovePanel: (panelId: string) => void;
   onConfigurePanel: (panel: WorkspacePanelSlot) => void;
   onPanelRoomChange: (panelId: string, roomId: string) => void;
+  onPanelConfigChange: (panelId: string, config: Partial<WorkspacePanelConfig>) => void;
 }
 
 const H_HANDLE = (editMode: boolean) =>
@@ -25,6 +31,7 @@ export default function WorkspaceColumnLayout({
   onRemovePanel,
   onConfigurePanel,
   onPanelRoomChange,
+  onPanelConfigChange,
 }: WorkspaceColumnLayoutProps) {
   const { columns } = layout;
   const colCount = columns.length;
@@ -84,6 +91,7 @@ export default function WorkspaceColumnLayout({
                 onRemovePanel={onRemovePanel}
                 onConfigurePanel={onConfigurePanel}
                 onPanelRoomChange={onPanelRoomChange}
+                onPanelConfigChange={onPanelConfigChange}
                 onMovePanel={(panelId, toIndex) =>
                   onChange(movePanel(layout, panelId, column.id, toIndex))
                 }
@@ -106,6 +114,7 @@ interface ColumnStackProps {
   onRemovePanel: (panelId: string) => void;
   onConfigurePanel: (panel: WorkspacePanelSlot) => void;
   onPanelRoomChange: (panelId: string, roomId: string) => void;
+  onPanelConfigChange: (panelId: string, config: Partial<WorkspacePanelConfig>) => void;
   onMovePanel: (panelId: string, toIndex: number) => void;
 }
 
@@ -119,6 +128,7 @@ function ColumnStack({
   onRemovePanel,
   onConfigurePanel,
   onPanelRoomChange,
+  onPanelConfigChange,
   onMovePanel,
 }: ColumnStackProps) {
   const panelCount = column.panels.length;
@@ -173,6 +183,7 @@ function ColumnStack({
           onRemove={() => onRemovePanel(panel.id)}
           onConfigure={() => onConfigurePanel(panel)}
           onRoomChange={(roomId) => onPanelRoomChange(panel.id, roomId)}
+          onConfigChange={(config) => onPanelConfigChange(panel.id, config)}
         />
       </div>
     );
@@ -217,6 +228,7 @@ function ColumnStack({
                 onRemove={() => onRemovePanel(panel.id)}
                 onConfigure={() => onConfigurePanel(panel)}
                 onRoomChange={(roomId) => onPanelRoomChange(panel.id, roomId)}
+                onConfigChange={(config) => onPanelConfigChange(panel.id, config)}
               />
             </div>
           </Panel>

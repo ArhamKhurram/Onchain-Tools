@@ -217,6 +217,7 @@ export type {
   AppConfig,
   // workspace layout
   WorkspacePanelType,
+  EverythingFeedKind,
   WorkspacePanelConfig,
   WorkspacePanelSlot,
   WorkspaceColumn,
