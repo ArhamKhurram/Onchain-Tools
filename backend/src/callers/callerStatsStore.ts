@@ -19,7 +19,13 @@
 // working.
 
 import { createClient, type SupabaseClient } from '@supabase/supabase-js';
-import { SLOP_MULTIPLE, type CallerAggregateRow, type CallerCall } from '@oct/shared';
+import {
+  MIN_MC_AT_CALL,
+  SLOP_MULTIPLE,
+  isUsableMarketCap,
+  type CallerAggregateRow,
+  type CallerCall,
+} from '@oct/shared';
 import { isHostedMode } from '../storage/index.js';
 
 /** One call as the write path hands it to storage. */
@@ -131,7 +137,13 @@ export class SupabaseCallerStatsStore implements CallerStatsStore {
         display_name: c.displayName || null,
         // Sent as a string so the RPC's `nullif(...,'')::double precision` reads
         // it uniformly; an absent MC@call must arrive as null, not as 0.
-        fdv_at_call: c.fdvAtCall != null && c.fdvAtCall > 0 ? String(c.fdvAtCall) : null,
+        //
+        // A reading below MIN_MC_AT_CALL is stored as NULL rather than as
+        // itself. It is not a market cap (see the constant), so persisting it
+        // buys nothing — and it would actively hurt: the upsert only ever
+        // fills a NULL MC@call, so a dust reading written first would block
+        // the good reading enrichment produces minutes later, permanently.
+        fdv_at_call: isUsableMarketCap(c.fdvAtCall) ? String(c.fdvAtCall) : null,
         called_at: c.timestamp,
         room_ids: c.roomIds ?? [],
       }));
@@ -150,6 +162,9 @@ export class SupabaseCallerStatsStore implements CallerStatsStore {
       // Passed in rather than hardcoded in SQL so the slop threshold keeps one
       // definition, in packages/shared.
       p_slop_multiple: SLOP_MULTIPLE,
+      // Same reason: the denominator floor that makes a dust MC@call unrated
+      // rather than a 26-million-x "best call". See MIN_MC_AT_CALL.
+      p_min_mc_at_call: MIN_MC_AT_CALL,
     });
     if (error) throw error;
 

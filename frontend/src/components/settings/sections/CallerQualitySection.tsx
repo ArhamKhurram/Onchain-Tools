@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react';
 import { Trash2, VolumeX, Star, Info, Bot, AlertTriangle } from 'lucide-react';
-import { BAND_LABELS, MIN_RATED_CALLS, parseCallerKey, DEFAULT_EXCLUDED_CALLERS } from '@oct/shared';
+import { BAND_LABELS, MIN_RATED_CALLS, SLOP_MULTIPLE, parseCallerKey, KNOWN_BOT_CALLERS } from '@oct/shared';
 import { useCallerQuality } from '../../../hooks/useCallerQuality';
 import {
   BAND_TEXT_CLASS,
@@ -210,22 +210,28 @@ export default function CallerQualitySection({ form }: { form: SettingsForm }) {
 
       {/* Scoring exclusions */}
       <SettingsCard
-        title={`Not scored (${DEFAULT_EXCLUDED_CALLERS.length + callerScoreExclusions.length})`}
+        title={`Not scored (${KNOWN_BOT_CALLERS.length + callerScoreExclusions.length})`}
         blurb={
           <>
-            Enrichment bots repost every contract that crosses the feed, so scoring them
-            measures the room rather than a caller. Excluded authors keep posting, keep
-            showing up in the feed, and keep enriching — they just don't get a score. Add a
-            display name (e.g. <span className="type-data">Rick</span>) or a caller key
+            Scanners and alert bots repost every contract that crosses the feed, so scoring
+            them measures the room rather than a caller — and since the board ranks by how
+            many calls it could score, they pin themselves to the top and bury everyone
+            else. Excluded authors keep posting, keep showing up in the feed, and keep
+            enriching — they just don't get a score. The shipped list is matched by account
+            id, so a person who happens to share a bot's name is never swept up. Add your
+            own by display name (e.g. <span className="type-data">Rick</span>) or caller key
             (e.g. <span className="type-data">discord:123456</span>).
           </>
         }
       >
         <div className="space-y-tight mb-cozy">
-          {DEFAULT_EXCLUDED_CALLERS.map((name) => (
-            <FieldRow key={`default:${name}`} className="flex items-center gap-cozy py-snug border-dashed">
-              <Bot size={13} className="text-oct-muted shrink-0" />
-              <span className="type-body text-oct-text truncate">{name}</span>
+          {KNOWN_BOT_CALLERS.map((bot) => (
+            <FieldRow key={`default:${bot.entry}`} className="flex items-start gap-cozy py-snug border-dashed">
+              <Bot size={13} className="text-oct-muted shrink-0 mt-hair" />
+              <div className="min-w-0">
+                <span className="type-body text-oct-text truncate">{bot.label}</span>
+                <div className="type-data text-2xs text-oct-muted">{bot.why}</div>
+              </div>
               <span className="ml-auto type-caption font-mono uppercase tracking-wide text-oct-muted shrink-0">
                 known bot
               </span>
@@ -278,7 +284,8 @@ export default function CallerQualitySection({ form }: { form: SettingsForm }) {
             the highest we've <em>observed</em> that token reach since. Peaks are sampled, so
             a spike between samples is missed: multiples are floors, not exact ATHs. A caller
             stays unrated below {MIN_RATED_CALLS} scored calls rather than showing a number
-            built on noise.
+            built on noise, and a call whose recorded MC is too small to be a real market cap
+            is left unrated too — it counts as a call, it just has no usable denominator.
             {mode === 'persistent'
               ? ` Records are kept per caller, so once someone scans they stay ranked and every
                   later scan updates them${
@@ -289,6 +296,23 @@ export default function CallerQualitySection({ form }: { form: SettingsForm }) {
                 : ''}
             {pricedTokens != null ? ` ${pricedTokens} tokens priced.` : ''}
           </Help>
+        </div>
+
+        {/* Defect 2 in the caller-stats audit: the multiple is a peak-reach
+            figure, so its lower half is collapsed onto 1x and the median is a
+            median of that. The board says so rather than quietly meaning
+            something other than what it reads as. */}
+        <div className="flex items-start gap-cozy type-caption text-oct-muted mb-comfy">
+          <Info size={13} className="shrink-0 mt-hair" />
+          <p>
+            <span className="font-bold text-oct-text">These are peak-reach multiples, not
+            returns.</span>{' '}
+            A peak is a high-water mark that starts at the call and only ever rises, so
+            nothing here can go below 1× — a call that went to zero and a call that never
+            moved both read 1.0×, and the median is the median of that. Read{' '}
+            <span className="font-bold">Slop</span> as the downside column: the share of a
+            caller's rated calls that never cleared {SLOP_MULTIPLE}×.
+          </p>
         </div>
 
         {coveredDays != null && (
@@ -322,14 +346,17 @@ export default function CallerQualitySection({ form }: { form: SettingsForm }) {
             <div className="flex items-center justify-between gap-cozy px-comfy">
               <span />
               <div className="flex items-center gap-comfy shrink-0">
-                <Kicker className="w-12 text-right" >
-                  <span title="Median of (observed peak MC since call ÷ MC at call), across their rated calls. Peaks are sampled, so these are floors.">Median</span>
+                <Kicker className="w-16 text-right" >
+                  <span title="Median of (observed peak MC since call ÷ MC at call), across their rated calls. Peak reach, not return: it cannot go below 1×, so every call that lost money sits on the floor alongside every call that went nowhere.">Med peak</span>
                 </Kicker>
                 <Kicker className="w-12 text-right">
                   <span title="Their single best call — highest observed peak ÷ MC at call. An observed floor: a spike between samples is missed, so the true ATH can be higher.">Best</span>
                 </Kicker>
                 <Kicker className="w-16 text-right">
                   <span title="Share of their rated calls that went on to 2x from call MC">Hit 2x</span>
+                </Kicker>
+                <Kicker className="w-14 text-right">
+                  <span title="Share of their rated calls that never cleared the slop multiple — the closest this measurement gets to a loss rate.">Slop</span>
                 </Kicker>
                 <Kicker className="w-14 text-right">
                   <span title="Overall band, from the median and hit rate together">Band</span>
@@ -350,8 +377,8 @@ export default function CallerQualitySection({ form }: { form: SettingsForm }) {
                 </div>
                 <div className="flex items-center gap-comfy shrink-0 type-data">
                   <span
-                    className="w-12 text-right text-oct-muted"
-                    title="Median multiple: observed peak MC since call ÷ MC at call (a floor — peaks are sampled)"
+                    className="w-16 text-right text-oct-muted"
+                    title="Median peak reach: observed peak MC since call ÷ MC at call (a floor — peaks are sampled, and losses cannot show below 1×)"
                   >
                     {formatMultiple(score.medianMultiple)}
                   </span>
@@ -366,6 +393,12 @@ export default function CallerQualitySection({ form }: { form: SettingsForm }) {
                     title="Share of rated calls that hit 2x from call MC"
                   >
                     2x {formatRate(score.hitRate2x)}
+                  </span>
+                  <span
+                    className="w-14 text-right text-oct-muted"
+                    title="Share of rated calls that never cleared the slop multiple"
+                  >
+                    {formatRate(score.slopRate)}
                   </span>
                   <span
                     className={cn('w-14 text-right font-bold uppercase', BAND_TEXT_CLASS[score.band])}

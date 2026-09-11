@@ -1,4 +1,4 @@
-import { formatCompact } from '@oct/shared';
+import { formatCompact, isUsableMarketCap } from '@oct/shared';
 import type { TokenEnrichment } from './rickEmbedParser.js';
 import { gmgnGetLegacy } from './gmgnClient.js';
 
@@ -45,7 +45,19 @@ export async function enrichFromGmgn(chain: string, address: string): Promise<To
   const price = priceRaw != null ? Number(priceRaw) : undefined;
   const supplyRaw = data.circulating_supply ?? data.total_supply;
   const supply = supplyRaw != null ? Number(supplyRaw) : undefined;
-  const fdv = supply != null && Number.isFinite(price) ? supply * price! : undefined;
+  const computed = supply != null && Number.isFinite(price) ? supply * price! : undefined;
+  // GMGN is where the board's dust MC@call readings came from. It returns a
+  // real `circulating_supply` (1e9 and friends) against a `price.price` it has
+  // not actually indexed — off by seven or more orders of magnitude — and
+  // supply x price then lands at cents. Those readings reached `fdv_at_call`,
+  // and one of them became a caller's headline BEST at 26,959,682x.
+  //
+  // The product of two fields is only a market cap when it looks like one:
+  // below MIN_MC_AT_CALL this reports NO market cap, which lets the
+  // DexScreener fallback answer instead of enshrining a wrong number. The
+  // metadata (symbol, name, liquidity, price) is still returned — only the
+  // derived FDV is withheld, because only the FDV is the thing we computed.
+  const fdv = isUsableMarketCap(computed) ? computed : undefined;
   const liqRaw = data.liquidity;
   const liq = liqRaw != null ? Number(liqRaw) : undefined;
   const quote = data.pool?.quote_symbol;
