@@ -52,11 +52,43 @@ export interface DiscordMessage {
   mention_channels?: { id: string; guild_id: string; name: string; type: number }[];
   referenced_message?: DiscordMessage | null;
   message_reference?: {
+    /**
+     * 0 = DEFAULT (a reply), 1 = FORWARD. Absent on older payloads, where the
+     * only reference kind was a reply — so `undefined` reads as DEFAULT.
+     */
+    type?: number;
     message_id?: string;
     channel_id?: string;
     guild_id?: string;
   } | null;
+  /**
+   * Present only on forwards. Discord does NOT put a forwarded message's text in
+   * `content` — the outer message carries the forwarder's own comment (usually
+   * empty) and the forwarded body arrives here as a point-in-time snapshot.
+   * See `forward.ts`.
+   */
+  message_snapshots?: DiscordMessageSnapshot[];
   reactions?: DiscordReaction[];
+}
+
+/**
+ * One entry of `message_snapshots`. The nested `message` is a deliberately
+ * minimal subset of a message: notably it has NO author, NO id and NO
+ * channel_id — Discord only tells you what was forwarded, not (beyond
+ * `message_reference`) where it came from.
+ */
+export interface DiscordMessageSnapshot {
+  message: {
+    type?: number;
+    content?: string;
+    embeds?: DiscordEmbed[];
+    attachments?: DiscordAttachment[];
+    timestamp?: string;
+    edited_timestamp?: string | null;
+    flags?: number;
+    mentions?: DiscordUser[];
+    mention_roles?: string[];
+  };
 }
 
 export interface DiscordAttachment {
@@ -888,6 +920,21 @@ export interface TelegramButton {
   url: string;
 }
 
+/**
+ * The forwarded half of a Discord forward. Discord's snapshot carries no author,
+ * so this is content only; `origin` is a best-effort label built from
+ * `message_reference` and is null when the source guild/channel isn't known to
+ * this client (forwards routinely come from servers the user isn't in).
+ */
+export interface ForwardedMessage {
+  content: string;
+  attachments: DiscordAttachment[];
+  embeds: DiscordEmbed[];
+  /** When the forwarded message was originally posted, if Discord sent it. */
+  timestamp?: string | null;
+  origin?: string | null;
+}
+
 export interface FrontendMessage {
   id: string;
   channelId: string;
@@ -917,6 +964,12 @@ export interface FrontendMessage {
     content: string;
     mentions: Record<string, string>;
   } | null;
+  /**
+   * A Discord forward, flattened from `message_snapshots`. Set only on forwards;
+   * a forward's own `content` is the forwarder's added comment (usually empty),
+   * so without this the whole body renders blank.
+   */
+  forwardedMessage?: ForwardedMessage | null;
   reactions?: FrontendReaction[];
   matchedKeywords?: string[];
   platformUrl?: string;

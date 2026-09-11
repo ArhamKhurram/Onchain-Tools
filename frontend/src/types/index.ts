@@ -54,6 +54,7 @@ export type {
   TelegramPoll,
   TelegramForward,
   TelegramButton,
+  ForwardedMessage,
   FrontendMessage,
   TelegramChatInfo,
   TelegramForumTopicInfo,

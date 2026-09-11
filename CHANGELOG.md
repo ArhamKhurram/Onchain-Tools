@@ -4,6 +4,11 @@ All notable changes to Onchain Tools are documented here. Entries before the
 rename still say "Trenchcord" — that was the product's name at the time, and
 they're left as the record of what shipped.
 
+## 2026-09-09
+
+### Fixed
+- **Forwarded Discord messages are no longer blank** — when someone forwarded a message into a channel you watch, the row turned up in the feed with the name and the timestamp and nothing else: no text, no image, no scanner card. Discord doesn't keep a forwarded message's body where an ordinary message keeps it, and OCT was only reading the ordinary place. It now reads the forwarded body as well and shows it as a quoted card under the message, labelled with where it came from whenever that's a server you're in. The knock-on mattered more than the blank row: a contract address inside a forward was invisible, so a forwarded call raised no **CONTRACT** badge, never reached the contract feed and never set off a keyword alert. Forwarded calls now scan like any other call.
+
 ## 2026-09-08
 
 ### Fixed

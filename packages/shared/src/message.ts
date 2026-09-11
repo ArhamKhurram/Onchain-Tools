@@ -1,5 +1,6 @@
 import { detectContractAddresses } from './contract.js';
 import { matchKeywords } from './keyword.js';
+import { forwardedParts } from './forward.js';
 import type { FrontendMessage, DiscordMessage, DiscordEmbed, KeywordPattern, AppConfig } from './types.js';
 
 /**
@@ -49,6 +50,25 @@ export interface MessageGateway {
   getMemberRoleColor(roleIds: string[] | undefined): string | null;
 }
 
+/**
+ * Best-effort "where this was forwarded from" label.
+ *
+ * A snapshot carries no origin of its own, so the only clue is the forward's
+ * `message_reference`. People forward across servers constantly, so the source
+ * is often a guild this client isn't in: rather than print the gateway's
+ * "unknown" placeholder, return null and let the UI show a bare "Forwarded".
+ */
+function forwardOrigin(
+  gateway: MessageGateway,
+  ref: DiscordMessage['message_reference'],
+): string | null {
+  if (!ref?.channel_id) return null;
+  const channel = gateway.getChannelName(ref.channel_id);
+  if (!channel || channel === 'unknown') return null;
+  const guild = ref.guild_id ? gateway.getGuildName(ref.guild_id) : null;
+  return guild ? `${guild} / #${channel}` : `#${channel}`;
+}
+
 export function processDiscordMessage(
   gateway: MessageGateway,
   rawMsg: DiscordMessage,
@@ -59,24 +79,35 @@ export function processDiscordMessage(
 ): FrontendMessage {
   const { config, isHighlighted, cacheUserName } = ctx;
 
+  // A forward keeps its body in `message_snapshots`, never in `content` — see
+  // forward.ts. Scan the forwarded body alongside the message's own: a
+  // forwarded call is still a call, and reading `content` alone made every
+  // forward both blank and undetectable.
+  const forwarded = forwardedParts(rawMsg);
+  const ownText = rawMsg.content ?? '';
+  const scannableText = forwarded?.content ? `${ownText}\n${forwarded.content}` : ownText;
+
   let contractResult = { hasContract: false, addresses: [] as string[] };
   if (config.contractDetection) {
     // Scan embeds as well as content: bot calls carry the CA in an embed with
     // an empty content string, so content-only detection missed every bot that
     // was not Rick.
-    const embedBlob = embedTextBlob(rawMsg.embeds);
-    const scanned = embedBlob ? `${rawMsg.content}\n${embedBlob}` : rawMsg.content;
+    const embedBlob = embedTextBlob([...(rawMsg.embeds ?? []), ...(forwarded?.embeds ?? [])]);
+    const scanned = embedBlob ? `${scannableText}\n${embedBlob}` : scannableText;
     contractResult = detectContractAddresses(scanned);
   }
 
   let matchedKeywords: string[] = [];
   if (config.keywordAlertsEnabled) {
     const allPatterns = [...(config.globalKeywordPatterns ?? []), ...(roomKeywordPatterns ?? [])];
-    matchedKeywords = matchKeywords(rawMsg.content, allPatterns);
+    matchedKeywords = matchKeywords(scannableText, allPatterns);
   }
 
   const mentionsMap: Record<string, string> = {};
-  for (const user of rawMsg.mentions ?? []) {
+  // The forwarded body's mentions go in the same map: it renders through the
+  // same `<@id>` resolver, and without them a forwarded "gm @someone" shows a
+  // raw id.
+  for (const user of [...(rawMsg.mentions ?? []), ...(forwarded?.mentions ?? [])]) {
     mentionsMap[user.id] = user.global_name ?? user.username;
   }
   for (const ch of rawMsg.mention_channels ?? []) {
@@ -84,7 +115,7 @@ export function processDiscordMessage(
   }
   const channelMentionRegex = /<#(\d+)>/g;
   let chMatch;
-  while ((chMatch = channelMentionRegex.exec(rawMsg.content)) !== null) {
+  while ((chMatch = channelMentionRegex.exec(scannableText)) !== null) {
     if (!mentionsMap[`ch:${chMatch[1]}`]) {
       const chName = gateway.getChannelName(chMatch[1]);
       if (chName !== 'unknown') mentionsMap[`ch:${chMatch[1]}`] = chName;
@@ -92,7 +123,7 @@ export function processDiscordMessage(
   }
   const roleMentionRegex = /<@&(\d+)>/g;
   let roleMatch;
-  while ((roleMatch = roleMentionRegex.exec(rawMsg.content)) !== null) {
+  while ((roleMatch = roleMentionRegex.exec(scannableText)) !== null) {
     const rName = gateway.getRoleName(roleMatch[1]);
     if (rName) mentionsMap[`role:${roleMatch[1]}`] = rName;
   }
@@ -138,6 +169,15 @@ export function processDiscordMessage(
             mentions: refMentions,
           };
         })()
+      : null,
+    forwardedMessage: forwarded
+      ? {
+          content: forwarded.content,
+          attachments: forwarded.attachments,
+          embeds: forwarded.embeds,
+          timestamp: forwarded.timestamp,
+          origin: forwardOrigin(gateway, rawMsg.message_reference),
+        }
       : null,
     reactions: (rawMsg.reactions ?? []).map((r) => ({
       emoji: r.emoji,
