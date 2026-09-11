@@ -1,7 +1,7 @@
 import { Settings2, X } from 'lucide-react';
 import { widgetLabel } from '../../data/workspaceWidgets';
 import PanelContent, { panelSubtitle } from './PanelContent';
-import type { WorkspacePanelSlot } from '../../types/workspace';
+import type { WorkspacePanelConfig, WorkspacePanelSlot } from '../../types/workspace';
 import { useAppStore } from '../../stores/appStore';
 import { cn } from '../../lib/utils';
 import { useMemo } from 'react';
@@ -12,6 +12,7 @@ interface WorkspacePanelChromeProps {
   onRemove: () => void;
   onConfigure: () => void;
   onRoomChange: (roomId: string) => void;
+  onConfigChange: (config: Partial<WorkspacePanelConfig>) => void;
 }
 
 export default function WorkspacePanelChrome({
@@ -20,6 +21,7 @@ export default function WorkspacePanelChrome({
   onRemove,
   onConfigure,
   onRoomChange,
+  onConfigChange,
 }: WorkspacePanelChromeProps) {
   const rooms = useAppStore((s) => s.rooms);
   const roomName = useMemo(() => {
@@ -96,7 +98,7 @@ export default function WorkspacePanelChrome({
         )}
       </div>
       <div className="flex flex-col flex-1 min-h-0 overflow-hidden">
-        <PanelContent panel={panel} onRoomChange={onRoomChange} />
+        <PanelContent panel={panel} onRoomChange={onRoomChange} onConfigChange={onConfigChange} />
       </div>
     </div>
   );
